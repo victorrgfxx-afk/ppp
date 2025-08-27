@@ -1,0 +1,7 @@
+feeds:
+  - url: "https://www.reddit.com/r/Framer/.rss"
+    limit: 3
+  - url: "https://rsshub.app/behance/latest"
+    limit: 2
+repurpose:
+  channels: ["linkedin","twitter","threads"]

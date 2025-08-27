@@ -1,0 +1,16 @@
+hints:
+  brand: "IE Studio"
+  services: ["Framer websites","Visual identity","Motion microinteractions","AI productization"]
+scoring:
+  - match: "framer"
+    points: 25
+  - match: "rebrand"
+    points: 20
+  - match: "budget"
+    points: 15
+  - match: "deadline"
+    points: 10
+autorespond_threshold: 75
+auto_reply:
+  to: []
+  subject: "Quick idea & next steps"
