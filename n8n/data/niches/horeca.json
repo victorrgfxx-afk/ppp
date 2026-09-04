@@ -1,0 +1,31 @@
+{
+  "niche_key": "horeca",
+  "niche_label": "Restaurant / cafenea",
+  "audience": "25-45 ani, urban, ies de 2-4 ori pe luna si aleg dupa ce se uita pe Instagram si pe recenzii. Trei momente distincte: pranzul de lucru in timpul saptamanii, iesirea de seara in cuplu sau grup, si brunch-ul de weekend cu familia. Decizia se ia des in ultimele 20 de minute, pe telefon, cu foamea deja instalata.",
+  "pains": "nu stiu unde sa mearga si ajung mereu in aceleasi doua locuri; frica de a plati mult pe ceva mediocru; parcarea; asteptarea fara rezervare; nu gasesc optiuni pentru copii sau pentru vegetarieni; meniul online nu e actualizat",
+  "objections": "e scump pentru cat primesti; nu am unde parca; sigur e plin, nu are rost; am mai fost odata si nu a fost grozav; portiile sunt mici; nu e loc pentru copii",
+  "desires": "o seara reusita fara riscuri; mancare buna constant, nu doar in ziua buna a bucatarului; un loc al lor unde sa revina; sa impresioneze pe cineva; sa manance bine fara sa se simta vinovati",
+  "services": "meniu a la carte; pranz de business; mic dejun si brunch de weekend; evenimente private si aniversari; catering; terasa; livrare",
+  "proof_assets": "bucatarul la lucru, cu mainile in ingrediente; furnizorii locali, cu numele lor; farfuriile filmate real, asa cum ies pe pas, nu poze de stoc; recenzii cu nume; echipa din sala si din bucatarie; rezervarile pline de vineri seara",
+  "tone": "apetisant, cald, uman. Sunetul conteaza cat imaginea: sfarait, taiat, turnat. Fara superlative goale si fara limbaj de agentie.",
+  "forbidden": "afirmatii de sanatate sau nutritie nedovedite (detoxifiant, intareste imunitatea, ajuta la slabit); cel mai bun din oras fara o sursa reala; poze de stoc prezentate ca fiind farfuriile localului; ascunderea sau minimizarea alergenilor; promovarea consumului excesiv de alcool sau a preturilor la alcool ca argument principal; preturi afisate care nu mai sunt valabile in meniu",
+  "local_context": "Oras si zona, cu detalii care chiar decid: parcare (cate locuri, platita sau nu), scaune pentru copii, acces pentru carucior, terasa acoperita, program pe zile, cat dureaza pranzul de business, daca se ia rezervare si pana la ce ora e bucataria deschisa.",
+  "niche_days": "10-16 Ziua Mondiala a Alimentatiei; 10-01 Ziua Internationala a Cafelei; 09-27 Ziua Mondiala a Turismului; 02-09 Ziua Internationala a Pizzei; 03-20 Ziua Internationala a Fericirii; 07-30 Ziua Internationala a Prieteniei",
+  "seed_examples": [
+    "Un preparat, de la marfa crud pe masa pana la farfuria pusa pe pas, in 30 de secunde, fara muzica - doar sunetul din bucatarie",
+    "De ce ciorba noastra costa cat costa: pretul ingredientelor pentru o oala, impartit la portii, aratat pe masa cu bonurile langa",
+    "Ce mananca echipa inainte de tura de seara - masa personalului, filmata pe nepusa masa",
+    "Trei preparate din meniu pe care le comanda cel mai rar si de ce sunt cele mai bune, dupa parerea bucatarului",
+    "Furnizorul de branza, la el la ferma, la 40 de kilometri de oras - o data pe luna, un furnizor",
+    "Cum arata localul la 11:00, cand nu e nimeni: curatenie, mise en place, tacamuri lustruite - raspunde la intrebarea nerostita despre igiena",
+    "Ce facem cu mancarea ramasa la final de zi - raspuns onest la o intrebare pe care o pun oamenii in comentarii",
+    "Reactia unui client la prima lingura, filmata cu acordul lui, fara scenariu si fara reluare"
+  ],
+  "pillars": [
+    "Mancarea in sine (proces, ingrediente, sunet)",
+    "Oamenii (bucatari, ospatari, furnizori)",
+    "Educatie si transparenta (preturi, alergeni, provenienta)",
+    "Obiectii si mituri (scump, plin, parcare)",
+    "Comunitate si ocazii (evenimente, sarbatori, local)"
+  ]
+}

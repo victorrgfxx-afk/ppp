@@ -5,7 +5,8 @@ Sunt **schelete complete și valide structural**: noduri, conexiuni (inclusiv le
 
 **Ce am verificat efectiv:**
 - JSON valid, nume de noduri unice, zero conexiuni către noduri inexistente, zero noduri orfane (validator în `build-workflows.mjs`).
-- Logica tuturor nodurilor Code — 14 teste automate în `tests/run-tests.mjs`, toate trec.
+- Logica tuturor nodurilor Code — 21 de teste automate în `tests/run-tests.mjs`, toate trec.
+- Ambele lanțuri complete, rulate end-to-end prin runner-ul local (`local/run.mjs`, mod `--dry-run`): formular → extracție → strateg → HTML, și brief → calendar → felii → generare → deduplicare → CSV.
 - Endpoint-ul de sărbători, apelat live: `https://date.nager.at/api/v3/PublicHolidays/2026/RO` → 200, cu `localName` în română, inclusiv Paștele ortodox (mobil).
 - Comportamentul de conversie al Google Drive API (HTML → Google Doc) — documentat oficial de Google.
 
@@ -50,6 +51,17 @@ Valorile din JSON (`gpt-4o`) sunt **doar valori inițiale**, ca importul să nu 
 2. Conectează `Audit Schema` direct la `Strateg` (ieșirea `ai_outputParser`), respectiv `Idea Schema` direct la `Idea Generator`.
 Workflow-ul funcționează identic, doar că un răspuns malformat va da eroare în loc să fie reparat automat.
 
+### 6b. Testează întâi local, apoi în n8n
+Înainte de a te lupta cu OAuth și foldere, verifică prompturile și briefurile cu runner-ul local — e același cod din `src/`, doar fără n8n:
+
+```bash
+node n8n/local/run.mjs ideas --niche dentist --count 50 --limit-slices 2   # cu cheie API
+node n8n/local/run.mjs audit --client "Test" --screens ./capturi           # cu cheie API
+node n8n/local/run.mjs ideas --niche dentist --dry-run                     # fără cheie API
+```
+
+Dacă ideile arată prost aici, vor arăta prost și în n8n — problema e în brief sau în prompt, nu în configurare. E cel mai ieftin loc în care poți afla asta.
+
 ### 7. Prima rulare — în ordinea asta
 1. **Agent A cu o singură captură**, de pe profilul tău. Uită-te la ieșirea nodului `Analyze Screenshot`: dacă bio-ul transcris nu e literal identic cu cel real, problema e la model sau la `Detail`, nu mai departe.
 2. **Agent A complet**, 3 capturi. Verifică documentul din Drive.
@@ -70,5 +82,5 @@ node n8n/build-workflows.mjs      # apoi build
 | structura ieșirii LLM | `schemas/*.json` |
 | logica unui nod Code | `src/*.js` (+ adaugă un test) |
 | limitele de caractere | `src/a1-build-document.js`, obiectul `PLATFORM_LIMITS` |
-| agresivitatea deduplicării | `src/b-dedupe-and-number.js`, `TRIGRAM_THRESHOLD` / `TOKEN_THRESHOLD` |
+| agresivitatea deduplicării | `src/b-dedupe-and-number.js`, `COSINE_THRESHOLD` / `TRIGRAM_THRESHOLD` |
 | numărul de idei per felie | nodul `Start`, câmpul `ideas_per_slice` |

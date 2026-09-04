@@ -1,0 +1,31 @@
+{
+  "niche_key": "fitness",
+  "niche_label": "Sala de fitness / antrenor personal",
+  "audience": "25-45 ani, majoritatea revin la sport dupa o pauza de ani, nu incepatori entuziasti. Trei sub-segmente: corporatistul sedentar cu dureri de spate, femeia postpartum care vrea sa se simta din nou in corpul ei, si cel care s-a apucat si a abandonat de trei ori. Toti se tem sa nu para ridicoli in sala.",
+  "pains": "rusinea de a fi vazut ca incepator; nu stiu ce sa faca la aparate si se simt prosti intreband; lipsa de timp reala, nu scuza; au mai incercat si au abandonat; dureri de spate si de genunchi; oglinzile si oamenii care par sa stie tot",
+  "objections": "nu am timp; e scump; nu sunt in forma ca sa incep, ma apuc dupa ce slabesc un pic; ma apuc de luni; am incercat si nu a mers; nu vreau sa devin masiv",
+  "desires": "sa se simta bine in propriul corp, nu neaparat sa arate intr-un fel anume; energie pe tot parcursul zilei; sa nu abandoneze iar; rezultate fara dieta extrema; sa poata tine pasul cu copiii; sa scape de durerea de spate",
+  "services": "abonamente; antrenament personal; clase de grup; evaluare corporala si de mobilitate; planuri online; consiliere nutritionala oferita de un specialist autorizat; programe postpartum si pentru varsta a treia",
+  "proof_assets": "transformari cu consimtamant scris, inclusiv cele modeste si lente; antrenori cu certificarile lor la vedere; sala la ore diferite, ca sa se vada cat e de aglomerat; membri care vorbesc singuri, fara scenariu; comunitatea",
+  "tone": "incurajator si realist, anti-rusine. Fara no pain no gain, fara scuzele nu exista. Vorbesti cu cineva care s-a mai lasat de trei ori si stie asta despre el.",
+  "forbidden": "promisiuni de tipul X kilograme in Y zile; sfaturi nutritionale sau medicale date fara dietetician sau medic autorizat; suplimente prezentate ca solutii medicale sau ca fiind necesare; body shaming, inclusiv sub forma de motivatie; before/after fara consimtamant scris; promovarea deficitelor calorice extreme, a postului prelungit sau a antrenamentului pe accidentare; afirmatia ca un exercitiu arde grasimea local",
+  "local_context": "Oras si cartier. Program, inclusiv orele goale (util pentru cine se teme de aglomeratie). Parcare, vestiare, dusuri, spatiu pentru copii daca exista. Preturi transparente, inclusiv perioada minima de contract - opacitatea pe pret e cea mai mare frana in nisa asta.",
+  "niche_days": "04-06 Ziua Internationala a Sportului; 06-21 Ziua Internationala a Yoga; 03-04 Ziua Mondiala a Obezitatii; 10-10 Ziua Mondiala a Sanatatii Mintale; 09-29 Ziua Mondiala a Inimii; 10-20 Ziua Mondiala a Osteoporozei",
+  "seed_examples": [
+    "Cum arata sala marti la 14:00 - aproape goala. Pentru cine amana pentru ca se teme de aglomeratie si de privirile celorlalti",
+    "Primele 10 minute ale unui incepator, filmate integral: unde isi lasa lucrurile, ce intreaba, ce face intai. Fara montaj",
+    "Trei aparate pe care aproape toata lumea le foloseste gresit - antrenorul arata gresit, apoi corect, in aceeasi incadratura",
+    "Un membru care a slabit 4 kilograme in 6 luni si de ce e un rezultat bun, nu unul dezamagitor - contra-programare fata de tot ce vede pe TikTok",
+    "Ce mananca antrenorul intr-o zi obisnuita, inclusiv ce mananca prost - fara sa recomande nimanui nimic",
+    "Antrenament de 12 minute pentru cine sta 9 ore pe scaun, filmat intr-un birou, nu in sala",
+    "Cat costa efectiv abonamentul, ce include si ce nu include - pe ecran, cu preturile scrise, fara suna-ne pentru oferta",
+    "Am revenit dupa o pauza de doi ani: prima saptamana a unui antrenor care si-a intrerupt antrenamentele - povestea proprie, nu a clientului"
+  ],
+  "pillars": [
+    "Educatie tehnica (executie, mobilitate, recuperare)",
+    "Autoritate si dovezi (transformari reale, certificari)",
+    "Behind the scenes (sala, antrenori, o zi obisnuita)",
+    "Obiectii si mituri (timp, cost, rusine, dieta)",
+    "Comunitate si mental (motivatie, abandon, sanatate mintala)"
+  ]
+}

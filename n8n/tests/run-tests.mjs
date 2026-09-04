@@ -1,22 +1,7 @@
 // Teste pentru nodurile Code, rulate in afara n8n.
 // Mocheaza $input / $() / $json si verifica logica. Ruleaza:  node n8n/tests/run-tests.mjs
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
-const load = (f) => readFileSync(join(SRC, f), 'utf8');
-
-const runNode = (file, { input = [], nodes = {}, json = {} } = {}) => {
-  const $input = { all: () => input };
-  const $ = (name) => {
-    if (!(name in nodes)) throw new Error(`Test: nodul "${name}" nu e mocheat`);
-    const items = nodes[name];
-    return { first: () => items[0], all: () => items, last: () => items[items.length - 1] };
-  };
-  const fn = new Function('$input', '$', '$json', 'console', load(file));
-  return fn($input, $, json, console);
-};
+import { readFileSync, readdirSync } from 'node:fs';
+import { runNode, renderTemplate, parseCsv, toCsv, loadPrompt } from '../local/n8n-shim.mjs';
 
 let pass = 0, fail = 0;
 const t = (name, fn) => {
@@ -203,23 +188,32 @@ t('filtreaza zilele irelevante pentru nisa', () => {
 
 console.log('\nAgent B — Dedupe & Number');
 t('elimina duplicatele exacte si parafrazele, pastreaza ideile distincte', () => {
-  const mk = (title, slice = 1) => ({ json: { title, slice_index: slice, niche_key: 'dentist', target_ideas: 10, hook: 'h', outline: 'o' } });
+  // Corpus de fundal intentionat: IDF-ul se calculeaza pe tot setul, deci pe 6 titluri
+  // comportamentul difera de cel pe 500. Testam in conditii apropiate de rularea reala.
+  const fundal = ['Cat costa o albire profesionala', 'Cat dureaza un tratament de canal',
+    'Cum alegi aparatul dentar', 'Ce nu ti se spune despre implanturi', 'Cat costa un abonament la sala',
+    'Cum alegi antrenorul personal', 'Trei greseli la periaj', 'Ce mananca antrenorul intr-o zi',
+    'Cat dureaza recuperarea dupa extractie', 'De ce amana oamenii vizita la dentist'];
+  const mk = (title, slice = 1) => ({ json: { title, slice_index: slice, niche_key: 'dentist', target_ideas: 99, hook: 'h', outline: 'o' } });
   const out = runNode('b-dedupe-and-number.js', {
     input: [
       mk('5 mituri despre albirea dentara'),
       mk('5 mituri despre albirea dentara'),              // duplicat exact
-      mk('Mituri despre albirea dentara: 5 lucruri'),     // parafraza
+      mk('Mituri despre albirea dentara: 5 lucruri'),     // parafraza (reordonare)
       mk('Cat costa un implant dentar', 2),
       mk('Ce se intampla la prima vizita', 2),
       mk('Cum alegi aparatul dentar potrivit', 3),
+      ...fundal.map((f, i) => mk(f, 4 + (i % 2))),
     ],
-    nodes: { Start: [{ json: { target_ideas: 10, year: 2026 } }] },
+    nodes: { Start: [{ json: { target_ideas: 99, year: 2026 } }] },
   });
-  eq(out.length, 4, 'idei unice pastrate');
+  const titluri = out.map((o) => o.json.title);
   eq(out[0].json._stats_dropped_exact, 1, 'duplicat exact eliminat');
-  eq(out[0].json._stats_dropped_similar, 1, 'parafraza eliminata');
+  assert(!titluri.includes('Mituri despre albirea dentara: 5 lucruri'), 'parafraza trebuia eliminata');
+  for (const t of ['5 mituri despre albirea dentara', 'Cat costa un implant dentar', 'Ce se intampla la prima vizita']) {
+    assert(titluri.includes(t), `ideea distincta a fost eliminata gresit: "${t}"`);
+  }
   eq(out[0].json.id, 'dentist-2026-001', 'format id');
-  eq(out[3].json.id, 'dentist-2026-004', 'numerotare continua');
 });
 t('taie la tinta echilibrat intre felii, nu doar din primele', () => {
   const subiecte = ['implant', 'fatete', 'albire', 'aparat dentar', 'detartraj', 'canal', 'urgente', 'copii', 'proteze', 'igiena'];
@@ -231,6 +225,85 @@ t('taie la tinta echilibrat intre felii, nu doar din primele', () => {
   const out = runNode('b-dedupe-and-number.js', { input, nodes: { Start: [{ json: { target_ideas: 8, year: 2026 } }] } });
   eq(out.length, 8, 'taiat la tinta');
   eq(new Set(out.map((o) => o.json.slice_index)).size, 4, 'toate cele 4 felii sunt reprezentate');
+});
+
+t('calibrarea pragurilor: ce se elimina si ce se pastreaza', () => {
+  // Perechi etichetate manual. Daca schimbi COSINE_THRESHOLD / TRIGRAM_THRESHOLD,
+  // testul asta iti spune exact ce ai stricat.
+  const perechi = [
+    ['DROP', '5 mituri despre albirea dentara', 'Mituri despre albirea dentara: 5 lucruri'],
+    ['DROP', 'Cat costa un implant dentar', 'Cat costa implantul dentar'],
+    ['DROP', 'Trei aparate folosite gresit in sala', 'Trei aparate pe care le folosesti gresit in sala'],
+    ['KEEP', 'Cat costa un implant dentar', 'Cat costa o fateta dentara'],
+    ['KEEP', 'Cat costa un implant dentar, explicat pas cu pas', 'Cat costa un implant dentar, ce nu scrie nicaieri'],
+    ['KEEP', 'Turul cabinetului in 30 de secunde', 'Ce vede medicul pe radiografia ta'],
+    ['KEEP', 'Trei aparate folosite gresit in sala', 'Trei greseli la antrenamentul de picioare'],
+  ];
+  // corpus de fundal, ca IDF-ul sa fie realist (altfel fiecare cuvant e unic)
+  const fundal = ['Cat costa o albire profesionala', 'Cat dureaza un tratament de canal',
+    'Cum alegi aparatul dentar', 'Ce nu ti se spune despre implanturi', 'Cat costa un abonament la sala',
+    'Cum alegi antrenorul personal', 'Trei greseli la periaj', 'Ce mananca antrenorul intr-o zi',
+    'Cat dureaza recuperarea dupa extractie', 'De ce amana oamenii vizita la dentist'];
+  const mk = (title, i) => ({ json: { title, slice_index: 1 + (i % 3), niche_key: 'x', target_ideas: 999 } });
+
+  for (const [want, a, b] of perechi) {
+    const input = [a, b, ...fundal].map(mk);
+    const out = runNode('b-dedupe-and-number.js', { input, nodes: { Start: [{ json: { target_ideas: 999, year: 2026 } }] } });
+    const titluri = out.map((o) => o.json.title);
+    const amandoua = titluri.includes(a) && titluri.includes(b);
+    if (want === 'DROP') assert(!amandoua, `ar fi trebuit eliminata una: "${a}" ~ "${b}"`);
+    else assert(amandoua, `nu trebuia eliminata: "${a}" ~ "${b}"`);
+  }
+});
+t('limita cunoscuta: duplicatele semantice cu alte cuvinte NU sunt prinse', () => {
+  // Documentat intentionat ca test: e granita metodei lexicale, nu un bug ascuns.
+  const input = [
+    { json: { title: 'Ce se intampla la prima vizita la stomatolog', slice_index: 1, niche_key: 'x', target_ideas: 99 } },
+    { json: { title: 'Cum decurge prima ta consultatie', slice_index: 1, niche_key: 'x', target_ideas: 99 } },
+  ];
+  const out = runNode('b-dedupe-and-number.js', { input, nodes: { Start: [{ json: { target_ideas: 99, year: 2026 } }] } });
+  eq(out.length, 2, 'ambele raman — pentru cazul asta ai nevoie de embeddings');
+});
+
+console.log('\nInfrastructura locala');
+t('renderTemplate evalueaza expresiile n8n din prompturi', () => {
+  const out = renderTemplate('Nisa: {{ $json.niche }}, luna {{ $json.month }}, date {{ JSON.stringify($json.a) }}', { niche: 'dentist', month: 3, a: [1, 2] });
+  eq(out, 'Nisa: dentist, luna 3, date [1,2]', 'randare');
+});
+t('promptul real se randeaza fara erori cu datele unei felii', () => {
+  const slice = slicesOut[0].json;
+  const out = renderTemplate(loadPrompt('03-idea-generator.md'), slice);
+  assert(!/\{\{/.test(out), 'nu au ramas expresii neevaluate');
+  assert(out.includes(slice.pillar), 'pilonul a ajuns in prompt');
+  assert(out.includes(String(slice.ideas_per_slice)), 'numarul de idei a ajuns in prompt');
+});
+t('CSV: quotare si parsare dus-intors', () => {
+  const rows = [{ a: 'simplu', b: 'cu, virgula', c: 'cu "ghilimele"' }];
+  const back = parseCsv(toCsv(rows));
+  eq(back[0].b, 'cu, virgula', 'virgula');
+  eq(back[0].c, 'cu "ghilimele"', 'ghilimele');
+});
+t('CSV-ul cu zile internationale se parseaza corect', () => {
+  const zile = parseCsv(readFileSync(new URL('../data/international-days-seed.csv', import.meta.url), 'utf8'));
+  assert(zile.length > 50, `prea putine zile: ${zile.length}`);
+  const oral = zile.find((z) => /Sanatatii Orale/.test(z.name_ro));
+  eq(oral.date, '03-20', 'Ziua Mondiala a Sanatatii Orale');
+  eq(oral.niches, 'dentist', 'filtrata pe nisa');
+  const mobile = zile.filter((z) => z.movable === 'true');
+  assert(mobile.length >= 5, 'exista zile mobile marcate');
+});
+t('toate cele 4 nise au brief complet', () => {
+  const dir = new URL('../data/niches/', import.meta.url);
+  const nise = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  eq(nise.length, 4, 'numar de nise');
+  const obligatorii = ['niche_key', 'audience', 'pains', 'objections', 'desires', 'services', 'tone', 'forbidden', 'niche_days', 'seed_examples', 'pillars'];
+  for (const f of nise) {
+    const b = JSON.parse(readFileSync(new URL(f, dir), 'utf8'));
+    for (const c of obligatorii) assert(b[c] && String(b[c]).length > 3, `${f}: campul "${c}" lipseste sau e gol`);
+    assert(b.seed_examples.length >= 8, `${f}: sub 8 seed_examples (${b.seed_examples.length})`);
+    assert(b.pillars.length >= 5, `${f}: sub 5 piloni`);
+    assert(/;/.test(b.niche_days), `${f}: niche_days trebuie sa aiba mai multe zile separate prin ;`);
+  }
 });
 
 console.log(`\n${pass} teste trecute, ${fail} esuate\n`);

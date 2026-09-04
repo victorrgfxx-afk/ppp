@@ -247,12 +247,25 @@ Serviciul a migrat pe `https://nagerholidays.com/api/v4/Holidays/{RO}/{an}` (v4 
 Zilele mobile (Black Friday, Ziua Mamei — prima duminică din mai în România, Ziua Tatălui — a doua duminică din mai) sunt marcate `movable=true` și calculate în Code node, nu scrise fix. **Seed-ul trebuie revizuit manual o dată pe an** — e singura parte din sistem care nu se autoverifică.
 
 ### 2.5 Deduplicarea (Code node, fără costuri suplimentare)
-Trei straturi, în ordinea costului:
-1. **Normalizare**: lowercase, fără diacritice, fără stop-words, sortare tokens → hash exact.
-2. **Două praguri de similaritate**, pentru că prind lucruri diferite: *trigrame Jaccard* la `0.72` (reformulări mărunte) și *set de cuvinte Jaccard* la `0.80` (reordonări: „5 mituri despre albire" vs „Mituri despre albirea dentară: 5 lucruri" — testul arată că trigramele singure ratau acest caz).
-3. **Tăiere echilibrată la țintă**: se ia pe rând din fiecare felie, ca să nu rămâi cu 500 de idei toate din primele 8 felii (adică din primele 5 luni ale anului). Dacă după deduplicare rămân sub țintă, nodul scrie în log câte lipsesc și de ce — mărești `ideas_per_slice` sau îmbunătățești `seed_examples`.
 
-Pentru volume mari (5.000+ idei, mai mulți clienți) treci pe embeddings + vector store (Qdrant/Supabase pgvector) cu prag de cosine ~0.90. Sub 1.000 de idei, trigramele sunt suficiente și gratuite.
+Trei straturi, în ordinea costului:
+
+1. **Normalizare + hash exact**: lowercase, fără diacritice, fără stop-words, tokens sortați.
+2. **Cosinus ponderat cu IDF** pe cuvinte, prag `0.85`. Cuvintele care apar în multe titluri („cât", „costă", „explicat") cântăresc puțin; cele distinctive („implant", „fațete") cântăresc mult. Asta e diferența care contează în practică: *„Cât costă un implant, explicat pas cu pas"* și *„Cât costă o fațetă, explicat pas cu pas"* împart un șablon lung, dar au subiecte diferite — **nu** sunt duplicate. Un Jaccard simplu pe cuvinte le tăia; măsurat, cosinusul ponderat le păstrează (0.33) și în același timp prinde parafrazele reale (0.87).
+3. **Trigrame Jaccard**, prag `0.70`, pentru variante aproape identice ca șir: „Cât costă un implant dentar" / „Cât costă implantul dentar" (formele gramaticale schimbă cuvântul, dar nu șirul).
+
+Pragurile sunt **calibrate pe perechi etichetate manual** și fixate într-un test (`calibrarea pragurilor` din `tests/run-tests.mjs`): dacă le modifici, testul îți spune exact ce ai stricat. Marja până la cea mai apropiată pereche care trebuie păstrată e mare la ambele praguri, deci nu sunt fragile.
+
+Două detalii care s-au dovedit să conteze, prinse de teste:
+- **IDF se calculează pe titlurile unice**, nu pe toate. Altfel un titlu repetat de 3 ori umflă frecvența cuvintelor lui, le scade greutatea, și propriile lui duplicate scapă nedetectate.
+- **Tăiere echilibrată la țintă**: se ia pe rând din fiecare felie, altfel rămâi cu 500 de idei toate din primele 8 felii, adică din primele 5 luni.
+
+> **Limita cunoscută, documentată ca test:** două idei identice ca sens dar formulate cu cuvinte complet diferite („Ce se întâmplă la prima vizită" / „Cum decurge prima ta consultație") **nu** sunt prinse. Nicio metodă lexicală nu le prinde. Dacă ajunge să te deranjeze, treci pe embeddings: înlocuiești `vectorize()` cu un vector de embedding și compari cu același cosinus, prag ~0.90. Restul codului rămâne neschimbat.
+
+### 2.5b Completarea deficitului (top-up)
+Dacă după deduplicare rămâi sub țintă, **runner-ul local completează automat**: generează felii suplimentare, decalate pe altă combinație pilon/format/platformă, și trimite modelului **lista titlurilor deja folosite** cu instrucțiunea să nu le repete. Asta e cea mai eficientă măsură anti-duplicat — mai bună decât orice filtru aplicat după.
+
+În n8n, echivalentul e o a doua rulare cu `ideas_per_slice` mărit (25 → 32). Dacă vrei top-up automat și în n8n, adaugi un nod IF după `Dedupe & Number` care buclează înapoi în `Loop Over Slices` — funcționează, dar face graful vizibil mai greu de depanat, motiv pentru care nu e în workflow-ul livrat.
 
 ### 2.6 Output — Google Sheets `Idei`
 | Coloană | Conținut |
@@ -295,20 +308,52 @@ Tab-ul `NicheBriefs`, o linie per nișă:
 | `niche_days` | `03-20 Ziua Mondială a Sănătății Orale; 02-04 Ziua Mondială de Luptă Împotriva Cancerului; 11-14 Ziua Mondială a Diabetului` |
 | `seed_examples` | 5–10 idei bune scrise de tine → cel mai puternic lever de calitate |
 
-Exemplu complet: [`data/niche-brief-example-dentist.json`](data/niche-brief-example-dentist.json)
+**Cele 4 nișe sunt deja scrise**, complet, în [`data/niches/`](data/niches/): `dentist`, `imobiliare`, `horeca`, `fitness`. Fiecare are 8 `seed_examples`, 5 piloni, zile specifice nișei și o listă `forbidden` construită pe riscurile reale ale domeniului (medical, juridic-imobiliar, alergeni, revendicări de slăbire). Le exporți pentru Google Sheets cu:
+
+```bash
+node n8n/local/run.mjs briefs      # → output/niche-briefs.csv, gata de importat în tab-ul NicheBriefs
+```
+
+Un test verifică permanent că toate cele 4 briefuri au câmpurile obligatorii completate și minimum 8 `seed_examples`.
 
 **`seed_examples` face 80% din diferența de calitate.** Modelul imită tiparul, nu descrierea abstractă a tonului. Scrie 8 idei bune per nișă manual — e cea mai profitabilă oră de muncă din tot proiectul.
 
 **Compliance (obligatoriu pentru medical/financiar):** coloana `forbidden` intră în prompt ca regulă dură, iar în `schemas/idea-row.schema.json` există câmpul `compliance_ok`. Pentru dentist: fără promisiuni de rezultat, fără diagnostic la distanță, before/after doar cu consimțământ scris (GDPR — datele de sănătate sunt categorie specială, art. 9). Reclamele pe Meta au reguli separate pentru sănătate.
 
 ### Ordinea de lucru pe cele 4 nișe
-1. Alege 4 nișe **diferite structural** (ex: dentist / imobiliare / restaurant / sală de fitness). Dacă alegi 4 nișe medicale, nu afli nimic despre generalizare.
-2. Rulează Agent B pe fiecare, la **50 de idei** (2 felii), nu 500.
+1. Cele 4 nișe livrate sunt **diferite structural** intenționat (medical / tranzacție mare cu risc juridic / consum imediat / transformare personală). Dacă alegi 4 nișe medicale, nu afli nimic despre generalizare.
+2. Rulează Agent B pe fiecare, la **50 de idei**, nu 500:
+   `node n8n/local/run.mjs ideas --niche horeca --count 50 --limit-slices 2`
 3. Notează manual fiecare idee: `păstrez / ajustez / gunoi`. Ținta: >70% în primele două.
 4. Sub 70% → problema e aproape sigur în brief (`seed_examples` și `pains`), nu în prompt. Repară briefurile.
-5. Când treci pragul pe toate 4, rulează la 500 și scalează: **nișă nouă = un rând nou în `NicheBriefs`**, zero modificări în n8n.
+5. Când treci pragul pe toate 4, rulează la 500 și scalează: **nișă nouă = un fișier nou în `data/niches/` + un rând nou în `NicheBriefs`**, zero modificări în n8n.
 
 ---
+
+## 3b. Runner local — rulează fără n8n
+
+`n8n/local/run.mjs` execută **exact aceleași noduri Code** din `src/` ca workflow-urile n8n, doar că apelează modelul direct. Nu e o a doua implementare care o ia razna față de prima — e același cod, cu alt înveliș.
+
+La ce folosește:
+- **testezi calitatea prompturilor și a briefurilor înainte** să configurezi Google OAuth, foldere și credențiale (economisește o zi);
+- **verifici că tot lanțul e sănătos fără nicio cheie API** (`--dry-run`);
+- rulezi la nevoie fără n8n: backfill pe o nișă, un audit rapid, regenerarea CSV-ului de briefuri.
+
+```bash
+# verificare fără cheie API — trece prin tot lanțul cu date sintetice
+node n8n/local/run.mjs ideas --niche dentist --count 500 --dry-run
+
+# real, cu model
+export OPENAI_API_KEY=...            # sau ANTHROPIC_API_KEY
+node n8n/local/run.mjs ideas --niche horeca --count 500 --year 2026 --model <model>
+node n8n/local/run.mjs audit --client "Cabinet X" --niche dentist --screens ./capturi
+node n8n/local/run.mjs briefs        # exportă cele 4 nișe pentru Google Sheets
+node n8n/local/run.mjs               # ajutor complet
+```
+
+Funcționează cu orice API compatibil OpenAI (setezi `OPENAI_BASE_URL`) și cu Anthropic. Rezultatele merg în `n8n/output/` (ignorat de git): `.csv` pentru Sheets, `.json` pentru orice altceva, `.html` pentru audit — **exact HTML-ul pe care n8n îl urcă în Drive ca Google Doc**, deci îl vezi în browser înainte să atingi Drive.
+
+> Cifrele din `--dry-run` (câte idei rămân după deduplicare) reflectă varietatea limitată a datelor sintetice, **nu** ce produce un model real. Dry-run-ul verifică instalarea și lanțul, nu calitatea.
 
 ## 4. Testare — checklist înainte de primul client
 
@@ -394,8 +439,12 @@ n8n/
 │   ├── b-build-slice-plan.js
 │   ├── b-flatten-ideas.js
 │   └── b-dedupe-and-number.js
+├── local/                                 ← runner local: același cod, fără n8n
+│   ├── run.mjs                            ← CLI: ideas / audit / briefs
+│   ├── n8n-shim.mjs                       ← rulează nodurile Code în afara n8n
+│   └── llm.mjs                            ← client OpenAI / Anthropic, fără dependințe
 ├── tests/
-│   └── run-tests.mjs                      ← 14 teste pe logica nodurilor Code
+│   └── run-tests.mjs                      ← 21 de teste pe logica nodurilor Code
 ├── prompts/
 │   ├── 01-vision-extractor.md
 │   ├── 02-strategist-audit.md
@@ -404,12 +453,13 @@ n8n/
 │   ├── audit-output.schema.json
 │   └── idea-row.schema.json
 ├── data/
-│   ├── international-days-seed.csv
-│   └── niche-brief-example-dentist.json
-├── data/
 │   ├── README.md
 │   ├── international-days-seed.csv
-│   └── niche-brief-example-dentist.json
+│   └── niches/                            ← cele 4 nișe „antrenate"
+│       ├── dentist.json
+│       ├── imobiliare.json
+│       ├── horeca.json
+│       └── fitness.json
 └── docs/
     ├── import-guide.md                    ← ce reconectezi după import (citește primul)
     └── testing-checklist.md
@@ -418,7 +468,7 @@ n8n/
 ## Cum lucrezi cu acest folder
 
 ```bash
-node n8n/tests/run-tests.mjs      # 14 teste pe logica nodurilor Code (fără n8n, fără API)
+node n8n/tests/run-tests.mjs      # 21 de teste pe logica nodurilor Code (fără n8n, fără API)
 node n8n/build-workflows.mjs      # regenerează workflows/*.json din src/ + prompts/ + schemas/
 ```
 

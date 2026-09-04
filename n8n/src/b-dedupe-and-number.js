@@ -5,11 +5,23 @@
 //   3. raport de deficit, daca nu s-a atins tinta
 // Pentru volume mari (5.000+ idei) treci pe embeddings + vector store, prag cosine ~0.90.
 
-// Doua praguri, pentru ca prind lucruri diferite:
-//  - trigramele prind reformularile marunte ("albirea dentara" vs "albire dentara")
-//  - setul de cuvinte prinde reordonarea ("5 mituri despre X" vs "Mituri despre X: 5 lucruri")
-const TRIGRAM_THRESHOLD = 0.72; // 0.65 = agresiv, 0.80 = permisiv
-const TOKEN_THRESHOLD = 0.8;
+// Doua semnale de similaritate, pentru ca prind lucruri diferite:
+//  - cosinus ponderat cu IDF pe cuvinte: cuvintele comune multor titluri ("cat", "costa",
+//    "explicat") cantaresc putin, cele distinctive ("implant", "fatete") cantaresc mult.
+//    Asta e diferenta care conteaza: doua idei care impart acelasi sablon dar au subiecte
+//    diferite NU sunt duplicate, iar Jaccard simplu le taia.
+//  - trigrame, pentru variantele aproape identice ca sir ("albirea dentara" / "albire dentara")
+//
+// Praguri calibrate pe perechi etichetate manual (vezi testul "calibrarea pragurilor"
+// din tests/run-tests.mjs). Marja pana la cea mai apropiata pereche care trebuie PASTRATA
+// este mare la ambele, deci nu sunt fragile.
+//
+// LIMITA CUNOSCUTA: doua idei identice ca sens, dar formulate cu cuvinte complet diferite
+// ("Ce se intampla la prima vizita" / "Cum decurge prima ta consultatie") NU sunt prinse.
+// Nicio metoda lexicala nu le prinde. Daca ajunge sa te deranjeze, treci pe embeddings:
+// inlocuiesti vectorize() cu un vector de embedding si compari cu acelasi cosinus, prag ~0.90.
+const COSINE_THRESHOLD = 0.85;   // 0.80 = agresiv, 0.90 = permisiv
+const TRIGRAM_THRESHOLD = 0.7;   // prinde reformularile marunte si formele gramaticale
 
 const items = $input.all().map((i) => i.json).filter((i) => i && i.title);
 if (!items.length) throw new Error('Bucla nu a produs nicio idee. Verifica Structured Output Parser-ul.');
@@ -24,7 +36,7 @@ const norm = (s) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9 ]/g, ' ')
-    .replace(/\b(si|sau|de|la|in|pe|cu|un|o|al|ale|cel|cea|ce|care|pentru|din|despre|cum|ce|top|idei)\b/g, ' ')
+    .replace(/\b(si|sau|de|la|in|pe|cu|un|o|al|ale|cel|cea|ce|care|pentru|din|despre|cum|top|idei)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -35,8 +47,6 @@ const trigrams = (s) => {
   return set;
 };
 
-const tokens = (s) => new Set(s.split(' ').filter(Boolean));
-
 const jaccard = (a, b) => {
   if (!a.size || !b.size) return 0;
   let inter = 0;
@@ -44,25 +54,54 @@ const jaccard = (a, b) => {
   return inter / (a.size + b.size - inter);
 };
 
+// --- IDF peste setul de titluri, calculat inainte de comparatii ---
+// Frecventa se calculeaza pe titlurile UNICE: altfel un titlu repetat de 3 ori umfla df-ul
+// cuvintelor lui, le scade greutatea si duplicatele lui scapa nedetectate. Efect real,
+// prins de teste, nu teoretic.
+const normed = items.map((it) => norm(it.title));
+const tokenLists = normed.map((n) => n.split(' ').filter(Boolean));
+const df = new Map();
+for (const n of new Set(normed)) for (const t of new Set(n.split(' ').filter(Boolean))) df.set(t, (df.get(t) || 0) + 1);
+const N = new Set(normed).size;
+const idf = (t) => Math.log((N + 1) / ((df.get(t) || 0) + 1)) + 1;
+
+const vectorize = (toks) => {
+  const v = new Map();
+  for (const t of toks) v.set(t, (v.get(t) || 0) + 1);
+  let sumSq = 0;
+  for (const [t, c] of v) { const w = c * idf(t); v.set(t, w); sumSq += w * w; }
+  const len = Math.sqrt(sumSq) || 1;
+  for (const [t, w] of v) v.set(t, w / len);
+  return v;
+};
+
+const cosine = (a, b) => {
+  const [small, big] = a.size < b.size ? [a, b] : [b, a];
+  let s = 0;
+  for (const [t, w] of small) { const w2 = big.get(t); if (w2) s += w * w2; }
+  return s;
+};
+
 const kept = [];
 const keptGrams = [];
-const keptTokens = [];
+const keptVecs = [];
 const seenExact = new Set();
 let droppedExact = 0;
 let droppedSimilar = 0;
 
-for (const it of items) {
-  const n = norm(it.title);
+for (let idx = 0; idx < items.length; idx++) {
+  const it = items[idx];
+  const n = normed[idx];
   if (!n) continue;
 
   const sortedKey = n.split(' ').sort().join(' ');
   if (seenExact.has(sortedKey)) { droppedExact++; continue; }
 
   const g = trigrams(n);
-  const tk = tokens(n);
+  const v = vectorize(tokenLists[idx]);
   let similar = false;
-  for (let i = 0; i < keptGrams.length; i++) {
-    if (jaccard(g, keptGrams[i]) >= TRIGRAM_THRESHOLD || jaccard(tk, keptTokens[i]) >= TOKEN_THRESHOLD) {
+  for (let i = 0; i < kept.length; i++) {
+    if (cosine(v, keptVecs[i]) >= COSINE_THRESHOLD || jaccard(g, keptGrams[i]) >= TRIGRAM_THRESHOLD) {
       similar = true;
       break;
     }
@@ -71,7 +110,7 @@ for (const it of items) {
 
   seenExact.add(sortedKey);
   keptGrams.push(g);
-  keptTokens.push(tk);
+  keptVecs.push(v);
   kept.push(it);
 }
 

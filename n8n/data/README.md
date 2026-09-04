@@ -22,6 +22,17 @@ Seed pentru tab-ul `ZileInternationale` din spreadsheet-ul `Agency OS`. Importă
 Sărbătorile legale și religioase (inclusiv Paștele ortodox, mobil) **nu** se pun aici — vin automat din API:
 `https://date.nager.at/api/v3/PublicHolidays/{an}/RO` (testat, `localName` în română) sau `https://nagerholidays.com/api/v4/Holidays/RO/{an}`.
 
-## `niche-brief-example-dentist.json`
-Șablonul complet pentru un rând din `NicheBriefs`. Copiază structura pentru celelalte 3 nișe.
-Câmpul cu cel mai mare impact asupra calității este `seed_examples` — 8 idei bune scrise de tine.
+## `niches/` — cele 4 nișe
+
+`dentist.json`, `imobiliare.json`, `horeca.json`, `fitness.json`. Fiecare e un rând complet din tab-ul `NicheBriefs`, scris pentru piața din România.
+
+Exportă-le pentru Google Sheets:
+```bash
+node n8n/local/run.mjs briefs      # → output/niche-briefs.csv
+```
+
+Câmpul cu cel mai mare impact asupra calității este `seed_examples` — 8 idei bune, concrete, scrise pentru nișa respectivă. Modelul imită tiparul lor, nu descrierea abstractă a tonului.
+
+Câmpul `forbidden` nu e decorativ: intră în prompt ca regulă dură și e construit pe riscurile reale ale fiecărui domeniu — promisiuni de rezultat în medical, sfaturi juridice fără notar și criterii discriminatorii la chiriași în imobiliare, revendicări nutriționale și alergeni în HoReCa, „X kg în Y zile" și body shaming în fitness.
+
+**Nișă nouă:** copiază fișierul cel mai apropiat ca structură, rescrie conținutul, rulează `run.mjs briefs`. Un test verifică automat că toate briefurile au câmpurile obligatorii și minimum 8 `seed_examples`.

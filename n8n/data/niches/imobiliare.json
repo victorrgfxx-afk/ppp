@@ -1,0 +1,31 @@
+{
+  "niche_key": "imobiliare",
+  "niche_label": "Agent / agentie imobiliara",
+  "audience": "30-45 ani, familii tinere la prima locuinta si mici investitori. Cauta pe Storia, OLX si Google inainte sa sune un agent. Se documenteaza luni de zile, compara obsesiv, dar decid emotional la vizionare. Al doilea segment: vanzatori de 45+ care nu stiu pretul real al proprietatii lor.",
+  "pains": "frica de a plati prea mult pentru cea mai mare achizitie din viata; teama de probleme juridice ascunse in acte; nu inteleg mecanismul creditului si costul total; pierd weekenduri pe vizionari inutile; agenti care nu raspund sau ascund defecte; nu stiu daca sa cumpere acum sau sa mai astepte",
+  "objections": "nu vreau sa platesc comision; gasesc si singur pe Storia, la ce imi trebuie agent; preturile o sa scada, mai astept; nu am avansul; toti agentii spun acelasi lucru; vreau sa vand singur ca sa nu dau comision",
+  "desires": "sa nu greseasca ireversibil; claritate pe costul total, nu doar pe pretul afisat; sa nu piarda oferta buna din indecizie; cineva care spune si ce e prost la un apartament; sa inteleaga cartierul inainte sa se mute",
+  "services": "intermediere vanzare si cumparare; evaluare de pret; consultanta pe credit impreuna cu un broker; verificare juridica a actelor impreuna cu notarul; home staging; inchirieri; consultanta pentru investitii mici",
+  "proof_assets": "tranzactii incheiate cu cifre reale; testimoniale video de la clienti; analize de piata pe cartier, cu date; before/after de home staging; colaborare cu broker de credite si notar; capturi din contracte anonimizate",
+  "tone": "sobru, factual, cu cifre. Anti-hype: fara oportunitate unica si fara se vinde intr-o zi. Spui si dezavantajele proprietatii - asta e diferentiatorul in nisa asta.",
+  "forbidden": "randament sau crestere de pret garantata; sfat juridic sau fiscal definitiv dat fara notar sau avocat; date personale ale clientilor sau adrese exacte fara acord; preturi inventate sau comparabile nedocumentate; orice criteriu discriminatoriu la selectia chiriasilor (etnie, religie, situatie familiala, copii, dizabilitate) - e ilegal, nu doar antipatic; afirmatia ca preturile cresc sigur; ascunderea unor vicii cunoscute ale imobilului",
+  "local_context": "Oras si cartiere concrete, cu date pe fiecare: pret mediu pe metru patrat, timp mediu de vanzare, scoli, transport, parcare, planuri urbanistice anuntate. Precizeaza mereu daca proprietatea e cu sau fara TVA si daca e apta pentru Noua Casa.",
+  "niche_days": "10-05 Ziua Mondiala a Habitatului; 10-31 Ziua Mondiala a Oraselor; 05-15 Ziua Internationala a Familiei; 12-03 Ziua Internationala a Persoanelor cu Dizabilitati; 07-11 Ziua Mondiala a Populatiei",
+  "seed_examples": [
+    "Am vazut 40 de apartamente in cartierul X luna asta. Trei lucruri se repeta la cele care nu se vand - filmat in masina, dupa vizionari, fara editare",
+    "Costul real al unui apartament de 100.000 de euro: comision, notar, intabulare, dobanda pe 30 de ani. Pe ecran, cu calculator, pana la totalul final",
+    "De ce apartamentul asta sta pe piata de 8 luni - tur onest, cu defectele aratate cu degetul, nu ascunse la montaj",
+    "Ce inseamna fiecare rand din extrasul de carte funciara - screen recording pe un extras anonimizat, explicat rand cu rand",
+    "Am comparat acelasi buget in trei cartiere: ce primesti in fiecare - split screen, aceleasi criterii pentru toate",
+    "Intrebarea pe care nimeni nu o pune la vizionare si care schimba decizia: cine sunt vecinii de deasupra si dedesubt",
+    "Home staging pe un apartament nemobilat: before/after si cat a costat efectiv, cu bonuri",
+    "Ce am gresit la prima mea tranzactie ca agent si cat l-a costat pe client - vulnerabilitate reala, nu falsa modestie"
+  ],
+  "pillars": [
+    "Educatie (proces, acte, credit, costuri)",
+    "Autoritate si dovezi (tranzactii, date de piata)",
+    "Behind the scenes (o zi de agent, vizionari reale)",
+    "Obiectii si mituri (comision, momentul cumpararii)",
+    "Comunitate si context local (cartiere, scoli, transport)"
+  ]
+}
