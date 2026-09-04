@@ -27,6 +27,23 @@ const num = (name, def) => Number(flag(name, def));
 
 const OUT_DIR = String(flag('out-dir', join(ROOT, 'output')));
 const DRY = !!flag('dry-run', false);
+const REPLAY = flag('replay', null) ? String(flag('replay')) : null;
+const SAVE_RAW = !!flag('save-raw', false);
+
+// Reia raspunsuri de model salvate anterior, in loc sa apeleze modelul. Doua utilizari reale:
+// reglezi pragurile de deduplicare peste exact acelasi set de idei fara sa mai platesti o data,
+// si testezi calitatea unui prompt scriind raspunsul de mana.
+const replayFile = (name) => {
+  const p = join(REPLAY, name);
+  if (!existsSync(p)) return null;
+  return JSON.parse(readFileSync(p, 'utf8'));
+};
+const saveRaw = (name, data) => {
+  if (!SAVE_RAW) return;
+  const dir = join(OUT_DIR, 'raw');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, name), JSON.stringify(data, null, 2) + '\n');
+};
 
 const say = (...a) => console.log(...a);
 const die = (msg) => { console.error(`\nEroare: ${msg}\n`); process.exit(1); };
@@ -126,9 +143,10 @@ const cmdIdeas = async () => {
   if (limit) slices = slices.slice(0, limit);
   say(`  felii de generat: ${slices.length} x ${start.ideas_per_slice} idei`);
 
-  const client = makeClient({ model: String(flag('model', process.env.LLM_MODEL || 'gpt-4o')), dryRun: DRY });
-  if (!DRY) say(`  model: ${client.provider} / ${client.model}`);
-  else say('  mod: dry-run (fara apeluri LLM)');
+  const client = makeClient({ model: String(flag('model', process.env.LLM_MODEL || 'gpt-4o')), dryRun: DRY || !!REPLAY });
+  if (REPLAY) say(`  mod: replay din ${REPLAY} (fara apeluri LLM)`);
+  else if (DRY) say('  mod: dry-run (fara apeluri LLM)');
+  else say(`  model: ${client.provider} / ${client.model}`);
 
   const tpl = loadPrompt('03-idea-generator.md');
   const schemaHint = `\n\nRaspunde EXCLUSIV cu un obiect JSON conform acestei scheme:\n${JSON.stringify(loadSchema('idea-row.schema.json'))}`;
@@ -141,7 +159,15 @@ const cmdIdeas = async () => {
       ? `\n\nIDEI DEJA GENERATE — nu le repeta si nu le reformula:\n- ${avoid.slice(-150).join('\n- ')}`
       : '';
     const res = await mapPool(list, num('concurrency', 3), async (slice) => {
-      const payload = DRY
+      const fromReplay = REPLAY ? replayFile(`slice-${slice.json.slice_index}.json`) : null;
+      if (REPLAY && !fromReplay) {
+        // Replay-ul e o unealta de depanare: o felie lipsa nu opreste rularea.
+        console.error(`\n  replay: lipseste slice-${slice.json.slice_index}.json, o sar`);
+        return [];
+      }
+      const payload = fromReplay
+        ? fromReplay
+        : DRY
         ? stubIdeas(slice.json)
         : await completeJson(client, {
             prompt: renderTemplate(tpl, slice.json) + avoidBlock + schemaHint,
@@ -149,6 +175,7 @@ const cmdIdeas = async () => {
             maxTokens: 8000,
             label: `felia ${slice.json.slice_index}`,
           });
+      if (!fromReplay && !DRY) saveRaw(`slice-${slice.json.slice_index}.json`, payload);
       const flat = runNode('b-flatten-ideas.js', { input: [{ json: payload }], nodes: { 'Loop Over Slices': [slice] } });
       done++;
       process.stdout.write(`\r  generate: ${done}/${list.length} felii`);
@@ -228,10 +255,13 @@ const cmdAudit = async () => {
   say(`\nAgent A — ${form['Nume client']}`);
   say(`  capturi: ${files.length}`);
 
-  const client = makeClient({ model: String(flag('model', process.env.LLM_MODEL || 'gpt-4o')), dryRun: DRY });
+  const client = makeClient({ model: String(flag('model', process.env.LLM_MODEL || 'gpt-4o')), dryRun: DRY || !!REPLAY });
   const visionTpl = loadPrompt('01-vision-extractor.md');
 
-  const raw = DRY
+  const replayVision = REPLAY ? replayFile('vision.json') : null;
+  const raw = replayVision
+    ? replayVision.map((v) => ({ json: { content: JSON.stringify(v) } }))
+    : DRY
     ? files.map((f, i) => ({ json: { content: JSON.stringify({
         platform: ['instagram', 'tiktok', 'facebook'][i % 3], screen_type: 'profil',
         account: { username: '@dryrun', display_name: 'Dry Run', bio_text: '[dry-run] bio', bio_char_count: 13, link_in_bio: null, category_or_label: null, verified: false, profile_photo_description: 'logo' },
@@ -254,7 +284,10 @@ const cmdAudit = async () => {
   const merged = runNode('a1-merge-extractions.js', { input: raw, nodes: { 'Form Trigger': [{ json: form }] } })[0];
   say(`  extractii valide: ${merged.json.extractedCount}/${merged.json.screenshotCount} | platforme: ${merged.json.covered.join(', ') || '—'}`);
 
-  const audit = DRY
+  const replayAudit = REPLAY ? replayFile('strateg.json') : null;
+  const audit = replayAudit
+    ? replayAudit
+    : DRY
     ? { overall_score: 0, score_rationale: '[dry-run]', executive_summary: '[dry-run]', quick_wins: [], content_strategy_30_days: [], missing_data: [], red_flags: [],
         platforms: merged.json.covered.map((p) => ({ platform: p, covered: true, what_works: [], what_doesnt: [], improvements: [],
           bio_variants: [1, 2, 3].map((n) => ({ angle: ['claritate', 'beneficiu', 'diferentiator'][n - 1], text: `[dry-run] varianta ${n}`, cta: '—', rationale: '—' })) })) }
@@ -308,6 +341,9 @@ Nise disponibile: ${listNiches().join(', ')}
 
 Optiuni comune
   --dry-run              ruleaza tot lantul fara apeluri LLM (verificare de instalare)
+  --save-raw             salveaza raspunsurile brute ale modelului in <out-dir>/raw/
+  --replay <folder>      reia raspunsuri salvate in loc sa apeleze modelul
+                         ideas: <folder>/slice-<N>.json | audit: vision.json + strateg.json
   --model <id>           modelul (implicit: $LLM_MODEL sau gpt-4o)
   --concurrency <n>      apeluri LLM in paralel (implicit 3)
   --out <cale>           prefixul fisierelor de iesire

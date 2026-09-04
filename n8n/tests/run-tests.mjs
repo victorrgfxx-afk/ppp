@@ -139,11 +139,15 @@ const briefMock = [{
 }];
 const holidaysMock = [
   { json: { date: '2026-01-01', localName: 'Anul Nou', name: "New Year's Day" } },
+  { json: { date: '2026-01-24', localName: 'Unirea Principatelor Române/Mica Unire', name: 'Union Day' } },
   { json: { date: '2026-04-12', localName: 'Paștele', name: 'Easter Sunday' } },
+  { json: { date: '2026-04-13', localName: 'Paștele', name: 'Easter Monday' } },
   { json: { date: '2026-12-25', localName: 'Crăciunul', name: 'Christmas Day' } },
 ];
 const intlMock = [
   { json: { date: '03-20', name_ro: 'Ziua Mondiala a Sanatatii Orale', type: 'nisa', niches: 'dentist', movable: 'false' } },
+  { json: { date: '03-20', name_ro: 'Ziua Internationala a Fericirii', type: 'international', niches: 'all', movable: 'false' } },
+  { json: { date: '01-24', name_ro: 'Ziua Unirii Principatelor Romane', type: 'national', niches: 'all', movable: 'false' } },
   { json: { date: '05-03', name_ro: 'Ziua Mamei (Romania)', type: 'national', niches: 'all', movable: 'true' } },
   { json: { date: '11-27', name_ro: 'Black Friday', type: 'comercial', niches: 'all', movable: 'true' } },
   { json: { date: '10-01', name_ro: 'Ziua Internationala a Cafelei', type: 'nisa', niches: 'horeca', movable: 'false' } },
@@ -179,6 +183,20 @@ t('calculeaza corect zilele mobile pentru 2026', () => {
 t('include sarbatorile religioase mobile din API (Pastele ortodox)', () => {
   const apr = slicesOut.find((s) => s.json.month === 4).json.occasions;
   assert(/Paștele/.test(apr) && /sarbatoare legala/.test(apr), `Pastele lipseste din aprilie. Primit: ${apr}`);
+});
+t('nu dubleaza ocaziile care vin din doua surse', () => {
+  const ian = slicesOut.find((s) => s.json.month === 1).json.occasions;
+  const nume = ian.split(';').map((o) => o.split('—')[1]?.trim().replace(/\s*\(.*\)$/, '')).filter(Boolean);
+  eq(nume.length, new Set(nume).size, `ocazii duplicate in ianuarie: ${ian}`);
+  const apr = slicesOut.find((s) => s.json.month === 4).json.occasions;
+  const numeApr = apr.split(';').map((o) => o.split('—')[1]?.trim().replace(/\s*\(.*\)$/, '')).filter(Boolean);
+  eq(numeApr.length, new Set(numeApr).size, `ocazii duplicate in aprilie: ${apr}`);
+  // aceeasi zi formulata diferit de doua surse = o singura ocazie
+  assert(!/Unirea Principatelor.*Ziua Unirii Principatelor/s.test(ian), `aceeasi zi, doua formulari: ${ian}`);
+  // ...dar doua ocazii chiar diferite din aceeasi zi raman amandoua
+  const mar = slicesOut.find((s) => s.json.month === 3).json.occasions;
+  assert(/Sanatatii Orale/.test(mar) && /Fericirii/.test(mar), `20 martie are doua ocazii distincte: ${mar}`);
+  assert(/2026-04-12\.\.2026-04-13 — Paștele/.test(apr), `zilele consecutive de Paste trebuie unite intr-un interval: ${apr}`);
 });
 t('filtreaza zilele irelevante pentru nisa', () => {
   const all = slicesOut.map((s) => s.json.occasions).join(' ');

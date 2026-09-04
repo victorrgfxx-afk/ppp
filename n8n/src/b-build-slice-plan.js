@@ -75,9 +75,45 @@ const nicheDays = String(brief.niche_days || '').split(';').map((s) => s.trim())
   return m ? { date: `${year}-${m[1]}`, name: m[2], type: 'nisa' } : null;
 }).filter(Boolean);
 
-const allOccasions = [...holidays, ...intlDays, ...nicheDays]
-  .filter((o) => /^\d{4}-\d{2}-\d{2}$/.test(o.date))
-  .sort((a, b) => a.date.localeCompare(b.date));
+// Deduplicare. Aceeasi zi vine des din doua surse (API-ul de sarbatori si CSV-ul de zile
+// internationale, sau CSV-ul si niche_days din brief), cu formulari diferite:
+// "Unirea Principatelor Romane/Mica Unire" (API) vs "Ziua Unirii Principatelor Romane" (CSV).
+// Fara asta, modelul primeste aceeasi ocazie de doua ori si crede ca sunt doua.
+const normName = (n) => String(n).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+// Cuvinte care apar in aproape orice nume de zi: daca le lasi, "Ziua Internationala a
+// Cafelei" si "Ziua Internationala a Persoanelor Varstnice" par aceeasi ocazie.
+const GENERIC = new Set(['ziua', 'zi', 'zile', 'mondiala', 'mondial', 'internationala', 'international', 'nationala', 'national', 'romaniei', 'romania', 'sarbatoare', 'lupta', 'impotriva', 'constientizare']);
+// Stemmer minimal pentru romana: unirea / unirii / unire -> unir. Nu e lingvistica,
+// e strictul necesar ca doua formulari ale aceleiasi zile sa se recunoasca.
+const stem = (t) => (t.length > 4 ? t.replace(/(ului|ilor|elor|urile|urilor|ele|ile|ii|ul|ea|ua|ei|a|e|i)$/, '') : t);
+const nameTokens = (n) =>
+  new Set(normName(n).split(' ').filter((t) => t.length > 2 && !GENERIC.has(t)).map(stem).filter((t) => t.length > 2));
+
+// Doua nume de pe ACEEASI zi sunt aceeasi ocazie daca cel scurt e continut in cel lung.
+const sameOccasion = (a, b) => {
+  const ta = nameTokens(a), tb = nameTokens(b);
+  if (!ta.size || !tb.size) return false;
+  const [small, big] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
+  let hit = 0;
+  for (const t of small) if (big.has(t)) hit++;
+  return hit / small.size >= 0.6;
+};
+
+const deduped = [];
+for (const o of [...holidays, ...intlDays, ...nicheDays].filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date))) {
+  if (!deduped.some((d) => d.date === o.date && sameOccasion(d.name, o.name))) deduped.push(o);
+}
+deduped.sort((a, b) => a.date.localeCompare(b.date));
+
+// Zilele consecutive cu acelasi nume devin un interval: "Paștele" pe 12 si 13 aprilie
+// e o singura ocazie in calendarul de continut, nu doua.
+const allOccasions = [];
+for (const o of deduped) {
+  const prev = allOccasions[allOccasions.length - 1];
+  const dayAfter = prev && new Date(`${prev.dateEnd || prev.date}T00:00:00Z`).getTime() + 86400000 === new Date(`${o.date}T00:00:00Z`).getTime();
+  if (prev && dayAfter && normName(prev.name) === normName(o.name)) prev.dateEnd = o.date;
+  else allOccasions.push({ ...o });
+}
 
 const byMonth = {};
 for (const o of allOccasions) {
@@ -117,7 +153,7 @@ const slices = [];
 for (let i = 0; i < sliceCount; i++) {
   const month = Math.floor((i * 12) / sliceCount) + 1;
   const occasions = (byMonth[month] || []).slice(0, 6)
-    .map((o) => `${o.date} — ${o.name}${o.type === 'sarbatoare' ? ' (sarbatoare legala/religioasa)' : ''}`)
+    .map((o) => `${o.date}${o.dateEnd ? `..${o.dateEnd}` : ''} — ${o.name}${o.type === 'sarbatoare' ? ' (sarbatoare legala/religioasa)' : ''}`)
     .join('; ') || 'nicio ocazie relevanta luna aceasta — genereaza doar evergreen';
 
   slices.push({
