@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "required": ["ideas"],
+  "properties": {
+    "ideas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "hook", "outline", "cta", "platform", "format", "funnel_stage", "pillar"],
+        "properties": {
+          "title": { "type": "string", "description": "titlul ideii, maximum 12 cuvinte" },
+          "hook": { "type": "string", "description": "primele 3 secunde / primul rand, scris cuvant cu cuvant" },
+          "outline": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 5,
+            "items": { "type": "string" }
+          },
+          "cta": { "type": "string" },
+          "platform": { "type": "string", "enum": ["tiktok", "instagram", "facebook"] },
+          "format": { "type": "string", "enum": ["short video", "carusel", "postare statica", "story serie", "live/Q&A", "UGC/testimonial"] },
+          "funnel_stage": { "type": "string", "enum": ["TOFU", "MOFU", "BOFU"] },
+          "pillar": { "type": "string" },
+          "occasion": { "type": "string", "description": "sarbatoare sau zi internationala, gol daca e evergreen" },
+          "suggested_month": { "type": "number", "minimum": 1, "maximum": 12 },
+          "suggested_date": { "type": "string", "description": "YYYY-MM-DD doar daca e legata de o ocazie" },
+          "keywords_hashtags": { "type": "array", "maxItems": 5, "items": { "type": "string" } },
+          "effort": { "type": "string", "enum": ["low", "medium", "high"] },
+          "compliance_ok": { "type": "boolean" },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

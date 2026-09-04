@@ -1,0 +1,428 @@
+{
+  "name": "Agent A — Audit social media din screenshot-uri",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Audit profil social media",
+        "formDescription": "Incarca capturi de ecran ale profilelor (profil complet + grid). Minim 1, recomandat 3 pe platforma.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Nume client",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Nișă",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "dentist"
+                  },
+                  {
+                    "option": "imobiliare"
+                  },
+                  {
+                    "option": "horeca"
+                  },
+                  {
+                    "option": "fitness"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Platforme incluse",
+              "placeholder": "ex: instagram, tiktok, facebook",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Obiectivul contului",
+              "fieldType": "textarea",
+              "placeholder": "lead-uri / vanzari / notorietate",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Public țintă",
+              "fieldType": "textarea"
+            },
+            {
+              "fieldLabel": "ID folder Drive părinte",
+              "placeholder": "din URL-ul folderului",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Capturi de ecran",
+              "fieldType": "file",
+              "multipleFiles": true,
+              "acceptFileTypes": ".jpg,.jpeg,.png,.webp",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "form-trigger",
+      "name": "Form Trigger",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -620,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Normalize Screenshots\"  (Run Once for All Items)\n// De ce exista: numele proprietatilor binare generate de Form Trigger nu sunt garantate\n// intre versiuni (Capturi_de_ecran, field_0, etc). Aici le uniformizam pe cheia \"data\",\n// un item per imagine, ca restul workflow-ului sa nu depinda de ele.\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const bin = item.binary || {};\n  for (const key of Object.keys(bin)) {\n    out.push({\n      json: {\n        ...item.json,\n        sourceBinaryKey: key,\n        fileName: bin[key].fileName || key,\n        mimeType: bin[key].mimeType || null,\n      },\n      binary: { data: bin[key] },\n    });\n  }\n}\n\nif (!out.length) {\n  throw new Error('Nu s-a incarcat nicio imagine. Verifica campul \"Capturi de ecran\" din formular.');\n}\n\nif (out.length > 15) {\n  throw new Error(`Prea multe imagini (${out.length}). Limita recomandata este 15 pe audit, altfel costul si timpul de executie explodeaza.`);\n}\n\nreturn out;\n"
+      },
+      "id": "normalize-screenshots",
+      "name": "Normalize Screenshots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "text": "Ești un extractor de date. Analizezi O SINGURĂ captură de ecran a unui profil de social media și returnezi DOAR ce se vede efectiv în imagine.\n\nREGULI ABSOLUTE:\n1. Nu deduce, nu estima, nu completa. Dacă un element nu e vizibil sau nu e lizibil, pune null și adaugă-l în \"unreadable\".\n2. Nu evalua, nu da sfaturi, nu comenta calitatea. Doar transcrii.\n3. Textul (bio, nume, CTA) se transcrie LITERAL, cu diacritice, emoji și greșeli incluse, exact ca în imagine.\n4. Numerele se transcriu ca în imagine (\"12,4K\" rămâne \"12,4K\", nu îl converti).\n5. Returnezi EXCLUSIV JSON valid, fără ```json, fără text înainte sau după.\n\nReturnează exact această structură:\n\n{\n  \"platform\": \"tiktok\" | \"instagram\" | \"facebook\" | \"unknown\",\n  \"screen_type\": \"profil\" | \"grid\" | \"postare\" | \"insights\" | \"reels\" | \"about\" | \"altceva\",\n  \"account\": {\n    \"username\": string|null,\n    \"display_name\": string|null,\n    \"bio_text\": string|null,\n    \"bio_char_count\": number|null,\n    \"link_in_bio\": string|null,\n    \"category_or_label\": string|null,\n    \"verified\": boolean|null,\n    \"profile_photo_description\": string|null\n  },\n  \"metrics\": {\n    \"followers\": string|null,\n    \"following\": string|null,\n    \"posts_count\": string|null,\n    \"likes_total\": string|null\n  },\n  \"visual_elements\": {\n    \"highlights_or_pinned\": [string],\n    \"grid_first_9\": [\n      { \"position\": number, \"visible_text_on_thumbnail\": string|null, \"subject\": string|null, \"has_face\": boolean|null }\n    ],\n    \"grid_consistency_observed\": string|null,\n    \"dominant_colors\": [string],\n    \"text_overlay_style\": string|null\n  },\n  \"engagement_visible\": [\n    { \"post_position\": number|null, \"likes\": string|null, \"comments\": string|null, \"views\": string|null }\n  ],\n  \"cta_elements\": {\n    \"buttons_visible\": [string],\n    \"contact_info_visible\": [string]\n  },\n  \"unreadable\": [string],\n  \"confidence\": \"high\" | \"medium\" | \"low\"\n}\n\n\"confidence\" = \"low\" dacă imaginea e blurată, tăiată, cu rezoluție mică sau dacă ai transcris sub jumătate din câmpuri.",
+        "inputType": "base64",
+        "binaryPropertyName": "data",
+        "options": {
+          "detail": "high",
+          "maxTokens": 1500
+        }
+      },
+      "id": "analyze-screenshot",
+      "name": "Analyze Screenshot",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        -180,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Merge Extractions\"  (Run Once for All Items)\n// Aduna toate extractiile vision intr-un singur item pentru Strateg.\n// Tolerant la JSON impachetat in ```json ... ``` sau cu text in jur.\n\nconst items = $input.all();\nconst client = $('Form Trigger').first().json;\n\nconst parseJson = (raw) => {\n  if (raw && typeof raw === 'object') return raw;\n  if (!raw) return null;\n  const s = String(raw).replace(/^\\s*```(?:json)?/i, '').replace(/```\\s*$/, '').trim();\n  const start = s.indexOf('{');\n  const end = s.lastIndexOf('}');\n  if (start === -1 || end === -1 || end < start) return null;\n  try {\n    return JSON.parse(s.slice(start, end + 1));\n  } catch (e) {\n    return null;\n  }\n};\n\nconst extractions = [];\nconst failed = [];\n\nitems.forEach((it, i) => {\n  const j = it.json || {};\n  const raw = j.content ?? j.text ?? j.output ?? j.message?.content ?? j.data ?? j;\n  const parsed = parseJson(raw);\n  if (parsed && (parsed.platform || parsed.account)) {\n    extractions.push({ screenshot: i + 1, ...parsed });\n  } else {\n    failed.push({ screenshot: i + 1, raw: String(typeof raw === 'string' ? raw : JSON.stringify(raw)).slice(0, 300) });\n  }\n});\n\nif (!extractions.length) {\n  throw new Error(\n    'Nicio extractie valida din capturi. Cauze frecvente: \"Length of Description (Max Tokens)\" a ramas pe 300 la nodul Analyze Image, sau modelul selectat nu suporta vision.'\n  );\n}\n\n// Ce platforme au fost efectiv acoperite de capturi (strategul nu are voie sa evalueze restul)\nconst covered = [...new Set(extractions.map((e) => e.platform).filter((p) => p && p !== 'unknown'))];\n\nconst lowConfidence = extractions.filter((e) => e.confidence === 'low').map((e) => e.screenshot);\n\nreturn [{\n  json: {\n    client,\n    extractions,\n    failed,\n    covered,\n    lowConfidence,\n    screenshotCount: items.length,\n    extractedCount: extractions.length,\n  },\n}];\n"
+      },
+      "id": "merge-extractions",
+      "name": "Merge Extractions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ești Social Media Strategist cu 10 ani de experiență în agenție, specializat pe creștere organică pentru business-uri locale și de servicii din România. Ai auditat peste 400 de conturi. Nu vinzi vise: dai diagnostic, prioritizezi după impact/efort și scrii copy pe care clientul îl poate copia direct în aplicație.\n\nCONTEXTUL CLIENTULUI\n- Nume: {{ $json.client['Nume client'] }}\n- Nișă: {{ $json.client['Nișă'] }}\n- Obiectivul contului: {{ $json.client['Obiectivul contului'] }}\n- Public țintă: {{ $json.client['Public țintă'] }}\n- Platforme incluse în audit: {{ $json.client['Platforme incluse'] }}\n\nDATE EXTRASE DIN CAPTURILE DE ECRAN (transcriere literală, un obiect per captură):\n{{ JSON.stringify($json.extractions) }}\n\nCAPTURI CARE NU AU PUTUT FI PROCESATE: {{ JSON.stringify($json.failed) }}\n\nREGULI DE ANALIZĂ (nerespectarea lor face auditul inutilizabil):\n1. Te bazezi EXCLUSIV pe datele de mai sus. Dacă un câmp e null sau apare în \"unreadable\", scrii explicit „nu se poate evalua din capturile primite\" și ceri captura lipsă în \"missing_data\". NU inventezi.\n2. Fiecare observație trebuie ancorată în date: citează valoarea concretă (bio-ul literal, numărul de followers, ce se vede în grid). Fără „conținutul pare inconsistent\" — scrii ce anume din grid te face să spui asta.\n3. Zero generalități de manual. „Postează constant\" și „folosește hashtag-uri relevante\" sunt interzise. Fiecare recomandare trebuie să fie executabilă marți dimineață de un om care nu e marketer.\n4. Prioritizezi după impact × efort. Maximum 3 acțiuni în \"quick_wins\" — cele care se fac în sub 30 de minute și se văd imediat.\n5. Ton: direct, colegial, fără jargon. Clientul e un antreprenor ocupat, nu un marketer. Fără „engagement rate optimization\" — scrii „câți oameni reacționează la postări\".\n6. Dacă o platformă nu are capturi, o marchezi ca neacoperită și NU o evaluezi.\n\nREGULI PENTRU DESCRIERI (partea cea mai folosită din raport):\nPentru fiecare platformă acoperită scrii EXACT 3 variante, cu unghiuri diferite obligatoriu:\n- V1 CLARITATE / CĂUTABIL: ce faci + pentru cine + unde. Conține cuvintele pe care le-ar căuta clientul final.\n- V2 BENEFICIU: transformarea promisă, în limbajul clientului final, nu al industriei.\n- V3 DIFERENȚIATOR: cifra, specializarea sau dovada care separă acest cont de concurență. Dacă nu ai o dovadă în date, propui ce dovadă ar trebui adăugată.\n\nLimite dure de caractere (numără corect, spații și emoji incluse; emoji = 2 caractere):\n- Instagram: bio max 150 caractere (câmpul Name max 30 — propune și un Name optimizat, e indexat în căutare)\n- TikTok: bio max 80 caractere (Name max 30)\n- Facebook Page: bio/intro max 101 caractere\n\nSpecific de platformă, obligatoriu de respectat:\n- TikTok: scrii pentru un om care te vede prima oară pe FYP. În 3 secunde trebuie să înțeleagă ce postezi și de ce să rămână. Puține emoji, zero corporate.\n- Instagram: bio-ul e pagina de decizie „follow / nu follow\". Structură pe rânduri scurte, un singur CTA clar către link.\n- Facebook: credibilitate locală. Oraș, ce faci, cum te contactează. Publicul e mai în vârstă și caută încredere, nu trend.\n\nFiecare variantă vine cu: textul exact, numărul de caractere, CTA-ul propus, și o justificare de UN rând (de ce funcționează pentru ACEST cont).\n\nReturnezi strict JSON conform schemei cerute.",
+        "hasOutputParser": true
+      },
+      "id": "strateg",
+      "name": "Strateg",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        260,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "id": "chat-model-strateg",
+      "name": "Chat Model Strateg",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "auto-fixing-parser",
+      "name": "Auto-fixing Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        400,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"overall_score\", \"score_rationale\", \"platforms\", \"quick_wins\", \"content_strategy_30_days\", \"missing_data\"],\n  \"properties\": {\n    \"overall_score\": { \"type\": \"number\", \"minimum\": 0, \"maximum\": 100 },\n    \"score_rationale\": { \"type\": \"string\" },\n    \"executive_summary\": { \"type\": \"string\", \"description\": \"3-4 fraze pe care clientul le citeste primele\" },\n    \"platforms\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"platform\", \"covered\", \"what_works\", \"what_doesnt\", \"improvements\", \"bio_variants\"],\n        \"properties\": {\n          \"platform\": { \"type\": \"string\", \"enum\": [\"tiktok\", \"instagram\", \"facebook\"] },\n          \"covered\": { \"type\": \"boolean\", \"description\": \"false daca nu s-au primit capturi pentru platforma\" },\n          \"handle\": { \"type\": \"string\" },\n          \"current_bio\": { \"type\": \"string\" },\n          \"current_bio_chars\": { \"type\": \"number\" },\n          \"what_works\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"required\": [\"observation\", \"evidence\", \"why_it_matters\"],\n              \"properties\": {\n                \"observation\": { \"type\": \"string\" },\n                \"evidence\": { \"type\": \"string\", \"description\": \"citat direct din datele extrase\" },\n                \"why_it_matters\": { \"type\": \"string\" }\n              }\n            }\n          },\n          \"what_doesnt\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"required\": [\"issue\", \"evidence\", \"cost\"],\n              \"properties\": {\n                \"issue\": { \"type\": \"string\" },\n                \"evidence\": { \"type\": \"string\" },\n                \"cost\": { \"type\": \"string\", \"description\": \"ce pierde concret clientul din cauza asta\" }\n              }\n            }\n          },\n          \"improvements\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"required\": [\"action\", \"how_to\", \"impact\", \"effort\"],\n              \"properties\": {\n                \"action\": { \"type\": \"string\" },\n                \"how_to\": { \"type\": \"string\", \"description\": \"pasi executabili, nu principii\" },\n                \"impact\": { \"type\": \"string\", \"enum\": [\"mare\", \"mediu\", \"mic\"] },\n                \"effort\": { \"type\": \"string\", \"enum\": [\"mic\", \"mediu\", \"mare\"] },\n                \"expected_result\": { \"type\": \"string\" }\n              }\n            }\n          },\n          \"bio_variants\": {\n            \"type\": \"array\",\n            \"minItems\": 3,\n            \"maxItems\": 3,\n            \"items\": {\n              \"type\": \"object\",\n              \"required\": [\"angle\", \"text\", \"char_count\", \"cta\", \"rationale\"],\n              \"properties\": {\n                \"angle\": { \"type\": \"string\", \"enum\": [\"claritate\", \"beneficiu\", \"diferentiator\"] },\n                \"text\": { \"type\": \"string\" },\n                \"char_count\": { \"type\": \"number\" },\n                \"name_field\": { \"type\": \"string\", \"description\": \"pentru IG/TikTok: campul Name, max 30 caractere\" },\n                \"cta\": { \"type\": \"string\" },\n                \"rationale\": { \"type\": \"string\" }\n              }\n            }\n          }\n        }\n      }\n    },\n    \"quick_wins\": {\n      \"type\": \"array\",\n      \"maxItems\": 3,\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"action\", \"time_needed\"],\n        \"properties\": {\n          \"action\": { \"type\": \"string\" },\n          \"time_needed\": { \"type\": \"string\" },\n          \"platform\": { \"type\": \"string\" }\n        }\n      }\n    },\n    \"content_strategy_30_days\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"week\", \"focus\", \"post_types\"],\n        \"properties\": {\n          \"week\": { \"type\": \"number\" },\n          \"focus\": { \"type\": \"string\" },\n          \"post_types\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n          \"goal\": { \"type\": \"string\" }\n        }\n      }\n    },\n    \"missing_data\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\", \"description\": \"ce capturi suplimentare sunt necesare si de ce\" }\n    },\n    \"red_flags\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\", \"description\": \"probleme urgente: cont neverificat, link mort, informatii de contact lipsa\" }\n    }\n  }\n}"
+      },
+      "id": "audit-schema",
+      "name": "Audit Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "create",
+        "name": "={{ $('Form Trigger').first().json['Nume client'] }} — Audit {{ $now.format('yyyy-MM-dd') }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Form Trigger').first().json['ID folder Drive părinte'] }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "create-client-folder",
+      "name": "Create Client Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Build Document\"  (Run Once for All Items)\n// Ruleaza DUPA \"Create Client Folder\" (are nevoie de id-ul folderului).\n// Face doua lucruri pe care un LLM nu le face de incredere:\n//   1. Numara caracterele fiecarei descrieri si marcheaza depasirile.\n//   2. Randeaza raportul in HTML, ca sa ajunga in Google Docs cu formatare reala.\n// Output: { docName, folderId, flags, multipart, html }\n\nconst strateg = $('Strateg').first().json;\nconst audit = strateg.output ?? strateg.data ?? strateg;\nconst form = $('Form Trigger').first().json;\nconst context = $('Merge Extractions').first().json;\nconst folderId = $json.id;\n\nif (!folderId) {\n  throw new Error('Nu am primit id-ul folderului din Google Drive. Verifica nodul \"Create Client Folder\".');\n}\nif (!audit || !Array.isArray(audit.platforms)) {\n  throw new Error('Auditul nu are structura asteptata. Verifica Structured Output Parser-ul nodului \"Strateg\".');\n}\n\n// --- Limite de caractere. Reconfirma-le anual, platformele le schimba. ---\nconst PLATFORM_LIMITS = {\n  instagram: { bio: 150, name: 30, label: 'Instagram' },\n  tiktok:    { bio: 80,  name: 30, label: 'TikTok' },\n  facebook:  { bio: 101, name: 50, label: 'Facebook' },\n};\n\n// Numaram code points, nu bytes: un emoji = 1 aici, dar platformele il pot conta ca 2.\n// De aceea marja de siguranta: avertizam de la 95% din limita.\nconst len = (s) => Array.from(String(s ?? '')).length;\nconst esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst nl2br = (s) => esc(s).replace(/\\n/g, '<br>');\n\nconst flags = [];\nconst clientName = form['Nume client'] || 'Client';\nconst today = new Date().toISOString().slice(0, 10);\n\n// ---------- Validarea descrierilor ----------\nfor (const p of audit.platforms) {\n  const key = String(p.platform || '').toLowerCase();\n  const limits = PLATFORM_LIMITS[key];\n  if (!limits || !Array.isArray(p.bio_variants)) continue;\n\n  p.bio_variants.forEach((v, i) => {\n    const actual = len(v.text);\n    v.char_count = actual;                       // NU avem incredere in numaratoarea modelului\n    v.limit = limits.bio;\n    v.over_limit = actual > limits.bio;\n    v.tight = !v.over_limit && actual > limits.bio * 0.95;\n    if (v.over_limit) {\n      flags.push(`${limits.label} / varianta ${i + 1}: ${actual} caractere, peste limita de ${limits.bio}.`);\n    }\n    if (v.name_field && len(v.name_field) > limits.name) {\n      flags.push(`${limits.label} / varianta ${i + 1}: campul Name are ${len(v.name_field)} caractere, peste limita de ${limits.name}.`);\n    }\n  });\n}\n\n// ---------- Randare HTML ----------\nconst li = (arr, fn) => (Array.isArray(arr) && arr.length ? `<ul>${arr.map(fn).join('')}</ul>` : '<p><em>—</em></p>');\n\nconst badge = (txt, color) =>\n  `<span style=\"background:${color};padding:1px 6px;border-radius:3px;font-size:9pt;\">${esc(txt)}</span>`;\n\nconst platformSection = (p) => {\n  const key = String(p.platform || '').toLowerCase();\n  const limits = PLATFORM_LIMITS[key] || { bio: 0, label: p.platform };\n\n  if (p.covered === false) {\n    return `<h2>${esc(limits.label)}</h2><p><em>Nu s-au primit capturi de ecran pentru aceasta platforma. Nu a fost evaluata.</em></p>`;\n  }\n\n  const variants = (p.bio_variants || []).map((v, i) => {\n    const status = v.over_limit\n      ? badge(`${v.char_count}/${limits.bio} — PESTE LIMITA, trebuie scurtat`, '#ffd6d6')\n      : v.tight\n      ? badge(`${v.char_count}/${limits.bio} — la limita`, '#fff3cd')\n      : badge(`${v.char_count}/${limits.bio}`, '#d9f2e0');\n    return `\n      <p><strong>Varianta ${i + 1} — ${esc(v.angle || '')}</strong> ${status}</p>\n      <table style=\"border-collapse:collapse;width:100%;\">\n        <tr><td style=\"border:1px solid #ddd;padding:8px;\">${nl2br(v.text)}</td></tr>\n      </table>\n      ${v.name_field ? `<p style=\"font-size:10pt;\">Camp <em>Name</em> propus: <strong>${esc(v.name_field)}</strong> (${len(v.name_field)}/${limits.name})</p>` : ''}\n      <p style=\"font-size:10pt;\">CTA: ${esc(v.cta)}<br>De ce functioneaza: ${esc(v.rationale)}</p>`;\n  }).join('');\n\n  return `\n    <h2>${esc(limits.label)}${p.handle ? ` — ${esc(p.handle)}` : ''}</h2>\n    ${p.current_bio ? `<p style=\"font-size:10pt;color:#555;\">Descriere actuala (${p.current_bio_chars ?? len(p.current_bio)}/${limits.bio} caractere): ${esc(p.current_bio)}</p>` : ''}\n\n    <h3>Ce functioneaza</h3>\n    ${li(p.what_works, (w) => `<li><strong>${esc(w.observation)}</strong><br><em>Din capturi:</em> ${esc(w.evidence)}<br><em>De ce conteaza:</em> ${esc(w.why_it_matters)}</li>`)}\n\n    <h3>Ce nu functioneaza</h3>\n    ${li(p.what_doesnt, (w) => `<li><strong>${esc(w.issue)}</strong><br><em>Din capturi:</em> ${esc(w.evidence)}<br><em>Cost:</em> ${esc(w.cost)}</li>`)}\n\n    <h3>Ce facem concret</h3>\n    ${li(p.improvements, (im) => `<li><strong>${esc(im.action)}</strong> ${badge(`impact ${im.impact}`, '#e7eefc')} ${badge(`efort ${im.effort}`, '#f0f0f0')}<br>${esc(im.how_to)}${im.expected_result ? `<br><em>Rezultat asteptat:</em> ${esc(im.expected_result)}` : ''}</li>`)}\n\n    <h3>Trei propuneri de descriere</h3>\n    ${variants || '<p><em>—</em></p>'}`;\n};\n\nconst html = `<html><body style=\"font-family:Arial,sans-serif;\">\n<h1>Audit social media — ${esc(clientName)}</h1>\n<p style=\"color:#666;\">Nisa: ${esc(form['Nișă'] || form['Nisa'] || '—')} &nbsp;|&nbsp; Data: ${today} &nbsp;|&nbsp; Capturi analizate: ${context.extractedCount}/${context.screenshotCount}</p>\n\n<h2>Pe scurt</h2>\n<p><strong>Scor general: ${esc(audit.overall_score)}/100.</strong> ${esc(audit.score_rationale)}</p>\n${audit.executive_summary ? `<p>${nl2br(audit.executive_summary)}</p>` : ''}\n\n${Array.isArray(audit.red_flags) && audit.red_flags.length ? `<h2>De rezolvat urgent</h2>${li(audit.red_flags, (r) => `<li>${esc(r)}</li>`)}` : ''}\n\n<h2>Trei lucruri de facut azi</h2>\n${li(audit.quick_wins, (q) => `<li><strong>${esc(q.action)}</strong>${q.platform ? ` (${esc(q.platform)})` : ''} — ${esc(q.time_needed)}</li>`)}\n\n${audit.platforms.map(platformSection).join('\\n')}\n\n<h2>Plan de continut, 30 de zile</h2>\n${li(audit.content_strategy_30_days, (w) => `<li><strong>Saptamana ${esc(w.week)} — ${esc(w.focus)}</strong><br>Tipuri de postari: ${esc((w.post_types || []).join(', '))}${w.goal ? `<br>Obiectiv: ${esc(w.goal)}` : ''}</li>`)}\n\n${Array.isArray(audit.missing_data) && audit.missing_data.length ? `<h2>Ce ne mai trebuie de la tine</h2>${li(audit.missing_data, (m) => `<li>${esc(m)}</li>`)}` : ''}\n\n${flags.length ? `<hr><h3 style=\"color:#a00;\">Verificari automate — de corectat inainte de trimitere</h3>${li(flags, (f) => `<li>${esc(f)}</li>`)}` : ''}\n${context.failed?.length ? `<p style=\"font-size:9pt;color:#888;\">Capturi neprocesate: ${context.failed.length}.</p>` : ''}\n${context.lowConfidence?.length ? `<p style=\"font-size:9pt;color:#888;\">Capturi cu lizibilitate scazuta (nr.): ${context.lowConfidence.join(', ')}.</p>` : ''}\n</body></html>`;\n\n// ---------- Corpul multipart pentru Google Drive (HTML -> Google Doc) ----------\n// Construit aici, nu in UI-ul nodului HTTP Request: escaping-ul in expresii n8n e o sursa\n// clasica de bug-uri greu de depanat.\nconst boundary = 'n8nDocBoundary';\nconst docName = `Audit social media — ${clientName} — ${today}`;\nconst metadata = {\n  name: docName,\n  mimeType: 'application/vnd.google-apps.document', // tinta: conversie in Google Doc\n  parents: [folderId],\n};\n\nconst multipart =\n  `--${boundary}\\r\\n` +\n  'Content-Type: application/json; charset=UTF-8\\r\\n\\r\\n' +\n  JSON.stringify(metadata) + '\\r\\n' +\n  `--${boundary}\\r\\n` +\n  'Content-Type: text/html; charset=UTF-8\\r\\n\\r\\n' +   // sursa: HTML, Google il converteste\n  html + '\\r\\n' +\n  `--${boundary}--`;\n\nreturn [{ json: { docName, folderId, flags, multipart, html } }];\n"
+      },
+      "id": "build-document",
+      "name": "Build Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "multipart/related; boundary=n8nDocBoundary",
+        "body": "={{ $json.multipart }}",
+        "options": {}
+      },
+      "id": "upload-google-doc",
+      "name": "Upload Google Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "INLOCUIESTE_CU_ID_SPREADSHEET",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Clienti",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "data": "={{ $now.format('yyyy-MM-dd') }}",
+            "client": "={{ $('Form Trigger').first().json['Nume client'] }}",
+            "nisa": "={{ $('Form Trigger').first().json['Nișă'] }}",
+            "platforme": "={{ $('Form Trigger').first().json['Platforme incluse'] }}",
+            "scor": "={{ $('Strateg').first().json.output.overall_score }}",
+            "folder_url": "=https://drive.google.com/drive/folders/{{ $('Create Client Folder').first().json.id }}",
+            "document_url": "=https://docs.google.com/document/d/{{ $json.id }}/edit",
+            "avertismente": "={{ $('Build Document').first().json.flags.join(' | ') }}"
+          },
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "log-in-sheet",
+      "name": "Log In Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1180,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Form Trigger": {
+      "main": [
+        [
+          {
+            "node": "Normalize Screenshots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Screenshots": {
+      "main": [
+        [
+          {
+            "node": "Analyze Screenshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Screenshot": {
+      "main": [
+        [
+          {
+            "node": "Merge Extractions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Extractions": {
+      "main": [
+        [
+          {
+            "node": "Strateg",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strateg": {
+      "main": [
+        [
+          {
+            "node": "Create Client Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Client Folder": {
+      "main": [
+        [
+          {
+            "node": "Build Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Document": {
+      "main": [
+        [
+          {
+            "node": "Upload Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Log In Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Model Strateg": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Strateg",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Auto-fixing Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Parser",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Strateg",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

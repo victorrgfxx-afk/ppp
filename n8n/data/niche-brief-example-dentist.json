@@ -1,0 +1,31 @@
+{
+  "niche_key": "dentist",
+  "niche_label": "Cabinet stomatologic",
+  "audience": "28-50 ani, urban, venit mediu si peste, decid pentru ei si pentru copii. Cauta pe Google si pe Instagram inainte sa sune. Aleg des pe baza recenziilor si a fotografiilor cabinetului.",
+  "pains": "frica de durere; costul perceput ca imprevizibil; rusine fata de starea dintilor; experiente proaste in trecut; lipsa de timp; nu stiu cat dureaza tratamentul",
+  "objections": "e prea scump; dureaza prea multe sedinte; mi-e frica de anestezie; merg doar cand ma doare; nu am incredere ca nu mi se recomanda lucruri inutile",
+  "desires": "zambet de care sa nu ii fie rusine; tratament fara durere; sa stie exact cat costa de la inceput; medic care explica pe intelesul lor; sa scape de o problema pe care o amana de ani",
+  "services": "implant dentar, fatete, albire profesionala, ortodontie (aparat fix si aligneri), detartraj, urgente stomatologice, tratament de canal, stomatologie pediatrica",
+  "proof_assets": "fotografii before/after cu consimtamant scris; recenzii Google; aparatura (scanner intraoral, radiologie digitala); certificari si cursuri; echipa cu nume si specializare; tur video al cabinetului",
+  "tone": "cald, calm, non-alarmist, explica fara jargon. Zero limbaj de vanzare agresiv. Medicul apare la camera, nu doar textul.",
+  "forbidden": "promisiuni de rezultat garantat; cuvantul garantat legat de tratament; diagnostic sau recomandare de tratament la distanta; before/after fara consimtamant scris; comparatii denigratoare cu alte cabinete; preturi afisate ca oferta limitata in mod inselator; imagini socante sau sangeroase; sugestia ca un tratament este lipsit de riscuri",
+  "local_context": "Cluj-Napoca, cartier Marasti. Parcare proprie. Program L-V 09:00-19:00, sambata 09:00-14:00. Urgente in aceeasi zi. Nu lucreaza cu CAS pentru majoritatea serviciilor - trebuie spus clar.",
+  "niche_days": "03-20 Ziua Mondiala a Sanatatii Orale; 02-04 Ziua Mondiala de Lupta Impotriva Cancerului; 04-07 Ziua Mondiala a Sanatatii; 11-14 Ziua Mondiala a Diabetului; 10-10 Ziua Mondiala a Sanatatii Mintale; 06-01 Ziua Copilului",
+  "seed_examples": [
+    "Cat costa de fapt un implant si de ce difera pretul de la un cabinet la altul - medicul explica pe ecran cele 3 componente de cost, fara sa dea o cifra finala",
+    "Ce se intampla in prima ta vizita, filmat din perspectiva pacientului, de la usa pana la scaun - pentru cine amana din frica de necunoscut",
+    "Reactia unui copil de 6 ani la primul control, cu acordul parintilor - arata cum se lucreaza cu copiii, nu spune ca stiti sa lucrati cu copiii",
+    "Trei lucruri pe care le vede medicul pe radiografia ta si tu nu le vezi - screen recording pe o radiografie anonimizata",
+    "De ce te doare dupa detartraj si cat ar trebui sa dureze - raspuns la o intrebare pusa des in comentarii",
+    "Aligneri vs aparat fix: pentru cine e fiecare, cu costuri relative si durata - fara sa il vinzi pe cel scump",
+    "Ce faci in weekend daca ti se rupe un dinte si cabinetul e inchis - utilitate pura, zero vanzare",
+    "Turul cabinetului in 30 de secunde, inclusiv sala de sterilizare - raspunde la intrebarea nerostita despre igiena"
+  ],
+  "pillars": [
+    "Educatie (cum functioneaza, ce sa astepti)",
+    "Autoritate si dovezi (cazuri, aparatura, echipa)",
+    "Behind the scenes (oameni, proces, cabinet)",
+    "Obiectii si mituri (cost, durere, frecventa)",
+    "Comunitate si local (pacienti, cartier, sezonalitate)"
+  ]
+}

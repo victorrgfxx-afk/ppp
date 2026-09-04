@@ -1,0 +1,66 @@
+date,name_ro,type,niches,movable,confidence,note
+01-01,Anul Nou,national,all,false,high,Rezolutii si obiective - unghi bun pentru orice nisa
+01-19,Blue Monday,comercial,"wellness,fitness,horeca",true,medium,A treia luni din ianuarie - concept de marketing nu zi oficiala
+01-24,Ziua Unirii Principatelor Romane,national,all,false,high,Zi libera legala in Romania
+02-04,Ziua Mondiala de Lupta Impotriva Cancerului,international,"medical,dentist,wellness",false,high,Prevenție - se leaga natural de controale periodice
+02-09,Ziua Internationala a Pizzei,nisa,horeca,false,medium,Verifica inainte de folosire
+02-14,Ziua Indragostitilor,comercial,all,false,high,Saturat - foloseste unghi contra-curent daca nu e retail
+02-24,Dragobete,national,all,false,high,Alternativa romaneasca la Valentine - mai putin aglomerata
+03-01,Martisor,national,all,false,high,Puternic in Romania - cadouri si gesturi
+03-04,Ziua Mondiala a Obezitatii,international,"medical,fitness,nutritie",false,high,Ton non-culpabilizant obligatoriu
+03-08,Ziua Internationala a Femeii,international,all,false,high,Evita clisee - prefera povesti reale de cliente sau angajate
+03-15,Ziua Mondiala a Drepturilor Consumatorului,international,"servicii,imobiliare,retail",false,high,Bun pentru transparenta preturilor
+03-20,Ziua Mondiala a Sanatatii Orale,nisa,dentist,false,high,Ziua centrala a anului pentru stomatologie (FDI)
+03-20,Ziua Internationala a Fericirii,international,"wellness,horeca,fitness",false,high,
+03-21,Ziua Internationala a Sindromului Down,international,"medical,educatie,ONG",false,high,Ton respectuos - fara inspiration porn
+03-22,Ziua Mondiala a Apei,international,"eco,horeca,fitness",false,high,
+04-01,Ziua Pacalelilor,comercial,all,false,high,Risc reputational - evita in nisele medicale si financiare
+04-02,Ziua Internationala de Constientizare a Autismului,international,"medical,educatie,dentist",false,high,Dentist: adaptarea cabinetului pentru copii cu autism
+04-06,Ziua Internationala a Sportului,international,fitness,false,high,
+04-07,Ziua Mondiala a Sanatatii,international,"medical,dentist,fitness,wellness",false,high,
+04-11,Ziua Mondiala a Bolii Parkinson,international,medical,false,high,
+04-22,Ziua Pamantului,international,"eco,horeca,imobiliare",false,high,
+04-23,Ziua Internationala a Cartii,international,"educatie,retail",false,high,
+05-01,Ziua Muncii,national,all,false,high,Zi libera legala
+05-03,Ziua Mamei (Romania),national,all,true,high,Prima duminica din mai - se calculeaza nu se hardcodeaza
+05-05,Ziua Mondiala a Igienei Mainilor,international,"medical,dentist,horeca",false,high,
+05-10,Ziua Tatalui (Romania),national,all,true,high,A doua duminica din mai - se calculeaza
+05-12,Ziua Internationala a Asistentilor Medicali,international,medical,false,high,Bun pentru a evidentia echipa nu doar medicul
+05-15,Ziua Internationala a Familiei,international,"imobiliare,horeca,dentist",false,high,
+05-31,Ziua Mondiala fara Tutun,international,"medical,dentist,fitness",false,high,Dentist: efectul fumatului asupra gingiilor si petelor
+06-01,Ziua Copilului,national,all,false,high,Zi libera legala in Romania
+06-05,Ziua Mondiala a Mediului,international,"eco,horeca,imobiliare",false,high,
+06-14,Ziua Mondiala a Donatorului de Sange,international,medical,false,high,
+06-21,Ziua Internationala a Yoga,international,"fitness,wellness",false,high,
+07-11,Ziua Mondiala a Populatiei,international,"imobiliare,ONG",false,medium,
+07-30,Ziua Internationala a Prieteniei,international,"horeca,fitness",false,high,
+08-12,Ziua Internationala a Tineretului,international,"educatie,fitness",false,high,
+08-19,Ziua Mondiala a Fotografiei,international,"creativ,horeca,imobiliare",false,high,
+09-01,Back to school,comercial,"educatie,retail,dentist",true,high,Perioada nu zi fixa - prima jumatate a lunii septembrie
+09-08,Ziua Internationala a Alfabetizarii,international,educatie,false,high,
+09-21,Ziua Internationala a Pacii,international,all,false,high,
+09-21,Ziua Mondiala Alzheimer,international,medical,false,high,
+09-27,Ziua Mondiala a Turismului,international,"horeca,turism",false,high,
+09-29,Ziua Mondiala a Inimii,international,"medical,fitness,dentist",false,high,Dentist: legatura boala parodontala - risc cardiovascular
+10-01,Ziua Internationala a Persoanelor Varstnice,international,"medical,dentist",false,high,Dentist: protetica si ingrijire la varsta a treia
+10-01,Ziua Internationala a Cafelei,nisa,horeca,false,high,
+10-05,Ziua Mondiala a Profesorilor,international,educatie,false,high,
+10-05,Ziua Mondiala a Habitatului,international,imobiliare,true,high,Prima luni din octombrie - se calculeaza
+10-10,Ziua Mondiala a Sanatatii Mintale,international,"medical,wellness,fitness",false,high,
+10-16,Ziua Mondiala a Alimentatiei,international,"horeca,nutritie",false,high,
+10-20,Ziua Mondiala a Osteoporozei,international,"medical,fitness",false,high,
+10-31,Halloween,comercial,"horeca,retail,fitness",false,high,
+10-31,Ziua Mondiala a Oraselor,international,imobiliare,false,medium,
+11-13,Ziua Internationala a Bunatatii,international,all,false,high,
+11-14,Ziua Mondiala a Diabetului,international,"medical,dentist,nutritie",false,high,Dentist: diabetul si boala parodontala
+11-19,Ziua Internationala a Barbatului,international,"fitness,medical",false,high,
+11-20,Ziua Mondiala a Copilului,international,"educatie,dentist,medical",false,high,
+11-27,Black Friday,comercial,all,true,high,In Romania multi retaileri il muta mai devreme - verifica anual
+11-30,Cyber Monday,comercial,"retail,servicii online",true,medium,Lunea de dupa Black Friday
+12-01,Ziua Nationala a Romaniei,national,all,false,high,Zi libera legala
+12-01,Ziua Mondiala de Lupta Impotriva HIV/SIDA,international,medical,false,high,
+12-03,Ziua Internationala a Persoanelor cu Dizabilitati,international,"medical,ONG,imobiliare",false,high,Imobiliare: accesibilitate in locuinte
+12-05,Ziua Internationala a Voluntarilor,international,ONG,false,high,
+12-10,Ziua Drepturilor Omului,international,"ONG,juridic",false,high,
+12-25,Craciun,religios,all,false,high,Zi libera legala - acoperit si de API-ul de sarbatori
+12-31,Revelion,national,all,false,high,

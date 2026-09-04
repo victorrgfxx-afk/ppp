@@ -1,0 +1,112 @@
+{
+  "type": "object",
+  "required": ["overall_score", "score_rationale", "platforms", "quick_wins", "content_strategy_30_days", "missing_data"],
+  "properties": {
+    "overall_score": { "type": "number", "minimum": 0, "maximum": 100 },
+    "score_rationale": { "type": "string" },
+    "executive_summary": { "type": "string", "description": "3-4 fraze pe care clientul le citeste primele" },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["platform", "covered", "what_works", "what_doesnt", "improvements", "bio_variants"],
+        "properties": {
+          "platform": { "type": "string", "enum": ["tiktok", "instagram", "facebook"] },
+          "covered": { "type": "boolean", "description": "false daca nu s-au primit capturi pentru platforma" },
+          "handle": { "type": "string" },
+          "current_bio": { "type": "string" },
+          "current_bio_chars": { "type": "number" },
+          "what_works": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["observation", "evidence", "why_it_matters"],
+              "properties": {
+                "observation": { "type": "string" },
+                "evidence": { "type": "string", "description": "citat direct din datele extrase" },
+                "why_it_matters": { "type": "string" }
+              }
+            }
+          },
+          "what_doesnt": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["issue", "evidence", "cost"],
+              "properties": {
+                "issue": { "type": "string" },
+                "evidence": { "type": "string" },
+                "cost": { "type": "string", "description": "ce pierde concret clientul din cauza asta" }
+              }
+            }
+          },
+          "improvements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["action", "how_to", "impact", "effort"],
+              "properties": {
+                "action": { "type": "string" },
+                "how_to": { "type": "string", "description": "pasi executabili, nu principii" },
+                "impact": { "type": "string", "enum": ["mare", "mediu", "mic"] },
+                "effort": { "type": "string", "enum": ["mic", "mediu", "mare"] },
+                "expected_result": { "type": "string" }
+              }
+            }
+          },
+          "bio_variants": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "required": ["angle", "text", "char_count", "cta", "rationale"],
+              "properties": {
+                "angle": { "type": "string", "enum": ["claritate", "beneficiu", "diferentiator"] },
+                "text": { "type": "string" },
+                "char_count": { "type": "number" },
+                "name_field": { "type": "string", "description": "pentru IG/TikTok: campul Name, max 30 caractere" },
+                "cta": { "type": "string" },
+                "rationale": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "quick_wins": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["action", "time_needed"],
+        "properties": {
+          "action": { "type": "string" },
+          "time_needed": { "type": "string" },
+          "platform": { "type": "string" }
+        }
+      }
+    },
+    "content_strategy_30_days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["week", "focus", "post_types"],
+        "properties": {
+          "week": { "type": "number" },
+          "focus": { "type": "string" },
+          "post_types": { "type": "array", "items": { "type": "string" } },
+          "goal": { "type": "string" }
+        }
+      }
+    },
+    "missing_data": {
+      "type": "array",
+      "items": { "type": "string", "description": "ce capturi suplimentare sunt necesare si de ce" }
+    },
+    "red_flags": {
+      "type": "array",
+      "items": { "type": "string", "description": "probleme urgente: cont neverificat, link mort, informatii de contact lipsa" }
+    }
+  }
+}

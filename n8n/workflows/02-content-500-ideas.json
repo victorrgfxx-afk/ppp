@@ -1,0 +1,535 @@
+{
+  "name": "Agent B — 500 idei de content pe nisa",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Generator de idei de content",
+        "formDescription": "Genereaza un an de idei pentru o nisa, calibrat pe sarbatori si zile internationale.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Nișă",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "dentist"
+                  },
+                  {
+                    "option": "imobiliare"
+                  },
+                  {
+                    "option": "horeca"
+                  },
+                  {
+                    "option": "fitness"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Client",
+              "placeholder": "optional"
+            },
+            {
+              "fieldLabel": "An",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Numar de idei",
+              "fieldType": "number",
+              "placeholder": "500",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Platforme",
+              "placeholder": "tiktok,instagram,facebook",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Tara",
+              "placeholder": "RO",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "formular",
+      "name": "Formular",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -840,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "niche_key",
+              "value": "={{ $json['Nișă'] }}",
+              "type": "string"
+            },
+            {
+              "id": "2",
+              "name": "client",
+              "value": "={{ $json.Client }}",
+              "type": "string"
+            },
+            {
+              "id": "3",
+              "name": "year",
+              "value": "={{ $json.An }}",
+              "type": "number"
+            },
+            {
+              "id": "4",
+              "name": "target_ideas",
+              "value": "={{ $json['Numar de idei'] }}",
+              "type": "number"
+            },
+            {
+              "id": "5",
+              "name": "platforms",
+              "value": "={{ $json.Platforme }}",
+              "type": "string"
+            },
+            {
+              "id": "6",
+              "name": "country",
+              "value": "={{ $json.Tara }}",
+              "type": "string"
+            },
+            {
+              "id": "7",
+              "name": "ideas_per_slice",
+              "value": "25",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -620,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "INLOCUIESTE_CU_ID_SPREADSHEET",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "NicheBriefs",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "niche_key",
+              "lookupValue": "={{ $json.niche_key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-niche-brief",
+      "name": "Get Niche Brief",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://date.nager.at/api/v3/PublicHolidays/{{ $('Start').first().json.year }}/{{ $('Start').first().json.country || 'RO' }}",
+        "options": {}
+      },
+      "id": "get-public-holidays",
+      "name": "Get Public Holidays",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -180,
+        300
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "INLOCUIESTE_CU_ID_SPREADSHEET",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "ZileInternationale",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "get-international-days",
+      "name": "Get International Days",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        40,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Build Slice Plan\"  (Run Once for All Items)\n// Construieste planul de felii: fiecare felie = o combinatie unica de\n// pilon x format x etapa funnel x luna x platforma, cu ocaziile lunii atasate.\n// Feliile fiind disjuncte, modelul nu are cum sa repete masiv chiar daca apelurile ruleaza separat.\n//\n// Citeste din: \"Start\" (parametrii rularii), \"Get Niche Brief\" (Sheets),\n//              \"Get Public Holidays\" (HTTP), \"Get International Days\" (Sheets).\n\nconst params = $('Start').first().json;\nconst brief = $('Get Niche Brief').first().json;\n\nconst nicheKey = String(params.niche_key || brief.niche_key || '').toLowerCase();\nconst year = Number(params.year) || new Date().getFullYear();\nconst target = Number(params.target_ideas) || 500;\nconst platforms = String(params.platforms || 'tiktok,instagram,facebook').split(',').map((s) => s.trim()).filter(Boolean);\n\nif (!brief || !brief.niche_key) {\n  throw new Error(`Nu am gasit briefingul pentru nisa \"${nicheKey}\" in tab-ul NicheBriefs.`);\n}\n\n// ---------- Zile mobile: se calculeaza, nu se hardcodeaza ----------\nconst nthWeekday = (y, month, weekday, n) => {\n  // month 1-12, weekday 0=duminica\n  const first = new Date(Date.UTC(y, month - 1, 1));\n  const shift = (weekday - first.getUTCDay() + 7) % 7;\n  return new Date(Date.UTC(y, month - 1, 1 + shift + (n - 1) * 7));\n};\nconst iso = (d) => d.toISOString().slice(0, 10);\n\nconst resolveMovable = (name, y) => {\n  const n = name.toLowerCase();\n  if (n.includes('ziua mamei')) return iso(nthWeekday(y, 5, 0, 1));          // prima duminica din mai\n  if (n.includes('ziua tatalui')) return iso(nthWeekday(y, 5, 0, 2));        // a doua duminica din mai\n  if (n.includes('habitatului')) return iso(nthWeekday(y, 10, 1, 1));        // prima luni din octombrie\n  if (n.includes('blue monday')) return iso(nthWeekday(y, 1, 1, 3));         // a treia luni din ianuarie\n  if (n.includes('black friday')) {\n    const thanksgiving = nthWeekday(y, 11, 4, 4);                            // al 4-lea joi din noiembrie\n    return iso(new Date(thanksgiving.getTime() + 86400000));\n  }\n  if (n.includes('cyber monday')) {\n    const thanksgiving = nthWeekday(y, 11, 4, 4);\n    return iso(new Date(thanksgiving.getTime() + 4 * 86400000));\n  }\n  return null; // ramane data aproximativa din CSV\n};\n\n// ---------- Sarbatori legale si religioase (din API) ----------\nconst holidays = $('Get Public Holidays').all().map((i) => i.json).filter((h) => h && h.date).map((h) => ({\n  date: h.date,\n  name: h.localName || h.name,\n  type: 'sarbatoare',\n}));\n\n// ---------- Zile internationale / tematice (din Google Sheets) ----------\nconst truthy = (v) => String(v).toLowerCase() === 'true' || v === true;\nconst intlDays = $('Get International Days').all().map((i) => i.json)\n  .filter((d) => d && d.date && d.name_ro)\n  .filter((d) => {\n    const niches = String(d.niches || 'all').toLowerCase();\n    return niches === 'all' || niches.split(',').map((s) => s.trim()).includes(nicheKey);\n  })\n  .map((d) => {\n    const movableDate = truthy(d.movable) ? resolveMovable(d.name_ro, year) : null;\n    return {\n      date: movableDate || `${year}-${String(d.date).trim()}`,\n      name: d.name_ro,\n      type: d.type || 'international',\n      note: d.note || '',\n    };\n  });\n\n// ---------- Zile specifice nisei, din brief (format \"MM-DD Nume; MM-DD Nume\") ----------\nconst nicheDays = String(brief.niche_days || '').split(';').map((s) => s.trim()).filter(Boolean).map((chunk) => {\n  const m = chunk.match(/^(\\d{2}-\\d{2})\\s+(.+)$/);\n  return m ? { date: `${year}-${m[1]}`, name: m[2], type: 'nisa' } : null;\n}).filter(Boolean);\n\nconst allOccasions = [...holidays, ...intlDays, ...nicheDays]\n  .filter((o) => /^\\d{4}-\\d{2}-\\d{2}$/.test(o.date))\n  .sort((a, b) => a.date.localeCompare(b.date));\n\nconst byMonth = {};\nfor (const o of allOccasions) {\n  const m = Number(o.date.slice(5, 7));\n  (byMonth[m] = byMonth[m] || []).push(o);\n}\n\n// ---------- Matricea de felii ----------\nconst DEFAULT_PILLARS = [\n  'Educatie (cum functioneaza, ce sa astepti)',\n  'Autoritate si dovezi',\n  'Behind the scenes (oameni si proces)',\n  'Obiectii si mituri',\n  'Comunitate si context local',\n];\nconst pillars = Array.isArray(brief.pillars) && brief.pillars.length\n  ? brief.pillars\n  : String(brief.pillars || '').split(';').map((s) => s.trim()).filter(Boolean).length\n  ? String(brief.pillars).split(';').map((s) => s.trim()).filter(Boolean)\n  : DEFAULT_PILLARS;\n\nconst formats = ['short video', 'carusel', 'postare statica', 'story serie', 'live/Q&A', 'UGC/testimonial'];\nconst stages = ['TOFU', 'MOFU', 'BOFU'];\n\nconst IDEAS_PER_SLICE = Number(params.ideas_per_slice) || 25;\n// Supragenerare intentionata cu ~10%: deduplicarea taie din ele, iar deficitul\n// costa un al doilea pas de generare. Mai ieftin sa generezi in plus.\nconst sliceCount = Math.ceil((target * 1.1) / IDEAS_PER_SLICE);\n\nconst MONTH_NAMES = ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie'];\n\nconst seedExamples = Array.isArray(brief.seed_examples)\n  ? brief.seed_examples.join('\\n- ')\n  : String(brief.seed_examples || '').split(/\\n|;/).map((s) => s.trim()).filter(Boolean).join('\\n- ');\n\nconst slices = [];\nfor (let i = 0; i < sliceCount; i++) {\n  const month = Math.floor((i * 12) / sliceCount) + 1;\n  const occasions = (byMonth[month] || []).slice(0, 6)\n    .map((o) => `${o.date} — ${o.name}${o.type === 'sarbatoare' ? ' (sarbatoare legala/religioasa)' : ''}`)\n    .join('; ') || 'nicio ocazie relevanta luna aceasta — genereaza doar evergreen';\n\n  slices.push({\n    slice_index: i + 1,\n    slice_total: sliceCount,\n    niche: brief.niche_label || brief.niche_key,\n    niche_key: nicheKey,\n    client: params.client || '',\n    year,\n    month,\n    month_name: MONTH_NAMES[month - 1],\n    occasions,\n    pillar: pillars[i % pillars.length],\n    format: formats[i % formats.length],\n    funnel_stage: stages[i % stages.length],\n    platform: platforms[i % platforms.length],\n    ideas_per_slice: IDEAS_PER_SLICE,\n    target_ideas: target,\n    // briefing, injectat in prompt\n    audience: brief.audience,\n    pains: brief.pains,\n    objections: brief.objections,\n    desires: brief.desires,\n    services: brief.services,\n    proof_assets: brief.proof_assets,\n    tone: brief.tone,\n    local_context: brief.local_context,\n    forbidden: brief.forbidden,\n    seed_examples: seedExamples ? `- ${seedExamples}` : '(niciun exemplu furnizat — calitatea va fi vizibil mai slaba)',\n  });\n}\n\nreturn slices.map((s) => ({ json: s }));\n"
+      },
+      "id": "build-slice-plan",
+      "name": "Build Slice Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "loop-over-slices",
+      "name": "Loop Over Slices",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ești Content Strategist într-o agenție de social media din România. Produci idei de conținut pe care un om fără experiență de creator le poate filma sau scrie în aceeași zi. Nu produci „teme de discuție\" — produci idei cu hook, structură și CTA.\n\nBRIEFUL NIȘEI\n- Nișă: {{ $json.niche }}\n- Public: {{ $json.audience }}\n- Dureri reale: {{ $json.pains }}\n- Obiecții frecvente: {{ $json.objections }}\n- Dorințe: {{ $json.desires }}\n- Servicii/produse: {{ $json.services }}\n- Dovezi disponibile: {{ $json.proof_assets }}\n- Ton: {{ $json.tone }}\n- Context local: {{ $json.local_context }}\n- INTERZIS (reguli dure, încălcarea invalidează ideea): {{ $json.forbidden }}\n\nEXEMPLE DE IDEI BUNE PENTRU ACEASTĂ NIȘĂ (imită nivelul de concretețe, nu subiectul):\n{{ $json.seed_examples }}\n\nFELIA TA (generezi DOAR în interiorul ei):\n- Pilon: {{ $json.pillar }}\n- Etapă funnel: {{ $json.funnel_stage }}\n- Format: {{ $json.format }}\n- Platformă: {{ $json.platform }}\n- Luna: {{ $json.month_name }}\n- Ocazii din această lună (sărbători, zile internaționale) pe care le poți folosi: {{ $json.occasions }}\n\nCERINȚĂ: exact {{ $json.ideas_per_slice }} idei.\n\nREGULI:\n1. Maximum 30% din idei se leagă de o ocazie din listă. Restul sunt evergreen. Un calendar construit pe sărbători e un calendar gol în februarie.\n2. Când folosești o ocazie, legătura cu nișa trebuie să fie firească, nu forțată. Dacă o ocazie nu are legătură reală cu nișa, nu o folosi — mai bine evergreen.\n3. Fiecare idee are un HOOK scris cuvânt cu cuvânt: primele 3 secunde din video sau primul rând din postare. Nu descrierea hook-ului — hook-ul propriu-zis, gata de citit în cameră.\n4. Fiecare idee are un outline de 3–5 pași: ce se filmează/scrie, în ordine.\n5. Ideile trebuie să fie realizabile de un business mic: fără actori, fără studio, fără buget de producție. Telefon + 20 de minute.\n6. Adaptează formatul la platformă: TikTok = ritm rapid, hook în primul cadru, fără intro; Instagram = valoare salvabilă (carusel/reels), estetică; Facebook = text mai lung, comunitar, local, declanșează comentarii.\n7. Respectă etapa de funnel: TOFU nu vinde (educă/atrage), MOFU convinge (compară, demontează obiecții), BOFU cere acțiunea (ofertă, disponibilitate, proces).\n8. Fără clișee de industrie: „5 sfaturi utile\", „știai că?\", „lucruri pe care nu le știai\" sunt interzise ca titluri.\n9. Nicio idee nu încalcă regulile din INTERZIS. Setezi compliance_ok=false și explici în notes doar dacă ideea e la limită și merită păstrată cu ajustare.\n10. Ideile din această felie trebuie să fie distincte între ele — nu variații ale aceleiași idei.\n\nReturnezi strict JSON: un array \"ideas\" cu obiecte conform schemei.",
+        "hasOutputParser": true
+      },
+      "id": "idea-generator",
+      "name": "Idea Generator",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        740,
+        420
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.8
+        }
+      },
+      "id": "chat-model-idei",
+      "name": "Chat Model Idei",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "auto-fixing-parser-idei",
+      "name": "Auto-fixing Parser Idei",
+      "type": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
+      "typeVersion": 1,
+      "position": [
+        900,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"required\": [\"ideas\"],\n  \"properties\": {\n    \"ideas\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"title\", \"hook\", \"outline\", \"cta\", \"platform\", \"format\", \"funnel_stage\", \"pillar\"],\n        \"properties\": {\n          \"title\": { \"type\": \"string\", \"description\": \"titlul ideii, maximum 12 cuvinte\" },\n          \"hook\": { \"type\": \"string\", \"description\": \"primele 3 secunde / primul rand, scris cuvant cu cuvant\" },\n          \"outline\": {\n            \"type\": \"array\",\n            \"minItems\": 3,\n            \"maxItems\": 5,\n            \"items\": { \"type\": \"string\" }\n          },\n          \"cta\": { \"type\": \"string\" },\n          \"platform\": { \"type\": \"string\", \"enum\": [\"tiktok\", \"instagram\", \"facebook\"] },\n          \"format\": { \"type\": \"string\", \"enum\": [\"short video\", \"carusel\", \"postare statica\", \"story serie\", \"live/Q&A\", \"UGC/testimonial\"] },\n          \"funnel_stage\": { \"type\": \"string\", \"enum\": [\"TOFU\", \"MOFU\", \"BOFU\"] },\n          \"pillar\": { \"type\": \"string\" },\n          \"occasion\": { \"type\": \"string\", \"description\": \"sarbatoare sau zi internationala, gol daca e evergreen\" },\n          \"suggested_month\": { \"type\": \"number\", \"minimum\": 1, \"maximum\": 12 },\n          \"suggested_date\": { \"type\": \"string\", \"description\": \"YYYY-MM-DD doar daca e legata de o ocazie\" },\n          \"keywords_hashtags\": { \"type\": \"array\", \"maxItems\": 5, \"items\": { \"type\": \"string\" } },\n          \"effort\": { \"type\": \"string\", \"enum\": [\"low\", \"medium\", \"high\"] },\n          \"compliance_ok\": { \"type\": \"boolean\" },\n          \"notes\": { \"type\": \"string\" }\n        }\n      }\n    }\n  }\n}"
+      },
+      "id": "idea-schema",
+      "name": "Idea Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1060,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Flatten Ideas\"  (Run Once for All Items) — ruleaza IN interiorul buclei\n// Sparge raspunsul LLM (un obiect cu array-ul \"ideas\") in item-uri individuale\n// si ataseaza metadatele feliei curente.\n\nconst slice = $('Loop Over Slices').first().json;\nconst out = [];\n\nfor (const item of $input.all()) {\n  const payload = item.json.output ?? item.json;\n  const ideas = payload.ideas || payload;\n  if (!Array.isArray(ideas)) continue;\n\n  for (const idea of ideas) {\n    if (!idea || !idea.title) continue;\n    out.push({\n      json: {\n        niche: slice.niche,\n        niche_key: slice.niche_key,\n        client: slice.client,\n        slice_index: slice.slice_index,\n        pillar: idea.pillar || slice.pillar,\n        funnel_stage: idea.funnel_stage || slice.funnel_stage,\n        format: idea.format || slice.format,\n        platform: idea.platform || slice.platform,\n        month: idea.suggested_month || slice.month,\n        suggested_date: idea.suggested_date || '',\n        occasion: idea.occasion || '',\n        title: String(idea.title).trim(),\n        hook: String(idea.hook || '').trim(),\n        outline: Array.isArray(idea.outline) ? idea.outline.join(' | ') : String(idea.outline || ''),\n        cta: idea.cta || '',\n        keywords_hashtags: Array.isArray(idea.keywords_hashtags) ? idea.keywords_hashtags.join(' ') : String(idea.keywords_hashtags || ''),\n        effort: idea.effort || '',\n        compliance_ok: idea.compliance_ok !== false,\n        notes: idea.notes || '',\n      },\n    });\n  }\n}\n\nreturn out;\n"
+      },
+      "id": "flatten-ideas",
+      "name": "Flatten Ideas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1180,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node: \"Dedupe & Number\"  (Run Once for All Items)\n// Ruleaza pe iesirea \"done\" a buclei. Trei straturi de deduplicare, in ordinea costului:\n//   1. normalizare + hash exact\n//   2. trigrame Jaccard pe titlu (prinde parafrazele)\n//   3. raport de deficit, daca nu s-a atins tinta\n// Pentru volume mari (5.000+ idei) treci pe embeddings + vector store, prag cosine ~0.90.\n\n// Doua praguri, pentru ca prind lucruri diferite:\n//  - trigramele prind reformularile marunte (\"albirea dentara\" vs \"albire dentara\")\n//  - setul de cuvinte prinde reordonarea (\"5 mituri despre X\" vs \"Mituri despre X: 5 lucruri\")\nconst TRIGRAM_THRESHOLD = 0.72; // 0.65 = agresiv, 0.80 = permisiv\nconst TOKEN_THRESHOLD = 0.8;\n\nconst items = $input.all().map((i) => i.json).filter((i) => i && i.title);\nif (!items.length) throw new Error('Bucla nu a produs nicio idee. Verifica Structured Output Parser-ul.');\n\nconst target = Number(items[0].target_ideas) || Number($('Start').first().json.target_ideas) || 500;\nconst nicheKey = items[0].niche_key || 'nisa';\nconst year = $('Start').first().json.year || new Date().getFullYear();\n\nconst norm = (s) =>\n  String(s)\n    .toLowerCase()\n    .normalize('NFD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/[^a-z0-9 ]/g, ' ')\n    .replace(/\\b(si|sau|de|la|in|pe|cu|un|o|al|ale|cel|cea|ce|care|pentru|din|despre|cum|ce|top|idei)\\b/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\nconst trigrams = (s) => {\n  const t = `  ${s}  `;\n  const set = new Set();\n  for (let i = 0; i < t.length - 2; i++) set.add(t.slice(i, i + 3));\n  return set;\n};\n\nconst tokens = (s) => new Set(s.split(' ').filter(Boolean));\n\nconst jaccard = (a, b) => {\n  if (!a.size || !b.size) return 0;\n  let inter = 0;\n  for (const g of a) if (b.has(g)) inter++;\n  return inter / (a.size + b.size - inter);\n};\n\nconst kept = [];\nconst keptGrams = [];\nconst keptTokens = [];\nconst seenExact = new Set();\nlet droppedExact = 0;\nlet droppedSimilar = 0;\n\nfor (const it of items) {\n  const n = norm(it.title);\n  if (!n) continue;\n\n  const sortedKey = n.split(' ').sort().join(' ');\n  if (seenExact.has(sortedKey)) { droppedExact++; continue; }\n\n  const g = trigrams(n);\n  const tk = tokens(n);\n  let similar = false;\n  for (let i = 0; i < keptGrams.length; i++) {\n    if (jaccard(g, keptGrams[i]) >= TRIGRAM_THRESHOLD || jaccard(tk, keptTokens[i]) >= TOKEN_THRESHOLD) {\n      similar = true;\n      break;\n    }\n  }\n  if (similar) { droppedSimilar++; continue; }\n\n  seenExact.add(sortedKey);\n  keptGrams.push(g);\n  keptTokens.push(tk);\n  kept.push(it);\n}\n\n// Echilibram taierea la tinta: luam pe rand din fiecare felie, ca sa nu ramanem\n// cu 500 de idei toate din primele 8 felii (adica din primele 5 luni).\nconst bySlice = new Map();\nfor (const it of kept) {\n  const k = it.slice_index || 0;\n  if (!bySlice.has(k)) bySlice.set(k, []);\n  bySlice.get(k).push(it);\n}\nconst balanced = [];\nlet round = 0;\nwhile (balanced.length < Math.min(target, kept.length)) {\n  let addedThisRound = 0;\n  for (const [, arr] of bySlice) {\n    if (arr[round]) { balanced.push(arr[round]); addedThisRound++; }\n    if (balanced.length >= target) break;\n  }\n  if (!addedThisRound) break;\n  round++;\n}\n\nconst final = balanced.map((it, i) => ({\n  json: {\n    id: `${nicheKey}-${year}-${String(i + 1).padStart(3, '0')}`,\n    ...it,\n    status: 'idee',\n    generated_at: new Date().toISOString().slice(0, 10),\n    _stats_total_generated: items.length,\n    _stats_unique: kept.length,\n    _stats_dropped_exact: droppedExact,\n    _stats_dropped_similar: droppedSimilar,\n    _stats_deficit: Math.max(0, target - kept.length),\n  },\n}));\n\nif (kept.length < target) {\n  console.log(\n    `ATENTIE: ${kept.length} idei unice din ${target} cerute (generate brut: ${items.length}, ` +\n    `duplicate exacte: ${droppedExact}, prea similare: ${droppedSimilar}). ` +\n    `Creste ideas_per_slice sau imbunatateste seed_examples din brief.`\n  );\n}\n\nreturn final;\n"
+      },
+      "id": "dedupe-number",
+      "name": "Dedupe & Number",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "INLOCUIESTE_CU_ID_SPREADSHEET",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Idei",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "id": "save-ideas",
+      "name": "Save Ideas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        960,
+        160
+      ]
+    }
+  ],
+  "connections": {
+    "Formular": {
+      "main": [
+        [
+          {
+            "node": "Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Get Niche Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Niche Brief": {
+      "main": [
+        [
+          {
+            "node": "Get Public Holidays",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Public Holidays": {
+      "main": [
+        [
+          {
+            "node": "Get International Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get International Days": {
+      "main": [
+        [
+          {
+            "node": "Build Slice Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slice Plan": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Slices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Slices": {
+      "main": [
+        [
+          {
+            "node": "Dedupe & Number",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Idea Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idea Generator": {
+      "main": [
+        [
+          {
+            "node": "Flatten Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten Ideas": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Slices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe & Number": {
+      "main": [
+        [
+          {
+            "node": "Save Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Model Idei": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Idea Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Auto-fixing Parser Idei",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Idea Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Auto-fixing Parser Idei",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-fixing Parser Idei": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Idea Generator",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

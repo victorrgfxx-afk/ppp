@@ -1,0 +1,237 @@
+// Teste pentru nodurile Code, rulate in afara n8n.
+// Mocheaza $input / $() / $json si verifica logica. Ruleaza:  node n8n/tests/run-tests.mjs
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
+const load = (f) => readFileSync(join(SRC, f), 'utf8');
+
+const runNode = (file, { input = [], nodes = {}, json = {} } = {}) => {
+  const $input = { all: () => input };
+  const $ = (name) => {
+    if (!(name in nodes)) throw new Error(`Test: nodul "${name}" nu e mocheat`);
+    const items = nodes[name];
+    return { first: () => items[0], all: () => items, last: () => items[items.length - 1] };
+  };
+  const fn = new Function('$input', '$', '$json', 'console', load(file));
+  return fn($input, $, json, console);
+};
+
+let pass = 0, fail = 0;
+const t = (name, fn) => {
+  try { fn(); console.log(`  ok   ${name}`); pass++; }
+  catch (e) { console.log(`  FAIL ${name}\n       ${e.message}`); fail++; }
+};
+const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
+const eq = (a, b, msg) => { if (a !== b) throw new Error(`${msg} (primit: ${JSON.stringify(a)}, asteptat: ${JSON.stringify(b)})`); };
+
+console.log('\nAgent A — Normalize Screenshots');
+t('sparge un item cu 3 imagini in 3 item-uri pe cheia "data"', () => {
+  const out = runNode('a1-normalize-screenshots.js', {
+    input: [{
+      json: { 'Nume client': 'Cabinet X' },
+      binary: {
+        Capturi_de_ecran_0: { fileName: 'ig.png', mimeType: 'image/png' },
+        Capturi_de_ecran_1: { fileName: 'tt.png', mimeType: 'image/png' },
+        field_2: { fileName: 'fb.jpg', mimeType: 'image/jpeg' },
+      },
+    }],
+  });
+  eq(out.length, 3, 'numar de item-uri');
+  assert(out.every((o) => o.binary.data), 'toate au binary pe cheia "data"');
+  eq(out[2].json.fileName, 'fb.jpg', 'numele fisierului se pastreaza');
+  eq(out[0].json['Nume client'], 'Cabinet X', 'datele din formular se propaga');
+});
+t('arunca eroare clara daca nu exista imagini', () => {
+  let threw = false;
+  try { runNode('a1-normalize-screenshots.js', { input: [{ json: {}, binary: {} }] }); }
+  catch (e) { threw = /nicio imagine/i.test(e.message); }
+  assert(threw, 'trebuia sa arunce eroare descriptiva');
+});
+
+console.log('\nAgent A — Merge Extractions');
+t('parseaza JSON in ```json, ignora raspunsurile invalide', () => {
+  const out = runNode('a1-merge-extractions.js', {
+    input: [
+      { json: { content: '```json\n{"platform":"instagram","account":{"bio_text":"Zambete","bio_char_count":7},"confidence":"high"}\n```' } },
+      { json: { content: 'Imi pare rau, nu pot analiza aceasta imagine.' } },
+      { json: { content: '{"platform":"tiktok","account":{"bio_text":null},"confidence":"low"}' } },
+    ],
+    nodes: { 'Form Trigger': [{ json: { 'Nume client': 'Cabinet X' } }] },
+  });
+  const r = out[0].json;
+  eq(r.extractedCount, 2, 'extractii valide');
+  eq(r.failed.length, 1, 'extractii esuate');
+  eq(r.covered.join(','), 'instagram,tiktok', 'platforme acoperite');
+  eq(r.lowConfidence.length, 1, 'capturi cu confidence scazut');
+});
+
+console.log('\nAgent A — Build Document');
+const auditMock = { json: { output: {
+    overall_score: 61,
+    score_rationale: 'Profil ingrijit vizual, dar bio-ul nu spune ce serviciu se vinde.',
+    executive_summary: 'Rezumat.',
+    quick_wins: [{ action: 'Adauga orasul in bio', time_needed: '2 minute', platform: 'instagram' }],
+    content_strategy_30_days: [{ week: 1, focus: 'Incredere', post_types: ['tur cabinet', 'echipa'], goal: 'salvari' }],
+    missing_data: ['Captura cu Insights > Audienta'],
+    red_flags: [],
+    platforms: [
+      {
+        platform: 'instagram', covered: true, handle: '@cabinet', current_bio: 'Zambete frumoase',
+        what_works: [{ observation: 'Grid consistent', evidence: '9/9 thumbnails cu aceeasi paleta', why_it_matters: 'Creste rata de follow' }],
+        what_doesnt: [{ issue: 'Bio fara serviciu', evidence: 'bio_text = "Zambete frumoase"', cost: 'Vizitatorul nu afla ce se ofera' }],
+        improvements: [{ action: 'Rescrie bio', how_to: 'Serviciu + oras + CTA', impact: 'mare', effort: 'mic', expected_result: 'Mai multe click-uri pe link' }],
+        bio_variants: [
+          { angle: 'claritate', text: 'Implant si fatete in Cluj. Programari in 24h.', cta: 'Scrie-ne pe WhatsApp', rationale: 'Contine serviciul si orasul', char_count: 999, name_field: 'Dr. Pop | Stomatologie Estetica Cluj-Napoca' },
+          { angle: 'beneficiu', text: 'Zambesti fara sa iti acoperi gura. Tratament fara durere, explicat pe intelesul tau.', cta: 'Programeaza-te', rationale: 'Vorbeste despre rezultat' },
+          { angle: 'diferentiator', text: 'Acesta este un text absurd de lung, pus intentionat in test ca sa depaseasca limita de o suta cincizeci de caractere impusa de Instagram pentru campul bio.', cta: 'Suna', rationale: 'Test depasire' },
+        ],
+      },
+      { platform: 'facebook', covered: false, bio_variants: [] },
+    ],
+  },
+} };
+t('recalculeaza numarul de caractere si marcheaza depasirea limitei', () => {
+  const out = runNode('a1-build-document.js', {
+    json: { id: 'FOLDER_ID_123' },
+    nodes: {
+      Strateg: [auditMock],
+      'Form Trigger': [{ json: { 'Nume client': 'Cabinet X', 'Nișă': 'dentist' } }],
+      'Merge Extractions': [{ json: { extractedCount: 3, screenshotCount: 4, failed: [{}], lowConfidence: [2] } }],
+    },
+  });
+  const r = out[0].json;
+  const v = auditMock.json.output.platforms[0].bio_variants;
+  eq(v[0].char_count, 45, 'char_count recalculat (modelul spusese 999)');
+  eq(v[0].over_limit, false, 'varianta 1 incape');
+  eq(v[2].over_limit, true, 'varianta 3 depaseste 150');
+  assert(r.flags.some((f) => /peste limita de 150/.test(f)), 'depasirea e raportata in flags');
+  assert(r.flags.some((f) => /Name/.test(f)), 'campul Name peste 30 e raportat');
+});
+t('genereaza corp multipart valid pentru Drive (HTML -> Google Doc)', () => {
+  const out = runNode('a1-build-document.js', {
+    json: { id: 'FOLDER_ID_123' },
+    nodes: {
+      Strateg: [JSON.parse(JSON.stringify(auditMock))],
+      'Form Trigger': [{ json: { 'Nume client': 'Cabinet X', 'Nișă': 'dentist' } }],
+      'Merge Extractions': [{ json: { extractedCount: 3, screenshotCount: 3, failed: [], lowConfidence: [] } }],
+    },
+  });
+  const mp = out[0].json.multipart;
+  const parts = mp.split('--n8nDocBoundary');
+  eq(parts.length, 4, 'doua parti + inchidere');
+  assert(parts[3].startsWith('--'), 'boundary-ul de final e "--n8nDocBoundary--"');
+  const meta = JSON.parse(parts[1].split('\r\n\r\n')[1].trim());
+  eq(meta.mimeType, 'application/vnd.google-apps.document', 'tinta = Google Doc');
+  eq(meta.parents[0], 'FOLDER_ID_123', 'documentul merge in folderul creat');
+  assert(parts[2].includes('Content-Type: text/html'), 'sursa e declarata text/html');
+  assert(/<h1>Audit social media/.test(mp), 'HTML-ul contine titlul');
+  assert(/Nu s-au primit capturi/.test(mp), 'platforma neacoperita e marcata, nu evaluata');
+  assert(!/undefined/.test(out[0].json.html), 'HTML fara "undefined"');
+});
+t('esueaza explicit daca lipseste id-ul folderului', () => {
+  let msg = '';
+  try {
+    runNode('a1-build-document.js', {
+      json: {},
+      nodes: { Strateg: [auditMock], 'Form Trigger': [{ json: {} }], 'Merge Extractions': [{ json: {} }] },
+    });
+  } catch (e) { msg = e.message; }
+  assert(/id-ul folderului/.test(msg), 'mesaj de eroare descriptiv');
+});
+
+console.log('\nAgent B — Build Slice Plan');
+const briefMock = [{
+  json: {
+    niche_key: 'dentist', niche_label: 'Cabinet stomatologic',
+    audience: 'A', pains: 'P', objections: 'O', desires: 'D', services: 'S',
+    proof_assets: 'PA', tone: 'T', local_context: 'LC', forbidden: 'F',
+    niche_days: '03-20 Ziua Mondiala a Sanatatii Orale; 11-14 Ziua Mondiala a Diabetului',
+    pillars: 'Educatie; Autoritate; Behind the scenes; Obiectii; Comunitate',
+    seed_examples: 'Exemplu 1\nExemplu 2',
+  },
+}];
+const holidaysMock = [
+  { json: { date: '2026-01-01', localName: 'Anul Nou', name: "New Year's Day" } },
+  { json: { date: '2026-04-12', localName: 'Paștele', name: 'Easter Sunday' } },
+  { json: { date: '2026-12-25', localName: 'Crăciunul', name: 'Christmas Day' } },
+];
+const intlMock = [
+  { json: { date: '03-20', name_ro: 'Ziua Mondiala a Sanatatii Orale', type: 'nisa', niches: 'dentist', movable: 'false' } },
+  { json: { date: '05-03', name_ro: 'Ziua Mamei (Romania)', type: 'national', niches: 'all', movable: 'true' } },
+  { json: { date: '11-27', name_ro: 'Black Friday', type: 'comercial', niches: 'all', movable: 'true' } },
+  { json: { date: '10-01', name_ro: 'Ziua Internationala a Cafelei', type: 'nisa', niches: 'horeca', movable: 'false' } },
+];
+const startMock = [{ json: { niche_key: 'dentist', client: 'Cabinet X', year: 2026, target_ideas: 500, platforms: 'tiktok,instagram,facebook' } }];
+
+let slicesOut;
+t('construieste 22 de felii pentru tinta de 500 idei (supragenerare ~10%)', () => {
+  slicesOut = runNode('b-build-slice-plan.js', {
+    nodes: { Start: startMock, 'Get Niche Brief': briefMock, 'Get Public Holidays': holidaysMock, 'Get International Days': intlMock },
+  });
+  eq(slicesOut.length, 22, 'numar de felii');
+  eq(slicesOut[0].json.ideas_per_slice, 25, 'idei per felie');
+});
+t('acopera toate cele 12 luni, fara gauri', () => {
+  const months = new Set(slicesOut.map((s) => s.json.month));
+  eq(months.size, 12, 'luni acoperite');
+  eq(Math.min(...months), 1, 'prima luna');
+  eq(Math.max(...months), 12, 'ultima luna');
+});
+t('roteste pilonii, formatele, etapele si platformele', () => {
+  eq(new Set(slicesOut.map((s) => s.json.pillar)).size, 5, 'piloni distincti');
+  eq(new Set(slicesOut.map((s) => s.json.format)).size, 6, 'formate distincte');
+  eq(new Set(slicesOut.map((s) => s.json.funnel_stage)).size, 3, 'etape de funnel');
+  eq(new Set(slicesOut.map((s) => s.json.platform)).size, 3, 'platforme');
+});
+t('calculeaza corect zilele mobile pentru 2026', () => {
+  const may = slicesOut.find((s) => s.json.month === 5).json.occasions;
+  assert(/2026-05-03 — Ziua Mamei/.test(may), `Ziua Mamei = prima duminica din mai 2026 (03.05). Primit: ${may}`);
+  const nov = slicesOut.find((s) => s.json.month === 11).json.occasions;
+  assert(/2026-11-27 — Black Friday/.test(nov), `Black Friday 2026 = 27.11. Primit: ${nov}`);
+});
+t('include sarbatorile religioase mobile din API (Pastele ortodox)', () => {
+  const apr = slicesOut.find((s) => s.json.month === 4).json.occasions;
+  assert(/Paștele/.test(apr) && /sarbatoare legala/.test(apr), `Pastele lipseste din aprilie. Primit: ${apr}`);
+});
+t('filtreaza zilele irelevante pentru nisa', () => {
+  const all = slicesOut.map((s) => s.json.occasions).join(' ');
+  assert(/Sanatatii Orale/.test(all), 'ziua specifica nisei este inclusa');
+  assert(!/Cafelei/.test(all), 'ziua pentru HoReCa NU apare la dentist');
+});
+
+console.log('\nAgent B — Dedupe & Number');
+t('elimina duplicatele exacte si parafrazele, pastreaza ideile distincte', () => {
+  const mk = (title, slice = 1) => ({ json: { title, slice_index: slice, niche_key: 'dentist', target_ideas: 10, hook: 'h', outline: 'o' } });
+  const out = runNode('b-dedupe-and-number.js', {
+    input: [
+      mk('5 mituri despre albirea dentara'),
+      mk('5 mituri despre albirea dentara'),              // duplicat exact
+      mk('Mituri despre albirea dentara: 5 lucruri'),     // parafraza
+      mk('Cat costa un implant dentar', 2),
+      mk('Ce se intampla la prima vizita', 2),
+      mk('Cum alegi aparatul dentar potrivit', 3),
+    ],
+    nodes: { Start: [{ json: { target_ideas: 10, year: 2026 } }] },
+  });
+  eq(out.length, 4, 'idei unice pastrate');
+  eq(out[0].json._stats_dropped_exact, 1, 'duplicat exact eliminat');
+  eq(out[0].json._stats_dropped_similar, 1, 'parafraza eliminata');
+  eq(out[0].json.id, 'dentist-2026-001', 'format id');
+  eq(out[3].json.id, 'dentist-2026-004', 'numerotare continua');
+});
+t('taie la tinta echilibrat intre felii, nu doar din primele', () => {
+  const subiecte = ['implant', 'fatete', 'albire', 'aparat dentar', 'detartraj', 'canal', 'urgente', 'copii', 'proteze', 'igiena'];
+  const unghiuri = ['cat costa', 'cat dureaza', 'ce rezolva', 'mituri despre'];
+  const input = [];
+  for (let s = 1; s <= 4; s++) for (let i = 0; i < 10; i++) {
+    input.push({ json: { title: `${unghiuri[s - 1]} ${subiecte[i]}`, slice_index: s, niche_key: 'x', target_ideas: 8 } });
+  }
+  const out = runNode('b-dedupe-and-number.js', { input, nodes: { Start: [{ json: { target_ideas: 8, year: 2026 } }] } });
+  eq(out.length, 8, 'taiat la tinta');
+  eq(new Set(out.map((o) => o.json.slice_index)).size, 4, 'toate cele 4 felii sunt reprezentate');
+});
+
+console.log(`\n${pass} teste trecute, ${fail} esuate\n`);
+process.exit(fail ? 1 : 0);
