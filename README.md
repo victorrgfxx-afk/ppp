@@ -22,11 +22,11 @@ Deploy to Vercel; plug Supabase, OpenAI, Resend; optional Telegram.
 
 ---
 
-## `game/` — Strada (lume deschisă 3D)
+## `game/` — Strada (plimbare 3D)
 
 Joc 3D în browser care reconstituie o stradă de cartier noaptea, pornind de la
-fotografii: mers liber sau condus, hartă la scară 1:1, totul generat procedural
-(fără assete externe). Vezi [`game/README.md`](game/README.md).
+fotografii: te plimbi liber pe jos, harta e la scara 1:1, totul e generat
+procedural (fără assete externe). Vezi [`game/README.md`](game/README.md).
 
 ```bash
 python3 -m http.server 8000   # apoi http://localhost:8000/game/

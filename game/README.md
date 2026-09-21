@@ -1,10 +1,12 @@
-# Strada — lume deschisă 3D, reconstruită din fotografii
+# Strada — plimbare 3D, reconstruită din fotografii
 
-Joc 3D în browser care reproduce **strada din fotografiile de referință**: un
-cartier rezidențial românesc noaptea, cu mașini parcate lângă bordură, stâlpi
-de utilități cu lămpi cobra‑head și rețeaua de cabluri suspendate, garduri de
-lemn, piatră și metal, curți cu thuja și case cu țiglă. Te miști liber, pe jos
-sau la volanul oricărei mașini de pe stradă.
+Joc 3D în browser care reproduce **strada din fotografiile de referință**, la
+scara 1:1: un cartier rezidențial românesc noaptea, cu mașini parcate lângă
+bordură, stâlpi de utilități cu lămpi cobra‑head și rețeaua de cabluri
+suspendate, garduri de lemn, piatră și metal, curți cu thuja și case cu țiglă.
+
+Te plimbi **pe jos**, oriunde vrei. Mașinile sunt decor — au coliziuni, dar nu
+se conduc.
 
 Rulează local, fără build și fără conexiune la internet.
 
@@ -19,26 +21,25 @@ blochează prin CORS. Cere WebGL2 (Chrome/Edge/Firefox/Safari 15+).
 
 ## Comenzi
 
-| Tastă | Pe jos | La volan |
-|---|---|---|
-| `W A S D` | deplasare | accelerație / frână / direcție |
-| `SHIFT` | fugă | — |
-| `SPAȚIU` | săritură | frână de mână (derapaj) |
-| `CTRL` / `C` | ghemuit | — |
-| `F` | urci în mașina din apropiere | cobori |
-| `V` | persoana I ↔ persoana III | urmăritoare / capotă / cinematică |
-| `L` | — | faruri |
-| `ROTIȚA` | distanța camerei | — |
-| `H` | ascunde interfața | |
-| `P` | salvează o captură PNG | |
-| `R` | revii la poziția inițială | |
-| `ESC` | meniu și setări | |
+| Tastă | Ce face |
+|---|---|
+| `W A S D` | mergi |
+| `SHIFT` | fugi (5,6 m/s) |
+| `SPAȚIU` | sari |
+| `CTRL` / `C` | te ghemuiești |
+| `MOUSE` | privești în jur |
+| `ROTIȚA` | distanța camerei |
+| `V` | persoana I ↔ persoana a III‑a |
+| `H` | ascunzi interfața |
+| `P` | salvezi o captură PNG |
+| `R` | revii la începutul străzii |
+| `ESC` | meniu și setări |
 
 Mișcarea camerei se face cu mouse-ul, după ce dai click pe canvas (pointer lock).
 
 ## Ce conține harta
 
-Strada‑erou măsoară ~450 m și e construită la scară 1:1 după fotografii:
+Strada‑erou măsoară ~450 m și e construită la scara 1:1 după fotografii:
 
 - **carosabil de 6 m** cu bombament real de 2,6 %, bordură de 13 cm, trotuar
   betonat pe stânga și acostament înierbat pe dreapta;
@@ -47,16 +48,21 @@ Strada‑erou măsoară ~450 m și e construită la scară 1:1 după fotografii:
 - **13 stâlpi** la 28 m, cu consolă, izolatori, braț curbat și corp de iluminat
   cobra‑head; între ei 6 fire în catenară plus branșamente care traversează
   strada în diagonală;
-- **19 mașini** parcate în șirul din fotografii (berline, break‑uri, hatchback‑uri,
-  un SUV), fiecare conducibilă, cu plăcuțe românești;
+- **21 de mașini** parcate în șirul din fotografii (berline, break‑uri,
+  hatchback‑uri, un SUV), cu plăcuțe românești, unele cu botul spre tine și
+  altele cu spatele, exact ca în poze;
+- **rostul transversal de bitum** din prim‑planul primei fotografii, cu covorul
+  asfaltic mai nou dincolo de el, și un petic de reparație pe o bandă;
 - **garduri** de lemn cu soclu de beton, ziduri de piatră cu stâlpi de cărămidă,
   garduri metalice pe soclu, porți de lemn și metal;
 - **case** cu soclu de piatră, acoperiș în două ape, ferestre (unele luminate),
   garaje, terase și burlane;
 - detalii: podețe de beton în dreptul porților, cutii de branșament, capace de
   canal, guri de scurgere, pubele, cutii poștale, tufe și smocuri de iarbă;
+- două case reproduc direct fotografiile: cea modernă cu etajul placat cu lemn
+  și cea cu țiglă cărămizie lipită de stradă;
 - în plus, un **cvartal întreg** (două străzi transversale, o stradă paralelă și
-  o alee) ca să ai circuit închis de condus, nu doar un coridor.
+  o alee), ca să ai unde te plimba dincolo de strada principală.
 
 ## Cum e făcut
 
@@ -76,7 +82,6 @@ Singura dependență e Three.js r169, inclus în `vendor/`.
 | `src/sky.js` | cupolă de cer cu gradient, stele și halou de poluare luminoasă |
 | `src/postfx.js` | HDR half‑float + MSAA → bloom pe 5 niveluri → ACES, gradare, vignetă, grain, dither |
 | `src/player.js` | controller de personaj cu coliziuni și ciclu de mers |
-| `src/vehicle.js` | fizică de mașină cu unghiuri de derivă |
 | `src/audio.js` | sunet procedural (WebAudio), zero fișiere audio |
 | `src/hud.js` | minimap rotativ, vitezometru, indicatoare |
 
@@ -93,9 +98,11 @@ geometria vizibilă, pasul jucătorului și suspensia mașinii, deci nu există
 niciodată decalaj între ce vezi și pe ce mergi. Mașinile parcate stau înclinate
 pe bombamentul real al străzii, nu orizontal.
 
-**Fizică la pas fix.** Modelul de mașină rulează la 120 Hz indiferent de
-framerate: unghiuri de derivă cu saturarea forței laterale, deci subvirare la
-intrarea prea rapidă în viraj și derapaj controlabil la frâna de mână.
+**Normale cu praguri de muchie.** `ExtrudeGeometry` nu împarte vârfuri între
+fețe, deci `computeVertexNormals()` dă shading complet fațetat — caroseria arăta
+ca hârtie pliată. Caroseriile trec printr‑o netezire proprie care acumulează
+doar normalele fețelor aflate sub 52° una de alta: tabla se netezește, muchiile
+reale rămân tăioase.
 
 **Post‑procesare proprie.** Scena se randează în HDR half‑float cu MSAA, apoi
 trece prin bright‑pass, cinci niveluri de bloom, tone‑mapping ACES, gradare
@@ -110,5 +117,5 @@ ultra) se alege tot de acolo și reîncarcă pagina; controlează MSAA, rezoluț
 de randare, umbrele și densitatea vegetației.
 
 Pe o placă video dedicată jocul merge la 60 fps în 1080p pe setarea *ridicată*
-(~560 k triunghiuri, ~560 draw‑call‑uri). Pe grafică integrată, alege *medie*
+(~505 k triunghiuri, ~620 draw‑call‑uri). Pe grafică integrată, alege *medie*
 sau coboară rezoluția de randare la 0,8.

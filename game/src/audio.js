@@ -1,7 +1,7 @@
 /**
- * Sunet procedural (WebAudio): ambianta de noapte (vant + greieri + latrat
- * departat), pasi dependenti de suprafata, motor cu armonici modulate de
- * turatie/sarcina, scartait de cauciuc si impacturi. Zero fisiere audio.
+ * Sunet procedural (WebAudio): ambianta de noapte - vant filtrat, greieri si
+ * cate un latrat departat - plus pasi al caror timbru depinde de suprafata
+ * (asfalt sau iarba). Niciun fisier audio: totul e sintetizat.
  */
 
 function noiseBuffer(ctx, seconds = 2) {
@@ -82,66 +82,6 @@ export class GameAudio {
     trill.connect(trillGain).connect(this.cricketGain.gain);
     trill.start();
 
-    /* ---- vant de viteza (in masina) ---- */
-    this.rushSrc = ctx.createBufferSource();
-    this.rushSrc.buffer = this.noise;
-    this.rushSrc.loop = true;
-    this.rushLp = ctx.createBiquadFilter();
-    this.rushLp.type = 'lowpass';
-    this.rushLp.frequency.value = 900;
-    this.rushGain = ctx.createGain();
-    this.rushGain.gain.value = 0;
-    this.rushSrc.connect(this.rushLp).connect(this.rushGain).connect(this.bus);
-    this.rushSrc.start();
-
-    /* ---- motor ---- */
-    this.engineGain = ctx.createGain();
-    this.engineGain.gain.value = 0;
-    this.engineLp = ctx.createBiquadFilter();
-    this.engineLp.type = 'lowpass';
-    this.engineLp.frequency.value = 700;
-    this.engineLp.Q.value = 2.2;
-    this.engineGain.connect(this.engineLp).connect(this.bus);
-    this.oscs = [];
-    for (const [type, mult, gain] of [['sawtooth', 0.5, 0.5], ['sawtooth', 1, 0.42],
-      ['square', 2, 0.12], ['sawtooth', 3, 0.07]]) {
-      const o = ctx.createOscillator();
-      o.type = type;
-      o.frequency.value = 40 * mult;
-      const g = ctx.createGain();
-      g.gain.value = gain;
-      o.connect(g).connect(this.engineGain);
-      o.start();
-      this.oscs.push({ o, mult });
-    }
-    // admisie / turbulenta
-    this.intakeSrc = ctx.createBufferSource();
-    this.intakeSrc.buffer = this.noise;
-    this.intakeSrc.loop = true;
-    const ibp = ctx.createBiquadFilter();
-    ibp.type = 'bandpass';
-    ibp.frequency.value = 480;
-    ibp.Q.value = 1.1;
-    this.intakeGain = ctx.createGain();
-    this.intakeGain.gain.value = 0;
-    this.intakeSrc.connect(ibp).connect(this.intakeGain).connect(this.bus);
-    this.intakeSrc.start();
-    this.intakeBp = ibp;
-
-    /* ---- scartait cauciuc ---- */
-    this.screechSrc = ctx.createBufferSource();
-    this.screechSrc.buffer = this.noise;
-    this.screechSrc.loop = true;
-    const sbp = ctx.createBiquadFilter();
-    sbp.type = 'bandpass';
-    sbp.frequency.value = 1500;
-    sbp.Q.value = 6;
-    this.screechGain = ctx.createGain();
-    this.screechGain.gain.value = 0;
-    this.screechSrc.connect(sbp).connect(this.screechGain).connect(this.bus);
-    this.screechSrc.start();
-    this.screechBp = sbp;
-
     this.ready = true;
     this._nextBark = ctx.currentTime + 12 + Math.random() * 30;
   }
@@ -190,18 +130,6 @@ export class GameAudio {
     }
   }
 
-  impact(strength = 1) {
-    if (!this.ready) return;
-    const s = Math.min(1, strength / 10);
-    this._burst(150, 1.0, 0.30, 0.30 * s, 'lowpass');
-    this._burst(1800, 2.0, 0.16, 0.22 * s);
-  }
-
-  doorClose() {
-    this._burst(180, 1.6, 0.20, 0.22, 'lowpass');
-    this._burst(2600, 3.0, 0.07, 0.10);
-  }
-
   bark() {
     if (!this.ready) return;
     const ctx = this.ctx;
@@ -234,28 +162,5 @@ export class GameAudio {
       if (Math.random() < 0.35) setTimeout(() => this.bark(), 700);
     }
 
-    if (state.driving) {
-      const rpm = state.rpm || 900;
-      const f0 = rpm / 60 * 2;                 // frecventa de aprindere
-      for (const { o, mult } of this.oscs) {
-        o.frequency.setTargetAtTime(f0 * mult, t, 0.05);
-      }
-      const load = Math.min(1, (state.throttle || 0) * 0.8 + Math.abs(state.speed) / 30);
-      this.engineGain.gain.setTargetAtTime(0.10 + load * 0.13, t, 0.08);
-      this.engineLp.frequency.setTargetAtTime(420 + load * 2100 + f0 * 1.8, t, 0.08);
-      this.intakeGain.gain.setTargetAtTime(0.008 + load * 0.045, t, 0.1);
-      this.intakeBp.frequency.setTargetAtTime(360 + load * 900, t, 0.1);
-      const sp = Math.abs(state.speed || 0);
-      this.rushGain.gain.setTargetAtTime(Math.min(0.12, sp * 0.0045), t, 0.15);
-      this.rushLp.frequency.setTargetAtTime(500 + sp * 45, t, 0.2);
-      const slip = state.slip || 0;
-      this.screechGain.gain.setTargetAtTime(slip > 0.35 ? (slip - 0.35) * 0.16 : 0, t, 0.06);
-      this.screechBp.frequency.setTargetAtTime(1200 + slip * 1400, t, 0.1);
-    } else {
-      this.engineGain.gain.setTargetAtTime(0, t, 0.25);
-      this.intakeGain.gain.setTargetAtTime(0, t, 0.25);
-      this.screechGain.gain.setTargetAtTime(0, t, 0.1);
-      this.rushGain.gain.setTargetAtTime(Math.min(0.03, (state.speed || 0) * 0.004), t, 0.3);
-    }
   }
 }

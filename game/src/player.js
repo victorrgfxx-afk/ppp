@@ -95,7 +95,6 @@ export class Player {
     this.camDist = 4.0;
     this.camHeight = 1.52;
     this.camSide = 0.52;
-    this.inVehicle = null;
     this.mesh = buildCharacter();
     this.mesh.castShadow = true;
     this.camPos = new THREE.Vector3();
@@ -108,7 +107,6 @@ export class Player {
   get height() { return H - this.crouch * 0.62; }
 
   update(dt, input) {
-    if (this.inVehicle) { this.mesh.visible = false; return; }
     this.mesh.visible = this.mode === 'tps';
 
     // --- intentie de miscare in spatiul camerei ---

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Strada · open world 3D</title>
+<title>Strada · plimbare 3D</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23090c12'/%3E%3Cpath d='M4 30 L13 6 h6 l9 24z' fill='%232b3038'/%3E%3Cpath d='M15 8 h2 l0 5 h-2z M14 16 h2 l0 5 h-2z M13 25 h2.5 l0 5 h-2.5z' fill='%23e8e8e4'/%3E%3Ccircle cx='24' cy='7' r='3' fill='%23ffd98a'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -78,7 +78,6 @@
   /* ---------------- HUD ---------------- */
   #hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; transition: opacity .3s; }
   #minimap { position: absolute; left: 20px; bottom: 20px; filter: drop-shadow(0 8px 24px rgba(0,0,0,.6)); }
-  #speedo { position: absolute; right: 22px; bottom: 18px; opacity: 0; transition: opacity .35s; filter: drop-shadow(0 8px 24px rgba(0,0,0,.6)); }
   #zone {
     position: absolute; left: 20px; bottom: 232px; font-size: 19px; font-weight: 650;
     letter-spacing: .4px; text-shadow: 0 2px 14px rgba(0,0,0,.9); opacity: 0;
@@ -96,10 +95,6 @@
     background: rgba(8, 11, 17, .68); border: 1px solid var(--line);
     opacity: 0; transition: opacity .2s; white-space: nowrap;
   }
-  #carinfo {
-    position: absolute; right: 22px; bottom: 150px; font-size: 12px; color: var(--dim);
-    letter-spacing: .8px; opacity: 0; transition: opacity .3s; text-align: right;
-  }
   #stats {
     position: absolute; right: 14px; top: 12px; font: 500 11px ui-monospace, monospace;
     color: rgba(255,255,255,.4); letter-spacing: .3px;
@@ -110,7 +105,6 @@
   }
   @media (max-width: 720px) {
     #minimap { transform: scale(.78); transform-origin: left bottom; }
-    #speedo { transform: scale(.85); transform-origin: right bottom; }
     #zone { bottom: 196px; font-size: 16px; }
   }
 </style>
@@ -120,35 +114,32 @@
 
 <div id="hud">
   <canvas id="minimap"></canvas>
-  <canvas id="speedo"></canvas>
   <div id="zone"></div>
   <div id="hint"></div>
-  <div id="carinfo"></div>
   <div id="stats"></div>
-  <div id="helpline">WASD · SHIFT fuga · F masina · V camera · L faruri · ESC meniu</div>
+  <div id="helpline">WASD mers · SHIFT fuga · CTRL ghemuit · V camera · H interfata · ESC meniu</div>
 </div>
 
 <div id="start" class="overlay">
   <div class="card">
-    <h2>Strada — lume deschisa 3D</h2>
+    <h2>Strada — plimbare 3D</h2>
     <p class="lead">
-      Cartierul din fotografii, reconstruit la scara 1:1: carosabil ingust cu marcaj lateral
+      Strada din fotografii, reconstruita la scara 1:1: carosabil de 6 m cu marcaj lateral
       discontinuu, masini parcate langa bordura, stalpi cu lampi cobra-head si reteaua de
       cabluri suspendate, garduri de lemn, piatra si metal, curti cu thuja si case cu tigla.
-      Te misti liber, pe jos sau la volanul oricarei masini.
+      Te plimbi liber pe jos, oriunde vrei.
     </p>
     <div class="keys">
-      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> deplasare</div>
-      <div><kbd>SHIFT</kbd> fuga</div>
-      <div><kbd>SPATIU</kbd> saritura / frana de mana</div>
-      <div><kbd>CTRL</kbd> ghemuit</div>
-      <div><kbd>F</kbd> urci / cobori din masina</div>
-      <div><kbd>V</kbd> schimbi camera</div>
-      <div><kbd>L</kbd> faruri</div>
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mergi</div>
+      <div><kbd>SHIFT</kbd> fugi</div>
+      <div><kbd>SPATIU</kbd> sari</div>
+      <div><kbd>CTRL</kbd> te ghemuiesti</div>
+      <div><kbd>MOUSE</kbd> privesti in jur</div>
+      <div><kbd>ROTITA</kbd> distanta camerei</div>
+      <div><kbd>V</kbd> persoana I / a III-a</div>
       <div><kbd>H</kbd> ascunzi interfata</div>
       <div><kbd>P</kbd> salvezi o captura</div>
-      <div><kbd>R</kbd> revii la pozitia initiala</div>
-      <div><kbd>ROTITA</kbd> distanta camerei</div>
+      <div><kbd>R</kbd> revii la inceputul strazii</div>
       <div><kbd>ESC</kbd> meniu si setari</div>
     </div>
     <button class="btn" id="startbtn">Intra in joc</button>

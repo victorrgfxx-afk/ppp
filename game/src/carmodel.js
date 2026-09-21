@@ -5,50 +5,50 @@
  * credibila, nu "cutii stivuite".
  */
 import * as THREE from '../vendor/three.module.min.js';
-import { mergeGeos, box, cyl } from './geo.js';
+import { mergeGeos, box, cyl, smoothNormals } from './geo.js';
 import { smoothstep, makeRng, clamp } from './noise.js';
 
 /* Siluete (z: fata = negativ). Toate cotele sunt in metri, reale. */
 export const CAR_TYPES = {
-  sedan: {   // berlina compacta premium (ca BMW-ul din prima poza)
-    L: 4.54, W: 1.82, wb: 2.76, wr: 0.335, tw: 0.225, sill: 0.30, archR: 0.45,
+  sedan: {   // berlina compacta premium, ~4,52 m, ampatament 2,76
+    L: 4.52, W: 1.82, wb: 2.76, wr: 0.335, tw: 0.225, sill: 0.30, archR: 0.45,
     prof: [
-      [-2.27, 0.44], [-2.26, 0.66], [-2.16, 0.79], [-1.86, 0.855], [-1.00, 0.925],
-      [-0.42, 1.31], [0.50, 1.405], [1.16, 1.14], [1.86, 1.035], [2.18, 0.93],
-      [2.25, 0.66], [2.24, 0.44],
+      [-2.26, 0.42], [-2.27, 0.62], [-2.18, 0.76], [-1.96, 0.82], [-1.05, 0.92],
+      [-0.34, 1.34], [0.55, 1.41], [1.22, 1.16], [1.86, 1.02], [2.16, 0.88],
+      [2.24, 0.60], [2.22, 0.42],
     ],
-    glass: [[-0.38, 0.95], [-0.30, 1.28], [0.46, 1.36], [1.10, 1.10], [1.10, 0.95]],
-    tumble: 0.15, taper: 0.22,
+    glass: [[-0.98, 0.98], [-0.36, 1.30], [0.52, 1.37], [1.16, 1.12], [1.16, 0.98]],
+    tumble: 0.13, taper: 0.17,
   },
-  wagon: {   // break (Octavia/Passat)
-    L: 4.66, W: 1.81, wb: 2.71, wr: 0.335, tw: 0.225, sill: 0.30, archR: 0.45,
+  wagon: {   // break, ~4,66 m, hayon aproape vertical
+    L: 4.66, W: 1.81, wb: 2.68, wr: 0.335, tw: 0.225, sill: 0.30, archR: 0.45,
     prof: [
-      [-2.33, 0.44], [-2.32, 0.66], [-2.22, 0.80], [-1.92, 0.86], [-1.02, 0.94],
-      [-0.44, 1.33], [0.60, 1.46], [1.62, 1.45], [2.00, 1.38], [2.22, 1.10],
-      [2.30, 0.70], [2.30, 0.44],
+      [-2.33, 0.42], [-2.34, 0.62], [-2.25, 0.78], [-2.02, 0.84], [-1.08, 0.93],
+      [-0.40, 1.35], [0.62, 1.47], [1.72, 1.48], [2.12, 1.44], [2.27, 1.08],
+      [2.32, 0.70], [2.30, 0.42],
     ],
-    glass: [[-0.40, 0.97], [-0.32, 1.30], [1.55, 1.40], [1.95, 1.30], [1.95, 0.97]],
-    tumble: 0.14, taper: 0.20,
+    glass: [[-1.00, 0.97], [-0.42, 1.31], [1.68, 1.43], [2.06, 1.30], [2.06, 0.97]],
+    tumble: 0.12, taper: 0.15,
   },
-  hatch: {   // hatchback mic (Astra/C3 din poze)
-    L: 4.02, W: 1.75, wb: 2.51, wr: 0.315, tw: 0.215, sill: 0.31, archR: 0.43,
+  hatch: {   // hatchback compact, ~4,11 m, bot scurt dar nu de furgoneta
+    L: 4.11, W: 1.75, wb: 2.61, wr: 0.315, tw: 0.215, sill: 0.31, archR: 0.43,
     prof: [
-      [-2.01, 0.44], [-2.00, 0.66], [-1.90, 0.80], [-1.62, 0.87], [-0.86, 0.96],
-      [-0.30, 1.32], [0.66, 1.46], [1.34, 1.38], [1.68, 1.12], [1.78, 0.82],
-      [1.80, 0.60], [1.79, 0.44],
+      [-2.05, 0.40], [-2.06, 0.62], [-1.98, 0.78], [-1.80, 0.83], [-0.95, 0.94],
+      [-0.20, 1.38], [0.72, 1.44], [1.30, 1.40], [1.62, 1.10], [1.78, 0.78],
+      [1.82, 0.58], [1.80, 0.40],
     ],
-    glass: [[-0.26, 0.99], [-0.20, 1.29], [1.22, 1.38], [1.58, 1.10], [1.58, 0.99]],
-    tumble: 0.14, taper: 0.22,
+    glass: [[-0.88, 0.98], [-0.22, 1.34], [1.20, 1.40], [1.58, 1.14], [1.58, 0.98]],
+    tumble: 0.12, taper: 0.17,
   },
-  suv: {     // SUV compact (Jeep-ul albastru din a treia poza)
+  suv: {     // SUV compact, ~4,40 m, garda la sol mai mare
     L: 4.40, W: 1.86, wb: 2.64, wr: 0.375, tw: 0.245, sill: 0.42, archR: 0.50,
     prof: [
-      [-2.20, 0.54], [-2.19, 0.82], [-2.10, 1.00], [-1.80, 1.06], [-0.96, 1.16],
-      [-0.40, 1.52], [0.66, 1.66], [1.50, 1.64], [1.86, 1.52], [2.06, 1.16],
-      [2.14, 0.84], [2.13, 0.54],
+      [-2.20, 0.52], [-2.21, 0.80], [-2.12, 0.98], [-1.92, 1.04], [-1.02, 1.14],
+      [-0.42, 1.52], [0.62, 1.64], [1.52, 1.64], [1.88, 1.56], [2.04, 1.16],
+      [2.12, 0.82], [2.10, 0.52],
     ],
-    glass: [[-0.36, 1.19], [-0.28, 1.49], [1.44, 1.59], [1.82, 1.45], [1.82, 1.19]],
-    tumble: 0.12, taper: 0.20,
+    glass: [[-0.96, 1.18], [-0.44, 1.48], [1.48, 1.58], [1.82, 1.44], [1.82, 1.18]],
+    tumble: 0.11, taper: 0.15,
   },
 };
 
@@ -76,12 +76,16 @@ function bodyGeometry(t) {
   shape.absarc(zf, sill, archR, 0, Math.PI, false);
   shape.lineTo(prof[0][0], prof[0][1]);
 
+  // ATENTIE: cu bevel, geometria se intinde de la -bevelThickness la
+  // depth + bevelThickness, deci latimea totala e depth + 2*BT. Extrudam mai
+  // subtire, ca latimea finala sa fie exact W (altfel geamurile raman in tabla).
+  const BT = 0.05;
   const g = new THREE.ExtrudeGeometry(shape, {
-    depth: W, bevelEnabled: true, bevelThickness: 0.055, bevelSize: 0.075,
-    bevelSegments: 2, curveSegments: 12,
+    depth: W - 2 * BT, bevelEnabled: true, bevelThickness: BT, bevelSize: 0.065,
+    bevelSegments: 3, curveSegments: 14,
   });
   g.rotateY(-Math.PI / 2);
-  g.translate(W / 2, 0, 0);
+  g.translate(W / 2 - BT, 0, 0);
 
   // deformari: streasina acoperisului (tumblehome) + rotunjirea botului/spatelui
   const pos = g.attributes.position;
@@ -96,31 +100,58 @@ function bodyGeometry(t) {
     if (y > roofY - 0.25) pos.setY(i, y - Math.pow(Math.abs(x) / (W / 2), 2) * 0.035);
   }
   pos.needsUpdate = true;
-  g.computeVertexNormals();
+  // tabla e o suprafata lina: netezim normalele, dar pastram muchiile reale
+  smoothNormals(g, 52);
   return g;
 }
 
 function glassGeometry(t) {
-  const { W, glass, tumble } = t;
+  const { W, glass, prof, sill, tumble } = t;
   const out = [];
-  const xw = (W / 2) * (1 - tumble * 0.62);
-  for (const s of [-1, 1]) {
+  const roofY = Math.max(...prof.map((p) => p[1]));
+  const beltY = sill + 0.55;
+  // Geamul lateral trebuie sa urmeze inclinarea tablei (tumblehome), altfel
+  // ramane ingropat in caroserie si nu se vede deloc.
+  const surfaceX = (y) => (W / 2) * (1 - smoothstep(beltY, roofY, y) * tumble) + 0.013;
+
+  for (const sgn of [-1, 1]) {
     const shape = new THREE.Shape();
     shape.moveTo(glass[0][0], glass[0][1]);
     for (let i = 1; i < glass.length; i++) shape.lineTo(glass[i][0], glass[i][1]);
-    const g = new THREE.ShapeGeometry(shape, 8);
-    g.rotateY(s > 0 ? -Math.PI / 2 : Math.PI / 2);
-    g.translate(s * xw, 0, 0);
-    out.push(g);
+    const g = new THREE.ShapeGeometry(shape, 10);
+    // ShapeGeometry e in planul XY: x = coordonata pe lungime, y = inaltime
+    const pos = g.attributes.position;
+    const n = pos.count;
+    const np = new Float32Array(n * 3);
+    const nn = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const lz = pos.getX(i), ly = pos.getY(i);
+      np[i * 3] = sgn * surfaceX(ly);
+      np[i * 3 + 1] = ly;
+      np[i * 3 + 2] = lz;
+      nn[i * 3] = sgn; nn[i * 3 + 1] = 0; nn[i * 3 + 2] = 0;
+    }
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute('position', new THREE.BufferAttribute(np, 3));
+    gg.setAttribute('normal', new THREE.BufferAttribute(nn, 3));
+    gg.setAttribute('uv', g.attributes.uv);
+    const idx = g.index ? Array.from(g.index.array) : null;
+    if (idx) {
+      if (sgn < 0) for (let i = 0; i < idx.length; i += 3) { const t0 = idx[i + 1]; idx[i + 1] = idx[i + 2]; idx[i + 2] = t0; }
+      gg.setIndex(idx);
+    }
+    g.dispose();
+    out.push(gg);
   }
+
   // parbriz + luneta
   const wsA = glass[0], wsB = glass[1];
-  const ws = new THREE.PlaneGeometry(W * 0.80, Math.hypot(wsB[0] - wsA[0], wsB[1] - wsA[1]) * 1.06);
+  const ws = new THREE.PlaneGeometry(W * 0.78, Math.hypot(wsB[0] - wsA[0], wsB[1] - wsA[1]) * 1.04);
   ws.rotateX(-Math.PI / 2 + Math.atan2(wsB[1] - wsA[1], wsB[0] - wsA[0]) + Math.PI / 2);
   ws.translate(0, (wsA[1] + wsB[1]) / 2, (wsA[0] + wsB[0]) / 2);
   out.push(ws);
   const rlA = glass[glass.length - 3], rlB = glass[glass.length - 2];
-  const rl = new THREE.PlaneGeometry(W * 0.76, Math.hypot(rlB[0] - rlA[0], rlB[1] - rlA[1]) * 1.05);
+  const rl = new THREE.PlaneGeometry(W * 0.74, Math.hypot(rlB[0] - rlA[0], rlB[1] - rlA[1]) * 1.04);
   rl.rotateX(-Math.PI / 2 + Math.atan2(rlB[1] - rlA[1], rlB[0] - rlA[0]) + Math.PI / 2);
   rl.translate(0, (rlA[1] + rlB[1]) / 2, (rlA[0] + rlB[0]) / 2);
   out.push(rl);
@@ -225,13 +256,14 @@ export function buildCar(opts = {}) {
   const rubber = new THREE.MeshStandardMaterial({ color: 0x171819, metalness: 0.0, roughness: 0.95 });
   const rimMat = new THREE.MeshStandardMaterial({ color: 0xb2b6bb, metalness: 0.88, roughness: 0.30, envMap: env, envMapIntensity: 1.3 });
   const chrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.95, roughness: 0.18, envMap: env, envMapIntensity: 1.4 });
+  // farurile sunt stinse: masinile sunt parcate, deci doar sticla reflecta
   const headMat = new THREE.MeshStandardMaterial({
-    color: 0xdfe6f2, emissive: 0xfff4de, emissiveIntensity: 0.0,
-    metalness: 0.1, roughness: 0.15,
+    color: 0x9fa8b6, metalness: 0.15, roughness: 0.22,
+    envMap: env, envMapIntensity: 1.4,
   });
   const tailMat = new THREE.MeshStandardMaterial({
-    color: 0x4a0d10, emissive: 0xff2018, emissiveIntensity: 0.0,
-    metalness: 0.1, roughness: 0.25,
+    color: 0x5e1216, metalness: 0.1, roughness: 0.28,
+    envMap: env, envMapIntensity: 1.2,
   });
 
   const bodyMesh = new THREE.Mesh(cache.body, paint);
@@ -339,10 +371,7 @@ export function buildCar(opts = {}) {
     wheels.push({ pivot, spin: w, front, side: sx });
   }
 
-  group.userData = {
-    type, spec: t, headMat, tailMat, paint, wheels, plate,
-    lightsOn: false, brake: 0,
-  };
+  group.userData = { type, spec: t, paint, wheels, plate };
   return group;
 }
 

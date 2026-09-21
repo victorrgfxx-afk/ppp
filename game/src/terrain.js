@@ -129,17 +129,33 @@ function ribbon(road, d0, d1, yOff0, yOff1, step, uScale, vScale) {
   return ensureUp(g);
 }
 
-/** Banda de asfalt, cu bombament (doua fasii ca sa apara creasta centrala). */
-export function asphaltGeo(road, step = 2.0) {
+/** Banda de asfalt, cu bombament (mai multe fasii, ca sa apara creasta). */
+export function asphaltGeo(road, step = 2.0, lift = 0) {
   const hw = road.hw;
   const s = 1 / 2.6;         // 1 dala de textura = 2.6 m
   const gs = [];
   const seg = 6;
   for (let k = 0; k < seg; k++) {
     const d0 = lerp(-hw, hw, k / seg), d1 = lerp(-hw, hw, (k + 1) / seg);
-    gs.push(ribbon(road, d0, d1, -0.026 * Math.abs(d0), -0.026 * Math.abs(d1), step, s, s));
+    gs.push(ribbon(road, d0, d1,
+      -0.026 * Math.abs(d0) + lift, -0.026 * Math.abs(d1) + lift, step, s, s));
   }
   return gs;
+}
+
+/**
+ * Rost transversal de bitum (imbinarea a doua covoare asfaltice) - linia
+ * care traverseaza carosabilul in prim-planul primei fotografii.
+ */
+export function seamGeo(road, at, width = 0.09) {
+  const sub = { axis: road.axis, c: road.c, a: at - width / 2, b: at + width / 2, hw: road.hw };
+  return asphaltGeo(sub, width, 0.005);
+}
+
+/** Portiune de covor asfaltic mai nou, cu alta nuanta. */
+export function overlayGeo(road, from, to, lift = 0.003) {
+  const sub = { axis: road.axis, c: road.c, a: from, b: to, hw: road.hw };
+  return asphaltGeo(sub, 3.0, lift);
 }
 
 /** Bordura: fata verticala + calota superioara. */

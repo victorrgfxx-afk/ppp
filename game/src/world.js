@@ -1,19 +1,20 @@
 /**
- * HARTA. Reconstituie strada din fotografii: carosabil ingust de cartier
- * cu marcaj lateral discontinuu, masini parcate pe stanga langa bordura,
- * stalpi de utilitati cu lampi cobra-head si zeci de cabluri suspendate,
- * garduri de lemn / piatra / metal pe dreapta, curti, thuja si case.
- * Pe langa strada-erou exista un cvartal intreg, ca sa ai unde circula.
+ * HARTA. Reconstituie strada din fotografii, la scara 1:1: carosabil ingust
+ * de cartier cu marcaj lateral discontinuu, masini parcate pe stanga langa
+ * bordura, stalpi de utilitati cu lampi cobra-head si reteaua de cabluri
+ * suspendate, garduri de lemn / piatra / metal pe dreapta, curti, thuja si
+ * case. Masinile sunt decor: au coliziuni, dar nu se conduc.
  */
 import * as THREE from '../vendor/three.module.min.js';
 import { ColliderSet, closestOnCollider, mergeGeos, box, scaleUV } from './geo.js';
 import {
   ROADS, surfaceY, landY, asphaltGeo, kerbGeo, walkGeo, markingGeos,
-  terrainGeo, tireTrackGeos, ROAD_HW,
+  terrainGeo, tireTrackGeos, seamGeo, overlayGeo, ROAD_HW,
 } from './terrain.js';
 import {
   GeoBag, utilityPole, powerLines, fenceRun, gate, house, tree,
   manhole, drainGrate, culvertSlab, meterBox, trashBin, mailbox, grassTufts,
+  wallBox, concreteBlock,
 } from './props.js';
 import { StreetLights, nightAmbience } from './lighting.js';
 import { SkyDome } from './sky.js';
@@ -40,7 +41,7 @@ export class World {
     this.scene = scene;
     this.T = textures;
     this.renderer = renderer;
-    this.opts = Object.assign({ quality: 'high', carCount: 16, haze: true }, opts);
+    this.opts = Object.assign({ quality: 'high', haze: true }, opts);
     this.colliders = new ColliderSet(9);
     this.cars = [];
     this.lamps = null;
@@ -69,9 +70,13 @@ export class World {
     /* ---------------------------- materiale ---------------------------- */
     const M = this.materials = {
       asphalt: mat(T.asphalt, { roughness: 1.0, envMapIntensity: 0.30 }),
+      asphaltNou: mat(T.asphalt, { roughness: 0.96, envMapIntensity: 0.34, color: 0xc2c4c8 }),
+      seam: new THREE.MeshStandardMaterial({ color: 0x15161a, roughness: 0.52, metalness: 0.0, envMapIntensity: 0.5 }),
+      meterCabinet: new THREE.MeshStandardMaterial({ color: 0x9b9990, roughness: 0.6, metalness: 0.2, envMapIntensity: 0.5 }),
+      woodClad: mat(T.wood, { envMapIntensity: 0.16, color: 0x7d6a58 }),
       paint: new THREE.MeshStandardMaterial({ map: T.paint, roughness: 0.62, metalness: 0.0, envMapIntensity: 0.4 }),
       kerb: mat(T.kerb, { envMapIntensity: 0.22, color: 0x7d7a73 }),
-      walk: mat(T.pavers, { envMapIntensity: 0.22, color: 0x565550 }),
+      walk: mat(T.pavers, { envMapIntensity: 0.22, color: 0x4d4b46 }),
       grass: mat(T.grass, { envMapIntensity: 0.18, color: 0x6e7a66 }),
       concrete: mat(T.concrete, { envMapIntensity: 0.22, color: 0x74716b }),
       stone: mat(T.stone, { envMapIntensity: 0.18, color: 0x8b8880 }),
@@ -130,15 +135,21 @@ export class World {
         : { dash: 1.2, gap: 2.4, width: 0.10, inset: 0.4 }));
     }
     // trotuar betonat pe dreapta, doar pe portiunile unde apare in poze
-    for (const [a, b] of [[4, -26], [-62, -88]]) {
+    for (const [a, b] of [[4, -26], [-62, -88], [-196, -228]]) {
       roadBag.add('walk', walkGeo({ axis: 'z', c: 0, a, b, hw: ROAD_HW }, 1, 1.15, 2.5));
     }
+    // covor asfaltic mai nou intre rosturi + rosturile de bitum care il delimiteaza
+    roadBag.add('asphaltNou', overlayGeo(ROADS[0], 14.5, -118));
+    for (const at of [14.5, -118, -243]) roadBag.add('seam', seamGeo(ROADS[0], at, 0.09));
+    // petic de reparatie pe o banda
+    roadBag.add('seam', seamGeo({ axis: 'z', c: 1.3, a: -58, b: -63, hw: 1.25 }, -60.5, 5.2));
+
     const roadMeshes = roadBag.build(scene, M, { castShadow: false, receiveShadow: true });
     for (const m of roadMeshes) if (m.name === 'bag_paint') m.renderOrder = 1;
 
     // urme de pneu lustruite pe firele de circulatie
     const trackMat = new THREE.MeshBasicMaterial({
-      color: 0x000000, transparent: true, opacity: 0.10, depthWrite: false, fog: true,
+      color: 0x000000, transparent: true, opacity: 0.07, depthWrite: false, fog: true,
     });
     const tracks = new THREE.Mesh(mergeGeos(tireTrackGeos(ROADS[0], 4)), trackMat);
     tracks.renderOrder = 2;
@@ -172,10 +183,18 @@ export class World {
 
     // bransamente care traverseaza strada catre curtile din dreapta
     const drops = [];
-    for (let i = 1; i < poles.length - 1; i += 2) {
-      drops.push({ pole: i, x: 7.4, y: poles[i].pos.y + 5.0, z: poles[i].pos.z - 9, sag: 0.8, dy: 0.9 });
-      drops.push({ pole: i, x: 6.9, y: poles[i].pos.y + 4.6, z: poles[i].pos.z + 7, sag: 0.9, dy: 1.6 });
-      drops.push({ pole: i, x: -8.6, y: poles[i].pos.y + 4.4, z: poles[i].pos.z + 5, sag: 0.7, dy: 2.4 });
+    for (let i = 1; i < poles.length - 1; i++) {
+      const p = poles[i];
+      // bransamente care traverseaza carosabilul catre curtile din dreapta
+      drops.push({ pole: i, x: 7.4, y: p.pos.y + 5.0, z: p.pos.z - 9, sag: 0.8, dy: 0.9 });
+      drops.push({ pole: i, x: 6.9, y: p.pos.y + 4.6, z: p.pos.z + 7, sag: 0.9, dy: 1.6 });
+      drops.push({ pole: i, x: 8.1, y: p.pos.y + 4.3, z: p.pos.z - 3, sag: 1.0, dy: 2.1 });
+      // si catre stanga
+      drops.push({ pole: i, x: -8.6, y: p.pos.y + 4.4, z: p.pos.z + 5, sag: 0.7, dy: 2.4 });
+      drops.push({ pole: i, x: -9.2, y: p.pos.y + 4.0, z: p.pos.z - 6, sag: 0.85, dy: 2.8 });
+      if (i % 2 === 1) {
+        drops.push({ pole: i, x: -7.8, y: p.pos.y + 3.6, z: p.pos.z - 1.5, sag: 0.5, dy: 3.4 });
+      }
     }
     powerLines(bag, poles, { drops });
 
@@ -201,6 +220,8 @@ export class World {
     gate(bag, this.colliders, -4.9, -62, 3.4, 'z', 'metal', 'green');
     fenceRun(bag, this.colliders, { axis: 'z', c: -4.9, from: -110, to: -190, style: 'wood', seed: 31, gaps: [[28, 32]] });
     gate(bag, this.colliders, -4.9, -140, 3.4, 'z', 'wood', 'green');
+    fenceRun(bag, this.colliders, { axis: 'z', c: -4.9, from: -192, to: -280, style: 'stone', seed: 33, gaps: [[26, 30]] });
+    gate(bag, this.colliders, -4.9, -220, 3.5, 'z', 'metal', 'teal');
 
     // DREAPTA: zid de piatra cu stalpi de caramida, poarta verde, apoi gard de lemn
     fenceRun(bag, this.colliders, { axis: 'z', c: 4.75, from: 30, to: -18, style: 'stone', seed: 7, gaps: [[44, 48]] });
@@ -210,6 +231,8 @@ export class World {
     fenceRun(bag, this.colliders, { axis: 'z', c: 4.75, from: -60, to: -104, style: 'wood', seed: 17, gaps: [[22, 26]] });
     gate(bag, this.colliders, 4.75, -84, 3.4, 'z', 'metal', 'teal');
     fenceRun(bag, this.colliders, { axis: 'z', c: 4.75, from: -108, to: -190, style: 'metal', seed: 19, gaps: [[30, 34]] });
+    fenceRun(bag, this.colliders, { axis: 'z', c: 4.75, from: -192, to: -284, style: 'wood', seed: 23, gaps: [[24, 28]] });
+    gate(bag, this.colliders, 4.75, -218, 3.3, 'z', 'wood', 'green');
 
     // strazile secundare
     fenceRun(bag, this.colliders, { axis: 'x', c: -110, from: -10, to: -80, style: 'wood', seed: 41 });
@@ -223,6 +246,14 @@ export class World {
     for (const [x, z] of [[6.1, -16], [6.1, -38], [6.1, -84], [-6.2, -18], [-6.2, -62], [-6.2, -140]]) {
       culvertSlab(bag, this.colliders, x, z, 3.8, 1.8, 'z');
     }
+    // firide de bransament pe zidul din dreapta (cutia palida din poza 1)
+    wallBox(bag, 4.58, -9.5, 1.28, 0);
+    wallBox(bag, 4.58, -72.0, 1.22, 0);
+    wallBox(bag, -4.72, -33.0, 1.30, Math.PI);
+    // blocuri de beton lasate pe acostament
+    concreteBlock(bag, this.colliders, 3.75, -12.0, 0.25);
+    concreteBlock(bag, this.colliders, 3.82, -49.5, -0.4);
+    concreteBlock(bag, this.colliders, 3.70, -96.0, 0.1);
     meterBox(bag, this.colliders, 5.6, -24.5, 0);
     meterBox(bag, this.colliders, -5.7, -47, Math.PI);
     trashBin(bag, this.colliders, 5.5, -41.5, 0.2);
@@ -240,21 +271,37 @@ export class World {
     const rnd = makeRng(1234);
     const wallSet = ['stucco', 'stuccoWarm', 'stuccoWhite'];
     const roofSet = ['roof', 'roof', 'roofDark'];
+    // Casele de pe stanga. Doua dintre ele reproduc direct fotografiile:
+    // cea moderna cu etaj placat cu lemn (poza 2) si cea cu tigla caramizie
+    // lipita de strada (poza 3). `back` = retragerea fata de gard.
     const leftHouses = [
-      { z: 20, d: 9, w: 10, st: 1, porch: true }, { z: -6, d: 8, w: 9, st: 1 },
-      { z: -26, d: 9, w: 11, st: 2, garage: true }, { z: -48, d: 8, w: 9, st: 1, porch: true },
-      { z: -70, d: 9, w: 10, st: 1 }, { z: -92, d: 8, w: 9, st: 2 },
-      { z: -128, d: 9, w: 10, st: 1, garage: true }, { z: -156, d: 8, w: 9, st: 1 },
-      { z: -184, d: 9, w: 11, st: 2 },
+      { z: 20, d: 9, w: 10, st: 1, back: 5.0, porch: true },
+      { z: -6, d: 8, w: 9, st: 1, back: 4.4 },
+      { z: -21, d: 9, w: 10.5, st: 2, back: 2.9, wall: 'stuccoWhite',
+        upper: 'woodClad', roof: 'roofDark' },                    // casa din poza 2
+      { z: -37, d: 8.5, w: 9.5, st: 1, back: 2.7, wall: 'stuccoWarm',
+        roof: 'roof' },                                           // casa din poza 3
+      { z: -55, d: 8, w: 9, st: 1, back: 4.6, porch: true },
+      { z: -74, d: 9, w: 10, st: 1, back: 5.2 },
+      { z: -94, d: 8, w: 9, st: 2, back: 4.0, garage: true },
+      { z: -128, d: 9, w: 10, st: 1, back: 5.4, garage: true },
+      { z: -156, d: 8, w: 9, st: 1, back: 4.2 },
+      { z: -184, d: 9, w: 11, st: 2, back: 5.0 },
+      { z: -212, d: 8, w: 9, st: 1, back: 4.4, porch: true },
+      { z: -240, d: 9, w: 10, st: 1, back: 5.6 },
+      { z: -268, d: 8, w: 9, st: 2, back: 4.8 },
     ];
     for (let i = 0; i < leftHouses.length; i++) {
       const h = leftHouses[i];
       house(bag, this.colliders, {
-        x: -6.2 - h.d / 2 - 4.6, z: h.z, ry: Math.PI / 2 + (rnd() - 0.5) * 0.05,
-        w: h.w, d: h.d, storeys: h.st, wall: wallSet[i % 3], roof: roofSet[i % 3],
+        x: -6.2 - h.d / 2 - h.back, z: h.z, ry: Math.PI / 2 + (rnd() - 0.5) * 0.05,
+        w: h.w, d: h.d, storeys: h.st,
+        wall: h.wall || wallSet[i % 3], roof: h.roof || roofSet[i % 3],
+        upperWall: h.upper || null,
         litChance: 0.3, seed: 100 + i * 7, garage: !!h.garage, porch: !!h.porch,
       });
     }
+
     const rightHouses = [
       { z: 12, d: 9, w: 10, st: 1 }, { z: -8, d: 8, w: 9, st: 2, porch: true },
       { z: -30, d: 9, w: 10, st: 1 }, { z: -52, d: 8, w: 9, st: 1, garage: true },
@@ -306,9 +353,9 @@ export class World {
       tree(bag, this.colliders, x, z, k, s, 2000 + i * 13);
     }
     // tufe pe acostamente
-    for (let i = 0; i < (hi ? 46 : 24); i++) {
+    for (let i = 0; i < (hi ? 52 : 28); i++) {
       const side = i % 2 ? 1 : -1;
-      const z = 24 - i * 4.6 - rnd() * 2.6;
+      const z = 24 - i * 6.4 - rnd() * 2.6;
       const x = side * (5.4 + rnd() * 0.9);
       tree(bag, this.colliders, x, z, 'bush', 0.55 + rnd() * 0.5, 4000 + i);
     }
@@ -324,12 +371,12 @@ export class World {
       const spots = [];
       const gr = makeRng(77);
       for (let i = 0; i < 2200; i++) {
-        const z = 36 - gr() * 240;
+        const z = 36 - gr() * 320;
         const x = ROAD_HW + 0.45 + gr() * 1.35;       // acostamentul din dreapta
         spots.push({ x, z, r: gr() * Math.PI, s: 0.45 + gr() * 0.5, v: gr() });
       }
       for (let i = 0; i < 700; i++) {                 // iarba din curti, langa garduri
-        const z = 34 - gr() * 230;
+        const z = 34 - gr() * 310;
         const x = (gr() < 0.5 ? -1 : 1) * (5.3 + gr() * 2.4);
         spots.push({ x, z, r: gr() * Math.PI, s: 0.45 + gr() * 0.55, v: gr() });
       }
@@ -350,28 +397,33 @@ export class World {
 
   buildCars() {
     // pozitiile reproduc sirul de masini parcate pe stanga din fotografii
+    // In prima fotografie berlina din fata e parcata CU BOTUL spre aparat,
+    // in a doua si a treia se vad spatele masinilor: deci sensuri amestecate.
+    const P = Math.PI;
     const layout = [
-      [-2.00, 9.5, 'sedan', 1, 0],     // masina taiata de cadru, langa camera
-      [-2.00, -7.0, 'sedan', 0, 0],    // berlina inchisa la culoare (poza 1)
+      [-2.03, 22.0, 'hatch', 0, 0],    // masina taiata de cadrul primei poze
+      [-2.00, 15.0, 'wagon', 2, P],
+      [-2.00, 9.5, 'sedan', 1, P],
+      [-2.00, -7.0, 'sedan', 0, P],    // berlina inchisa, cu fata spre noi (poza 1)
       [-2.02, -14.6, 'wagon', 1, 0],   // break gri
       [-1.98, -21.4, 'hatch', 2, 0],   // hatchback argintiu (poza 2)
       [-2.04, -28.2, 'wagon', 0, 0],
       [-1.98, -36.5, 'suv', 4, 0],     // SUV albastru inchis (poza 3)
-      [-1.97, -43.6, 'hatch', 3, 0],
+      [-1.97, -43.6, 'hatch', 3, P],
       [-2.02, -52.0, 'wagon', 6, 0],
-      [-2.00, -66.0, 'sedan', 1, 0],
+      [-2.00, -66.0, 'sedan', 1, P],
       [-2.00, -79.0, 'hatch', 2, 0],
       [-2.00, -95.0, 'wagon', 0, 0],
-      [-2.02, -118.0, 'sedan', 7, 0],
+      [-2.02, -118.0, 'sedan', 7, P],
       [-2.00, -142.0, 'wagon', 5, 0],
-      [1.75, -131.0, 'hatch', 3, Math.PI],   // masina de la capat, cu fata spre noi
-      [1.78, -160.0, 'sedan', 0, Math.PI],
+      [1.75, -131.0, 'hatch', 3, P],   // masina de la capat, cu fata spre noi
+      [1.78, -160.0, 'sedan', 0, P],
       [-84.6, -140.0, 'wagon', 2, Math.PI / 2],
-      [-84.6, -176.0, 'hatch', 6, Math.PI / 2],
+      [-84.6, -176.0, 'hatch', 6, -Math.PI / 2],
       [-26.0, -101.6, 'sedan', 4, Math.PI / 2],
       [-58.0, -250.4, 'suv', 1, -Math.PI / 2],
     ];
-    const n = Math.min(layout.length, this.opts.carCount);
+    const n = layout.length;
     const contact = [];
     for (let i = 0; i < n; i++) {
       const [x, z, type, ci, yaw] = layout[i];
@@ -394,7 +446,7 @@ export class World {
       this.cars.push({ mesh, collider: col, x, z, yaw, type, color, plate: mesh.userData.plate });
 
       // umbra de contact: masinile fara shadow map trebuie totusi ancorate la sol
-      const dg = new THREE.PlaneGeometry(spec.W * 1.28, spec.L * 1.06, 3, 3);
+      const dg = new THREE.PlaneGeometry(spec.W * 1.18, spec.L * 1.0, 3, 3);
       dg.rotateX(-Math.PI / 2);
       dg.rotateY(yaw);
       const dp = dg.attributes.position;
@@ -407,7 +459,7 @@ export class World {
     }
     if (contact.length) {
       const cm = new THREE.MeshBasicMaterial({
-        map: this.T.glow, color: 0x000000, transparent: true, opacity: 0.5,
+        map: this.T.glow, color: 0x000000, transparent: true, opacity: 0.38,
         depthWrite: false, fog: true,
       });
       const cmesh = new THREE.Mesh(mergeGeos(contact), cm);
@@ -439,16 +491,6 @@ export class World {
       }
     }
     return 1;
-  }
-
-  nearestCar(pos, maxDist = 3.2) {
-    let best = null, bd = maxDist * maxDist;
-    for (const c of this.cars) {
-      if (c.inUse) continue;
-      const d = (c.mesh.position.x - pos.x) ** 2 + (c.mesh.position.z - pos.z) ** 2;
-      if (d < bd) { bd = d; best = c; }
-    }
-    return best;
   }
 
   setLampsOn(on) {

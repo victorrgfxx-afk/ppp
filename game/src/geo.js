@@ -208,3 +208,75 @@ export function closestOnCollider(it, px, pz, outLocal) {
   outLocal.wz = it.cz - qx * s + qz * c;
   return outLocal;
 }
+
+/**
+ * Normale netede cu praguri de muchie ("smoothing groups" dupa unghi).
+ * ExtrudeGeometry nu imparte varfuri intre fete, deci computeVertexNormals()
+ * da shading complet fatetat - caroseria arata ca hartie pliata. Aici
+ * acumulam normalele fetelor vecine care se afla sub `angleDeg` una de alta,
+ * deci suprafetele line se netezesc, iar muchiile reale raman taioase.
+ */
+export function smoothNormals(geo, angleDeg = 48) {
+  const pos = geo.attributes.position;
+  const idx = geo.index;
+  const vCount = pos.count;
+  const triCount = idx ? idx.count / 3 : vCount / 3;
+  const get = (i) => (idx ? idx.getX(i) : i);
+  const cosLimit = Math.cos((angleDeg * Math.PI) / 180);
+  const P = 2000;                       // toleranta de sudare: 0.5 mm
+
+  // gruparea varfurilor coincidente
+  const groups = new Map();
+  const keyOf = new Array(vCount);
+  for (let i = 0; i < vCount; i++) {
+    const k = Math.round(pos.getX(i) * P) + '|' + Math.round(pos.getY(i) * P)
+            + '|' + Math.round(pos.getZ(i) * P);
+    keyOf[i] = k;
+    let a = groups.get(k);
+    if (!a) { a = []; groups.set(k, a); }
+    a.push(i);
+  }
+
+  // normalele fetelor + lista de fete pe fiecare grup de varfuri
+  const fn = new Float32Array(triCount * 3);
+  const facesOf = new Map();
+  const ax = [0, 0, 0], bx = [0, 0, 0];
+  for (let f = 0; f < triCount; f++) {
+    const a = get(f * 3), b = get(f * 3 + 1), c = get(f * 3 + 2);
+    ax[0] = pos.getX(b) - pos.getX(a); ax[1] = pos.getY(b) - pos.getY(a); ax[2] = pos.getZ(b) - pos.getZ(a);
+    bx[0] = pos.getX(c) - pos.getX(a); bx[1] = pos.getY(c) - pos.getY(a); bx[2] = pos.getZ(c) - pos.getZ(a);
+    const nx = ax[1] * bx[2] - ax[2] * bx[1];
+    const ny = ax[2] * bx[0] - ax[0] * bx[2];
+    const nz = ax[0] * bx[1] - ax[1] * bx[0];
+    fn[f * 3] = nx; fn[f * 3 + 1] = ny; fn[f * 3 + 2] = nz;   // lungimea = 2 x aria
+    for (const v of [a, b, c]) {
+      const k = keyOf[v];
+      let arr = facesOf.get(k);
+      if (!arr) { arr = []; facesOf.set(k, arr); }
+      arr.push(f);
+    }
+  }
+
+  const out = new Float32Array(vCount * 3);
+  for (let f = 0; f < triCount; f++) {
+    let nx = fn[f * 3], ny = fn[f * 3 + 1], nz = fn[f * 3 + 2];
+    const len = Math.hypot(nx, ny, nz) || 1;
+    const ux = nx / len, uy = ny / len, uz = nz / len;
+    for (const v of [get(f * 3), get(f * 3 + 1), get(f * 3 + 2)]) {
+      let sx = 0, sy = 0, sz = 0;
+      const arr = facesOf.get(keyOf[v]);
+      for (let j = 0; j < arr.length; j++) {
+        const g = arr[j];
+        let gx = fn[g * 3], gy = fn[g * 3 + 1], gz = fn[g * 3 + 2];
+        const gl = Math.hypot(gx, gy, gz) || 1;
+        if ((gx / gl) * ux + (gy / gl) * uy + (gz / gl) * uz < cosLimit) continue;
+        sx += gx; sy += gy; sz += gz;    // ponderat cu aria fetei
+      }
+      const sl = Math.hypot(sx, sy, sz);
+      if (sl > 1e-9) { out[v * 3] = sx / sl; out[v * 3 + 1] = sy / sl; out[v * 3 + 2] = sz / sl; }
+      else { out[v * 3] = ux; out[v * 3 + 1] = uy; out[v * 3 + 2] = uz; }
+    }
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(out, 3));
+  return geo;
+}

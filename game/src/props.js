@@ -244,6 +244,7 @@ export function house(bag, col, cfg) {
   const {
     x, z, ry = 0, w = 9, d = 8, storeys = 1, wall = 'stucco', roof = 'roof',
     roofPitch = 0.42, litChance = 0.35, seed = 5, garage = false, porch = false,
+    upperWall = null,
   } = cfg;
   const rnd = makeRng(seed);
   const y0 = surfaceY(x, z);
@@ -254,6 +255,13 @@ export function house(bag, col, cfg) {
   // soclu + corp
   bag.add('stone', box(w + 0.16, 0.45, d + 0.16, x, y0 + 0.22, z, ry));
   bag.add(wall, scaleUV(box(w, sh, d, x, y0 + 0.4 + sh / 2, z, ry), w / 3, sh / 3));
+  if (upperWall && storeys === 2) {
+    // etaj placat: iese cu 6 cm peste parter, ca la casele noi din sat
+    const uh = sh * 0.46;
+    bag.add(upperWall, scaleUV(box(w + 0.12, uh, d + 0.12, x, y0 + 0.4 + sh - uh / 2, z, ry),
+      (w + 0.12) / 1.35, uh / 1.35));
+    bag.add('woodDark', box(w + 0.22, 0.07, d + 0.22, x, y0 + 0.4 + sh - uh, z, ry));
+  }
 
   // acoperis in doua ape
   const rh = (d / 2) * roofPitch + 0.55;
@@ -440,6 +448,21 @@ export function culvertSlab(bag, col, x, z, w = 3.4, depth = 1.6, axis = 'z') {
   const y = surfaceY(x, z);
   if (axis === 'z') bag.add('concrete', box(depth, 0.18, w, x, y + 0.09, z));
   else bag.add('concrete', box(w, 0.18, depth, x, y + 0.09, z));
+}
+
+/** Firida de bransament montata pe zid, cu usita metalica. */
+export function wallBox(bag, x, z, y = 1.25, ry = 0, w = 0.40, h = 0.52) {
+  const y0 = surfaceY(x, z);
+  bag.add('meterCabinet', box(w, h, 0.17, x, y0 + y, z, ry));
+  bag.add('metalBox', box(w - 0.07, h - 0.07, 0.03, x, y0 + y, z + 0.10, ry));
+  bag.add('metalDark', box(0.05, 0.05, 0.04, x + w * 0.3, y0 + y, z + 0.13, ry));
+}
+
+/** Bloc de beton lasat pe acostament (apare in prima fotografie). */
+export function concreteBlock(bag, col, x, z, ry = 0) {
+  const y0 = surfaceY(x, z);
+  bag.add('concrete', scaleUV(box(0.62, 0.30, 0.44, x, y0 + 0.15, z, ry), 0.6, 0.3));
+  col.add(x, z, 0.33, 0.24, y0, y0 + 0.30, ry, 'prop');
 }
 
 export function meterBox(bag, col, x, z, ry = 0) {
