@@ -662,8 +662,8 @@ export function nightSky(w = 1024, h = 512) {
 /* ============================== ORCHESTRARE ============================= */
 
 export async function buildAll(onProgress = () => {}, quality = 'high') {
-  const S = quality === 'low' ? 256 : quality === 'medium' ? 384 : 512;
-  const ROAD = quality === 'low' ? 512 : quality === 'medium' ? 768 : 1024;
+  const S = quality === 'mobil' ? 224 : quality === 'low' ? 256 : quality === 'medium' ? 384 : 512;
+  const ROAD = quality === 'mobil' ? 448 : quality === 'low' ? 512 : quality === 'medium' ? 768 : 1024;
   const T = {};
   const steps = [
     ['asfalt', () => { T.asphalt = asphalt(ROAD); }],

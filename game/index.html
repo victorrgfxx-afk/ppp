@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html lang="ro">
-<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Strada · plimbare 3D</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23090c12'/%3E%3Cpath d='M4 30 L13 6 h6 l9 24z' fill='%232b3038'/%3E%3Cpath d='M15 8 h2 l0 5 h-2z M14 16 h2 l0 5 h-2z M13 25 h2.5 l0 5 h-2.5z' fill='%23e8e8e4'/%3E%3Ccircle cx='24' cy='7' r='3' fill='%23ffd98a'/%3E%3C/svg%3E">
+<title>Strada noaptea</title>
 <style>
   :root {
     --bg: #05060a;
@@ -103,13 +99,53 @@
     position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
     font-size: 11.5px; color: rgba(255,255,255,.34); letter-spacing: .5px; white-space: nowrap;
   }
+  /* ---------------- comenzi tactile ---------------- */
+  #touchui { position: fixed; inset: 0; z-index: 25; display: none; pointer-events: none; }
+  body.touch #gl { cursor: default; touch-action: none; }
+  body.touch, body.touch #gl { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  #stick {
+    position: absolute; width: 124px; height: 124px; margin: -62px 0 0 -62px;
+    border-radius: 50%; border: 2px solid rgba(255,255,255,.22);
+    background: rgba(255,255,255,.05); display: none;
+  }
+  #stickNub {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 54px;
+    margin: -27px 0 0 -27px; border-radius: 50%;
+    background: rgba(255,255,255,.28); border: 1px solid rgba(255,255,255,.4);
+  }
+  .tbtn {
+    position: absolute; pointer-events: auto; width: 66px; height: 66px;
+    border-radius: 50%; background: rgba(12,16,24,.55);
+    border: 1.5px solid rgba(255,255,255,.22); color: #e8ecf4;
+    display: flex; align-items: center; justify-content: center;
+    font: 600 11px ui-sans-serif, system-ui, sans-serif; letter-spacing: .4px;
+    text-align: center; backdrop-filter: blur(6px); touch-action: none;
+  }
+  .tbtn.press { background: rgba(120,190,255,.34); transform: scale(.94); }
+  .tbtn.on { background: rgba(120,190,255,.28); border-color: rgba(150,210,255,.6); }
+  #btnJump { right: 20px; bottom: 96px; width: 74px; height: 74px; }
+  #btnCrouch { right: 100px; bottom: 26px; }
+  #btnCam { right: 22px; bottom: 22px; }
+  #btnMenu { right: 20px; top: 20px; width: 46px; height: 46px; font-size: 16px; }
+  body.touch #minimap { left: 10px; bottom: 10px; transform: scale(.66); transform-origin: left bottom; }
+  body.touch #zone { left: 14px; bottom: 150px; font-size: 15px; }
+  body.touch #hint { bottom: 172px; font-size: 12px; }
+  body.touch #stats { right: 80px; top: 22px; font-size: 10px; }
+  body.touch #stick { width: 140px; height: 140px; margin: -70px 0 0 -70px; }
+  #rotate {
+    position: fixed; inset: 0; z-index: 45; display: none;
+    align-items: center; justify-content: center; text-align: center;
+    background: rgba(4,6,10,.92); font-size: 14px; color: var(--dim); padding: 30px;
+  }
+  @media (orientation: portrait) and (max-height: 560px) {
+    body.touch #rotate { display: flex; }
+  }
+
   @media (max-width: 720px) {
     #minimap { transform: scale(.78); transform-origin: left bottom; }
     #zone { bottom: 196px; font-size: 16px; }
   }
 </style>
-</head>
-<body>
 <canvas id="gl"></canvas>
 
 <div id="hud">
@@ -120,6 +156,16 @@
   <div id="helpline">WASD mers · SHIFT fuga · CTRL ghemuit · V camera · H interfata · ESC meniu</div>
 </div>
 
+<div id="touchui">
+  <div id="stick"><div id="stickNub"></div></div>
+  <div class="tbtn" id="btnJump">SARI</div>
+  <div class="tbtn" id="btnCrouch">JOS</div>
+  <div class="tbtn" id="btnCam">CAM</div>
+  <div class="tbtn" id="btnMenu">☰</div>
+</div>
+
+<div id="rotate">Roteste telefonul pe orizontala pentru o imagine mai buna.</div>
+
 <div id="start" class="overlay">
   <div class="card">
     <h2>Strada — plimbare 3D</h2>
@@ -127,9 +173,10 @@
       Strada din fotografii, reconstruita la scara 1:1: carosabil de 6 m cu marcaj lateral
       discontinuu, masini parcate langa bordura, stalpi cu lampi cobra-head si reteaua de
       cabluri suspendate, garduri de lemn, piatra si metal, curti cu thuja si case cu tigla.
-      Te plimbi liber pe jos, oriunde vrei.
+      Te plimbi liber pe jos, oriunde vrei. Totul e generat procedural, direct in browser:
+      nu se descarca niciun model si nicio textura.
     </p>
-    <div class="keys">
+    <div class="keys" id="kbdkeys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mergi</div>
       <div><kbd>SHIFT</kbd> fugi</div>
       <div><kbd>SPATIU</kbd> sari</div>
@@ -142,7 +189,19 @@
       <div><kbd>R</kbd> revii la inceputul strazii</div>
       <div><kbd>ESC</kbd> meniu si setari</div>
     </div>
-    <button class="btn" id="startbtn">Intra in joc</button>
+    <div class="keys" id="touchkeys" style="display:none">
+      <div><kbd>STANGA</kbd> joystick de mers</div>
+      <div><kbd>DREAPTA</kbd> tragi ca sa privesti</div>
+      <div><kbd>SARI</kbd> saritura</div>
+      <div><kbd>JOS</kbd> te ghemuiesti</div>
+      <div><kbd>CAM</kbd> persoana I / a III-a</div>
+      <div><kbd>☰</kbd> meniu si setari</div>
+      <div>Impinge joystick-ul pana la capat ca sa alergi.</div>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn" id="startbtn">Intra in joc</button>
+      <button class="btn" id="btnFull" style="background:rgba(255,255,255,.1);color:var(--fg)">Ecran complet</button>
+    </div>
   </div>
 </div>
 
@@ -154,6 +213,7 @@
       <div class="row">
         <label>Calitate</label>
         <select id="sQuality">
+          <option value="mobil">Telefon</option>
           <option value="low">Scazuta</option>
           <option value="medium">Medie</option>
           <option value="high">Ridicata</option>
@@ -182,5 +242,3 @@
 </div>
 
 <script type="module" src="./src/main.js"></script>
-</body>
-</html>

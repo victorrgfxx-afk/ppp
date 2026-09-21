@@ -109,21 +109,22 @@ export class Player {
   update(dt, input) {
     this.mesh.visible = this.mode === 'tps';
 
-    // --- intentie de miscare in spatiul camerei ---
-    const want = new THREE.Vector3(
-      (input.right ? 1 : 0) - (input.left ? 1 : 0), 0,
-      (input.back ? 1 : 0) - (input.fwd ? 1 : 0));
-    const moving = want.lengthSq() > 0;
-    if (moving) want.normalize();
+    // --- intentie de miscare in spatiul camerei (tastatura sau joystick) ---
+    let ax = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    let az = (input.back ? 1 : 0) - (input.fwd ? 1 : 0);
+    if (input.axisX || input.axisY) { ax = input.axisX; az = input.axisY; }
+    let mag = Math.hypot(ax, az);
+    if (mag > 1) { ax /= mag; az /= mag; mag = 1; }
+    const moving = mag > 0.08;
 
     const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
-    const wx = want.x * cy + want.z * sy;
-    const wz = -want.x * sy + want.z * cy;
+    const wx = ax * cy + az * sy;
+    const wz = -ax * sy + az * cy;
 
     this.crouch = lerp(this.crouch, input.crouch ? 1 : 0, 1 - Math.pow(0.001, dt));
 
     const base = input.crouch ? 1.35 : (input.sprint ? 5.6 : 2.15);
-    const target = moving ? base : 0;
+    const target = moving ? base * Math.min(1, mag) : 0;
     const accel = this.onGround ? (moving ? 26 : 22) : 5;
     const desiredX = wx * target, desiredZ = wz * target;
     this.vel.x += (desiredX - this.vel.x) * Math.min(1, accel * dt);

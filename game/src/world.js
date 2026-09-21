@@ -52,7 +52,7 @@ export class World {
 
   build() {
     const T = this.T, scene = this.scene;
-    const hi = this.opts.quality !== 'low';
+    const hi = this.opts.quality !== 'low' && this.opts.quality !== 'mobil';
 
     /* ------------------------- mediu si ceata -------------------------- */
     this.sky = new SkyDome(scene);
@@ -157,10 +157,11 @@ export class World {
 
     /* -------------------- stalpi, lampi si retea aeriana ---------------- */
     const bag = new GeoBag();
+    const lowQ = this.opts.quality === 'low' || this.opts.quality === 'mobil';
     this.lamps = new StreetLights(scene, T, {
-      poolSize: this.opts.quality === 'low' ? 4 : 6,
-      shadowCount: this.opts.quality === 'low' ? 0 : 2,
-      haze: this.opts.haze && this.opts.quality !== 'low',
+      poolSize: this.opts.lampPool || (lowQ ? 4 : 6),
+      shadowCount: lowQ ? 0 : 2,
+      haze: this.opts.haze && !lowQ,
       shadowMapSize: this.opts.quality === 'ultra' ? 2048 : 1024,
     });
 

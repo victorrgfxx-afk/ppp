@@ -12,21 +12,27 @@ import { GameAudio } from './audio.js';
 import { HUD } from './hud.js';
 import { surfaceY } from './terrain.js';
 import { clamp } from './noise.js';
+import { TouchControls, isTouchDevice, isPhone } from './touch.js';
 
 const QUALITY = {
-  low:    { msaa: 0, scale: 0.72, levels: 4, haze: false, shadows: false, aniso: 4 },
-  medium: { msaa: 2, scale: 0.88, levels: 5, haze: true,  shadows: true,  aniso: 8 },
-  high:   { msaa: 4, scale: 1.00, levels: 5, haze: true,  shadows: true,  aniso: 16 },
-  ultra:  { msaa: 8, scale: 1.00, levels: 5, haze: true,  shadows: true,  aniso: 16 },
+  // preset pentru telefon: fara MSAA, rezolutie interna redusa, fara umbre
+  mobil:  { msaa: 0, scale: 1.00, levels: 4, haze: false, shadows: false, aniso: 4, dpr: 1.2, lamps: 5 },
+  low:    { msaa: 0, scale: 1.00, levels: 4, haze: false, shadows: false, aniso: 4, dpr: 1.5, lamps: 5 },
+  medium: { msaa: 2, scale: 0.88, levels: 5, haze: true,  shadows: true,  aniso: 8, dpr: 2, lamps: 6 },
+  high:   { msaa: 4, scale: 1.00, levels: 5, haze: true,  shadows: true,  aniso: 16, dpr: 2, lamps: 6 },
+  ultra:  { msaa: 8, scale: 1.00, levels: 5, haze: true,  shadows: true,  aniso: 16, dpr: 2, lamps: 6 },
 };
 
 class Game {
   constructor() {
     this.canvas = document.getElementById('gl');
-    this.quality = localStorage.getItem('nv_quality') || 'high';
+    this.touch = isTouchDevice();
+    this.phone = isPhone();
+    this.quality = localStorage.getItem('nv_quality')
+      || (this.phone ? 'mobil' : this.touch ? 'low' : 'high');
     this.input = {
       fwd: false, back: false, left: false, right: false,
-      sprint: false, crouch: false, jump: false,
+      sprint: false, crouch: false, jump: false, axisX: 0, axisY: 0,
     };
     this.time = 0;
     this.frames = 0;
@@ -52,7 +58,7 @@ class Game {
       label.textContent = 'Ai nevoie de un browser cu WebGL2.';
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.dpr || 2));
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     renderer.toneMapping = THREE.NoToneMapping;    // tonemapping-ul se face in post
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -70,7 +76,8 @@ class Game {
     const T = await buildAll((p, name) => {
       bar.style.width = (8 + p * 62).toFixed(1) + '%';
       label.textContent = 'generez ' + name + '...';
-    }, this.quality === 'low' ? 'low' : this.quality === 'medium' ? 'medium' : 'high');
+    }, this.quality === 'mobil' ? 'mobil' : this.quality === 'low' ? 'low'
+       : this.quality === 'medium' ? 'medium' : 'high');
 
     label.textContent = 'construiesc strada...';
     bar.style.width = '74%';
@@ -79,7 +86,9 @@ class Game {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.14, 900);
 
-    this.world = new World(this.scene, T, renderer, { quality: this.quality, haze: q.haze });
+    this.world = new World(this.scene, T, renderer, {
+      quality: this.quality, haze: q.haze, lampPool: q.lamps,
+    });
     this.world.build();
 
     bar.style.width = '88%';
@@ -99,6 +108,13 @@ class Game {
     this.audio = new GameAudio();
     this.hud = new HUD(document.getElementById('hud'));
 
+    if (this.touch) {
+      this.touchCtl = new TouchControls(this);
+      this.touchCtl.enable();
+      document.getElementById('kbdkeys').style.display = 'none';
+      document.getElementById('touchkeys').style.display = 'grid';
+      document.getElementById('helpline').style.display = 'none';
+    }
     this.bindInput();
     this.bindUI();
     window.addEventListener('resize', () => this.resize());
@@ -145,29 +161,75 @@ class Game {
       if (e.code === 'Space') this.input.jump = false;
     });
 
+    // Privirea cu mouse-ul: preferam pointer lock, dar el poate fi refuzat
+    // (de exemplu intr-un iframe fara permisiunea respectiva). In acest caz
+    // trecem automat pe "tine apasat si trage", ca jocul sa ramana jucabil.
+    this.dragLook = false;
+    this.dragging = false;
     document.addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== this.canvas) return;
+      if (this.touch || this.paused) return;
+      const locked = document.pointerLockElement === this.canvas;
+      if (!locked && !(this.dragLook && this.dragging)) return;
       this.player.yaw -= e.movementX * this.sens;
       this.player.pitch = clamp(this.player.pitch - e.movementY * this.sens, -1.25, 1.05);
     });
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (this.dragLook && !this.paused) { this.dragging = true; e.preventDefault(); }
+    });
+    window.addEventListener('mouseup', () => { this.dragging = false; });
+    window.addEventListener('blur', () => {
+      this.dragging = false;
+      this.input.fwd = this.input.back = this.input.left = this.input.right = false;
+      this.input.sprint = this.input.jump = false;
+    });
     document.addEventListener('wheel', (e) => {
-      if (document.pointerLockElement !== this.canvas) return;
+      if (!this.touch && document.pointerLockElement !== this.canvas) return;
       this.player.camDist = clamp(this.player.camDist + Math.sign(e.deltaY) * 0.4, 1.4, 8.5);
     }, { passive: true });
 
     const lock = () => {
-      this.canvas.requestPointerLock();
+      // pe telefon nu exista pointer lock: comenzile sunt tactile
+      if (!this.touch && this.canvas.requestPointerLock) {
+        const p = this.canvas.requestPointerLock();
+        if (p && p.catch) p.catch(() => { this.enableDragLook(); });
+        setTimeout(() => {
+          if (!this.touch && document.pointerLockElement !== this.canvas) this.enableDragLook();
+        }, 400);
+      }
       this.audio.resume();
       document.getElementById('start').classList.remove('show');
       document.getElementById('menu').classList.remove('show');
       this.paused = false;
     };
-    this.canvas.addEventListener('click', lock);
+    this.startGame = lock;
+    if (!this.touch) this.canvas.addEventListener('click', lock);
     document.getElementById('startbtn').addEventListener('click', lock);
     document.getElementById('resume').addEventListener('click', lock);
-    document.addEventListener('pointerlockchange', () => {
-      if (document.pointerLockElement !== this.canvas && !this.paused) this.openMenu();
-    });
+    if (!this.touch) {
+      document.addEventListener('pointerlockchange', () => {
+        if (document.pointerLockElement !== this.canvas && !this.paused) this.openMenu();
+      });
+    }
+
+    const fs = document.getElementById('btnFull');
+    if (fs) {
+      const canFs = !!(document.documentElement.requestFullscreen);
+      if (!canFs) fs.style.display = 'none';
+      else fs.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen().catch(() => {});
+      });
+    }
+  }
+
+  enableDragLook() {
+    if (this.dragLook) return;
+    this.dragLook = true;
+    this.canvas.style.cursor = 'grab';
+    this.hud.setHint('tine apasat cu mouse-ul si trage ca sa privesti');
+    clearTimeout(this._dragHintT);
+    this._dragHintT = setTimeout(() => this.hud.setHint(''), 4500);
   }
 
   openMenu() {
@@ -202,6 +264,8 @@ class Game {
       location.reload();
     });
     if (qsel) qsel.value = this.quality;
+    const tod = document.getElementById('sTod');
+    if (tod) tod.value = String(this.tod);
   }
 
   cycleCamera() {
