@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strada · open world 3D</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23090c12'/%3E%3Cpath d='M4 30 L13 6 h6 l9 24z' fill='%232b3038'/%3E%3Cpath d='M15 8 h2 l0 5 h-2z M14 16 h2 l0 5 h-2z M13 25 h2.5 l0 5 h-2.5z' fill='%23e8e8e4'/%3E%3Ccircle cx='24' cy='7' r='3' fill='%23ffd98a'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #05060a;
+    --fg: #e8ecf4;
+    --dim: rgba(232, 236, 244, 0.58);
+    --acc: #7fd0ff;
+    --panel: rgba(10, 13, 20, 0.82);
+    --line: rgba(255, 255, 255, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+  /* ---------------- loader ---------------- */
+  #loader {
+    position: fixed; inset: 0; z-index: 40; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; background: radial-gradient(120% 90% at 50% 40%, #0c1019 0%, #04050a 70%);
+    transition: opacity .5s ease, visibility .5s;
+  }
+  #loader.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+  #loader h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: .5px; }
+  #loader .sub { color: var(--dim); font-size: 13px; margin-top: -10px; }
+  #track { width: min(420px, 74vw); height: 4px; background: rgba(255,255,255,.1); border-radius: 4px; overflow: hidden; }
+  #bar { height: 100%; width: 4%; background: linear-gradient(90deg, #5fb8ff, #ffd28a); transition: width .25s ease; }
+  #lstatus { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* ---------------- start / meniu ---------------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 30; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(4, 6, 10, .55); backdrop-filter: blur(7px);
+  }
+  .overlay.show { display: flex; }
+  .card {
+    width: min(720px, 92vw); max-height: 88vh; overflow: auto;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; padding: 26px 28px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.6);
+  }
+  .card h2 { margin: 0 0 4px; font-size: 21px; font-weight: 650; }
+  .card p.lead { margin: 0 0 18px; color: var(--dim); font-size: 13px; line-height: 1.5; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 22px; margin-bottom: 20px; }
+  .keys div { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--dim); }
+  kbd {
+    background: rgba(255,255,255,.08); border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 5px; padding: 2px 7px;
+    font: 600 11px ui-monospace, monospace; color: var(--fg); min-width: 24px; text-align: center;
+  }
+  .btn {
+    appearance: none; border: 0; cursor: pointer; border-radius: 10px;
+    padding: 11px 22px; font-size: 14px; font-weight: 600;
+    background: linear-gradient(180deg, #7fd0ff, #46a6e8); color: #04121c;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px 26px; margin-top: 6px; }
+  .row { display: flex; flex-direction: column; gap: 5px; }
+  .row label { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; }
+  .row input[type=range] { width: 100%; accent-color: var(--acc); }
+  .row select {
+    background: rgba(255,255,255,.06); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 9px; font-size: 13px;
+  }
+  hr.sep { border: 0; border-top: 1px solid var(--line); margin: 18px 0 14px; }
+
+  /* ---------------- HUD ---------------- */
+  #hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; transition: opacity .3s; }
+  #minimap { position: absolute; left: 20px; bottom: 20px; filter: drop-shadow(0 8px 24px rgba(0,0,0,.6)); }
+  #speedo { position: absolute; right: 22px; bottom: 18px; opacity: 0; transition: opacity .35s; filter: drop-shadow(0 8px 24px rgba(0,0,0,.6)); }
+  #zone {
+    position: absolute; left: 20px; bottom: 232px; font-size: 19px; font-weight: 650;
+    letter-spacing: .4px; text-shadow: 0 2px 14px rgba(0,0,0,.9); opacity: 0;
+  }
+  #zone.show { animation: zoneIn 4.2s ease forwards; }
+  @keyframes zoneIn {
+    0% { opacity: 0; transform: translateX(-14px); }
+    12% { opacity: 1; transform: translateX(0); }
+    72% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  #hint {
+    position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+    font-size: 13.5px; padding: 8px 16px; border-radius: 999px;
+    background: rgba(8, 11, 17, .68); border: 1px solid var(--line);
+    opacity: 0; transition: opacity .2s; white-space: nowrap;
+  }
+  #carinfo {
+    position: absolute; right: 22px; bottom: 150px; font-size: 12px; color: var(--dim);
+    letter-spacing: .8px; opacity: 0; transition: opacity .3s; text-align: right;
+  }
+  #stats {
+    position: absolute; right: 14px; top: 12px; font: 500 11px ui-monospace, monospace;
+    color: rgba(255,255,255,.4); letter-spacing: .3px;
+  }
+  #helpline {
+    position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+    font-size: 11.5px; color: rgba(255,255,255,.34); letter-spacing: .5px; white-space: nowrap;
+  }
+  @media (max-width: 720px) {
+    #minimap { transform: scale(.78); transform-origin: left bottom; }
+    #speedo { transform: scale(.85); transform-origin: right bottom; }
+    #zone { bottom: 196px; font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud">
+  <canvas id="minimap"></canvas>
+  <canvas id="speedo"></canvas>
+  <div id="zone"></div>
+  <div id="hint"></div>
+  <div id="carinfo"></div>
+  <div id="stats"></div>
+  <div id="helpline">WASD · SHIFT fuga · F masina · V camera · L faruri · ESC meniu</div>
+</div>
+
+<div id="start" class="overlay">
+  <div class="card">
+    <h2>Strada — lume deschisa 3D</h2>
+    <p class="lead">
+      Cartierul din fotografii, reconstruit la scara 1:1: carosabil ingust cu marcaj lateral
+      discontinuu, masini parcate langa bordura, stalpi cu lampi cobra-head si reteaua de
+      cabluri suspendate, garduri de lemn, piatra si metal, curti cu thuja si case cu tigla.
+      Te misti liber, pe jos sau la volanul oricarei masini.
+    </p>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> deplasare</div>
+      <div><kbd>SHIFT</kbd> fuga</div>
+      <div><kbd>SPATIU</kbd> saritura / frana de mana</div>
+      <div><kbd>CTRL</kbd> ghemuit</div>
+      <div><kbd>F</kbd> urci / cobori din masina</div>
+      <div><kbd>V</kbd> schimbi camera</div>
+      <div><kbd>L</kbd> faruri</div>
+      <div><kbd>H</kbd> ascunzi interfata</div>
+      <div><kbd>P</kbd> salvezi o captura</div>
+      <div><kbd>R</kbd> revii la pozitia initiala</div>
+      <div><kbd>ROTITA</kbd> distanta camerei</div>
+      <div><kbd>ESC</kbd> meniu si setari</div>
+    </div>
+    <button class="btn" id="startbtn">Intra in joc</button>
+  </div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <h2>Setari</h2>
+    <p class="lead">Modificarile se aplica instantaneu, mai putin calitatea (reincarca pagina).</p>
+    <div class="settings">
+      <div class="row">
+        <label>Calitate</label>
+        <select id="sQuality">
+          <option value="low">Scazuta</option>
+          <option value="medium">Medie</option>
+          <option value="high">Ridicata</option>
+          <option value="ultra">Ultra (MSAA 8x)</option>
+        </select>
+      </div>
+      <div class="row"><label>Rezolutie de randare</label><input id="sScale" type="range" min="0.6" max="1" step="0.05" value="1"></div>
+      <div class="row"><label>Expunere</label><input id="sExposure" type="range" min="0.4" max="2" step="0.02" value="1.28"></div>
+      <div class="row"><label>Bloom</label><input id="sBloom" type="range" min="0" max="1.4" step="0.02" value="0.55"></div>
+      <div class="row"><label>Granulatie</label><input id="sGrain" type="range" min="0" max="0.16" step="0.005" value="0.034"></div>
+      <div class="row"><label>Camp vizual</label><input id="sFov" type="range" min="45" max="95" step="1" value="60"></div>
+      <div class="row"><label>Sensibilitate mouse</label><input id="sSens" type="range" min="0.6" max="6" step="0.1" value="2.2"></div>
+      <div class="row"><label>Volum</label><input id="sVol" type="range" min="0" max="1" step="0.02" value="0.7"></div>
+      <div class="row"><label>Ora (0 noapte · 0.2 zori · 1 zi)</label><input id="sTod" type="range" min="0" max="1" step="0.01" value="0"></div>
+    </div>
+    <hr class="sep">
+    <button class="btn" id="resume">Inapoi in joc</button>
+  </div>
+</div>
+
+<div id="loader">
+  <h1>Strada</h1>
+  <div class="sub">cartier romanesc, noaptea · totul generat procedural</div>
+  <div id="track"><div id="bar"></div></div>
+  <div id="lstatus">pornesc...</div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

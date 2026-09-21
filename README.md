@@ -19,3 +19,15 @@ Deploy to Vercel; plug Supabase, OpenAI, Resend; optional Telegram.
 - Monitor kicks `/api/cron` when backlog/staleness is detected.
 - Digest emails last 24h activity to `OWNER_EMAIL`.
 - Keep `AGENT_BOOTSTRAP_TOKEN` secret; remove `DATABASE_URL` after bootstrap.
+
+---
+
+## `game/` — Strada (lume deschisă 3D)
+
+Joc 3D în browser care reconstituie o stradă de cartier noaptea, pornind de la
+fotografii: mers liber sau condus, hartă la scară 1:1, totul generat procedural
+(fără assete externe). Vezi [`game/README.md`](game/README.md).
+
+```bash
+python3 -m http.server 8000   # apoi http://localhost:8000/game/
+```
