@@ -24,7 +24,7 @@ npm run game          # static server on http://127.0.0.1:8099
 
 | | |
 |---|---|
-| **Service hall** | 28 × 14 m, three 4.2 × 4.0 m sectional doors, two bays open with two-post lifts, workbench, compressor, tyre stacks |
+| **Service hall** | 19.2 × 13 m — only as long as its three bays — with 4.2 × 4.0 m sectional doors, two bays open with two-post lifts, workbench, compressor, tyre stacks |
 | **Garage** | 16 × 14 m with the shallow canopy from the first photo, the black Octavia parked half inside with its tailgate and driver's door open |
 | **Yard** | crushed stone, two poured concrete pads with real expansion joints, worn dirt tracks, the entrance driveway and a sliding gate |
 | **Vehicles** | 10 cars plus a Komatsu-style backhoe loader, all at factory dimensions, with the licence plates as they read in the photos |

@@ -22,8 +22,15 @@ comparing against these:
 | Sectional garage door (hall) | 4.20 × 4.00 (W × H)            |
 | Concrete utility pole        | 10.0 tall, 35–40 spacing       |
 
-Derived: the 3-bay hall face is 6.6 door-widths long → **28 m**, eave at 1.15 × door
-height → **4.6 m**. The single-bay garage face is 3.4 Octavia-widths → **16 m**.
+Derived by measuring the facade in photo 3 at 3× zoom: the piers between the
+4.2 m doors read 2.4 m and 2.9 m against the doors themselves, and the wall runs
+only about a metre past each outer door. The hall is therefore **19.2 m** long —
+no longer than its three bays — with the eave at 1.15 × door height, **4.6 m**.
+
+The same method on photo 1 puts the garage door hard against that building's
+east corner, with roughly **1 m** of wall beyond it; the blank wall runs west,
+and how far is not determinable because it leaves the frame. It is modelled at
+14 m, which is the least assumption consistent with the photo.
 
 ## 2. How the four camera positions were reconciled
 
@@ -59,22 +66,24 @@ photo-3/4 arrangement, since that is the frame with the most of the yard in it.
                     │ 2 chimneys (further out, Z ≈ −120) · power line along Z = −57
   ══════════════════╪══ boundary fence  Z = −52 ═════════════════════════
                     │
-   house #2 (red roof)          ┌──────────── SERVICE HALL B ───────────┐
-   −46..−33, −52..−41           │  X −40..−12   Z −36..−22   28 × 14 m  │
-                                │  3 sectional doors on the SOUTH face  │
-   container office             │  at X = −34, −27.5, −21 · 4.2 × 4.0 m │
-   (−47.5, −24) 6.06 × 2.44     └───────── paver apron Z −22..−16 ──────┘
+   house #2 (red roof)      ┌─────── SERVICE HALL B ───────┐
+   −46..−33, −52..−41       │ X −35.6..−16.4  Z −35..−22   │
+                            │ 19.2 × 13 m — only as long   │
+   container office         │ as its 3 bays. Doors SOUTH   │
+   (−47.5, −24) 6.06 × 2.44 │ at X = −32.6, −26, −19.4     │
+                            └──── apron Z −21.6..−15.6 ────┘
                                                                           orchard
    car row along the                 ███ CONCRETE PAD ███                 X 4..44
    west tree line                    X −40..−16  Z 0..16                  Z −30..12
    X ≈ −48                                                                (apple, 4.2 m rows)
                                               house #1        ┌ mesh fence Z = 12
                     ┌── GARAGE A ──┐          −9..3           │ and X = 4
-                    │ X −24..−8    │          −8.5..2.5       │
+                    │ X −23..−9    │          −8.5..2.5       │
                     │ Z 2..16      │     hedge                │   silver Ford
-                    │ 1 door SOUTH │     −7..2, 9..20         │   parked at (3, 15)
-                    │ + canopy     │        ▓▓ entrance driveway ▓▓
-                    └──────────────┘        X −22..6   Z 18..32
+                    │ door at the  │     −7..2, 9..20         │   parked at (3, 15)
+                    │ EAST corner  │        ▓▓ entrance driveway ▓▓
+                    │ (X = −12.2)  │        X −22..6   Z 18..32
+                    └──────────────┘
   ═══════════════════════ street (asphalt) Z = 32..40 ═══════════════════
                                     S  (+Z)
 ```
@@ -87,9 +96,9 @@ of the four reference shots (eye height 1.55 m, phone-like 62° vertical FOV):
 | # | Position (x, y, z)   | Heading | Pitch | Vertical FOV | Reference photo                |
 |---|----------------------|---------|-------|--------------|--------------------------------|
 | 1 | (−6.0, 1.58, 27.0)   | 4°      | +3°   | 79°          | garage + orchard + silver Ford |
-| 2 | (−31.0, 1.58, 6.0)   | 338°    | +4°   | 79°          | Dokker + industrial backdrop   |
-| 3 | (−30.0, 1.58, 10.0)  | 356°    | +3°   | 79°          | yard + 3-bay hall + container  |
-| 4 | (−34.0, 1.58, 16.0)  | 350°    | +4°   | 84°          | wide yard + backhoe            |
+| 2 | (−31.0, 1.58, 4.0)   | 338°    | +4°   | 79°          | Dokker + industrial backdrop   |
+| 3 | (−29.0, 1.58, 3.0)   | 355°    | +3°   | 79°          | yard + 3-bay hall + container  |
+| 4 | (−33.0, 1.58, 11.0)  | 351°    | +4°   | 84°          | wide yard + backhoe            |
 
 The field of view is wide because the originals are: the garage door in the
 first photo is 4.2 m across at about 17 m, which subtends roughly 13°, and it

@@ -9,7 +9,7 @@ export const CARS = [
     trackF: 1.549, trackR: 1.520, wheelR: 0.331, wheelW: 0.225,
     color: 0x0b0d10, metallic: 0.28, rim: 0xb9bec3,
     plate: { text: 'E 202 A', country: 'MD' },
-    x: -15, z: 14.2, yaw: 0, tailgateOpen: true, doorOpen: true,
+    x: -12.2, z: 14.2, yaw: 0, tailgateOpen: true, doorOpen: true,
     mass: 1395, power: 1.00, drive: 'fwd',
     note: 'în ușa garajului, cu haionul și portiera deschise',
   },
@@ -28,7 +28,7 @@ export const CARS = [
     trackF: 1.490, trackR: 1.478, wheelR: 0.318, wheelW: 0.205,
     color: 0xf2f4f3, metallic: 0.05, rim: 0xd8dce0,
     plate: { text: 'PH 76 VLS', country: 'RO' },
-    x: -22, z: -16, yaw: 0, mass: 1230, power: 0.78, drive: 'fwd',
+    x: -24.5, z: -15.5, yaw: 0, mass: 1230, power: 0.78, drive: 'fwd',
     note: 'în fața halei, cu spatele spre curte',
   },
   {
@@ -87,7 +87,7 @@ export const CARS = [
     trackF: 1.593, trackR: 1.591, wheelR: 0.340, wheelW: 0.225,
     color: 0x1b2026, metallic: 0.5, rim: 0xa9aeb3,
     plate: { text: 'B 137 XYZ', country: 'RO' },
-    x: -14.5, z: -18, yaw: 352, mass: 1610, power: 1.05, drive: 'fwd',
+    x: -17.5, z: -17.5, yaw: 352, mass: 1610, power: 1.05, drive: 'fwd',
   },
 ];
 

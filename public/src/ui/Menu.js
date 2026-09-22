@@ -127,7 +127,7 @@ export class Menu {
       dimensiunile sunt în metri, ancorate în obiectele cu dimensiuni cunoscute
       din poze (mașini, uși de hală, container, stâlpi).</p>
       <table>${rows}</table>
-      <p>Suprafața construită: hala service 28 × 14 m (3 boxe cu uși de 4,2 × 4,0 m),
+      <p>Suprafața construită: hala service 19,2 × 13 m (3 boxe cu uși de 4,2 × 4,0 m),
       garajul 16 × 14 m cu copertină, biroul-container 6,06 × 2,44 m.
       Livada are ${PLAN.TREES.filter(t => t.kind === 'orchard').length} pomi pe rânduri de 4,2 m.</p>
       <p>Detalii complete despre cum a fost dedusă harta: <code>docs/MAP-SURVEY.md</code>.</p>`;

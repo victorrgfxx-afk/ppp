@@ -21,27 +21,34 @@ export const SURFACES = [
   { id: 'wornB',     tex: 'dirt',     x: -30,   z: -14,  w: 14,  d: 10,  y: 0.01 },
   { id: 'pad',       tex: 'concrete', x: -28,   z: 8,    w: 24,  d: 16,  y: 0.06 },
   { id: 'drive',     tex: 'concrete', x: -8,    z: 25,   w: 28,  d: 14,  y: 0.06 },
-  { id: 'apron',     tex: 'concrete', x: -26,   z: -19,  w: 28,  d: 6,   y: 0.05 },
+  { id: 'apron',     tex: 'concrete', x: -26,   z: -18.6, w: 22, d: 6,   y: 0.05 },
   { id: 'street',    tex: 'asphalt',  x: -7,    z: 37,   w: 104, d: 8,   y: 0.00 },
 ];
 
 /* -------------------------------------------------------------- buildings */
 export const BUILDINGS = {
   /* The three-bay service hall that closes the north-east side of the yard
-     (photos 3 and 4). Doors face south, into the yard. */
+     (photos 3 and 4). Doors face south, into the yard.
+     Width measured off photo 3: the piers between the 4.2 m doors read ~2.4 m
+     and ~2.9 m against the doors themselves, and the wall runs barely a metre
+     past the outer doors — so the building is only as long as its three bays,
+     19.2 m, not the 28 m first assumed. */
   hallB: {
-    type: 'hall', x: -26, z: -29, w: 28, d: 14,
-    hFront: 4.6, hBack: 5.6, rotY: 0, name: 'hala-service',
-    doors: [{ x: -8, w: 4.2, h: 4.0 }, { x: -1.5, w: 4.2, h: 4.0 }, { x: 5, w: 4.2, h: 4.0 }],
+    type: 'hall', x: -26, z: -28.5, w: 19.2, d: 13,
+    hFront: 4.6, hBack: 5.5, rotY: 0, name: 'hala-service',
+    doors: [{ x: -6.6, w: 4.2, h: 4.0 }, { x: 0, w: 4.2, h: 4.0 }, { x: 6.6, w: 4.2, h: 4.0 }],
     openDoors: [0, 2],
     windowStrip: true, canopy: 0,
   },
   /* The single-bay garage from the first photo: door facing south, with the
-     shallow canopy over it and the Octavia parked half inside. */
+     shallow canopy over it and the Octavia parked half inside.
+     Photo 1 puts the door hard against the building's east corner — barely a
+     metre of wall beyond it — so the door sits at the east end of the face and
+     the blank wall runs west. */
   garageA: {
-    type: 'hall', x: -16, z: 9, w: 16, d: 14,
+    type: 'hall', x: -16, z: 9, w: 14, d: 14,
     hFront: 4.4, hBack: 5.2, rotY: 0, name: 'garaj',
-    doors: [{ x: 1, w: 4.2, h: 3.7 }],
+    doors: [{ x: 3.8, w: 4.2, h: 3.7 }],
     openDoors: [0],
     windowStrip: false, canopy: 1.7,
   },
@@ -130,25 +137,25 @@ export const GRASS_AREAS = [
 /* ------------------------------------------------------------------ props */
 /* `d` = dynamic (can be knocked over). Positions are ground-level origins. */
 export const PROPS = [
-  /* --- against the garage wall, exactly as in the first photo --- */
-  { kind: 'oilDrum',    x: -10.6, z: 16.6, rotY: 0.2,  d: true },
-  { kind: 'barrel',     x: -11.6, z: 16.7, rotY: -0.3, d: true, color: 0x1f57b5 },
-  { kind: 'extinguisher', x: -9.6, z: 16.5, rotY: 0,   d: true },
-  { kind: 'jerrycan',   x: -12.4, z: 16.4, rotY: 0.5,  d: true },
-  { kind: 'crate',      x: -13.2, z: 16.5, rotY: -0.2, d: true, color: 0x2c6e4f },
+  /* --- at the garage's east corner, exactly as in the first photo --- */
+  { kind: 'crate',      x: -10.1, z: 16.35, rotY: -0.2, d: true, color: 0x2c6e4f },
+  { kind: 'jerrycan',   x: -9.4,  z: 16.30, rotY: 0.5,  d: true },
+  { kind: 'barrel',     x: -8.6,  z: 16.42, rotY: -0.3, d: true, color: 0x1f57b5 },
+  { kind: 'oilDrum',    x: -7.8,  z: 16.42, rotY: 0.2,  d: true },
+  { kind: 'extinguisher', x: -7.1, z: 16.32, rotY: 0,   d: true },
   /* --- workshop bays --- */
-  { kind: 'lift',       x: -34,  z: -29,  rotY: 0 },
-  { kind: 'lift',       x: -21,  z: -29,  rotY: 0 },
-  { kind: 'workbench',  x: -27.5,z: -35,  rotY: 0 },
-  { kind: 'toolbox',    x: -30.5,z: -34.6,rotY: 0.1 },
-  { kind: 'toolbox',    x: -17,  z: -34.6,rotY: -0.2 },
-  { kind: 'compressor', x: -13.6,z: -34.3,rotY: 1.57, d: true },
-  { kind: 'hoseReel',   x: -13.2,z: -28,  rotY: -1.57, y: 2.2 },
-  { kind: 'tyreStack',  x: -38,  z: -34.4,rotY: 0, n: 5 },
-  { kind: 'tyreStack',  x: -36.6,z: -34.6,rotY: 0, n: 3 },
-  { kind: 'workbench',  x: -19,  z: 4.4,  rotY: 0, len: 3.0 },
-  { kind: 'toolbox',    x: -22,  z: 4.2,  rotY: 0 },
-  { kind: 'tyreStack',  x: -10.6,z: 4.2,  rotY: 0, n: 4 },
+  { kind: 'lift',       x: -32.6,z: -27.8,rotY: 0 },
+  { kind: 'lift',       x: -19.4,z: -27.8,rotY: 0 },
+  { kind: 'workbench',  x: -26,  z: -33.9,rotY: 0 },
+  { kind: 'toolbox',    x: -29.2,z: -33.7,rotY: 0.1 },
+  { kind: 'toolbox',    x: -22.6,z: -33.7,rotY: -0.2 },
+  { kind: 'compressor', x: -17.8,z: -33.4,rotY: 1.57, d: true },
+  { kind: 'hoseReel',   x: -17.3,z: -27.5,rotY: -1.57, y: 2.2 },
+  { kind: 'tyreStack',  x: -34.2,z: -33.6,rotY: 0, n: 5 },
+  { kind: 'tyreStack',  x: -33.0,z: -33.8,rotY: 0, n: 3 },
+  { kind: 'workbench',  x: -18.5,z: 3.2,  rotY: 0, len: 3.0 },
+  { kind: 'toolbox',    x: -21.2,z: 3.0,  rotY: 0 },
+  { kind: 'tyreStack',  x: -10.2,z: 3.2,  rotY: 0, n: 4 },
   /* --- yard clutter --- */
   { kind: 'pallet',     x: -43,  z: -17,  rotY: 0.3,  d: true },
   { kind: 'pallet',     x: -42.2,z: -17.4,rotY: 0.34, d: true, y: 0.16 },
@@ -181,9 +188,9 @@ export const FENCE_SIGNS = [
 /* Reconstructed poses of the four reference shots. */
 export const PHOTO_SPOTS = [
   { id: 1, name: 'Foto 1 — garaj, livadă, Ford argintiu', x: -6.0, y: 1.58, z: 27.0, yaw: 4, pitch: 3, fov: 79 },
-  { id: 2, name: 'Foto 2 — Dokker, zona industrială', x: -31.0, y: 1.58, z: 6.0, yaw: 338, pitch: 4, fov: 79 },
-  { id: 3, name: 'Foto 3 — curtea și hala service', x: -30.0, y: 1.58, z: 10.0, yaw: 356, pitch: 3, fov: 79 },
-  { id: 4, name: 'Foto 4 — curte largă, buldoexcavatorul', x: -34.0, y: 1.58, z: 16.0, yaw: 350, pitch: 4, fov: 84 },
+  { id: 2, name: 'Foto 2 — Dokker, zona industrială', x: -31.0, y: 1.58, z: 4.0, yaw: 338, pitch: 4, fov: 79 },
+  { id: 3, name: 'Foto 3 — curtea și hala service', x: -29.0, y: 1.58, z: 3.0, yaw: 355, pitch: 3, fov: 79 },
+  { id: 4, name: 'Foto 4 — curte largă, buldoexcavatorul', x: -33.0, y: 1.58, z: 11.0, yaw: 351, pitch: 4, fov: 84 },
 ];
 
 export const SPAWN = { x: -10, y: 1.7, z: 27, yaw: 345 };
