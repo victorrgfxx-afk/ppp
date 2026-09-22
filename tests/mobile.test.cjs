@@ -31,11 +31,22 @@ const { chromium, devices } = require('playwright-core');
   check('minimap does not overlap the top buttons', layout.mini.y + layout.mini.h <= layout.top.y + 4, `map ends ${layout.mini.y+layout.mini.h}, buttons at ${layout.top.y}`);
   check('no horizontal overflow', await ev('document.documentElement.scrollWidth <= innerWidth'), await ev('document.documentElement.scrollWidth')+'px vs '+layout.vw);
 
-  // --- synthetic touch on the virtual stick ---------------------------------
+  // --- the joystick must actually be the topmost element at its own centre.
+  // Dispatching straight at #stick would pass even when a full-screen overlay
+  // covers it, which is exactly the bug this guards against.
+  const hit = await ev(`(function(){
+    var b=document.getElementById('stick').getBoundingClientRect();
+    var el=document.elementFromPoint(b.x+b.width/2, b.y+b.height/2);
+    return {id: el ? (el.id || el.className || el.tagName) : null,
+            inStick: !!(el && el.closest && el.closest('#stick'))};})()`);
+  check('joystick is the topmost element at its own centre', hit.inStick, 'hit-test found: ' + hit.id);
+
+  // --- touch the stick through real hit-testing ----------------------------
   const p0 = await ev('({x:__game.player.body.position.x,z:__game.player.body.position.z})');
   await page.evaluate(`(function(){
-    var el=document.getElementById('stick'), b=el.getBoundingClientRect();
+    var b=document.getElementById('stick').getBoundingClientRect();
     var cx=b.x+b.width/2, cy=b.y+b.height/2;
+    var el=document.elementFromPoint(cx,cy);       // whatever is really on top
     var mk=function(t,x,y){return new PointerEvent(t,{pointerId:7,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true});};
     el.dispatchEvent(mk('pointerdown',cx,cy));
     el.dispatchEvent(mk('pointermove',cx,cy-b.height*0.45));
@@ -49,10 +60,26 @@ const { chromium, devices } = require('playwright-core');
   await page.waitForTimeout(300);
   check('releasing the stick stops the player', Math.abs(await ev('__game.input.state.move.y')) < 0.01);
 
-  // --- look drag on the right side -----------------------------------------
+  // --- a thumb anywhere in the lower-left should raise a stick there --------
+  const p1b = await ev('({x:__game.player.body.position.x,z:__game.player.body.position.z})');
+  await page.evaluate(`(function(){
+    var x=Math.round(innerWidth*0.28), y=Math.round(innerHeight*0.72);
+    var el=document.elementFromPoint(x,y);
+    var mk=function(t,cx,cy){return new PointerEvent(t,{pointerId:8,pointerType:'touch',isPrimary:true,clientX:cx,clientY:cy,bubbles:true,cancelable:true});};
+    el.dispatchEvent(mk('pointerdown',x,y));
+    el.dispatchEvent(mk('pointermove',x,y-Math.round(innerHeight*0.10)));
+    window.__dynEl=el; window.__dyn=[x,y];
+  })()`);
+  await simWait(1.5);
+  const p1c = await ev('({x:__game.player.body.position.x,z:__game.player.body.position.z})');
+  const dynMoved = Math.hypot(p1c.x-p1b.x, p1c.z-p1b.z);
+  await page.evaluate(`window.__dynEl.dispatchEvent(new PointerEvent('pointerup',{pointerId:8,pointerType:'touch',clientX:window.__dyn[0],clientY:window.__dyn[1],bubbles:true}))`);
+  check('a floating stick appears under a thumb in the lower-left', dynMoved > 1.5, dynMoved.toFixed(2)+' m');
+
+  // --- look drag on the right side (through real hit-testing) --------------
   const yaw0 = await ev('+__game.player.yaw.toFixed(3)');
   await page.evaluate(`(function(){
-    var el=document.getElementById('look-zone');
+    var el=document.elementFromPoint(300,400);
     var mk=function(t,x,y){return new PointerEvent(t,{pointerId:9,pointerType:'touch',isPrimary:true,clientX:x,clientY:y,bubbles:true,cancelable:true});};
     el.dispatchEvent(mk('pointerdown',300,400));
     for(var i=1;i<=6;i++) el.dispatchEvent(mk('pointermove',300-i*18,400));
@@ -63,7 +90,11 @@ const { chromium, devices } = require('playwright-core');
   check('look drag rotates the camera', Math.abs(yaw1-yaw0) > 0.05, `yaw ${yaw0} -> ${yaw1}`);
 
   // --- on-screen buttons ----------------------------------------------------
-  await page.evaluate(`(function(){var b=document.querySelector('#btns [data-act="jump"]');
+  await page.evaluate(`(function(){var q=document.querySelector('#btns [data-act="jump"]');
+    var r=q.getBoundingClientRect();
+    var top=document.elementFromPoint(r.x+r.width/2, r.y+r.height/2);
+    if(!top || !top.closest('[data-act="jump"]')) throw new Error('jump button is covered by '+(top&&(top.id||top.className)));
+    var b=q;
     var mk=function(t){return new PointerEvent(t,{pointerId:11,pointerType:'touch',isPrimary:true,bubbles:true,cancelable:true});};
     b.dispatchEvent(mk('pointerdown'));})()`);
   // the software renderer runs at a few fps, so wait for the game to actually

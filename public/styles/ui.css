@@ -142,17 +142,19 @@ canvas#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
 
 /* ---------- touch controls ---------- */
 #touch{position:fixed;inset:0;z-index:30;pointer-events:none}
-#look-zone{position:absolute;inset:0;pointer-events:auto;touch-action:none}
+/* The look zone covers the whole screen, so it must sit UNDER the stick and the
+   buttons — otherwise it swallows every touch aimed at them. */
+#look-zone{position:absolute;inset:0;pointer-events:auto;touch-action:none;z-index:0}
 .stick{position:absolute;left:calc(22px + var(--sal));bottom:calc(22px + var(--sab));
   width:clamp(110px,30vmin,175px);aspect-ratio:1;border-radius:50%;pointer-events:auto;touch-action:none;
   background:radial-gradient(circle,rgba(255,255,255,.10),rgba(255,255,255,.03) 62%,transparent 70%);
-  border:1.5px solid rgba(255,255,255,.18);opacity:.82;transition:opacity .2s}
+  border:1.5px solid rgba(255,255,255,.18);opacity:.82;transition:opacity .2s;z-index:2}
 .stick.active{opacity:1;border-color:rgba(255,255,255,.4)}
 .stick i{position:absolute;left:50%;top:50%;width:38%;aspect-ratio:1;border-radius:50%;
   transform:translate(-50%,-50%);background:rgba(255,255,255,.35);border:1.5px solid rgba(255,255,255,.5);
   box-shadow:0 3px 12px rgba(0,0,0,.45)}
 #btns,#drive-btns{position:absolute;right:calc(18px + var(--sar));bottom:calc(18px + var(--sab));
-  display:grid;gap:10px;pointer-events:none;justify-items:end}
+  display:grid;gap:10px;pointer-events:none;justify-items:end;z-index:2}
 #btns{grid-template-columns:repeat(2,auto)}
 #drive-btns{grid-template-columns:repeat(2,auto)}
 .tbtn{pointer-events:auto;touch-action:none;border-radius:50%;border:1.5px solid rgba(255,255,255,.22);
@@ -166,11 +168,11 @@ canvas#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
 .tbtn.accent{background:rgba(255,179,0,.30);border-color:rgba(255,179,0,.6)}
 .tbtn.accent:active{background:rgba(255,179,0,.55)}
 #arm-btns{position:absolute;left:calc(18px + var(--sal));bottom:calc(calc(22px + var(--sab)) + clamp(120px,32vmin,190px));
-  display:grid;grid-template-columns:repeat(2,auto);gap:8px;pointer-events:none}
+  display:grid;grid-template-columns:repeat(2,auto);gap:8px;pointer-events:none;z-index:2}
 @media (pointer:fine){ body:not(.touch-ui) #arm-btns{display:none} }
 
 #topbtns{position:absolute;right:calc(10px + var(--sar));top:calc(calc(10px + var(--sat)) + clamp(94px,18vmin,162px));
-  display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:flex-end}
+  display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:flex-end;z-index:2}
 .ibtn{pointer-events:auto;width:clamp(38px,8.5vmin,50px);aspect-ratio:1;border-radius:12px;
   border:1px solid var(--stroke);background:var(--glass);color:var(--ink);font-size:1.05em;cursor:pointer;
   backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center}

@@ -53,9 +53,13 @@ export class Input {
   _bindMouse() {
     const canvas = document.getElementById('view');
     this._canvas = canvas;
+    this._dragLook = false;
     addEventListener('mousemove', (e) => {
-      if (!this.pointerLocked) return;
       const s = settings.get('sens') / 100;
+      // With pointer lock we get movementX/Y directly. Without it — which is the
+      // normal case inside an iframe, where the browser refuses the lock — fall
+      // back to hold-and-drag so the mouse still turns the view.
+      if (!this.pointerLocked && !this._dragLook) return;
       this.state.look.x += e.movementX * 0.0022 * s;
       this.state.look.y += e.movementY * 0.0022 * s * (settings.get('invertY') ? -1 : 1);
     });
@@ -63,14 +67,21 @@ export class Input {
       this.pointerLocked = document.pointerLockElement === canvas;
       if (!this.pointerLocked) this.pressed.add('unlock');
     });
-    canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this.pressed.add('fire');
-    });
+    const startDrag = (e) => {
+      if (e.button === 0) {
+        this.pressed.add('fire');
+        if (!this.pointerLocked) this._dragLook = true;
+      }
+    };
+    addEventListener('mousedown', startDrag);
+    addEventListener('mouseup', () => { this._dragLook = false; });
+    addEventListener('blur', () => { this._dragLook = false; });
   }
 
   requestLock() {
     if (Device.mobile) return;
-    this._canvas.requestPointerLock?.();
+    // may be refused (iframe without allow="pointer-lock"); the drag fallback covers it
+    try { this._canvas.requestPointerLock?.(); } catch { /* fall back to drag-look */ }
   }
   exitLock() { document.exitPointerLock?.(); }
 
@@ -80,6 +91,7 @@ export class Input {
     const knob = document.getElementById('stick-knob');
     const lookZone = document.getElementById('look-zone');
     if (!stick || !lookZone) return;
+    this._stick = stick; this._knob = knob;
     const markTouch = () => {
       if (this.touchMode) return;
       this.touchMode = true;
@@ -87,40 +99,68 @@ export class Input {
       document.getElementById('touch').hidden = false;
     };
 
-    const stickRadius = () => stick.getBoundingClientRect().width / 2;
-
-    stick.addEventListener('pointerdown', (e) => {
-      markTouch();
-      try { stick.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+    /* --- one driver, used by the fixed stick and by the dynamic one -------- */
+    const beginStick = (e, originX, originY) => {
       this._stickId = e.pointerId;
-      const r = stick.getBoundingClientRect();
-      this._stickOrigin = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      this._stickOrigin = { x: originX, y: originY };
       stick.classList.add('active');
-      this._moveStick(e, knob, stickRadius());
-      e.preventDefault();
-    });
-    stick.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== this._stickId) return;
-      this._moveStick(e, knob, stickRadius());
-      e.preventDefault();
-    });
-    const endStick = (e) => {
-      if (e.pointerId !== this._stickId) return;
+      this._moveStick(e, knob, stick.getBoundingClientRect().width / 2);
+    };
+    const endStick = () => {
       this._stickId = null;
       this.state.move.x = this.state.move.y = 0;
       knob.style.transform = 'translate(-50%,-50%)';
       stick.classList.remove('active');
+      if (this._stickFloating) {           // put the dial back where CSS wants it
+        stick.style.left = ''; stick.style.top = ''; stick.style.bottom = '';
+        this._stickFloating = false;
+      }
     };
-    stick.addEventListener('pointerup', endStick);
-    stick.addEventListener('pointercancel', endStick);
+    this._endStick = endStick;
+
+    /* --- touching the dial itself ---------------------------------------- */
+    stick.addEventListener('pointerdown', (e) => {
+      markTouch();
+      try { stick.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+      const r = stick.getBoundingClientRect();
+      beginStick(e, r.left + r.width / 2, r.top + r.height / 2);
+      e.preventDefault(); e.stopPropagation();
+    });
+    stick.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== this._stickId) return;
+      this._moveStick(e, knob, stick.getBoundingClientRect().width / 2);
+      e.preventDefault();
+    });
+    stick.addEventListener('pointerup', (e) => { if (e.pointerId === this._stickId) endStick(); });
+    stick.addEventListener('pointercancel', (e) => { if (e.pointerId === this._stickId) endStick(); });
+
+    /* --- the rest of the screen: look, or a floating stick in the corner --- */
+    const inStickZone = (e) =>
+      e.clientX < innerWidth * 0.5 && e.clientY > innerHeight * 0.42;
 
     lookZone.addEventListener('pointerdown', (e) => {
       markTouch();
       if (e.pointerType === 'mouse') return;
       try { lookZone.setPointerCapture(e.pointerId); } catch { /* synthetic pointer */ }
+      if (this._stickId === null && inStickZone(e)) {
+        // drop the dial under the thumb wherever it landed
+        const half = stick.getBoundingClientRect().width / 2;
+        stick.style.left = (e.clientX - half) + 'px';
+        stick.style.top = (e.clientY - half) + 'px';
+        stick.style.bottom = 'auto';
+        this._stickFloating = true;
+        beginStick(e, e.clientX, e.clientY);
+        e.preventDefault();
+        return;
+      }
       this._touchLook.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 });
     });
     lookZone.addEventListener('pointermove', (e) => {
+      if (e.pointerId === this._stickId) {
+        this._moveStick(e, knob, stick.getBoundingClientRect().width / 2);
+        e.preventDefault();
+        return;
+      }
       const p = this._touchLook.get(e.pointerId);
       if (!p) return;
       const s = settings.get('sens') / 100;
@@ -132,6 +172,7 @@ export class Input {
       e.preventDefault();
     });
     const endLook = (e) => {
+      if (e.pointerId === this._stickId) { endStick(); return; }
       const p = this._touchLook.get(e.pointerId);
       if (p && p.moved < 12 && performance.now() - p.t < 260) this.pressed.add('fire');
       this._touchLook.delete(e.pointerId);
@@ -139,7 +180,7 @@ export class Input {
     lookZone.addEventListener('pointerup', endLook);
     lookZone.addEventListener('pointercancel', endLook);
 
-    /* on-screen buttons */
+    /* --- on-screen buttons ------------------------------------------------ */
     for (const btn of document.querySelectorAll('[data-act]')) {
       const act = btn.dataset.act;
       const on = (e) => {
