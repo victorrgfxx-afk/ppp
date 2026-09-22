@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Service Auto Freeroam - open world 3D first person, harta reconstruita 1:1 dupa fotografii.">
+<title>Service Auto — Freeroam</title>
+<link rel="stylesheet" href="./styles/ui.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🔧</text></svg>">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/webgpu": "./vendor/three/three.module.js",
+    "three/tsl": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/",
+    "cannon": "./vendor/cannon/cannon-es.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="view"></canvas>
+
+<!-- ============ BOOT / LOADING ============ -->
+<div id="boot" class="screen">
+  <div class="boot-inner">
+    <h1 class="title">SERVICE AUTO<span>FREEROAM</span></h1>
+    <p class="sub">Harta reconstruită 1:1 după fotografii · open world · first person</p>
+    <div class="bar"><i id="boot-bar"></i></div>
+    <div id="boot-msg" class="msg">se inițializează…</div>
+    <button id="boot-start" class="btn-primary" hidden>INTRĂ ÎN JOC</button>
+    <div id="boot-err" class="err" hidden></div>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" hidden>
+  <div id="compass"><canvas id="compass-cv" width="640" height="46"></canvas></div>
+
+  <div id="minimap-wrap">
+    <canvas id="minimap" width="300" height="300"></canvas>
+    <div id="minimap-ring"></div>
+  </div>
+
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+
+  <div id="prompt" hidden><b></b><span></span></div>
+
+  <div id="toast-wrap"></div>
+
+  <div id="vehicle-hud" hidden>
+    <canvas id="dash" width="420" height="230"></canvas>
+  </div>
+
+  <div id="stats">
+    <div class="stat"><label>FPS</label><b id="st-fps">–</b></div>
+    <div class="stat"><label>POZIȚIE</label><b id="st-pos">–</b></div>
+  </div>
+
+  <div id="stamina"><i></i></div>
+
+  <div id="photo-frame" hidden>
+    <div class="pf-corner tl"></div><div class="pf-corner tr"></div>
+    <div class="pf-corner bl"></div><div class="pf-corner br"></div>
+    <div id="photo-label"></div>
+  </div>
+</div>
+
+<!-- ============ TOUCH CONTROLS ============ -->
+<div id="touch" hidden>
+  <div id="stick" class="stick"><i id="stick-knob"></i></div>
+  <div id="look-zone"></div>
+  <div id="btns">
+    <button class="tbtn big" data-act="primary"><span id="btn-primary-lbl">ALEARGĂ</span></button>
+    <button class="tbtn" data-act="jump">SARI</button>
+    <button class="tbtn" data-act="crouch">GHEMUIT</button>
+    <button class="tbtn accent" data-act="use">INTRĂ</button>
+  </div>
+  <div id="drive-btns" hidden>
+    <button class="tbtn pedal" data-act="brake">FRÂNĂ</button>
+    <button class="tbtn pedal accent" data-act="throttle">GAZ</button>
+    <button class="tbtn small" data-act="handbrake">MÂNĂ</button>
+    <button class="tbtn small" data-act="horn">CLAXON</button>
+  </div>
+  <div id="topbtns">
+    <button class="ibtn" data-act="menu" title="Meniu">☰</button>
+    <button class="ibtn" data-act="photo" title="Photo match">◉</button>
+    <button class="ibtn" data-act="lights" title="Lumini">☀</button>
+  </div>
+</div>
+
+<!-- ============ MENU ============ -->
+<div id="menu" class="screen" hidden>
+  <div class="panel">
+    <div class="tabs">
+      <button class="tab on" data-tab="play">JOC</button>
+      <button class="tab" data-tab="gfx">GRAFICĂ</button>
+      <button class="tab" data-tab="ctrl">CONTROL</button>
+      <button class="tab" data-tab="world">LUME</button>
+      <button class="tab" data-tab="info">HARTĂ</button>
+    </div>
+
+    <div class="tabbody on" data-body="play">
+      <button class="btn-primary" id="m-resume">CONTINUĂ</button>
+      <div class="row"><button class="btn" id="m-respawn">Respawn la intrare</button>
+      <button class="btn" id="m-exitcar">Coboară din mașină</button></div>
+      <div class="row"><button class="btn" id="m-fs">Fullscreen</button>
+      <button class="btn" id="m-reset">Resetează mașinile</button></div>
+      <h4>Teleport rapid</h4>
+      <div id="m-teleports" class="chips"></div>
+    </div>
+
+    <div class="tabbody" data-body="gfx">
+      <h4>Preset calitate</h4>
+      <div class="chips" id="m-quality">
+        <button class="chip" data-q="low">Low</button>
+        <button class="chip" data-q="medium">Medium</button>
+        <button class="chip" data-q="high">High</button>
+        <button class="chip" data-q="ultra">Ultra</button>
+      </div>
+      <label class="sl">Rezoluție de randare <b id="v-res"></b><input type="range" id="s-res" min="50" max="100" step="5"></label>
+      <label class="sl">Câmp vizual (FOV) <b id="v-fov"></b><input type="range" id="s-fov" min="55" max="100" step="1"></label>
+      <label class="sl">Distanță umbre <b id="v-sd"></b><input type="range" id="s-sd" min="30" max="140" step="10"></label>
+      <label class="ck"><input type="checkbox" id="s-post"> Post-procesare (bloom + AA)</label>
+      <label class="ck"><input type="checkbox" id="s-ao"> Ambient occlusion (GTAO)</label>
+      <label class="ck"><input type="checkbox" id="s-shadows"> Umbre</label>
+      <label class="ck"><input type="checkbox" id="s-adaptive"> Rezoluție adaptivă (ține 60fps)</label>
+      <label class="ck"><input type="checkbox" id="s-grain"> Grain + aberație cromatică</label>
+    </div>
+
+    <div class="tabbody" data-body="ctrl">
+      <label class="sl">Sensibilitate privire <b id="v-sens"></b><input type="range" id="s-sens" min="20" max="300" step="5"></label>
+      <label class="sl">Zonă moartă joystick <b id="v-dz"></b><input type="range" id="s-dz" min="0" max="30" step="1"></label>
+      <label class="ck"><input type="checkbox" id="s-inv"> Inversează axa Y</label>
+      <label class="ck"><input type="checkbox" id="s-gyro"> Giroscop (înclină telefonul)</label>
+      <label class="ck"><input type="checkbox" id="s-tilt"> Volan prin înclinare (în mașină)</label>
+      <label class="ck"><input type="checkbox" id="s-haptic"> Vibrații</label>
+      <label class="ck"><input type="checkbox" id="s-bob"> Head bob</label>
+      <label class="sl">Volum <b id="v-vol"></b><input type="range" id="s-vol" min="0" max="100" step="5"></label>
+      <div class="help">
+        <b>Tastatură:</b> WASD mers · Shift fugă · Ctrl ghemuit · Space sar ·
+        E intră/ieși · F faruri · H claxon · Space frână de mână · P photo-match ·
+        Tab meniu · R resetează mașina · V schimbă camera
+      </div>
+    </div>
+
+    <div class="tabbody" data-body="world">
+      <label class="sl">Ora zilei <b id="v-time"></b><input type="range" id="s-time" min="0" max="1439" step="5"></label>
+      <label class="ck"><input type="checkbox" id="s-timeflow"> Trecerea timpului</label>
+      <h4>Vreme</h4>
+      <div class="chips" id="m-weather">
+        <button class="chip" data-w="clear">Senin (ca în poze)</button>
+        <button class="chip" data-w="cumulus">Cumulus</button>
+        <button class="chip" data-w="overcast">Înnorat</button>
+        <button class="chip" data-w="rain">Ploaie</button>
+      </div>
+      <label class="sl">Vânt <b id="v-wind"></b><input type="range" id="s-wind" min="0" max="100" step="5"></label>
+      <label class="ck"><input type="checkbox" id="s-traffic"> NPC-uri active</label>
+    </div>
+
+    <div class="tabbody" data-body="info">
+      <div id="mapinfo"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+<noscript><div class="screen"><p>Jocul are nevoie de JavaScript și WebGL2.</p></div></noscript>
+</body>
+</html>

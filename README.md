@@ -1,3 +1,14 @@
+# Repo
+
+Two independent things live here:
+
+1. **[Service Auto — Freeroam](GAME.md)** — a browser 3D open-world game in `public/`,
+   built on a yard reconstructed 1:1 from photographs. Served at the site root.
+2. **Chaos Harvester + on-Vercel agent** — the serverless harvester in `api/`,
+   documented below.
+
+---
+
 # Chaos Harvester + On‑Vercel Agent
 
 All‑in‑one repo: serverless harvester + watchdog agent + daily digest.

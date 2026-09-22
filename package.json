@@ -7,7 +7,10 @@
     "dev": "vercel dev",
     "cron:local": "node api/cron.js",
     "agent:monitor": "node api/agent/monitor.js",
-    "agent:digest": "node api/agent/digest.js"
+    "agent:digest": "node api/agent/digest.js",
+    "game": "node tests/serve.cjs",
+    "test:game": "node tests/gameplay.test.cjs",
+    "test:mobile": "node tests/mobile.test.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -20,5 +23,8 @@
     "resend": "^3.4.0",
     "node-fetch": "^3.3.2",
     "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.47.0"
   }
 }

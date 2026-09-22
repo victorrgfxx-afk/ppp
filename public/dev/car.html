@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<title>Vizualizator vehicule</title>
+<style>
+  html,body{margin:0;height:100%;background:#20242a;overflow:hidden;font-family:system-ui,sans-serif;color:#eef}
+  canvas{display:block;width:100%;height:100%}
+  #bar{position:fixed;left:0;right:0;top:0;padding:8px 10px;background:rgba(0,0,0,.55);font-size:13px;
+       display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  select,button{background:#2f343c;border:1px solid #556;border-radius:6px;color:#eef;padding:5px 9px;font-size:13px}
+</style>
+<script type="importmap">
+{"imports":{"three":"../vendor/three/three.module.js","three/addons/":"../vendor/three/addons/","cannon":"../vendor/cannon/cannon-es.js"}}
+</script>
+</head>
+<body>
+<div id="bar">
+  <span>Vehicul:</span><select id="pick"></select>
+  <span>Unghi:</span><select id="view">
+    <option value="side">lateral</option><option value="front34">3/4 față</option>
+    <option value="rear34">3/4 spate</option><option value="front">față</option>
+    <option value="top">de sus</option>
+  </select>
+  <button id="grid">grilă</button>
+  <span id="info"></span>
+</div>
+<canvas id="cv"></canvas>
+<script type="module">
+import * as THREE from 'three';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { TextureLibrary } from '../src/gfx/Textures.js';
+import { MaterialLibrary } from '../src/gfx/Materials.js';
+import { buildCar } from '../src/vehicles/CarFactory.js';
+import { buildBackhoe } from '../src/vehicles/Backhoe.js';
+import { CARS } from '../src/vehicles/CarSpecs.js';
+
+const cv = document.getElementById('cv');
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true, outputBufferType: THREE.HalfFloatType });
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+
+const sky = new Sky(); sky.scale.setScalar(20000);
+sky.material.uniforms.turbidity.value = 3;
+sky.material.uniforms.rayleigh.value = 1.2;
+sky.material.uniforms.cloudCoverage.value = 0.35;
+const sunDir = new THREE.Vector3(0.5, 0.55, 0.42).normalize();
+sky.material.uniforms.sunPosition.value.copy(sunDir);
+sky.material.fragmentShader = sky.material.fragmentShader
+  .replace('uniform float showSunDisc;', 'uniform float showSunDisc;\nuniform float skyGain;')
+  .replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( texColor * skyGain, 1.0 );');
+sky.material.uniforms.skyGain = { value: 0.205 };
+scene.add(sky);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene(); envScene.add(sky.clone());
+scene.environment = pmrem.fromScene(envScene, 0.04).texture;
+scene.environmentIntensity = 1.02;
+const sun = new THREE.DirectionalLight(0xfff3e0, 5.95);
+sun.position.copy(sunDir).multiplyScalar(30); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 80 });
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.normalBias = 0.03;
+scene.add(sun, new THREE.HemisphereLight(0x99bbff, 0xd8b98a, 0.35));
+
+const tex = new TextureLibrary({ size: 512, aniso: 8 });
+await tex.build(() => {});
+const mats = new MaterialLibrary(tex);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), mats.surface('concrete', 60, 60));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+let grid = new THREE.GridHelper(20, 40, 0x556, 0x334); grid.position.y = 0.01; grid.visible = false; scene.add(grid);
+
+const pick = document.getElementById('pick');
+for (const c of CARS) pick.add(new Option(c.label, c.id));
+pick.add(new Option('Komatsu WB93', 'komatsu'));
+let current = null;
+function load(id) {
+  if (current) { scene.remove(current); }
+  if (id === 'komatsu') { current = buildBackhoe(mats); document.getElementById('info').textContent = '5.80 x 2.32 x 3.70 m'; }
+  else {
+    const spec = CARS.find(c => c.id === id);
+    current = buildCar(spec, mats);
+    document.getElementById('info').textContent = `${spec.len} x ${spec.width} x ${spec.height} m · ampatament ${spec.wheelbase} m`;
+  }
+  current.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(current);
+}
+pick.addEventListener('change', () => load(pick.value));
+document.getElementById('grid').addEventListener('click', () => { grid.visible = !grid.visible; });
+load(CARS[0].id);
+
+const views = {
+  side:    [0, 1.4, 9.5],
+  front34: [6.4, 2.0, 6.4],
+  rear34:  [-6.4, 2.0, 6.2],
+  front:   [9.5, 1.5, 0.01],
+  top:     [0.01, 11, 0.01],
+};
+let view = 'side';
+document.getElementById('view').addEventListener('change', e => { view = e.target.value; });
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+renderer.setAnimationLoop(() => {
+  const v = views[view];
+  camera.position.set(v[0], v[1], v[2]);
+  camera.lookAt(0, 0.75, 0);
+  renderer.render(scene, camera);
+});
+window.__ready = true;
+</script>
+</body>
+</html>
