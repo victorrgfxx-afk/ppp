@@ -201,20 +201,24 @@ const G = {
     return bundle(size, 2.0, p, 1.5, aniso);
   },
 
-  /* --- white sandwich-panel cladding (both workshop buildings) --- */
+  /* --- sandwich-panel cladding (both workshop buildings).
+         The panels on these buildings run VERTICALLY: the joints are upright
+         lines about a metre apart, with the fixing screws down them. --- */
   panel(size, aniso) {
     const dirt = new Fbm(4, 4, 41);
     const streak = new Fbm(2, 3, 52);
     const p = paint(size, (x, y, u, v) => {
-      // horizontal joint lines every half-tile = every 1 m of wall
-      const jy = Math.abs(((v * 2) % 1) - 0.0);
-      const joint = clamp01(1 - Math.min(jy, 1 - jy) * 90);
+      // vertical joints every half-tile = every 1 m of wall
+      const jx = ((u * 2) % 1);
+      const joint = clamp01(1 - Math.min(jx, 1 - jx) * 90);
+      // faint micro-ribbing between the joints, as on trapezoidal panel
+      const rib = (Math.sin(u * Math.PI * 2 * 24) * 0.5 + 0.5) * 0.045;
       const d = dirt.at(u * 4, v * 4);
-      const s = streak.at(u * 2, v * 2);
-      let g = 0.805 + (d - 0.5) * 0.045;
-      g -= joint * 0.14;
-      g -= clamp01(v - 0.72) * 0.30 * clamp01(s * 1.4);   // grime creeping up from the base
-      const h = 0.62 - joint * 0.8;
+      const sk = streak.at(u * 2, v * 2);
+      let g = 0.805 + (d - 0.5) * 0.045 + (rib - 0.022);
+      g -= joint * 0.13;
+      g -= clamp01(v - 0.72) * 0.30 * clamp01(sk * 1.4);   // grime creeping up from the base
+      const h = 0.62 - joint * 0.8 + rib * 1.4;
       return [g, g * 1.002, g * 0.99, h, clamp01(0.45 + (d - 0.5) * 0.18 + joint * 0.2)];
     });
     return bundle(size, 2.0, p, 1.5, aniso);

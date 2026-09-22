@@ -9,7 +9,7 @@ export const CARS = [
     trackF: 1.549, trackR: 1.520, wheelR: 0.331, wheelW: 0.225,
     color: 0x0b0d10, metallic: 0.28, rim: 0xb9bec3,
     plate: { text: 'E 202 A', country: 'MD' },
-    x: -12.2, z: 14.2, yaw: 0, tailgateOpen: true, doorOpen: true,
+    x: -12.65, z: 14.2, yaw: 0, tailgateOpen: true, doorOpen: true,
     mass: 1395, power: 1.00, drive: 'fwd',
     note: 'în ușa garajului, cu haionul și portiera deschise',
   },
@@ -78,7 +78,7 @@ export const CARS = [
     trackF: 1.540, trackR: 1.513, wheelR: 0.316, wheelW: 0.205,
     color: 0x5c1418, metallic: 0.62, rim: 0xb0b5ba,
     plate: { text: 'PH 51 ARD', country: 'RO' },
-    x: -19, z: 30.5, yaw: 22, mass: 1280, power: 0.86, drive: 'fwd',
+    x: -20.5, z: 19.5, yaw: 168, mass: 1280, power: 0.86, drive: 'fwd',
     note: 'mașina roșie din colțul primei fotografii',
   },
   {

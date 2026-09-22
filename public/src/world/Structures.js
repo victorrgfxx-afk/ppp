@@ -54,6 +54,20 @@ export function wallWithOpenings(width, height, thickness, openings = []) {
   return mergeParts(parts);
 }
 
+/** Right-triangle gable piece: fills between a rectangular wall of height
+    `hLow` and a roof that rises to `hHigh` at the `high` end (-1 = west). */
+function gableTriangle(width, hLow, hHigh, thickness, high = -1) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-width / 2, 0);
+  shape.lineTo(width / 2, 0);
+  if (high < 0) shape.lineTo(-width / 2, hHigh - hLow);
+  else { shape.lineTo(width / 2, hHigh - hLow); shape.lineTo(-width / 2, 0); }
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+  g.translate(0, 0, -thickness / 2);
+  return g;
+}
+
 /** Sloped (mono-pitch) side wall: trapezoid extruded through the wall thickness. */
 function slopedSideWall(depth, hFront, hBack, thickness) {
   const shape = new THREE.Shape();
@@ -81,7 +95,13 @@ export function buildHall(o, mats, colliders) {
     x = 0, z = 0, w = 28, d = 14, hFront = 4.6, hBack = 5.6, rotY = 0,
     doors = [], canopy = 0, windowStrip = true, name = 'hall',
     wallMat = 'panel', plinth = 0.85, interior = true, openDoors = [],
+    // 'z' (default): the roof rises towards the back. 'x': it rises towards the
+    // west, so the door face itself is a trapezoid — which is what the garage
+    // in the reference photos actually does.
+    slopeAxis = 'z', overhang: overIn = 0.55, brackets = false,
   } = o;
+  const hHigh = Math.max(hFront, hBack), hLow = Math.min(hFront, hBack);
+  const eaveH = slopeAxis === 'x' ? hLow : hFront;
   const g = new THREE.Group();
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
@@ -94,23 +114,41 @@ export function buildHall(o, mats, colliders) {
 
   /* --- south face (the one with the doors) --- */
   const openings = doors.map(dr => ({ x: dr.x, w: dr.w + 0.18, y0: 0, y1: dr.h + 0.18 }));
-  const south = new THREE.Mesh(wallWithOpenings(w, hFront, T, openings), wall);
+  const south = new THREE.Mesh(wallWithOpenings(w, eaveH, T, openings), wall);
   south.position.z = d / 2;
   south.castShadow = south.receiveShadow = true;
   g.add(south);
 
-  /* --- north face --- */
-  const north = new THREE.Mesh(box(w, hBack, T), wall);
-  north.position.set(0, hBack / 2, -d / 2);
-  north.castShadow = north.receiveShadow = true;
-  g.add(north);
-
-  /* --- east / west sloped faces --- */
-  for (const s of [-1, 1]) {
-    const side = new THREE.Mesh(slopedSideWall(d, hFront, hBack, T), wall);
-    side.position.set(s * (w / 2 - T / 2), 0, 0);
-    side.castShadow = side.receiveShadow = true;
-    g.add(side);
+  if (slopeAxis === 'x') {
+    /* the face is a trapezoid: rectangle up to the low eave, triangle above */
+    for (const sz of [1, -1]) {
+      const tri = new THREE.Mesh(gableTriangle(w, hLow, hHigh, T, -1), wall);
+      tri.position.set(0, hLow, sz * d / 2);
+      tri.castShadow = tri.receiveShadow = true;
+      g.add(tri);
+    }
+    const north = new THREE.Mesh(box(w, hLow, T), wall);
+    north.position.set(0, hLow / 2, -d / 2);
+    north.castShadow = north.receiveShadow = true;
+    g.add(north);
+    /* west end is the tall one, east end the low one */
+    for (const [sx, hh] of [[-1, hHigh], [1, hLow]]) {
+      const side = new THREE.Mesh(box(T, hh, d), wall);
+      side.position.set(sx * (w / 2 - T / 2), hh / 2, 0);
+      side.castShadow = side.receiveShadow = true;
+      g.add(side);
+    }
+  } else {
+    const north = new THREE.Mesh(box(w, hBack, T), wall);
+    north.position.set(0, hBack / 2, -d / 2);
+    north.castShadow = north.receiveShadow = true;
+    g.add(north);
+    for (const s of [-1, 1]) {
+      const side = new THREE.Mesh(slopedSideWall(d, hFront, hBack, T), wall);
+      side.position.set(s * (w / 2 - T / 2), 0, 0);
+      side.castShadow = side.receiveShadow = true;
+      g.add(side);
+    }
   }
 
   /* --- plinth band: these halls all sit on a grey painted skirt --- */
@@ -120,39 +158,95 @@ export function buildHall(o, mats, colliders) {
   g.add(skirt);
 
   /* --- mono-pitch roof --- */
-  const slopeLen = Math.hypot(d, hBack - hFront);
-  const angle = Math.atan2(hBack - hFront, d);
-  const over = 0.55;
-  const roof = new THREE.Mesh(box(w + over * 2, 0.14, slopeLen + over * 1.6),
-    mats.surface('roofSheet', w + over * 2, slopeLen, { rotation: Math.PI / 2 }));
-  roof.position.set(0, (hFront + hBack) / 2 + 0.07, 0);
-  roof.rotation.x = -angle;
-  roof.castShadow = roof.receiveShadow = true;
-  g.add(roof);
-
-  /* fascia + gutter */
-  const fascia = new THREE.Mesh(box(w + over * 2, 0.26, 0.1), trim);
-  fascia.position.set(0, hFront - 0.06, d / 2 + over);
-  g.add(fascia);
-  const gutter = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, w + over * 1.6, 8, 1, true, 0, Math.PI),
-    mats.plain(0x99a0a6, { roughness: 0.42, metalness: 0.6, side: THREE.DoubleSide }));
-  gutter.rotation.set(0, 0, Math.PI / 2);
-  gutter.position.set(0, hFront - 0.24, d / 2 + over - 0.04);
-  g.add(gutter);
-  for (const s of [-1, 1]) {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, hFront - 0.3, 8),
+  const over = overIn;
+  if (slopeAxis === 'x') {
+    const slopeLen = Math.hypot(w, hHigh - hLow);
+    const angle = Math.atan2(hHigh - hLow, w);
+    // the eaves project deeply over the door face but only a little past the
+    // gable ends, which is what the close-up photo shows
+    const overEnd = Math.min(0.5, over * 0.4);
+    const roof = new THREE.Mesh(box(slopeLen + overEnd * 2, 0.14, d + over * 2),
+      mats.surface('roofSheet', slopeLen, d + over * 2));
+    roof.position.set(0, (hHigh + hLow) / 2 + 0.07, 0);
+    roof.rotation.z = angle;            // high at −X, low at +X
+    roof.castShadow = roof.receiveShadow = true;
+    g.add(roof);
+    /* verge trim along both long edges, following the slope */
+    for (const sz of [1, -1]) {
+      const fascia = new THREE.Mesh(box(slopeLen + overEnd * 2, 0.2, 0.08), trim);
+      fascia.position.set(0, (hHigh + hLow) / 2 + 0.01, sz * (d / 2 + over));
+      fascia.rotation.z = angle;
+      g.add(fascia);
+    }
+    /* diagonal struts from the wall up to the eave, as in the photo */
+    if (brackets) {
+      const n = Math.max(2, Math.round(w / 3.4));
+      const eaveAt = (bx) => hLow + (hHigh - hLow) * (0.5 - bx / w);
+      for (let i = 0; i <= n; i++) {
+        const bx = -w / 2 + (i / n) * w;
+        const yTop = eaveAt(bx) + 0.02;
+        const yWall = yTop - 0.85;
+        const len = Math.hypot(over, yTop - yWall);
+        const br = new THREE.Mesh(box(0.08, 0.09, len), trim);
+        br.position.set(bx, (yTop + yWall) / 2, d / 2 + over / 2);
+        br.rotation.x = -Math.atan2(yTop - yWall, over);
+        br.castShadow = true;
+        g.add(br);
+      }
+    }
+    /* downpipe on the low (east) end */
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, hLow - 0.3, 8),
       mats.plain(0x99a0a6, { roughness: 0.45, metalness: 0.6 }));
-    pipe.position.set(s * (w / 2 - 0.35), (hFront - 0.3) / 2, d / 2 + 0.16);
+    pipe.position.set(w / 2 - 0.3, (hLow - 0.3) / 2, d / 2 + 0.14);
     g.add(pipe);
+  } else {
+    const slopeLen = Math.hypot(d, hBack - hFront);
+    const angle = Math.atan2(hBack - hFront, d);
+    const overEnd = Math.min(0.5, over * 0.5);
+    const roof = new THREE.Mesh(box(w + overEnd * 2, 0.14, slopeLen + over * 1.6),
+      mats.surface('roofSheet', w + overEnd * 2, slopeLen, { rotation: Math.PI / 2 }));
+    roof.position.set(0, (hFront + hBack) / 2 + 0.07, 0);
+    roof.rotation.x = -angle;
+    roof.castShadow = roof.receiveShadow = true;
+    g.add(roof);
+
+    if (brackets) {
+      const n = Math.max(2, Math.round(w / 3.4));
+      for (let i = 0; i <= n; i++) {
+        const bx = -w / 2 + (i / n) * w;
+        const yTop = hFront - 0.1, yWall = yTop - 0.8;
+        const len = Math.hypot(over, yTop - yWall);
+        const br = new THREE.Mesh(box(0.08, 0.09, len), trim);
+        br.position.set(bx, (yTop + yWall) / 2, d / 2 + over / 2);
+        br.rotation.x = -Math.atan2(yTop - yWall, over);
+        br.castShadow = true;
+        g.add(br);
+      }
+    }
+
+    const fascia = new THREE.Mesh(box(w + overEnd * 2, 0.26, 0.1), trim);
+    fascia.position.set(0, hFront - 0.06, d / 2 + over);
+    g.add(fascia);
+    const gutter = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, w + overEnd * 1.6, 8, 1, true, 0, Math.PI),
+      mats.plain(0x99a0a6, { roughness: 0.42, metalness: 0.6, side: THREE.DoubleSide }));
+    gutter.rotation.set(0, 0, Math.PI / 2);
+    gutter.position.set(0, hFront - 0.24, d / 2 + over - 0.04);
+    g.add(gutter);
+    for (const s of [-1, 1]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, hFront - 0.3, 8),
+        mats.plain(0x99a0a6, { roughness: 0.45, metalness: 0.6 }));
+      pipe.position.set(s * (w / 2 - 0.35), (hFront - 0.3) / 2, d / 2 + 0.16);
+      g.add(pipe);
+    }
   }
 
   /* --- window strip just under the eave, as on the real halls --- */
   if (windowStrip) {
     const strip = new THREE.Mesh(box(w * 0.82, 0.55, 0.06), mats.glass({ opacity: 0.48 }));
-    strip.position.set(0, hFront - 0.75, d / 2 + 0.06);
+    strip.position.set(0, eaveH - 0.75, d / 2 + 0.06);
     g.add(strip);
     const frame = new THREE.Mesh(box(w * 0.82 + 0.1, 0.68, 0.05), trim);
-    frame.position.set(0, hFront - 0.75, d / 2 + 0.02);
+    frame.position.set(0, eaveH - 0.75, d / 2 + 0.02);
     g.add(frame);
   }
 
@@ -185,16 +279,16 @@ export function buildHall(o, mats, colliders) {
     const cw = w * 0.92;
     const c = new THREE.Mesh(box(cw, 0.1, canopy),
       mats.surface('roofSheet', cw, canopy, { rotation: Math.PI / 2 }));
-    c.position.set(0, hFront - 0.45, d / 2 + canopy / 2);
+    c.position.set(0, eaveH - 0.45, d / 2 + canopy / 2);
     c.rotation.x = 0.07;
     c.castShadow = c.receiveShadow = true;
     g.add(c);
     const edge = new THREE.Mesh(box(cw, 0.18, 0.06), trim);
-    edge.position.set(0, hFront - 0.52, d / 2 + canopy);
+    edge.position.set(0, eaveH - 0.52, d / 2 + canopy);
     g.add(edge);
     for (const s of [-1, 1]) {
       const stay = new THREE.Mesh(box(0.05, 0.05, canopy * 1.2), trim);
-      stay.position.set(s * cw * 0.46, hFront - 0.28, d / 2 + canopy / 2);
+      stay.position.set(s * cw * 0.46, eaveH - 0.28, d / 2 + canopy / 2);
       stay.rotation.x = -0.32;
       g.add(stay);
     }
@@ -211,11 +305,11 @@ export function buildHall(o, mats, colliders) {
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w - T * 2, d - T * 2),
       mats.plain(0xb8bcc0, { roughness: 0.92 }));
     ceil.rotation.x = Math.PI / 2;
-    ceil.position.set(0, hFront + (hBack - hFront) * 0.5 - 0.2, 0);
+    ceil.position.set(0, eaveH + (hHigh - hLow) * 0.35 - 0.2, 0);
     g.add(ceil);
     // interior fill light so the bays are not pitch black from outside
     const il = new THREE.PointLight(0xffeedd, 0.5, 26, 2);
-    il.position.set(0, hFront - 1.2, 0);
+    il.position.set(0, eaveH - 1.2, 0);
     g.add(il);
     g.userData.interiorLight = il;
   }
@@ -225,19 +319,19 @@ export function buildHall(o, mats, colliders) {
     const p = new THREE.Vector3(cx, cy, cz).applyAxisAngle(new THREE.Vector3(0, 1, 0), rotY);
     colliders.push({ cx: x + p.x, cy, cz: z + p.z, sx, sy, sz, rotY });
   };
-  push(0, hBack / 2, -d / 2, w, hBack, 0.4);                       // north
-  push(-w / 2, hFront / 2, 0, 0.4, hFront + 1, d);                 // west
-  push(w / 2, hFront / 2, 0, 0.4, hFront + 1, d);                  // east
+  push(0, hHigh / 2, -d / 2, w, hHigh, 0.4);                       // north
+  push(-w / 2, hHigh / 2, 0, 0.4, hHigh, d);                       // west
+  push(w / 2, eaveH / 2, 0, 0.4, eaveH + 0.6, d);                  // east
   {   // south face split around the openings
     const sorted = [...doors].sort((a, b) => a.x - b.x);
     let cur = -w / 2;
     for (const dr of sorted) {
       const l = dr.x - dr.w / 2;
-      if (l > cur + 0.05) push((cur + l) / 2, hFront / 2, d / 2, l - cur, hFront, 0.4);
+      if (l > cur + 0.05) push((cur + l) / 2, eaveH / 2, d / 2, l - cur, eaveH, 0.4);
       cur = dr.x + dr.w / 2;
     }
-    if (cur < w / 2 - 0.05) push((cur + w / 2) / 2, hFront / 2, d / 2, w / 2 - cur, hFront, 0.4);
-    for (const dr of sorted) push(dr.x, dr.h + (hFront - dr.h) / 2, d / 2, dr.w, hFront - dr.h, 0.4);
+    if (cur < w / 2 - 0.05) push((cur + w / 2) / 2, eaveH / 2, d / 2, w / 2 - cur, eaveH, 0.4);
+    for (const dr of sorted) push(dr.x, dr.h + (eaveH - dr.h) / 2, d / 2, dr.w, Math.max(0.2, eaveH - dr.h), 0.4);
   }
   return g;
 }
@@ -392,7 +486,7 @@ export function buildFence(pts, mats, colliders, o = {}) {
       panels.add(pm);
       // top and bottom rails
       for (const yy of [h + 0.02, 0.12]) {
-        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, segLen, 5), postMat);
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, segLen, 5), postMat);
         rail.rotation.set(0, ang, Math.PI / 2);
         rail.position.set(x1 + (dx / len) * mid, yy, z1 + (dz / len) * mid);
         panels.add(rail);
@@ -557,6 +651,48 @@ export function buildFloodlight(o, mats, colliders) {
   g.add(light, tgt); light.target = tgt;
   g.userData.light = light; g.userData.lens = lens;
   colliders.push({ cx: x, cy: h / 2, cz: z, sx: 0.3, sy: h, sz: 0.3, rotY: 0 });
+  return g;
+}
+
+/** Wall-mounted street lamp on a curved tube bracket — the one on the garage. */
+export function buildWallLamp(o, mats) {
+  const { x, y = 3.4, z, rotY = 0, reach = 0.75 } = o;
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  g.rotation.y = rotY;
+  const steel = mats.plain(0x9aa1a7, { roughness: 0.45, metalness: 0.6 });
+
+  const boxy = new THREE.Mesh(box(0.16, 0.22, 0.11), steel);   // junction box
+  boxy.position.set(0, 0.62, 0.05);
+  g.add(boxy);
+  const conduit = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.5, 6), steel);
+  conduit.position.set(0, -0.2, 0.05);
+  g.add(conduit);
+
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0.06),
+    new THREE.Vector3(0, 0.34, 0.10),
+    new THREE.Vector3(0, 0.50, 0.32),
+    new THREE.Vector3(0, 0.54, reach),
+  ]);
+  const arm = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.026, 6, false), steel);
+  arm.castShadow = true;
+  g.add(arm);
+
+  const head = new THREE.Mesh(box(0.34, 0.09, 0.2), mats.plain(0xb6bcc1, { roughness: 0.4, metalness: 0.55 }));
+  head.position.set(0, 0.52, reach + 0.08);
+  head.rotation.x = 0.12;
+  head.castShadow = true;
+  g.add(head);
+  const lens = new THREE.Mesh(box(0.27, 0.02, 0.15), mats.lamp(0xfff2d4, 0));
+  lens.position.set(0, 0.47, reach + 0.08);
+  g.add(lens);
+
+  const light = new THREE.SpotLight(0xffeecb, 0, 20, 0.85, 0.6, 1.5);
+  light.position.set(0, 0.46, reach + 0.08);
+  const tgt = new THREE.Object3D(); tgt.position.set(0, -4, reach + 1.6);
+  g.add(light, tgt); light.target = tgt;
+  g.userData.light = light; g.userData.lens = lens; g.userData.peak = 26;
   return g;
 }
 

@@ -70,6 +70,98 @@ export function fireExtinguisher(mats) {
   return g;
 }
 
+/**
+ * Large gas cylinder on a two-wheel trolley with a coiled hose — the red thing
+ * standing at the garage corner in the reference photo (not a fire extinguisher,
+ * which is what it looks like at a glance).
+ */
+export function gasTrolley(mats) {
+  const g = new THREE.Group();
+  const red = mats.plain(0xb8362a, { roughness: 0.52, metalness: 0.3 });
+  const frame = mats.plain(0xc8402f, { roughness: 0.45, metalness: 0.45 });
+  const dark = mats.plain(0x141517, { roughness: 0.9 });
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 1.12, 18), red);
+  body.position.y = 0.72; body.castShadow = body.receiveShadow = true; g.add(body);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.19, 16, 10, 0, 6.3, 0, Math.PI / 2), red);
+  dome.position.y = 1.28; g.add(dome);
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.08, 16), red);
+  foot.position.y = 0.2; g.add(foot);
+  const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.14, 8),
+    mats.plain(0x6d7378, { roughness: 0.4, metalness: 0.7 }));
+  valve.position.y = 1.5; g.add(valve);
+
+  // tubular handle / frame
+  for (const s of [-1, 1]) {
+    const up = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.5, 7), frame);
+    up.position.set(s * 0.18, 0.82, -0.14); g.add(up);
+  }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.36, 7), frame);
+  bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.57, -0.14); g.add(bar);
+  const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.44, 6), frame);
+  axle.rotation.z = Math.PI / 2; axle.position.set(0, 0.13, -0.1); g.add(axle);
+  for (const s of [-1, 1]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.05, 14), dark);
+    wheel.rotation.z = Math.PI / 2; wheel.position.set(s * 0.22, 0.13, -0.1);
+    wheel.castShadow = true; g.add(wheel);
+  }
+  const toe = new THREE.Mesh(box(0.34, 0.03, 0.16), frame);
+  toe.position.set(0, 0.02, 0.02); g.add(toe);
+
+  // straps and the coiled hose hanging off the frame
+  for (const y of [0.58, 1.02]) {
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.017, 6, 16), dark);
+    strap.rotation.x = Math.PI / 2; strap.position.y = y; g.add(strap);
+  }
+  const hose = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.022, 6, 18), mats.plain(0x18a0a8, { roughness: 0.7 }));
+  hose.rotation.set(0.25, 0.35, 0); hose.position.set(0.2, 0.95, -0.12); g.add(hose);
+  const hose2 = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.02, 6, 18), mats.plain(0x2a2d31, { roughness: 0.85 }));
+  hose2.rotation.set(0.15, -0.3, 0); hose2.position.set(-0.05, 0.9, 0.1); g.add(hose2);
+
+  g.userData.phys = { mass: 55, size: new THREE.Vector3(0.44, 1.6, 0.4) };
+  return g;
+}
+
+/** Kerb / foundation block left lying against a wall. */
+export function concreteBlock(mats, w = 0.7, h = 0.35, d = 0.35) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(box(w, h, d), mats.plain(0x8d8b85, { roughness: 0.95 }));
+  m.position.y = h / 2; m.castShadow = m.receiveShadow = true; g.add(m);
+  g.userData.phys = { mass: 70, size: new THREE.Vector3(w, h, d) };
+  return g;
+}
+
+/** Sheet of expanded-metal grating leaning against the wall. */
+export function meshPanel(mats, w = 0.9, h = 1.1) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    mats.cutout('wireMesh', { alphaTest: 0.35, roughness: 0.6, repeat: [w / 0.18, h / 0.18] }));
+  m.position.set(0, h / 2 * Math.cos(0.22), -h / 2 * Math.sin(0.22));
+  m.rotation.x = 0.22;
+  m.receiveShadow = true;
+  g.add(m);
+  const frame = new THREE.Mesh(box(w, 0.03, 0.03), mats.plain(0x4a4d51, { roughness: 0.7, metalness: 0.4 }));
+  frame.position.y = 0.015; g.add(frame);
+  return g;
+}
+
+/** Broken concrete / brick rubble. */
+export function rubble(mats, seed = 5) {
+  const g = new THREE.Group();
+  let s = seed;
+  const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let i = 0; i < 6; i++) {
+    const w = 0.14 + rnd() * 0.22;
+    const m = new THREE.Mesh(box(w, 0.08 + rnd() * 0.1, 0.12 + rnd() * 0.16),
+      mats.plain(rnd() > 0.5 ? 0x8f8c86 : 0x7d6a5c, { roughness: 0.96 }));
+    m.position.set((rnd() - 0.5) * 0.7, 0.05 + rnd() * 0.08, (rnd() - 0.5) * 0.5);
+    m.rotation.set(rnd() * 0.5, rnd() * 3, rnd() * 0.4);
+    m.castShadow = m.receiveShadow = true;
+    g.add(m);
+  }
+  return g;
+}
+
 export function jerrycan(mats, color = 0x2f6b35) {
   const g = new THREE.Group();
   const m = mats.plain(color, { roughness: 0.48, metalness: 0.35 });

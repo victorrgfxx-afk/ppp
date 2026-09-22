@@ -165,6 +165,7 @@ export class World {
     this._gateOpen = true;
     this._gateT = 1;
     for (const s of PLAN.FENCE_SIGNS) g.add(S.buildSign(s, this.mats));
+    for (const s of (PLAN.BAY_SIGNS || [])) g.add(S.buildSign(s, this.mats));
     this.root.add(g);
   }
 
@@ -173,6 +174,11 @@ export class World {
     const g = new THREE.Group(); g.name = 'utilities';
     for (const p of PLAN.POWER_POLES) g.add(S.buildPowerPole(p, this.mats, this.colliders));
     g.add(S.buildWires(PLAN.POWER_POLES, this.mats));
+    for (const l of (PLAN.WALL_LAMPS || [])) {
+      const wl = S.buildWallLamp(l, this.mats);
+      this.floodlights.push(wl);
+      g.add(wl);
+    }
     for (const f of PLAN.FLOODLIGHTS) {
       const fl = S.buildFloodlight(f, this.mats, this.colliders);
       this.floodlights.push(fl);
@@ -215,6 +221,10 @@ export class World {
         case 'skip':          obj = P.skip(M); break;
         case 'bin':           obj = P.wheelieBin(M, p.color); break;
         case 'scrapPile':     obj = P.scrapPile(M); break;
+        case 'gasTrolley':    obj = P.gasTrolley(M); break;
+        case 'block':         obj = P.concreteBlock(M); break;
+        case 'meshPanel':     obj = P.meshPanel(M); break;
+        case 'rubble':        obj = P.rubble(M); break;
         default: continue;
       }
       if (this.reserved.some(v => Math.hypot(v.x - p.x, v.z - p.z) < (v.r || 3.4) * 0.8)) continue;
@@ -274,8 +284,9 @@ export class World {
     for (const fl of this.floodlights) {
       const on = dark ? 1 : 0;
       const l = fl.userData.light;
-      l.intensity += (on * 55 - l.intensity) * Math.min(1, dt * 1.6);
-      fl.userData.lens.material.emissiveIntensity = l.intensity / 55 * 2.4;
+      const peak = fl.userData.peak || 55;
+      l.intensity += (on * peak - l.intensity) * Math.min(1, dt * 1.6);
+      fl.userData.lens.material.emissiveIntensity = l.intensity / peak * 2.4;
     }
     for (const key of ['hallB', 'garageA']) {
       const b = this[key];

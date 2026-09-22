@@ -20,8 +20,8 @@ export const SURFACES = [
   { id: 'wornA',     tex: 'dirt',     x: -12,   z: -6,   w: 18,  d: 16,  y: 0.01 },
   { id: 'wornB',     tex: 'dirt',     x: -30,   z: -14,  w: 14,  d: 10,  y: 0.01 },
   { id: 'pad',       tex: 'concrete', x: -28,   z: 8,    w: 24,  d: 16,  y: 0.06 },
-  { id: 'drive',     tex: 'concrete', x: -8,    z: 25,   w: 28,  d: 14,  y: 0.06 },
-  { id: 'apron',     tex: 'concrete', x: -26,   z: -18.6, w: 22, d: 6,   y: 0.05 },
+  { id: 'drive',     tex: 'concrete', x: -7,    z: 24,   w: 32,  d: 16,  y: 0.06 },
+  { id: 'apron',     tex: 'concrete', x: -30,   z: -17,  w: 34,  d: 11,  y: 0.05 },
   { id: 'street',    tex: 'asphalt',  x: -7,    z: 37,   w: 104, d: 8,   y: 0.00 },
 ];
 
@@ -36,7 +36,8 @@ export const BUILDINGS = {
   hallB: {
     type: 'hall', x: -26, z: -28.5, w: 19.2, d: 13,
     hFront: 4.6, hBack: 5.5, rotY: 0, name: 'hala-service',
-    doors: [{ x: -6.6, w: 4.2, h: 4.0 }, { x: 0, w: 4.2, h: 4.0 }, { x: 6.6, w: 4.2, h: 4.0 }],
+    overhang: 1.0, brackets: true,
+    doors: [{ x: -6.6, w: 4.2, h: 3.6 }, { x: 0, w: 4.2, h: 3.6 }, { x: 6.6, w: 4.2, h: 3.6 }],
     openDoors: [0, 2],
     windowStrip: true, canopy: 0,
   },
@@ -47,14 +48,20 @@ export const BUILDINGS = {
      the blank wall runs west. */
   garageA: {
     type: 'hall', x: -16, z: 9, w: 14, d: 14,
-    hFront: 4.4, hBack: 5.2, rotY: 0, name: 'garaj',
-    doors: [{ x: 3.8, w: 4.2, h: 3.7 }],
+    /* The close-up photo settles this building: the roof is a mono-pitch that
+       falls towards the EAST along the door face (4.1 m at the east corner,
+       5.0 m at the west), carried on a deep bracketed overhang, and the door is
+       taller than it is wide — 3.1 x 3.6 m against the 200 L drum standing at
+       the corner, which is the only object of known size in the frame. */
+    hFront: 5.0, hBack: 4.1, slopeAxis: 'x', overhang: 1.3, brackets: true,
+    rotY: 0, name: 'garaj',
+    doors: [{ x: 3.35, w: 3.1, h: 3.6 }],
     openDoors: [0],
-    windowStrip: false, canopy: 1.7,
+    windowStrip: false, canopy: 0,
   },
   house1: { type: 'house', x: -3, z: -3, w: 12, d: 11, wallH: 3.0, roofH: 3.0, rotY: 0.06, dormer: true, name: 'casa-vecin-est' },
   house2: { type: 'house', x: -39.5, z: -46.5, w: 13, d: 11, wallH: 3.1, roofH: 3.2, rotY: -0.1, dormer: false, name: 'casa-vecin-nord' },
-  office: { type: 'container', x: -47.5, z: -24, rotY: 0.1 },
+  office: { type: 'container', x: -44, z: -19.5, rotY: 0.12 },
   /* Beyond the north boundary: the dark-green industrial hall, the distant
      warehouses and the two chimneys from the second photo. */
   greenHall: { type: 'shed', x: -45, z: -73, w: 38, d: 22, h: 9.5, rotY: 0.04, color: 0x2a3a33, roofColor: 0x333b38 },
@@ -85,6 +92,12 @@ export const GATE = { x: -12.5, z: 31, w: 7, h: 1.9, rotY: 0 };
 
 export const POWER_POLES = [
   { x: -56, z: -57 }, { x: -38, z: -57 }, { x: -20, z: -57 }, { x: -2, z: -57 }, { x: 16, z: -57 },
+];
+
+/* Street-lamp head on a curved tube bracket, on the garage's door face west of
+   the opening — clearly visible in the close-up. */
+export const WALL_LAMPS = [
+  { x: -21.2, y: 3.2, z: 16.12, rotY: 0, reach: 0.8 },
 ];
 
 export const FLOODLIGHTS = [
@@ -137,12 +150,15 @@ export const GRASS_AREAS = [
 /* ------------------------------------------------------------------ props */
 /* `d` = dynamic (can be knocked over). Positions are ground-level origins. */
 export const PROPS = [
-  /* --- at the garage's east corner, exactly as in the first photo --- */
-  { kind: 'crate',      x: -10.1, z: 16.35, rotY: -0.2, d: true, color: 0x2c6e4f },
-  { kind: 'jerrycan',   x: -9.4,  z: 16.30, rotY: 0.5,  d: true },
-  { kind: 'barrel',     x: -8.6,  z: 16.42, rotY: -0.3, d: true, color: 0x1f57b5 },
-  { kind: 'oilDrum',    x: -7.8,  z: 16.42, rotY: 0.2,  d: true },
-  { kind: 'extinguisher', x: -7.1, z: 16.32, rotY: 0,   d: true },
+  /* --- at the garage's east corner, in the order the close-up shows them:
+         kerb block, leaning grating, blue barrel, TOTAL drum, gas trolley --- */
+  { kind: 'block',      x: -10.2, z: 16.45, rotY: 0.05 },
+  { kind: 'meshPanel',  x: -9.7,  z: 16.55, rotY: 0.02 },
+  { kind: 'barrel',     x: -9.1,  z: 16.42, rotY: -0.3, d: true, color: 0x1f57b5 },
+  { kind: 'oilDrum',    x: -8.4,  z: 16.40, rotY: 0.2,  d: true },
+  { kind: 'gasTrolley', x: -7.3,  z: 16.30, rotY: 0.15, d: true },
+  { kind: 'rubble',     x: -6.4,  z: 16.30, rotY: 0.4 },
+  { kind: 'jerrycan',   x: -11.0, z: 16.35, rotY: 0.5,  d: true },
   /* --- workshop bays --- */
   { kind: 'lift',       x: -32.6,z: -27.8,rotY: 0 },
   { kind: 'lift',       x: -19.4,z: -27.8,rotY: 0 },
@@ -178,9 +194,16 @@ export const PROPS = [
   { kind: 'tyre',       x: -17.6,z: 19.6, rotY: 0, d: true },
 ];
 
+/* Bay numbers screwed to the piers between the hall doors. */
+export const BAY_SIGNS = [
+  { x: -29.3, y: 2.6, z: -21.85, rotY: 0, lines: ['1'], w: 0.22, h: 0.28 },
+  { x: -22.7, y: 2.6, z: -21.85, rotY: 0, lines: ['2'], w: 0.22, h: 0.28 },
+  { x: -16.9, y: 2.6, z: -21.85, rotY: 0, lines: ['3'], w: 0.22, h: 0.28 },
+];
+
 /* The two licence plates nailed to the orchard fence in the first photo. */
 export const FENCE_SIGNS = [
-  { x: 11.4, y: 1.52, z: 12.07, rotY: Math.PI, lines: ['B 150 HGI'], w: 0.52, h: 0.115 },
+  { x: 11.4, y: 1.52, z: 12.07, rotY: Math.PI, lines: ['PH 05 FRI'], w: 0.52, h: 0.115 },
   { x: 12.6, y: 1.52, z: 12.07, rotY: Math.PI, lines: ['PH 05 FRI'], w: 0.52, h: 0.115 },
 ];
 

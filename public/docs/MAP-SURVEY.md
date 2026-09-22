@@ -27,10 +27,22 @@ Derived by measuring the facade in photo 3 at 3× zoom: the piers between the
 only about a metre past each outer door. The hall is therefore **19.2 m** long —
 no longer than its three bays — with the eave at 1.15 × door height, **4.6 m**.
 
-The same method on photo 1 puts the garage door hard against that building's
-east corner, with roughly **1 m** of wall beyond it; the blank wall runs west,
-and how far is not determinable because it leaves the frame. It is modelled at
-14 m, which is the least assumption consistent with the photo.
+A later close-up of the garage settles that building properly. The only object
+of known size in the frame is the 200 L steel drum standing at its corner
+(0.585 m diameter), and against it:
+
+* the door opening is **3.1 m wide × 3.6 m tall** — taller than it is wide,
+  quite unlike the hall's bays, which measure 1.18 wide-to-tall;
+* roughly **1.8 m** of wall runs east of the door frame to the corner;
+* the wall is **5.0 m** high near the door and **4.1 m** at the east corner, so
+  the roof is a mono-pitch falling *along the door face* towards the east — not
+  back away from it, as first modelled;
+* the eaves project about **1.3 m** over that face on diagonal struts, and
+  continue past the east corner;
+* the wall panels are laid **vertically**, with joints about a metre apart.
+
+How far the blank wall runs west is still not determinable — it leaves the
+frame. 14 m remains the least assumption consistent with the photographs.
 
 ## 2. How the four camera positions were reconciled
 
