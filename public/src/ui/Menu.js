@@ -122,14 +122,15 @@ export class Menu {
       `<tr><td>${l.name}</td><td>x ${l.x}, z ${l.z}</td></tr>`).join('');
     el.innerHTML = `
       <h3>Harta — reconstrucție 1:1</h3>
-      <p>Curtea este reconstruită din cele patru fotografii de referință. Axele:
-      <b>+X est, +Z sud</b>, originea în mijlocul platformei de beton. Toate
-      dimensiunile sunt în metri, ancorate în obiectele cu dimensiuni cunoscute
-      din poze (mașini, uși de hală, container, stâlpi).</p>
+      <p>Curtea este reconstruită din cele șase fotografii de referință. Axele:
+      <b>+X est, +Z sud</b>, originea în mijlocul curții. Toate dimensiunile sunt
+      în metri, ancorate în obiecte cu dimensiuni cunoscute (mașini, plăcuțe de
+      înmatriculare, butoaie de 200 l, panouri sandwich de 1 m).</p>
       <table>${rows}</table>
-      <p>Suprafața construită: hala service 19,2 × 13 m (3 boxe cu uși de 4,2 × 4,0 m),
-      garajul 16 × 14 m cu copertină, biroul-container 6,06 × 2,44 m.
-      Livada are ${PLAN.TREES.filter(t => t.kind === 'orchard').length} pomi pe rânduri de 4,2 m.</p>
+      <p>Suprafața construită: hala service 15,5 × 13 m (3 boxe cu uși de 3,2 × 3,9 m,
+      la pas de 4,95 m), garajul 12 × 12 m cu streașină pe console și acoperiș
+      într-o apă, biroul-container 6,0 × 2,45 m. Curtea din fața halei are circa
+      40 m adâncime. Livada are ${PLAN.TREES.filter(t => t.kind === 'orchard').length} pomi pe rânduri de 4,2 m.</p>
       <p>Detalii complete despre cum a fost dedusă harta: <code>docs/MAP-SURVEY.md</code>.</p>`;
   }
 

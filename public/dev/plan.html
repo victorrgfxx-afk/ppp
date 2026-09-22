@@ -1,0 +1,55 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#12151a;color:#e8edf2;font:13px system-ui,sans-serif}
+canvas{display:block}
+</style></head><body><canvas id="c" width="1100" height="1000"></canvas>
+<script type="module">
+import * as PLAN from '/src/world/SitePlan.js';
+import { CARS, BACKHOE } from '/src/vehicles/CarSpecs.js';
+const c=document.getElementById('c'), g=c.getContext('2d');
+const B=PLAN.BOUNDS, pad=70;
+const sx=(c.width-pad*2)/(B.maxX-B.minX), sy=(c.height-pad*2)/(B.maxZ-B.minZ);
+const S=Math.min(sx,sy);
+const X=x=>pad+(x-B.minX)*S, Z=z=>pad+(z-B.minZ)*S;
+g.fillStyle='#12151a'; g.fillRect(0,0,c.width,c.height);
+const COL={gravel:'#6d6558',concrete:'#8b8b86',asphalt:'#3a3c3e',grass:'#4a6136',dirt:'#6a5844'};
+for(const s of PLAN.SURFACES){g.fillStyle=COL[s.tex]||'#555';
+  g.fillRect(X(s.x-s.w/2),Z(s.z-s.d/2),s.w*S,s.d*S);}
+g.strokeStyle='#2f3740'; g.lineWidth=2;
+for(const f of PLAN.FENCES){g.beginPath();f.pts.forEach(([x,z],i)=>i?g.lineTo(X(x),Z(z)):g.moveTo(X(x),Z(z)));g.stroke();}
+for(const t of PLAN.TREES){g.fillStyle='rgba(72,110,52,.9)';g.beginPath();g.arc(X(t.x),Z(t.z),1.4*t.scale*S,0,7);g.fill();}
+const label=(txt,x,z,col='#fff')=>{g.fillStyle=col;g.font='bold 13px system-ui';g.textAlign='center';g.fillText(txt,X(x),Z(z));};
+for(const [k,b] of Object.entries(PLAN.BUILDINGS)){
+  const w=b.w||6.06,d=b.d||2.44;
+  g.save();g.translate(X(b.x),Z(b.z));g.rotate(b.rotY||0);
+  g.fillStyle=b.type==='shed'?'#3c4a44':b.type==='house'?'#8a4a3c':'#d6d9dd';
+  g.fillRect(-w/2*S,-d/2*S,w*S,d*S);
+  g.strokeStyle='#000';g.lineWidth=1.5;g.strokeRect(-w/2*S,-d/2*S,w*S,d*S);
+  if(b.doors) for(const dr of b.doors){g.fillStyle='#22262b';
+    if(b.slopeAxis==='x'||!b.slopeAxis) g.fillRect((dr.x-dr.w/2)*S, d/2*S-3, dr.w*S, 6);}
+  g.restore();
+  label(k,b.x,b.z+1,'#0c0f12');
+}
+for(const v of CARS){g.save();g.translate(X(v.x),Z(v.z));g.rotate(-(Math.PI/2-v.yaw*Math.PI/180));
+  g.fillStyle='#cfd6dc';g.fillRect(-v.len/2*S,-v.width/2*S,v.len*S,v.width*S);g.restore();
+  g.fillStyle='#9fb3c6';g.font='10px system-ui';g.textAlign='center';g.fillText(v.id,X(v.x),Z(v.z)-6);}
+g.save();g.translate(X(BACKHOE.x),Z(BACKHOE.z));g.rotate(-(Math.PI/2-BACKHOE.yaw*Math.PI/180));
+g.fillStyle='#e0b410';g.fillRect(-2.9*S,-1.15*S,5.8*S,2.3*S);g.restore();
+g.fillStyle='#e0b410';g.font='10px system-ui';g.fillText('komatsu',X(BACKHOE.x),Z(BACKHOE.z)-8);
+// photo spots
+for(const p of PLAN.PHOTO_SPOTS){
+  const a=(p.yaw-90)*Math.PI/180;
+  g.strokeStyle='#ffb300';g.fillStyle='#ffb300';g.lineWidth=2;
+  g.beginPath();g.arc(X(p.x),Z(p.z),6,0,7);g.fill();
+  g.beginPath();g.moveTo(X(p.x),Z(p.z));
+  g.lineTo(X(p.x)+Math.cos(a)*34,Z(p.z)+Math.sin(a)*34);g.stroke();
+  g.font='bold 15px system-ui';g.fillText('foto '+p.id,X(p.x),Z(p.z)-12);
+}
+// scale bar + compass
+g.strokeStyle='#fff';g.lineWidth=3;g.beginPath();
+g.moveTo(pad,c.height-28);g.lineTo(pad+20*S,c.height-28);g.stroke();
+g.fillStyle='#fff';g.font='14px system-ui';g.textAlign='left';g.fillText('20 m',pad,c.height-36);
+g.textAlign='center';g.font='bold 18px system-ui';
+g.fillText('N ↑',c.width-60,40);
+g.font='13px system-ui';g.fillText('V ← → E',c.width-60,60);
+window.__done=true;
+</script></body></html>

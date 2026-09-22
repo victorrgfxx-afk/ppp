@@ -1,134 +1,172 @@
-# Site survey — reconstruction of the yard from the 4 reference photos
+# Site survey — reconstructing the yard from the six reference photographs
 
-Coordinate system used by the game: **+X = east, +Z = south, +Y = up**, origin at the
-centre of the large poured-concrete pad in the middle of the yard. All units are metres.
-Heading 0° = north (−Z), increasing clockwise.
+Coordinate system used by the game: **+X = east, +Z = south, +Y = up**, origin roughly
+the middle of the yard. All units are metres. Heading 0° = map north (−Z), increasing
+clockwise. Map north is *not* true north — see §6.
+
+This is the third pass over the photographs. The first two are worth describing,
+because what was wrong with them is what this document is really about.
+
+## 0. What the first two reconstructions got wrong
+
+Both earlier attempts measured apparent sizes correctly and then divided by a
+focal length that was assumed rather than derived. Apparent size fixes the ratio
+`distance ∝ 1 / apparent size`; it says nothing about absolute distance until you
+know the lens. Guessing a 65–75° field of view put the hall around 50 m away in
+one shot and, from the same standpoint, the office cabin 30 m in front of it —
+an arrangement no other photograph supports.
+
+The two lenses are recoverable from the photographs themselves. Two of the yard
+shots are the same view seconds apart: same cars, same people, same backhoe. The
+hall's facade measures **390 px** in one and **752 px** in the other — a ratio of
+1.93, near enough 2.0 that they can only be a phone's 0.5× and 1× cameras. That
+fixes both: a 3:4 portrait frame at 1× is **48° horizontal**, at 0.5× about
+**87°**. Every distance below follows from those two numbers and nothing else.
 
 ## 1. Scale anchors
 
-The photos contain objects of known factory dimensions, which is what makes a 1:1
-reconstruction possible at all. Every building dimension below was derived by
-comparing against these:
+Objects of known factory size, used to convert pixels to metres:
 
-| Object (in photo)            | Real dimensions (L × W × H, m) |
-|------------------------------|--------------------------------|
-| Škoda Octavia III Combi      | 4.66 × 1.81 × 1.47             |
-| Ford Mondeo Mk5 / Fusion     | 4.87 × 1.85 × 1.48             |
-| Dacia Dokker                 | 4.36 × 1.75 × 1.81             |
-| Opel Astra G sedan           | 4.25 × 1.71 × 1.43             |
-| RAM 1500 Crew Cab            | 5.82 × 2.02 × 1.94             |
-| Komatsu WB93 backhoe loader  | 5.80 × 2.32 × 3.70             |
-| ISO site office container    | 6.06 × 2.44 × 2.59             |
-| Sectional garage door (hall) | 4.20 × 4.00 (W × H)            |
-| Concrete utility pole        | 10.0 tall, 35–40 spacing       |
+| Object                        | Real dimensions                  |
+|-------------------------------|----------------------------------|
+| Romanian licence plate        | 0.520 × 0.110 m                  |
+| 200 L steel drum              | 0.585 m diameter, 0.880 m tall   |
+| 120 L wheelie bin             | 0.48 × 0.55 × 0.93 m             |
+| Sandwich wall panel           | 1.00 m module                    |
+| Dacia Dokker                  | 4.363 × 1.751 × 1.814 m          |
+| Škoda Octavia III Combi       | 4.659 × 1.814 × 1.452 m          |
+| Ford Mondeo Mk5               | 4.871 × 1.852 × 1.482 m          |
+| Opel Astra G                  | 4.252 × 1.709 × 1.425 m          |
+| Volvo XC60                    | 4.688 × 1.902 × 1.658 m          |
+| RAM 1500 Crew Cab             | 5.817 × 2.017 × 1.943 m          |
+| Prefab site-office cabin      | 6.0 × 2.45 × 2.55 m              |
 
-Derived by measuring the facade in photo 3 at 3× zoom: the piers between the
-4.2 m doors read 2.4 m and 2.9 m against the doors themselves, and the wall runs
-only about a metre past each outer door. The hall is therefore **19.2 m** long —
-no longer than its three bays — with the eave at 1.15 × door height, **4.6 m**.
+## 2. The service hall
 
-A later close-up of the garage settles that building properly. The only object
-of known size in the frame is the 200 L steel drum standing at its corner
-(0.585 m diameter), and against it:
-
-* the door opening is **3.1 m wide × 3.6 m tall** — taller than it is wide,
-  quite unlike the hall's bays, which measure 1.18 wide-to-tall;
-* roughly **1.8 m** of wall runs east of the door frame to the corner;
-* the wall is **5.0 m** high near the door and **4.1 m** at the east corner, so
-  the roof is a mono-pitch falling *along the door face* towards the east — not
-  back away from it, as first modelled;
-* the eaves project about **1.3 m** over that face on diagonal struts, and
-  continue past the east corner;
-* the wall panels are laid **vertically**, with joints about a metre apart.
-
-How far the blank wall runs west is still not determinable — it leaves the
-frame. 14 m remains the least assumption consistent with the photographs.
-
-## 2. How the four camera positions were reconciled
-
-Each photo constrains the plan. The plan below is the only arrangement I found that
-satisfies all four simultaneously:
-
-* **Photo 1** — single-bay garage seen near-frontally, hedge + red-roofed house to its
-  right, wire-mesh fence with an orchard behind it receding to the right, the silver
-  Ford parked broadside in front of that fence, concrete driveway in the near field,
-  a dark red car at the bottom-left corner. ⇒ camera stands on the **entrance
-  driveway, south of the garage, looking north**; orchard is **east**.
-* **Photo 2** — white Dokker on the left, backhoe behind it, boundary fence with a dark
-  green industrial hall, power poles and distant chimneys beyond, cars and people on
-  the right, poured concrete pad underfoot. ⇒ camera on the **pad looking north-north-west**;
-  the industrial zone is **north/north-west, outside the boundary**.
-* **Photos 3 & 4** — the 3-bay service hall across the yard, a row of cars parked
-  against the tree line on the left, the white site-office container left of the hall,
-  the Dokker parked nose-in in front of it, the backhoe in the right foreground, a
-  red-roofed house showing above the hall's left end. ⇒ camera on the **south edge of
-  the pad looking north-north-east**; the hall closes the **north-east** side of the yard.
-
-Photo 2 and photos 3/4 are minutes apart from nearly the same spot facing opposite
-ways — the Dokker shows its front-left three-quarter in one and its tail in the other,
-and the backhoe has moved between them (in photo 4 it is working, boom raised, operator
-in the cab). The game therefore places the *site* 1:1 and the *machines* in their
-photo-3/4 arrangement, since that is the frame with the most of the yard in it.
-
-## 3. Plan (metres)
+Measured on the 0.5× yard shot with a luminance edge finder rather than by eye
+(the edges below are where the horizontal gradient peaks at y = 1138):
 
 ```
-                                    N  (−Z)
-   industrial zone  ┌ green hall (−64..−26, −84..−62) · warehouses (−20..40, −92..−66)
-                    │ 2 chimneys (further out, Z ≈ −120) · power line along Z = −57
-  ══════════════════╪══ boundary fence  Z = −52 ═════════════════════════
-                    │
-   house #2 (red roof)      ┌─────── SERVICE HALL B ───────┐
-   −46..−33, −52..−41       │ X −35.6..−16.4  Z −35..−22   │
-                            │ 19.2 × 13 m — only as long   │
-   container office         │ as its 3 bays. Doors SOUTH   │
-   (−47.5, −24) 6.06 × 2.44 │ at X = −32.6, −26, −19.4     │
-                            └──── apron Z −21.6..−15.6 ────┘
-                                                                          orchard
-   car row along the                 ███ CONCRETE PAD ███                 X 4..44
-   west tree line                    X −40..−16  Z 0..16                  Z −30..12
-   X ≈ −48                                                                (apple, 4.2 m rows)
-                                              house #1        ┌ mesh fence Z = 12
-                    ┌── GARAGE A ──┐          −9..3           │ and X = 4
-                    │ X −23..−9    │          −8.5..2.5       │
-                    │ Z 2..16      │     hedge                │   silver Ford
-                    │ door at the  │     −7..2, 9..20         │   parked at (3, 15)
-                    │ EAST corner  │        ▓▓ entrance driveway ▓▓
-                    │ (X = −12.2)  │        X −22..6   Z 18..32
-                    └──────────────┘
-  ═══════════════════════ street (asphalt) Z = 32..40 ═══════════════════
-                                    S  (+Z)
+x = 995   facade's west corner          pier   27 px
+x = 1022  door 1, left reveal
+x = 1108  door 1, right reveal          door   86 px
+x = 1147  door 2, left reveal           pier   39 px
+          ... bay pitch 125 px, three bays
+x ≈ 1385  facade's east corner
 ```
 
-## 4. Photo-match camera poses
+Facade 390 px over three 86 px openings on a 125 px pitch. Taking the clear
+opening as **3.2 m** — which is what the same measurement gives on the garage,
+where a 1 m panel module is visible — the hall is:
 
-Press the camera button / `P` in game to cycle these. They are the reconstructed poses
-of the four reference shots (eye height 1.55 m, phone-like 62° vertical FOV):
+* **15.5 m** wide, **13 m** deep — no longer than its three bays, which is what
+  the user confirmed from the site;
+* doors **3.2 m wide × 3.9 m tall**, at **4.95 m** centres, 1.2 m of pier at each end;
+* eave **4.6 m** at the front, rising to about 5.4 m at the back.
 
-| # | Position (x, y, z)   | Heading | Pitch | Vertical FOV | Reference photo                |
-|---|----------------------|---------|-------|--------------|--------------------------------|
-| 1 | (−6.0, 1.58, 27.0)   | 4°      | +3°   | 79°          | garage + orchard + silver Ford |
-| 2 | (−31.0, 1.58, 4.0)   | 338°    | +4°   | 79°          | Dokker + industrial backdrop   |
-| 3 | (−29.0, 1.58, 3.0)   | 355°    | +3°   | 79°          | yard + 3-bay hall + container  |
-| 4 | (−33.0, 1.58, 11.0)  | 351°    | +4°   | 84°          | wide yard + backhoe            |
+The openings are taller than they are wide (aspect 0.82), which is also what the
+garage close-up shows; the earlier 4.2 × 4.0 m landscape doors were wrong.
 
-The field of view is wide because the originals are: the garage door in the
-first photo is 4.2 m across at about 17 m, which subtends roughly 13°, and it
-occupies about a fifth of the frame width — so the horizontal field is about
-65°, i.e. a wide phone lens rather than a standard one. Each spot was then
-checked by computing the bearing of every landmark from the camera and
-confirming it lands inside that frame.
+## 3. The garage
 
-## 5. Honest limits of the reconstruction
+The only single-bay building, seen in two close-ups. A 1 m panel module is
+directly countable along its wall, which makes this the best-measured structure
+on the site:
 
-* The **layout, landmarks, materials, vehicle set and their liveries are taken directly
-  from the photos**; plates, colours, the Total oil drum, the blue barrel, the fire
-  extinguisher, the two licence plates nailed to the orchard fence, the "40" sign on the
-  backhoe cab and the hi-viz operator are all reproduced.
-* **Absolute metric accuracy is ±10 %**, because four hand-held photos without survey
-  markers or EXIF focal data cannot yield better. Every dimension is anchored to the
-  known-size objects in §1 rather than guessed.
-* The terrain is modelled as flat; the photos show no grade worth reproducing beyond the
-  6 cm step between gravel and the concrete pads, which *is* modelled.
-* People are stylised. Everything else — buildings, ground, fences, vegetation, the
-  industrial backdrop, the vehicles — is modelled to the proportions above.
+* door **3.05 m wide × 3.8 m tall**, its east reveal **1.0 m** from the corner;
+* panel joints run **vertically**;
+* the eave is about **5.1 m** above the apron at the door and falls **0.144 per
+  metre eastwards** — a mono-pitch running *along the door face*, not back away
+  from it. Modelled as 12 m wide, 6.2 m at the west gable and 4.6 m at the east;
+* the eave projects **1.3 m** over that face on diagonal struts;
+* a street-lamp head on a curved tube bracket sits west of the opening;
+* at the east corner, in order: kerb block, leaning grating, blue barrel, red
+  TOTAL drum, a wheeled gas trolley (not an extinguisher), rubble.
+
+## 4. The office cabin
+
+A prefab site cabin, not a shipping container: narrow vertical ribbing, a dark
+drip fascia round a flat roof, one two-pane sliding window on the long face and
+a narrow door on the end. Its window measures **1.86 × 1.29 m** against its own
+2.55 m height, which is a standard cabin window and confirms the identification.
+
+Its close-up gives the one piece of geometry that ties the whole site together.
+With the camera looking at the hall:
+
+| feature                | apparent size | distance | bearing |
+|------------------------|---------------|----------|---------|
+| cabin's near corner    | 417 px/m      | 4.96 m   | −2.85°  |
+| hall facade            | 144 px/m      | 14.85 m  | +6.75°  |
+
+so the cabin stands about **10 m out from the hall doors**, a little west of
+them. The camera height falls out of the same two numbers without needing the
+lens at all — the difference in their ground lines divided by the difference in
+their scales — and comes to **1.60 m**, exactly eye height for a standing adult.
+That agreement is the check that the measurements are sound.
+
+## 5. The yard, and the standpoint that pins it
+
+The 1× and 0.5× yard shots share a standpoint. Reading both at once:
+
+| feature            | 1× px/m | 0.5× px/m | distance |
+|--------------------|---------|-----------|----------|
+| Dokker             | 158     | 81        | 13.1 m   |
+| Volvo XC60         | —       | 70        | 14.7 m   |
+| office cabin       | 67.9    | 35        | 30.5 m   |
+| hall facade        | 49.3    | 25.5      | 42 m     |
+
+The cabin-to-hall gap comes out at 11.5 m from this standpoint against 10 m from
+the close-up — two independent routes to the same number. So the yard in front of
+the hall is **about 40 m deep**, open gravel, with the queue of waiting cars along
+its west side, a tree line behind them, and the backhoe standing 9 m from the
+standpoint at a bearing of 32°, which is what makes it fill the right edge of
+both frames.
+
+## 6. Which way the site faces
+
+The photographs settle this and it is not the obvious answer. Sampling the
+buildings:
+
+```
+hall, piers between the doors     rgb(106,110,110)   rgb(104,110,110)
+hall, west return wall            rgb(194,196,186)
+garage, door face                 rgb(109,108,98)    rgb(130,135,135)
+garage's apron, same frame        rgb(185,173,151)
+office cabin, in sun              rgb(171,177,179)
+```
+
+Both door faces are in shade while the ground beside them and the gable next to
+them are in full sun. At 44.9° N in late September the sun never crosses north of
+due east or due west, so a south-facing wall is lit all day: **these faces cannot
+be looking south.** The map is therefore laid out with its −Z axis along a true
+bearing of **286°**, which puts the sun at about 265° in map terms at midday —
+raking across the yard from the map's west, lighting the ground and the gable
+ends and leaving the doors in their own shadow, as photographed.
+
+`SITE.north` in `src/gfx/Atmosphere.js` carries that offset; the solar position
+itself is still computed properly for 44.94° N, 25.90° E on 22 September.
+
+## 7. Reconstructed standpoints
+
+Stored in `PHOTO_SPOTS`, reachable in game from the menu. `fov` is vertical, for
+the 3:4 portrait frame the originals were shot in: 61° there is 48° horizontal.
+
+| # | shot                                | x     | z     | fov |
+|---|-------------------------------------|-------|-------|-----|
+| 1 | garage from the drive, Octavia in it| 25.6  | −32.9 | 61  |
+| 2 | office cabin and the hall           | −23.5 | −37.2 | 61  |
+| 3 | the yard and the hall, 1×           | −22.0 | −11.0 | 61  |
+| 4 | the same view at 0.5×               | −22.0 | −11.0 | 96  |
+| 5 | the garage close up                 | 22.6  | −35.3 | 61  |
+| 6 | the industrial estate over the fence| 8.0   | −30.0 | 78  |
+
+## 8. What is still inferred rather than measured
+
+* How far the garage's blank wall runs west — it leaves every frame. 12 m is the
+  least assumption consistent with the photographs.
+* The site's south half: the entrance, the gate and the street are not in any
+  photograph. They are laid out plausibly, not measured.
+* The industrial estate beyond the west fence is modelled from one distant shot,
+  so its buildings are the right kind and roughly the right size, no more.
+* The two neighbouring houses are placed from the bearing and apparent size of
+  their roofs over the hedges; their plans are invented.

@@ -99,32 +99,36 @@ function bundle(size, worldSize, painted, normalStrength, aniso) {
 
 const G = {
   /* --- crushed-stone yard: the surface most of the map is made of --- */
+  /* Crushed ballast, 20-40 mm. The cell lattice and `worldSize` are chosen
+     together: 44 cells across 1.9 m puts one stone at about 43 mm, which is
+     what the stones measure against the vehicles in the reference photos.
+     Sampling those photos gives sunlit gravel rgb(151,142,129) — a barely
+     warm grey, ratio 1.00 : 0.94 : 0.85 — so the tint here is mild, and the
+     relief is shallow: crushed stone reads as texture, not as cobbles. */
   gravel(size, aniso) {
-    const cells = new Worley(28, 11);
+    const cells = new Worley(44, 11);
     const grit = new Fbm(size / 4, 4, 23);
-    const dirt = new Fbm(4, 4, 77);
-    const s = 28;
+    const dirt = new Fbm(5, 4, 77);
+    const s = 44;
     const p = paint(size, (x, y, u, v) => {
       const w = cells.at(u * s, v * s);
-      const pebble = clamp01(1 - w.d1 * 2.3);              // rounded stone body
-      const edge = clamp01((w.d2 - w.d1) * 3.2);           // crevice darkening
+      const pebble = clamp01(1 - w.d1 * 2.1);              // stone body
+      const edge = clamp01((w.d2 - w.d1) * 3.4);           // crevice darkening
       const g = grit.at(u * size / 4, v * size / 4);
-      const dust = dirt.at(u * 4, v * 4);
-      // stone colour: mostly grey river ballast with a few warm/brown ones
-      let base = 0.42 + w.id * 0.33;
-      const warm = w.id > 0.78 ? 1 : 0;
-      // river ballast here is warm limestone, not blue granite — matches the photos
-      let r = base * (1.18 + warm * 0.22), gg = base * (1.02 + warm * 0.06), b = base * (0.76 - warm * 0.10);
-      const shade = mix(0.55, 1.12, pebble) * mix(0.82, 1.0, edge) * mix(0.9, 1.06, g);
-      const dustMix = clamp01(dust * 0.55 + 0.12);         // pale limestone dust between stones
-      r = mix(r * shade, 0.735, dustMix * (1 - pebble) * 0.75);
-      gg = mix(gg * shade, 0.655, dustMix * (1 - pebble) * 0.75);
-      b = mix(b * shade, 0.495, dustMix * (1 - pebble) * 0.75);
-      const h = pebble * 0.85 + g * 0.15;
-      const ro = mix(0.98, 0.72, pebble * (1 - dustMix));
+      const dust = dirt.at(u * 5, v * 5);
+      let base = 0.43 + w.id * 0.25;
+      const warm = w.id > 0.82 ? 1 : 0;
+      let r = base * (1.09 + warm * 0.12), gg = base * (1.00 + warm * 0.02), b = base * (0.84 - warm * 0.08);
+      const shade = mix(0.70, 1.10, pebble) * mix(0.88, 1.0, edge) * mix(0.93, 1.05, g);
+      const dustMix = clamp01(dust * 0.5 + 0.15);          // pale stone dust between stones
+      r = mix(r * shade, 0.650, dustMix * (1 - pebble) * 0.7);
+      gg = mix(gg * shade, 0.600, dustMix * (1 - pebble) * 0.7);
+      b = mix(b * shade, 0.525, dustMix * (1 - pebble) * 0.7);
+      const h = pebble * 0.38 + g * 0.22;
+      const ro = mix(0.98, 0.76, pebble * (1 - dustMix));
       return [clamp01(r), clamp01(gg), clamp01(b), h, ro];
     });
-    return bundle(size, 3.0, p, 2.6, aniso);
+    return bundle(size, 1.9, p, 1.15, aniso);
   },
 
   /* --- poured concrete slab (the pads in photos 2-4 and the driveway) --- */
@@ -215,7 +219,7 @@ const G = {
       const rib = (Math.sin(u * Math.PI * 2 * 24) * 0.5 + 0.5) * 0.045;
       const d = dirt.at(u * 4, v * 4);
       const sk = streak.at(u * 2, v * 2);
-      let g = 0.805 + (d - 0.5) * 0.045 + (rib - 0.022);
+      let g = 0.700 + (d - 0.5) * 0.045 + (rib - 0.022);
       g -= joint * 0.13;
       g -= clamp01(v - 0.72) * 0.30 * clamp01(sk * 1.4);   // grime creeping up from the base
       const h = 0.62 - joint * 0.8 + rib * 1.4;
@@ -231,10 +235,30 @@ const G = {
       const rib = (u * 8) % 1;                       // 8 ribs per tile
       const prof = rib < 0.18 ? rib / 0.18 : rib < 0.34 ? 1 : rib < 0.5 ? (0.5 - rib) / 0.16 : 0;
       const w = weather.at(u * 5, v * 5);
-      let g = 0.44 + prof * 0.16 + (w - 0.5) * 0.10;
+      let g = 0.52 + prof * 0.14 + (w - 0.5) * 0.09;
       return [g * 1.01, g * 1.02, g * 1.05, prof * 0.9 + w * 0.1, clamp01(0.55 + (w - 0.5) * 0.25)];
     });
-    return bundle(size, 2.0, p, 2.6, aniso);
+    return bundle(size, 2.0, p, 1.6, aniso);
+  },
+
+  /* --- prefab site-cabin skin: narrow vertical ribbing, neutral light grey.
+         The office cabin in the reference photo samples rgb(171,177,179) in
+         full sun, so the base sits at 0.70 sRGB and the tint is neutral. --- */
+  cabinSkin(size, aniso) {
+    const dirt = new Fbm(6, 4, 131);
+    const streak = new Fbm(2, 3, 137);
+    const p = paint(size, (x, y, u, v) => {
+      const rib = (u * 40) % 1;                      // ~50 mm ribs over a 2 m tile
+      const prof = Math.sin(rib * Math.PI);
+      const seam = clamp01(1 - Math.abs(((v * 2) % 1) - 0.5) * 60);
+      const d = dirt.at(u * 6, v * 6);
+      const sk = streak.at(u * 2, v * 2);
+      let g = 0.705 + prof * 0.035 + (d - 0.5) * 0.035;
+      g -= seam * 0.06;
+      g -= clamp01(v - 0.80) * 0.35 * clamp01(sk * 1.3);     // grime at the skirt
+      return [g * 0.995, g, g * 1.005, prof * 0.55 + seam * 0.2, clamp01(0.48 + (d - 0.5) * 0.2)];
+    });
+    return bundle(size, 2.0, p, 1.0, aniso);
   },
 
   /* --- dark green corrugated steel: the industrial hall to the north --- */

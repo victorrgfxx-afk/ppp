@@ -168,26 +168,30 @@ export function buildHall(o, mats, colliders) {
     const roof = new THREE.Mesh(box(slopeLen + overEnd * 2, 0.14, d + over * 2),
       mats.surface('roofSheet', slopeLen, d + over * 2));
     roof.position.set(0, (hHigh + hLow) / 2 + 0.07, 0);
-    roof.rotation.z = angle;            // high at −X, low at +X
+    // negative: rotating +Z lifts +X, and the walls are the tall ones at −X
+    roof.rotation.z = -angle;           // high at −X, low at +X
     roof.castShadow = roof.receiveShadow = true;
     g.add(roof);
     /* verge trim along both long edges, following the slope */
     for (const sz of [1, -1]) {
       const fascia = new THREE.Mesh(box(slopeLen + overEnd * 2, 0.2, 0.08), trim);
       fascia.position.set(0, (hHigh + hLow) / 2 + 0.01, sz * (d / 2 + over));
-      fascia.rotation.z = angle;
+      fascia.rotation.z = -angle;
       g.add(fascia);
     }
     /* diagonal struts from the wall up to the eave, as in the photo */
     if (brackets) {
       const n = Math.max(2, Math.round(w / 3.4));
       const eaveAt = (bx) => hLow + (hHigh - hLow) * (0.5 - bx / w);
+      const clearOf = (bx) => doors.every(dr => Math.abs(bx - dr.x) > dr.w / 2 + 0.25
+        || eaveAt(bx) - 0.75 > dr.h + 0.25);
       for (let i = 0; i <= n; i++) {
         const bx = -w / 2 + (i / n) * w;
-        const yTop = eaveAt(bx) + 0.02;
-        const yWall = yTop - 0.85;
+        if (!clearOf(bx)) continue;
+        const yTop = eaveAt(bx) - 0.06;
+        const yWall = yTop - 0.62;
         const len = Math.hypot(over, yTop - yWall);
-        const br = new THREE.Mesh(box(0.08, 0.09, len), trim);
+        const br = new THREE.Mesh(box(0.07, 0.08, len), trim);
         br.position.set(bx, (yTop + yWall) / 2, d / 2 + over / 2);
         br.rotation.x = -Math.atan2(yTop - yWall, over);
         br.castShadow = true;
@@ -214,6 +218,7 @@ export function buildHall(o, mats, colliders) {
       const n = Math.max(2, Math.round(w / 3.4));
       for (let i = 0; i <= n; i++) {
         const bx = -w / 2 + (i / n) * w;
+        if (doors.some(dr => Math.abs(bx - dr.x) < dr.w / 2 + 0.25 && hFront - 0.9 < dr.h + 0.25)) continue;
         const yTop = hFront - 0.1, yWall = yTop - 0.8;
         const len = Math.hypot(over, yTop - yWall);
         const br = new THREE.Mesh(box(0.08, 0.09, len), trim);
@@ -296,20 +301,22 @@ export function buildHall(o, mats, colliders) {
 
   /* --- interior shell so open doors reveal a real space --- */
   if (interior) {
+    const inH = eaveH + (hHigh - hLow) * 0.35 - 0.2;
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(w - T * 2, d - T * 2),
-      mats.surface('concrete', w, d));
+      mats.surface('concrete', w, d, { color: 0x8e9294 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = 0.02;
     floor.receiveShadow = true;
     g.add(floor);
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w - T * 2, d - T * 2),
-      mats.plain(0xb8bcc0, { roughness: 0.92 }));
-    ceil.rotation.x = Math.PI / 2;
-    ceil.position.set(0, eaveH + (hHigh - hLow) * 0.35 - 0.2, 0);
-    g.add(ceil);
-    // interior fill light so the bays are not pitch black from outside
-    const il = new THREE.PointLight(0xffeedd, 0.5, 26, 2);
-    il.position.set(0, eaveH - 1.2, 0);
+    /* dark inward-facing liner: walls and ceiling in one back-faced box, so the
+       bays read as shadowed space rather than as a lit white room */
+    const liner = new THREE.Mesh(box(w - T * 2.2, inH, d - T * 2.2),
+      mats.plain(0x4c5155, { roughness: 0.95, envMapIntensity: 0.12, side: THREE.BackSide }));
+    liner.position.y = inH / 2 + 0.01;
+    g.add(liner);
+    // a trace of fill so the far wall is not a flat silhouette
+    const il = new THREE.PointLight(0xffeedd, 0.16, 18, 2);
+    il.position.set(0, eaveH - 1.4, -d * 0.1);
     g.add(il);
     g.userData.interiorLight = il;
   }
@@ -413,36 +420,86 @@ export function buildHouse(o, mats, colliders) {
   return g;
 }
 
-/* ============================ site container ============================== */
+/* ============================ site container ==============================
+   The yard office: a prefab site cabin, not a shipping container. The close-up
+   photograph shows narrow vertical ribbing in a neutral light grey (it samples
+   rgb(171,177,179) in full sun), a dark drip fascia round the flat roof, one
+   large two-pane sliding window on the long side and a narrow door on the end.
+   ========================================================================== */
 export function buildContainer(o, mats, colliders) {
-  const { x = 0, z = 0, rotY = 0, w = 6.06, d = 2.44, h = 2.59, color = 0xe8e9e4 } = o;
+  const { x = 0, z = 0, rotY = 0, w = 6.0, d = 2.45, h = 2.52, color = 0xffffff } = o;
   const g = new THREE.Group();
   g.position.set(x, 0, z); g.rotation.y = rotY;
 
-  const shell = new THREE.Mesh(box(w, h, d), mats.surface('corrugated', w, h, {
-    color, metalness: 0.25, roughness: 0.55, normalScale: 0.6,
-  }));
-  shell.position.y = h / 2 + 0.18;
-  shell.castShadow = shell.receiveShadow = true;
-  g.add(shell);
+  const skin = mats.surface('cabinSkin', w, h, { color, metalness: 0.2, roughness: 0.52, normalScale: 0.8 });
+  const dark = mats.plain(0x3b4148, { roughness: 0.55, metalness: 0.35 });
+  const frameMat = mats.plain(0xe7e9e6, { roughness: 0.45, metalness: 0.15 });
+  const sill = 1.05, winW = 1.80, winH = 1.08;   // window opening on the long face
 
-  const roof = new THREE.Mesh(box(w + 0.1, 0.1, d + 0.1), mats.plain(0xd6d8d2, { roughness: 0.6, metalness: 0.3 }));
-  roof.position.y = h + 0.23; roof.castShadow = true; g.add(roof);
+  /* long faces: the south one carries the window opening, the north is solid */
+  const front = new THREE.Mesh(
+    wallWithOpenings(w, h, 0.08, [{ x: -0.55, w: winW, y0: sill, y1: sill + winH }]), skin);
+  front.position.z = d / 2;
+  front.position.y = 0.16;
+  front.castShadow = front.receiveShadow = true;
+  g.add(front);
 
-  const win = new THREE.Mesh(box(1.5, 1.0, 0.06), mats.glass({ opacity: 0.5 }));
-  win.position.set(-0.6, 1.62, d / 2 + 0.02); g.add(win);
-  const wf = new THREE.Mesh(box(1.62, 1.12, 0.05), mats.plain(0xffffff, { roughness: 0.55 }));
-  wf.position.set(-0.6, 1.62, d / 2 + 0.005); g.add(wf);
-  const door = new THREE.Mesh(box(0.9, 2.0, 0.07), mats.plain(0xdfe1dc, { roughness: 0.6, metalness: 0.2 }));
-  door.position.set(1.9, 1.18, d / 2 + 0.02); g.add(door);
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 6), mats.chrome());
-  handle.rotation.z = Math.PI / 2; handle.position.set(1.55, 1.1, d / 2 + 0.08); g.add(handle);
+  const back = new THREE.Mesh(box(w, h, 0.08), skin);
+  back.position.set(0, h / 2 + 0.16, -d / 2);
+  back.castShadow = back.receiveShadow = true;
+  g.add(back);
 
-  for (const s of [-1, 1]) {                      // skids
-    const sk = new THREE.Mesh(box(w, 0.18, 0.2), mats.plain(0x4a4f55, { roughness: 0.7, metalness: 0.3 }));
-    sk.position.set(0, 0.09, s * (d / 2 - 0.16)); g.add(sk);
+  /* end faces: a door in the +X end, blank at −X */
+  const endSkin = mats.surface('cabinSkin', d, h, { color, metalness: 0.2, roughness: 0.52, normalScale: 0.8 });
+  const doorW = 0.82, doorH = 2.02;
+  const endA = new THREE.Mesh(
+    wallWithOpenings(d, h, 0.08, [{ x: -0.35, w: doorW, y0: 0, y1: doorH }]), endSkin);
+  endA.position.set(w / 2, 0.16, 0);
+  endA.rotation.y = Math.PI / 2;
+  endA.castShadow = endA.receiveShadow = true;
+  g.add(endA);
+  const endB = new THREE.Mesh(box(0.08, h, d), endSkin);
+  endB.position.set(-w / 2, h / 2 + 0.16, 0);
+  endB.castShadow = endB.receiveShadow = true;
+  g.add(endB);
+
+  /* glazing + white uPVC frame in the long-face opening */
+  const glass = new THREE.Mesh(box(winW - 0.1, winH - 0.1, 0.03), mats.glass({ opacity: 0.44 }));
+  glass.position.set(-0.55, 0.16 + sill + winH / 2, d / 2 + 0.02);
+  g.add(glass);
+  const fr = new THREE.Mesh(
+    wallWithOpenings(winW + 0.14, winH + 0.14, 0.06, [{ x: 0, w: winW - 0.12, y0: 0.07, y1: winH + 0.07 }]),
+    frameMat);
+  fr.position.set(-0.55, 0.16 + sill - 0.07, d / 2 + 0.03);
+  g.add(fr);
+  const mullion = new THREE.Mesh(box(0.05, winH - 0.08, 0.05), frameMat);
+  mullion.position.set(-0.55, 0.16 + sill + winH / 2, d / 2 + 0.05);
+  g.add(mullion);
+
+  /* dark door leaf recessed into the end wall */
+  const leaf = new THREE.Mesh(box(0.05, doorH - 0.04, doorW - 0.04), dark);
+  leaf.position.set(w / 2 - 0.02, 0.16 + doorH / 2, 0.35);
+  g.add(leaf);
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.13, 6), mats.chrome());
+  handle.rotation.z = Math.PI / 2;
+  handle.position.set(w / 2 + 0.05, 0.16 + 1.06, 0.68);
+  g.add(handle);
+
+  /* flat roof with the dark drip fascia that runs right round the cabin */
+  const deck = new THREE.Mesh(box(w + 0.1, 0.07, d + 0.1),
+    mats.plain(0xb9bdb8, { roughness: 0.62, metalness: 0.25 }));
+  deck.position.y = h + 0.20;
+  deck.castShadow = true; g.add(deck);
+  for (const [sx, sz, bw, bd] of [[0, 1, w + 0.16, 0.06], [0, -1, w + 0.16, 0.06], [1, 0, 0.06, d + 0.16], [-1, 0, 0.06, d + 0.16]]) {
+    const band = new THREE.Mesh(box(bw, 0.18, bd), dark);
+    band.position.set(sx * (w / 2 + 0.05), h + 0.19, sz * (d / 2 + 0.05));
+    g.add(band);
   }
-  colliders.push({ cx: x, cy: h / 2, cz: z, sx: w, sy: h + 0.3, sz: d, rotY });
+  /* dark skirt, and the steel skids it stands on */
+  const skirt = new THREE.Mesh(box(w + 0.04, 0.18, d + 0.04), dark);
+  skirt.position.y = 0.09; skirt.castShadow = skirt.receiveShadow = true; g.add(skirt);
+
+  colliders.push({ cx: x, cy: h / 2, cz: z, sx: w, sy: h + 0.4, sz: d, rotY });
   return g;
 }
 

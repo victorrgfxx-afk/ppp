@@ -119,10 +119,10 @@ export class Npc {
 }
 
 export const NPCS = [
-  { id: 'mecanic', x: -12.9, z: 17.4, yaw: 0, mode: 'work',
+  { id: 'mecanic', x: 20.3, z: -46.4, yaw: 180, mode: 'work',
     shirt: 0x8d9296, trousers: 0x33393f, hair: 0xb9b7b2, height: 1.74,
     label: 'mecanicul de la Octavia' },
-  { id: 'clientul', x: -46.4, z: -6.6, yaw: 250, mode: 'stand',
+  { id: 'clientul', x: -24.3, z: -20.5, yaw: 250, mode: 'stand',
     shirt: 0x2f3a46, trousers: 0x23272c, cap: 0x2b3641, height: 1.72,
     label: 'omul cu șapcă de lângă Astra' },
 ];

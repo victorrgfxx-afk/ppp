@@ -79,6 +79,19 @@ export class Vehicle {
     this.vehicle = v;
     this.wheelBodies = this.mesh.userData.wheels;
 
+    /* The body profiles are drawn from the ground up — a van's floor sits at
+       0.17 of its height, which is its real sill — so the visual origin belongs
+       on the ground, while the physics chassis rides a suspension length above
+       it. Without this offset every car floated a third of a metre, wheels
+       hanging clear below the sills. The equilibrium suspension length is
+       restLength − g/stiffness, clamped so a stiff setup cannot invert it. */
+    const restEq = Math.max(0.02, opts.suspensionRestLength - 9.82 / opts.suspensionStiffness);
+    this.visualDrop = d.wheelR - yOff + restEq;
+    this._drop = new THREE.Vector3();
+    // start at that same height, so the cars parked in the yard — which never
+    // wake the solver — sit on their tyres instead of settling later
+    body.position.y = this.visualDrop;
+
     /* --- drivetrain ----------------------------------------------------- */
     // Real units: peak crank torque in Nm, multiplied by the gear and final
     // ratios and divided by the rolling radius to get force at the contact
@@ -203,10 +216,7 @@ export class Vehicle {
 
     /* body first, then the wheels — the raycast gives world transforms and the
        wheel meshes are children of the body, so they need converting back */
-    this.mesh.position.set(this.body.position.x, this.body.position.y, this.body.position.z);
-    this.mesh.quaternion.set(this.body.quaternion.x, this.body.quaternion.y, this.body.quaternion.z, this.body.quaternion.w);
-    this.mesh.updateMatrixWorld(true);
-    this.syncWheels();
+    this.placeMesh();
 
     const sw = this.mesh.userData.steering;
     if (sw) sw.rotation.z = -this.steer * 4.2;
@@ -244,8 +254,18 @@ export class Vehicle {
     if (this.body.velocity.lengthSquared() < 0.02 && this.body.angularVelocity.lengthSquared() < 0.02) {
       this.body.sleep();
     }
-    this.mesh.position.set(this.body.position.x, this.body.position.y, this.body.position.z);
-    this.mesh.quaternion.set(this.body.quaternion.x, this.body.quaternion.y, this.body.quaternion.z, this.body.quaternion.w);
+    this.placeMesh();
+  }
+
+  /** Put the visual body on the chassis, dropped onto its own ground line. */
+  placeMesh() {
+    const q = this.body.quaternion;
+    this.mesh.quaternion.set(q.x, q.y, q.z, q.w);
+    this._drop.set(0, -this.visualDrop, 0).applyQuaternion(this.mesh.quaternion);
+    this.mesh.position.set(
+      this.body.position.x + this._drop.x,
+      this.body.position.y + this._drop.y,
+      this.body.position.z + this._drop.z);
     this.mesh.updateMatrixWorld(true);
     this.syncWheels();
   }

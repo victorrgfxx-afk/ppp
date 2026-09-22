@@ -24,14 +24,15 @@ npm run game          # static server on http://127.0.0.1:8099
 
 | | |
 |---|---|
-| **Service hall** | 19.2 × 13 m — only as long as its three bays — with 4.2 × 4.0 m sectional doors, two bays open with two-post lifts, workbench, compressor, tyre stacks |
-| **Garage** | 14 × 14 m, mono-pitch roof falling east along the door face on a deep bracketed eave, a portrait 3.1 × 3.6 m door at the east corner, the black Octavia parked half inside with its tailgate and driver's door open |
-| **Yard** | crushed stone, two poured concrete pads with real expansion joints, worn dirt tracks, the entrance driveway and a sliding gate |
+| **Service hall** | 15.5 × 13 m — only as long as its three bays — with portrait 3.2 × 3.9 m sectional doors on a 4.95 m pitch, two bays open with two-post lifts, workbench, compressor, tyre stacks |
+| **Garage** | 12 × 12 m, mono-pitch roof falling east along the door face on a deep bracketed eave, a portrait 3.05 × 3.8 m door a metre in from the east corner, the black Octavia parked half inside with its tailgate and driver's door open |
+| **Yard** | about 40 m of crushed stone in front of the hall doors, poured concrete aprons round the buildings with real expansion joints, worn dirt tracks, the entrance driveway and a sliding gate |
 | **Vehicles** | 10 cars plus a Komatsu-style backhoe loader, all at factory dimensions, with the licence plates as they read in the photos |
 | **Props** | the TOTAL oil drum, the blue barrel, the gas-cylinder trolley with its coiled hose, kerb block, leaning grating, jerrycan, pallets, tyres, cones, skip, wheelie bins, scrap pile |
 | **Boundaries** | welded-mesh fencing with the two licence plates nailed to the orchard fence, the concrete power line, the dark green industrial hall, distant warehouses and chimneys |
 | **Vegetation** | a 63-tree apple orchard on 4.2 m rows, the hedge, the west tree line, wind-animated foliage and grass |
 | **People** | the mechanic working at the Octavia's tailgate and the man in a cap by the Astra |
+| **Office** | a prefab site cabin 10 m out from the hall doors, vertical ribbing, sliding window, dark drip fascia |
 
 ## Controls
 

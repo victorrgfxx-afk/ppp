@@ -10,7 +10,16 @@ import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Fbm, clamp01, mix } from './Noise.js';
 
-export const SITE = { lat: 44.9412, lon: 25.9012, dayOfYear: 265 }; // 22 September
+/* `north` is the real-world compass bearing that the map's −Z axis points at.
+   It is not a free choice: the reference photographs show the hall's and the
+   garage's door faces in shade (their piers sample around rgb(106,110,110))
+   while the apron and the west gable beside them are in full sun (rgb(194,196,186)),
+   and at 44.9 N in late September the sun never crosses north of due east or
+   due west — so the faces cannot be looking south. Laying the map's −Z along
+   286 deg puts the sun at about 265 deg in map terms at midday: raking across
+   the yard from the west, lighting the ground and the gable ends and leaving
+   the doors in their own shadow, exactly as photographed. */
+export const SITE = { lat: 44.9412, lon: 25.9012, dayOfYear: 265, north: 286 }; // 22 September
 
 /** Solar altitude/azimuth in radians. `minutes` is local clock time (EEST = UTC+3). */
 export function sunAngles(minutes, dayOfYear = SITE.dayOfYear, lat = SITE.lat, lon = SITE.lon, tz = 3) {
@@ -103,6 +112,15 @@ export class Atmosphere {
     this._envSky = patchSkyGain(new Sky());
     this._envSky.scale.setScalar(20000);
     this._envScene.add(this._envSky);
+    /* The lower half of the environment is not sky, it is the yard. Without it
+       the IBL lights every shaded wall with pure zenith blue and they come out
+       at rgb(165,186,199); the photographs put them at rgb(109,108,98), which
+       is sky plus a large helping of bounce off warm gravel. This dome carries
+       that bounce, and its brightness is tracked to the sun in update(). */
+    this._envGround = new THREE.Mesh(
+      new THREE.SphereGeometry(60, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x6a6052, side: THREE.BackSide, fog: false }));
+    this._envScene.add(this._envGround);
 
     /* Calibrated against the reference photos (see docs/LIGHTING.md):
        sunlit gravel ~rgb(160,148,130), shadowed gravel ~rgb(118,113,108),
@@ -136,9 +154,11 @@ export class Atmosphere {
 
   update(dt, focus) {
     const W = WEATHER[this.weather];
-    const { alt, az } = sunAngles(this.minutes);
+    const { alt, az: trueAz } = sunAngles(this.minutes);
+    // rotate the true solar azimuth into map space (see SITE.north)
+    const az = trueAz - SITE.north * Math.PI / 180;
     const ca = Math.cos(alt);
-    // azimuth is measured from north (−Z) clockwise towards east (+X)
+    // azimuth is measured from map north (−Z) clockwise towards east (+X)
     const dir = new THREE.Vector3(ca * Math.sin(az), Math.sin(alt), -ca * Math.cos(az)).normalize();
     this._sunDir = dir;
 
@@ -188,6 +208,10 @@ export class Atmosphere {
     this.sunTarget.position.copy(focus);
     this.sun.position.copy(focus).addScaledVector(dir, d * 1.9);
     this.sun.shadow.camera.updateProjectionMatrix();
+
+    /* the yard's own bounce, which is what the IBL's lower half stands for */
+    this._envGround.material.color.setRGB(
+      mix(0.014, 0.68, up), mix(0.013, 0.575, up), mix(0.016, 0.435, up));
 
     /* refresh the IBL only when the lighting has actually moved */
     const altDeg = alt * 180 / Math.PI;
