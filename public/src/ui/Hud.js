@@ -26,7 +26,21 @@ export class Hud {
     this.crosshair = document.getElementById('crosshair');
     this.photoFrame = document.getElementById('photo-frame');
     this.photoLabel = document.getElementById('photo-label');
+    this.score = document.getElementById('score');
+    this.scoreRun = document.getElementById('score-run');
+    this.scoreMult = document.getElementById('score-mult');
+    this.scoreLabel = document.getElementById('score-label');
     this._acc = 0;
+  }
+
+  setScore(d) {
+    if (!this.score) return;
+    const on = d.active && d.run > 40;
+    this.score.classList.toggle('on', on);
+    if (!on) return;
+    this.scoreRun.textContent = d.run.toLocaleString('ro-RO');
+    this.scoreMult.textContent = 'x' + d.mult.toFixed(1);
+    this.scoreLabel.textContent = d.label || '';
   }
 
   show(v) { this.root.hidden = !v; }

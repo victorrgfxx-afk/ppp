@@ -68,7 +68,7 @@ export class MaterialLibrary {
     // real metallic paint is a dielectric clear coat over flake; full metalness
     // turns every panel into a blue sky mirror, so cap it
     metallic = Math.min(metallic, 0.62);
-    roughness = Math.max(roughness, 0.30 + metallic * 0.12);
+    roughness = Math.max(roughness, 0.38 + metallic * 0.10);
     const key = `cp|${color}|${metallic}|${flake}|${clear}`;
     if (this._cache.has(key)) return this._cache.get(key);
     const m = new THREE.MeshPhysicalMaterial({

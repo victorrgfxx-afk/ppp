@@ -120,6 +120,17 @@ canvas#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
   width:min(36vw,220px);height:4px;border-radius:4px;background:rgba(255,255,255,.14);opacity:0;transition:opacity .3s}
 #stamina.show{opacity:1}
 #stamina i{display:block;height:100%;width:100%;border-radius:4px;background:var(--accent2);transition:width .1s linear}
+#score{position:absolute;left:50%;top:22%;transform:translateX(-50%) scale(.9);text-align:center;
+  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;
+  text-shadow:0 2px 10px rgba(0,0,0,.75)}
+#score.on{opacity:1;transform:translateX(-50%) scale(1)}
+#score b{display:block;font-size:clamp(26px,7vmin,50px);font-weight:900;color:#ffd24a;
+  letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1}
+#score span{display:inline-block;font-size:clamp(13px,2.6vmin,20px);font-weight:800;color:#fff;
+  background:rgba(255,179,0,.22);border:1px solid rgba(255,179,0,.5);border-radius:999px;padding:2px 10px;margin-top:4px}
+#score em{display:block;font-style:normal;font-size:clamp(10px,1.9vmin,14px);letter-spacing:.24em;
+  color:#ffe6a3;margin-top:5px;font-weight:700}
+
 #photo-frame{position:absolute;inset:0;pointer-events:none}
 .pf-corner{position:absolute;width:38px;height:38px;border:3px solid rgba(255,255,255,.8)}
 .pf-corner.tl{top:22px;left:22px;border-right:0;border-bottom:0}
@@ -154,6 +165,10 @@ canvas#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-ac
 .tbtn.pedal{width:clamp(70px,16vmin,100px);font-size:.72em}
 .tbtn.accent{background:rgba(255,179,0,.30);border-color:rgba(255,179,0,.6)}
 .tbtn.accent:active{background:rgba(255,179,0,.55)}
+#arm-btns{position:absolute;left:calc(18px + var(--sal));bottom:calc(calc(22px + var(--sab)) + clamp(120px,32vmin,190px));
+  display:grid;grid-template-columns:repeat(2,auto);gap:8px;pointer-events:none}
+@media (pointer:fine){ body:not(.touch-ui) #arm-btns{display:none} }
+
 #topbtns{position:absolute;right:calc(10px + var(--sar));top:calc(calc(10px + var(--sat)) + clamp(94px,18vmin,162px));
   display:flex;flex-direction:column;gap:8px;pointer-events:none;align-items:flex-end}
 .ibtn{pointer-events:auto;width:clamp(38px,8.5vmin,50px);aspect-ratio:1;border-radius:12px;

@@ -54,6 +54,7 @@ npm run game          # static server on http://127.0.0.1:8099
 | `R` | reset the car · `G` flip it back over |
 | `P` | cycle the four photo-match viewpoints · `1`–`4` jump to one |
 | `Tab` | menu |
+| `T` / `G`, `Y` / `B` | backhoe loader arm and boom, when driving it |
 
 ## Photo-match mode
 
@@ -110,6 +111,16 @@ Notable pieces:
 * **Audio is synthesised.** The engine note is a stack of saw harmonics at the
   firing frequency plus filtered noise, modulated by rpm and load; tyres, wind,
   footsteps per surface, impacts, the horn and the birds are all WebAudio.
+* **Tyre dust.** A pooled point system throws up the loose surface behind the
+  driven wheels, tinted per surface (warm limestone on the yard, grey on the
+  concrete pads) and blown by the same wind vector that moves the foliage.
+
+## Freestyle scoring
+
+Holding a drift, catching air, brushing past a parked car at speed and
+sustaining a high speed all score, with a multiplier that climbs while you keep
+the run going and banks when you stop. The best total is kept in local storage.
+It is the reason to keep driving laps of a yard rather than a mission structure.
 
 ## Tests
 

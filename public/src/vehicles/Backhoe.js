@@ -180,7 +180,9 @@ export function buildBackhoe(mats) {
   }
   root.userData.wheels = wheels;
   root.userData.dims = { frontR, rearR, len: 5.8, width: 2.3, height: 3.7, wheelR: rearR, wheelbase: 3.0 };
-  root.userData.seatPos = new THREE.Vector3(-0.15, 2.05, 0);
+  // eye point set back from the front cab posts so they frame the view
+  // instead of looming in the middle of it
+  root.userData.seatPos = new THREE.Vector3(-0.52, 2.18, 0);
   return root;
 }
 
@@ -289,6 +291,12 @@ export class BackhoeVehicle {
   }
 
   idle() { this.update(1 / 60, { throttle: 0, brake: 0, steer: 0 }); }
+
+  /** Hide the seated operator while the player is the one driving. */
+  setOperatorVisible(v) {
+    const op = this.mesh.userData.operator;
+    if (op) op.visible = v;
+  }
   reset() {
     this.body.position.copy(this.home.p);
     this.body.quaternion.copy(this.home.q);

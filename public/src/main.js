@@ -17,6 +17,8 @@ import { Vehicle } from './vehicles/Vehicle.js';
 import { BackhoeVehicle } from './vehicles/Backhoe.js';
 import { CARS, BACKHOE } from './vehicles/CarSpecs.js';
 import { Npc, NPCS } from './entities/Human.js';
+import { DustSystem, DUST_COLOURS } from './gfx/Particles.js';
+import { Freestyle } from './core/Freestyle.js';
 import { Hud } from './ui/Hud.js';
 import { Menu } from './ui/Menu.js';
 import * as PLAN from './world/SitePlan.js';
@@ -90,6 +92,8 @@ class Game {
     this.audio = new AudioEngine();
     this.player = new Player(this.physics, this.engine.camera, PLAN.SPAWN);
     this.hud = new Hud();
+    this.dust = new DustSystem(this.engine.scene, { max: P.name === 'low' ? 90 : 220 });
+    this.freestyle = new Freestyle(this.hud);
     this.menu = new Menu(this);
     this._registerVehicleInteractions();
     this._bindTopButtons();
@@ -134,6 +138,9 @@ class Game {
     this.audio.click(520, 0.08, 0.05);
     document.getElementById('btns').hidden = true;
     document.getElementById('drive-btns').hidden = false;
+    // the backhoe gets its loader/boom controls on screen
+    document.getElementById('arm-btns').hidden = !(v === this.backhoe);
+    if (v === this.backhoe) v.setOperatorVisible(false);
     this.driveYaw = v.mesh.rotation.y - Math.PI / 2;
     this.drivePitch = 0;
   }
@@ -156,6 +163,8 @@ class Game {
     this.audio.click(320, 0.09, 0.05);
     document.getElementById('btns').hidden = false;
     document.getElementById('drive-btns').hidden = true;
+    document.getElementById('arm-btns').hidden = true;
+    if (v === this.backhoe) v.setOperatorVisible(true);
     this.hud.toast('Ai coborât din ' + (v.label || 'vehicul'));
   }
 
@@ -300,6 +309,10 @@ class Game {
     const focus = this.vehicle ? this.vehicle.mesh.position : this.engine.camera.position;
     this.atmo.update(dt, focus);
     this.engine.post.setWet(this.atmo.wetness);
+    this.dust.update(dt, this.atmo.windDir);
+    this.freestyle.update(dt, this.vehicle, this._nearMiss);
+    this._nearMiss = false;
+    this.hud.setScore(this.freestyle.display);
 
     /* --- audio ---------------------------------------------------------- */
     this.audio.ambient(dt, this.atmo.windStrength, this.atmo.sunDirection.y > 0.02);
@@ -361,6 +374,31 @@ class Game {
     }
   }
 
+  /** Tyres throw up the loose surface — the whole yard is crushed stone. */
+  _spawnWheelDust(dt, v) {
+    const speed = Math.abs(v.speed);
+    if (speed < 2.4 || !v.onGround) return;
+    const surf = this.player.surface;
+    const loose = surf === 'gravel' || surf === 'dirt' || surf === 'grass';
+    const intensity = (loose ? 1 : 0.28) * Math.min(1, speed / 16) + v.slip * 0.8;
+    if (intensity < 0.12) return;
+    this._dustAcc = (this._dustAcc || 0) + dt * intensity * (loose ? 42 : 14);
+    const colour = DUST_COLOURS[surf] || DUST_COLOURS.gravel;
+    const p = new THREE.Vector3(), vel = new THREE.Vector3();
+    while (this._dustAcc >= 1) {
+      this._dustAcc -= 1;
+      // behind the rear axle, alternating sides
+      const side = Math.random() < 0.5 ? -1 : 1;
+      p.set(-v.dims.wheelbase / 2, v.dims.wheelR * 0.35, side * v.dims.trackR / 2)
+        .applyQuaternion(v.mesh.quaternion).add(v.mesh.position);
+      vel.set(v.body.velocity.x * -0.16, 0.5 + v.slip * 1.4, v.body.velocity.z * -0.16);
+      this.dust.spawn(p, vel, {
+        size: 0.35 + intensity * 0.5, life: 0.9 + intensity * 0.9,
+        color: colour, spread: 1.0 + v.slip * 2.2,
+      });
+    }
+  }
+
   /* ------------------------------ driving -------------------------------- */
   _driveFrame(dt, input, look, use) {
     const v = this.vehicle;
@@ -380,6 +418,18 @@ class Game {
       boomUp: input.boomUp, boomDown: input.boomDown,
     };
     v.update(dt, ctl);
+
+    // near miss: brushing past another vehicle at speed without touching it
+    if (Math.abs(v.speed) > 11) {
+      for (const other of this.vehicles) {
+        if (other === v) continue;
+        const d = other.mesh.position.distanceTo(v.mesh.position);
+        const limit = (v.dims.width + (other.dims.width || 2)) * 0.5 + 1.25;
+        const was = this._nearSet || (this._nearSet = new Set());
+        if (d < limit && !was.has(other)) { was.add(other); this._nearMiss = true; }
+        else if (d > limit * 2.2) was.delete(other);
+      }
+    }
 
     /* chase-free first-person camera: eye point in the cab, free look around */
     this.driveYaw -= look.x;
@@ -401,6 +451,7 @@ class Game {
     this.player.body.position.set(v.mesh.position.x, v.mesh.position.y + 1, v.mesh.position.z);
     this.player.surface = this.player._surfaceAt(v.mesh.position.x, v.mesh.position.z);
     this.hud.setPrompt('E', 'Coboară din ' + (v.label || 'vehicul'));
+    this._spawnWheelDust(dt, v);
   }
 }
 
