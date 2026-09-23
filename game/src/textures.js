@@ -97,7 +97,7 @@ export function asphalt(size = 1024) {
       height[i] = h;
 
       // culoare: asfalt uzat, gri-neutru usor rece
-      let base = 44 + med * 26 + patch * 14 - crackMask * 16 + g * 78;
+      let base = 50 + med * 14 + patch * 8 + fine * 10 - crackMask * 12 + g * 36;
       base += (rnd() - 0.5) * 5;
       const warm = patch * 6;
       albedo[i * 4 + 0] = clamp(base + warm, 0, 255);
@@ -772,6 +772,38 @@ export function pickets(size = 256) {
   return t;
 }
 
+/**
+ * Panou bordurat 3D (plasa sudata zincata, ochiuri 5 x 20 cm), ca gardul din
+ * stanga din poza 2. O repetitie = 0,5 m latime x 0,4 m inaltime. Transparenta
+ * mediata pe mipmap-uri: de aproape se vad sarmele, de departe panoul devine
+ * o perdea gri semi-transparenta, exact ca in fotografie.
+ */
+export function meshPanel(size = 256) {
+  const c = canvas(size), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  const wire = Math.max(2, Math.round(size / 96));
+  ctx.fillStyle = '#dfe3e6';
+  for (let k = 0; k < 10; k++) ctx.fillRect(Math.round((k + 0.5) * size / 10 - wire / 2), 0, wire, size);
+  for (let k = 0; k < 2; k++) ctx.fillRect(0, Math.round((k + 0.5) * size / 2 - wire / 2), size, wire);
+  return toTex(c, { srgb: true });
+}
+
+/** Tabla cutata (gard de tabla gri din poza 3): cute la 7,6 cm. */
+export function corrugated(size = 256) {
+  const N = size, ribs = 8;                         // o repetitie = 0,61 m
+  const albedo = new Uint8Array(N * N * 4), height = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x, ph = (x / N) * ribs;
+    const h = 0.5 + 0.5 * Math.sin(ph * Math.PI * 2);
+    const dirt = fbm(x / N * 6, y / N * 6, { octaves: 3, period: 6, seed: 81 });
+    height[i] = h;
+    const v = 150 + h * 26 - dirt * 34;
+    albedo[i * 4] = v; albedo[i * 4 + 1] = v + 2; albedo[i * 4 + 2] = v + 5; albedo[i * 4 + 3] = 255;
+  }
+  const nrm = heightToNormal(height, N, N, 3.0);
+  return { map: dataTex(albedo, N, { srgb: true }), normalMap: dataTex(new Uint8Array(nrm.buffer), N) };
+}
+
 /* ============================ APA: ONDULATII ============================ */
 
 export function waterNormal(size = 256) {
@@ -833,11 +865,12 @@ export async function buildAll(onProgress = () => {}, quality = 'high') {
     ['piatra', () => { T.stone = stoneCladding(S, 7); }],
     ['tencuiala', () => { T.stucco = stucco(S); T.stuccoWarm = stucco(S, [196, 176, 150]); T.stuccoWhite = stucco(S, [222, 220, 214]); }],
     ['tigla', () => { T.roof = roofTiles(S, 10); T.roofDark = roofTiles(S, 10, [60, 58, 62]); }],
-    ['iarba', () => { T.grass = groundGrass(S); T.leaf = leafCluster(256); T.leafDark = leafCluster(256, [26, 46, 28]); T.leafLight = leafCluster(256, [74, 96, 52]); T.blades = grassBlades(128); }],
+    ['iarba', () => { T.grass = groundGrass(S); T.leaf = leafCluster(256, [104, 142, 66]); T.leafDark = leafCluster(256, [66, 100, 56]); T.leafLight = leafCluster(256, [128, 158, 80]); T.blades = grassBlades(128); }],
     ['lumini', () => { T.flare = flare(512); T.glow = radialGlow(256); T.pool = lightPool(256); }],
     ['detalii', () => { T.windowOff = windowGlass(256, false); T.windowOn = windowGlass(256, true); T.paint = roadPaint(256); T.sky = nightSky(); }],
     ['albia raului', () => { T.gravel = riverGravel(S); T.waterN = waterNormal(Math.min(256, S)); }],
     ['calea ferata', () => { T.ballast = ballast(Math.min(256, S)); T.pickets = pickets(256); }],
+    ['garduri', () => { T.meshPanel = meshPanel(256); T.corrugated = corrugated(256); }],
   ];
   for (let i = 0; i < steps.length; i++) {
     onProgress(i / steps.length, steps[i][0]);

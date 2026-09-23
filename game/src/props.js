@@ -74,7 +74,8 @@ export class GeoBag {
 
 export function utilityPole(bag, col, x, z, opts = {}) {
   // dir = directia de la stalp spre carosabil; bratul lampii trece peste strada
-  const { height = 9.1, withLamp = true, crossArm = true, dir = [1, 0] } = opts;
+  // reach = cat iese lampa spre strada fata de axul stalpului
+  const { height = 9.1, withLamp = true, crossArm = true, dir = [1, 0], reach = 2.55, lampDrop = 0.6 } = opts;
   const tx = dir[0], tz = dir[1];
   const ax = -tz, az = tx;                              // de-a lungul strazii
   const ryAlong = Math.atan2(ax, az);                   // box cu lungimea pe z-local
@@ -98,15 +99,17 @@ export function utilityPole(bag, col, x, z, opts = {}) {
 
   let lampPos = null;
   if (withLamp) {
-    const yB = y0 + height - 1.9;
-    const tipY = y0 + height - 0.55;
+    const tipY = y0 + height - lampDrop;
+    const rise = Math.min(1.35, reach * 0.53);
+    const yB = tipY - rise;
+    const tip = reach - 0.3, sK = tip / 2.25;
     const at = (k, y) => new THREE.Vector3(x + tx * k, y, z + tz * k);
-    const curve = new THREE.CatmullRomCurve3([at(0.10, yB), at(0.55, yB + 0.62), at(1.35, yB + 1.18), at(2.25, tipY)]);
+    const curve = new THREE.CatmullRomCurve3([at(0.10, yB), at(0.55 * sK, yB + rise * 0.46), at(1.35 * sK, yB + rise * 0.87), at(tip, tipY)]);
     bag.add('metalDark', new THREE.TubeGeometry(curve, 16, 0.045, 6, false));
-    bag.add('metalDark', box(0.06, 0.55, 0.06, x + tx * 0.62, yB + 0.30, z + tz * 0.62, ryOut));
+    bag.add('metalDark', box(0.06, rise * 0.4, 0.06, x + tx * 0.62 * sK, yB + rise * 0.22, z + tz * 0.62 * sK, ryOut));
 
-    // corp de iluminat cobra-head: carcasa turtita, cu botul usor ridicat
-    const lx = x + tx * 2.55, lz = z + tz * 2.55, ly = tipY - 0.05;
+    // corp de iluminat LED cobra-head: carcasa turtita, cu botul usor ridicat
+    const lx = x + tx * reach, lz = z + tz * reach, ly = tipY - 0.05;
     const housing = box(0.72, 0.15, 0.30, 0, 0, 0);
     housing.rotateZ(0.07); housing.rotateY(ryOut); housing.translate(lx, ly, lz);
     bag.add('lampBody', housing);
@@ -127,11 +130,24 @@ export function utilityPole(bag, col, x, z, opts = {}) {
 
 /** Fire intre stalpi + bransamente care traverseaza strada (ca in poze). */
 export function powerLines(bag, poles, opts = {}) {
-  const { drops = [], seed = 17 } = opts;
+  const { drops = [], seed = 17, bundled = false } = opts;
   const rnd = makeRng(seed);
   for (let i = 0; i < poles.length - 1; i++) {
     const A = poles[i], B = poles[i + 1];
     const span = A.pos.distanceTo(B.pos);
+    if (bundled) {
+      // retea de joasa tensiune torsadata: fascicule negre groase, prinse cu cleme pe stalp
+      const sagB = clamp(span * 0.03, 0.4, 1.4);
+      // reteaua de joasa tensiune e deasupra consolei lampii; telecomul, mai jos
+      for (const [dy, r, k] of [[-0.2, 0.032, 1.0], [-0.45, 0.028, 1.1], [-0.7, 0.03, 1.2], [-2.55, 0.022, 1.5], [-2.8, 0.018, 1.7]]) {
+        const side = dy < -1 ? -0.14 : -0.1;
+        bag.add('cable', wire(
+          new THREE.Vector3(A.pos.x + A.dir[0] * side, A.pos.y + A.height + dy, A.pos.z + A.dir[1] * side),
+          new THREE.Vector3(B.pos.x + B.dir[0] * side, B.pos.y + B.height + dy, B.pos.z + B.dir[1] * side),
+          sagB * k + rnd() * 0.15, r, 14));
+      }
+      continue;
+    }
     const sag = clamp(span * 0.022, 0.25, 1.1);
     const yA = A.pos.y + A.height - 1.15 + 0.30;
     const yB = B.pos.y + B.height - 1.15 + 0.30;
@@ -159,7 +175,7 @@ export function powerLines(bag, poles, opts = {}) {
   for (const d of drops) {
     const p = poles[d.pole];
     if (!p) continue;
-    const yTop = p.pos.y + p.height - 1.15 + 0.2;
+    const yTop = p.pos.y + p.height - (bundled ? 0.45 : 0.95);
     bag.add('cable', wire(
       new THREE.Vector3(p.pos.x, yTop - (d.dy || 1.0), p.pos.z),
       new THREE.Vector3(d.x, d.y, d.z),
@@ -597,4 +613,139 @@ export function catenaryMast(bag, col, x, z, dirX, dirZ) {
   bag.add('insulator', cyl(0.05, 0.05, 0.4, 6, tipX, y0 + 6.2, tipZ));
   col.add(x, z, 0.2, 0.2, y0, y0 + 7.6, 0, 'pole');
   return new THREE.Vector3(tipX, y0 + 5.8, tipZ);
+}
+
+/* ================= FRONTURILE STRAZII-EROU, DUPA FOTOGRAFII ================= */
+/*
+ * Garduri paralele cu strada (axa Z), la x = const. Tipurile sunt cele din poze:
+ *  'mesh'   panouri bordurate 3D zincate pe soclu placat cu piatra (poza 2, stanga)
+ *  'planks' scanduri verticale de ~1,85 m, maro-roscat, patinate (pozele 2-3, dreapta)
+ *  'stucco' zid tencuit bej cu soclu si copertina de beton (poza 1, dreapta)
+ *  'sheet'  tabla cutata gri pe rama metalica (poza 3, dreapta)
+ *  'hedge'  gard viu des de ~2 m pe o bordura joasa (poza 1, stanga)
+ */
+const POST = 2.5;
+
+function runPieces(za, zb) {
+  const L = Math.abs(za - zb), n = Math.max(1, Math.round(L / POST)), s = Math.sign(zb - za);
+  const out = [];
+  for (let k = 0; k < n; k++) out.push([za + s * (k / n) * L, za + s * ((k + 1) / n) * L]);
+  return out;
+}
+
+export function streetFence(bag, col, style, x, za, zb, opts = {}) {
+  const side = Math.sign(x) || 1;                   // curtea e spre +side, strada spre -side
+  const rnd = opts.rnd || makeRng(Math.round(za * 31 + x * 7));
+  let H = 0;
+  for (const [a, b] of runPieces(za, zb)) {
+    const L = Math.abs(b - a), cz = (a + b) / 2;
+    const y0 = Math.min(surfaceY(x, a), surfaceY(x, b), surfaceY(x, cz)) - 0.03;
+    const add = (key, w, h, d, cx, cy, tile = 0) => {
+      const g = box(w, h, d, cx, cy, cz);
+      if (tile > 0) scaleUV(g, d / tile, h / tile);
+      bag.add(key, g);
+    };
+    if (style === 'mesh') {
+      H = 1.72;
+      add('stone', 0.26, 0.5, L, x, y0 + 0.25, 0.85);
+      add('concrete', 0.30, 0.05, L, x, y0 + 0.52, 1.2);
+      add('metalAnthracite', 0.06, 1.7, 0.06, x + side * 0.02, y0 + 0.85, 0);
+      const q = new THREE.PlaneGeometry(L, 1.2);
+      const uv = q.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (L / 0.5), uv.getY(i) * (1.2 / 0.4));
+      q.rotateY(Math.PI / 2); q.translate(x, y0 + 0.55 + 0.6, cz);
+      bag.add('meshPanel', q);
+      for (const h of [0.82, 1.42]) add('metalGalv', 0.035, 0.03, L, x - side * 0.02, y0 + h, 0);
+    } else if (style === 'planks') {
+      H = 1.85 + (opts.h || 0);
+      add('woodDark', 0.1, H + 0.1, 0.1, x + side * 0.08, y0 + (H + 0.1) / 2, 0);
+      for (const h of [0.35, H - 0.3]) add('woodDark', 0.05, 0.09, L, x + side * 0.045, y0 + h, 0);
+      const g = box(0.028, H, L, x, y0 + 0.04 + H / 2, cz);
+      scaleUV(g, L / 1.2, H / 1.5);
+      bag.add('woodFence', g);
+    } else if (style === 'stucco') {
+      H = 1.8;
+      add('stone', 0.32, 0.36, L, x, y0 + 0.18, 0.85);
+      add(opts.wall || 'stuccoWarm', 0.24, 1.38, L, x + side * 0.02, y0 + 0.36 + 0.69, 1.6);
+      add('concrete', 0.36, 0.07, L, x + side * 0.02, y0 + 1.77, 1.2);
+    } else if (style === 'sheet') {
+      H = 1.8;
+      add('metalAnthracite', 0.06, H + 0.05, 0.06, x + side * 0.05, y0 + (H + 0.05) / 2, 0);
+      const g = box(0.02, H - 0.1, L, x, y0 + 0.08 + (H - 0.1) / 2, cz);
+      scaleUV(g, L / 0.61, (H - 0.1) / 0.61);
+      bag.add('sheet', g);
+    } else if (style === 'hedge') {
+      H = 1.9;
+      add('concrete', 0.18, 0.18, L, x - side * 0.25, y0 + 0.09, 1.2);
+      // miez opac (sa nu se vada prin gardul viu) + frunzis pe fata dinspre strada
+      add('leafDark', 0.55, 1.75, L, x + side * 0.2, y0 + 0.2 + 0.875, 1.2);
+      for (let k = 0; k < Math.max(2, Math.round(L / 0.7)); k++) {
+        const zz = Math.min(a, b) + (k + rnd()) * (L / Math.max(2, Math.round(L / 0.7)));
+        tree(bag, { add() {} }, x + side * (0.1 + rnd() * 0.25), zz, 'hedge', 1.7 + rnd() * 0.4, Math.round(zz * 97 + x * 13));
+      }
+    }
+  }
+  if (H > 0) {
+    const cz = (za + zb) / 2, L = Math.abs(za - zb);
+    const y0 = surfaceY(x, cz) - 0.03;
+    col.add(x + side * 0.05, cz, 0.16, L / 2, y0, y0 + H, 0, 'fence');
+  }
+  return H;
+}
+
+/**
+ * Poarta de acces (garaj/curte) sau portita, cu stalpi. kind: 'drive' | 'door'.
+ * color: cheie de material ('metalBrown' poza 1, 'metalTeal' poza 2, 'metalAnthracite'...).
+ */
+export function streetGate(bag, col, x, za, zb, { kind = 'drive', color = 'metalAnthracite', posts = 'concrete', canopy = false } = {}) {
+  const side = Math.sign(x) || 1;
+  const cz = (za + zb) / 2, L = Math.abs(za - zb);
+  const y0 = Math.min(surfaceY(x, za), surfaceY(x, zb)) - 0.03;
+  const H = kind === 'door' ? 1.8 : 1.75;
+  for (const zp of [za, zb]) {
+    if (posts === 'brick') {
+      bag.add('brickPillar', scaleUV(box(0.36, 1.95, 0.36, x + side * 0.05, y0 + 0.975, zp), 0.66, 3.3));
+      bag.add('concrete', box(0.46, 0.08, 0.46, x + side * 0.05, y0 + 1.99, zp));
+    } else if (posts === 'metal') {
+      bag.add('metalAnthracite', box(0.08, H + 0.1, 0.08, x, y0 + (H + 0.1) / 2, zp));
+    } else {
+      bag.add('concrete', scaleUV(box(0.28, H + 0.25, 0.28, x + side * 0.04, y0 + (H + 0.25) / 2, zp), 0.3, 2));
+    }
+  }
+  const w = L - 0.34;
+  // tablie plina cu rama si doua ranforsari orizontale
+  bag.add(color, box(0.045, H - 0.2, w, x, y0 + 0.12 + (H - 0.2) / 2, cz));
+  for (const h of [0.12, H - 0.08, H * 0.5]) bag.add(color, box(0.07, 0.07, w, x - side * 0.02, y0 + h, cz));
+  if (kind === 'drive') bag.add('metalDark', box(0.02, H - 0.3, 0.03, x - side * 0.035, y0 + H / 2, cz));  // imbinarea celor doua canate
+  else bag.add('metalGalv', box(0.05, 0.03, 0.14, x - side * 0.05, y0 + 1.02, cz + (zb - za > 0 ? 1 : -1) * (w / 2 - 0.12)));  // clanta
+  if (canopy) {
+    // streasina de lemn peste poarta, pe stalpi de lemn (poza 1)
+    const hC = 2.55, zA = Math.max(za, zb) + 0.35, zB = Math.min(za, zb) - 0.35;
+    for (const zp of [zA, zB]) for (const dx of [0, side * 0.9]) bag.add('woodDark', box(0.14, hC, 0.14, x + dx, y0 + hC / 2, zp));
+    for (const dx of [0, side * 0.9]) bag.add('woodDark', box(0.12, 0.16, zA - zB + 0.3, x + dx, y0 + hC, (zA + zB) / 2));
+    const rl = zA - zB + 0.9;
+    for (const s of [-1, 1]) {
+      const g = box(0.72, 0.05, rl, 0, 0, 0);
+      g.rotateZ(s * 0.52); g.translate(x + side * 0.45 + s * 0.3, y0 + hC + 0.3, (zA + zB) / 2);
+      bag.add('roofDark', scaleUV(g, rl / 1.2, 0.6));
+    }
+    col.add(x + side * 0.45, (zA + zB) / 2, 0.55, 0.1, y0, y0 + hC, Math.PI / 2, 'post');
+  }
+  col.add(x + side * 0.03, cz, 0.12, L / 2, y0, y0 + H, 0, 'gate');
+}
+
+/** Burlan de tabla lipit de zid. */
+export function downpipe(bag, x, z, h = 2.6) {
+  const y0 = surfaceY(x, z);
+  bag.add('metalBox', cyl(0.045, 0.045, h, 8, x, y0 + h / 2, z));
+  const g = cyl(0.045, 0.06, 0.3, 8); g.rotateZ(0.6); g.translate(x - Math.sign(x) * 0.08, y0 + 0.12, z);
+  bag.add('metalBox', g);
+}
+
+/** Banca de scanduri pe doi suporti de beton (poza 3, langa gardul de tabla). */
+export function bench(bag, col, x, z, len = 1.8) {
+  const y0 = surfaceY(x, z);
+  for (const o of [-len / 2 + 0.25, len / 2 - 0.25]) bag.add('concrete', box(0.36, 0.42, 0.14, x, y0 + 0.21, z + o));
+  for (const o of [-0.12, 0.0, 0.12]) bag.add('woodDark', scaleUV(box(0.1, 0.045, len, x + o, y0 + 0.45, z), 1, 1));
+  col.add(x, z, 0.22, len / 2, y0, y0 + 0.5, 0, 'bench');
 }

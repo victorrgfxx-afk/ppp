@@ -295,8 +295,27 @@ def obb(poly):
 def poly_area(p):
     return abs(sum(p[i - 1][0] * p[i][1] - p[i][0] * p[i - 1][1] for i in range(len(p)))) / 2
 
+SETBACK_L, SETBACK_R = 5.0, 6.5
+
+def clip_half(poly, xc, inside):
+    out = []
+    for i in range(len(poly)):
+        a, b = poly[i - 1], poly[i]
+        ia, ib = inside(a), inside(b)
+        if ib:
+            if not ia: out.append((xc, a[1] + (b[1] - a[1]) * (xc - a[0]) / (b[0] - a[0])))
+            out.append(b)
+        elif ia:
+            out.append((xc, a[1] + (b[1] - a[1]) * (xc - a[0]) / (b[0] - a[0])))
+    # varfuri duplicate sau coliniare lasate de taiere
+    res = []
+    for q in out:
+        if not res or abs(q[0] - res[-1][0]) + abs(q[1] - res[-1][1]) > 0.05: res.append(q)
+    if len(res) > 1 and abs(res[0][0] - res[-1][0]) + abs(res[0][1] - res[-1][1]) <= 0.05: res.pop()
+    return res
+
 buildings = []
-nudged = []
+clipped = []
 for wid, w in ways.items():
     t = w['tags']
     if 'building' not in t or len(w['pts']) < 4: continue
@@ -304,12 +323,18 @@ for wid, w in ways.items():
     if g[0] == g[-1]: g = g[:-1]
     cx = sum(q[0] for q in g) / len(g); cz = sum(q[1] for q in g) / len(g)
     if not (DX0 + 10 < cx < DX1 - 10 and DZ0 + 10 < cz < DZ1 - 10): continue
-    # impingem putin in afara casele care intra pe carosabil (sub precizia OSM)
-    if Z_NE - 2 < cz < Z_SW + 2:
-        near = min(abs(q[0]) for q in g)
-        if near < 3.45:
-            dx = (3.45 - near) * (1 if cx > 0 else -1)
-            g = [(q[0] + dx, q[1]) for q in g]; nudged.append((t.get('addr:housenumber', wid), round(abs(dx), 2)))
+    # Pe fotografii, fronturile strazii sunt garduri inalte cu copaci, iar casele
+    # stau in spatele lor. Amprentele OSM (trasate dupa acoperisuri, cu decalajul
+    # imaginilor aeriene) intra 1-3 m in culoarul strazii, asa ca le taiem partea
+    # dinspre strada la liniile masurate pe poze: x <= -5,0 (stanga), x >= 6,5 (dreapta).
+    if Z_NE - 2 < cz < Z_SW + 2 and abs(cx) < 40:
+        lim = -SETBACK_L if cx < 0 else SETBACK_R
+        inside = (lambda q: q[0] <= lim) if cx < 0 else (lambda q: q[0] >= lim)
+        if not all(inside(q) for q in g):
+            before = poly_area(g)
+            g = clip_half(g, lim, inside)
+            if len(g) < 3 or poly_area(g) < 12: continue
+            clipped.append((t.get('addr:housenumber', wid), round(1 - poly_area(g) / before, 2)))
     area, (ocx, ocz), ow, od, oang = obb(g)
     rect = poly_area(g) / max(area, 1e-6)
     ground = min(interp(q, Hc) for q in g)
@@ -320,7 +345,7 @@ for wid, w in ways.items():
                       'levels': lv, 'nr': t.get('addr:housenumber'), 'street': t.get('addr:street'),
                       'obb': [r2(ocx), r2(ocz), r2(ow), r2(od), round(oang, 4)], 'rect': round(rect, 3),
                       'ground': r2(ground - BASE)})
-print(f"cladiri: {len(buildings)} in zona; impinse de pe carosabil: {nudged}")
+print(f"cladiri: {len(buildings)} in zona; retrase la linia gardurilor (fractie taiata): {clipped}")
 
 # ---------------- restul straturilor ----------------
 rail = []

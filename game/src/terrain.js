@@ -11,9 +11,25 @@ import * as THREE from '../vendor/three.module.min.js';
 import { ZONA } from './zona.js';
 import { smoothstep, lerp, clamp } from './noise.js';
 
-export const ROAD_HW = 3.0;
+/*
+ * Profilul transversal, masurat pe cele trei fotografii (fuga marcajelor +
+ * latimea reala a masinilor din poze, BMW E90 1,82 m si Opel Corsa C 1,65 m;
+ * toate trei dau telefonul la ~1,33 m de sol):
+ *   stanga: gard | trotuar 1,25 m | bordura 13 cm | 0,68 m asfalt | marcaj
+ *   banda de ~3,45 m intre marcaje
+ *   dreapta: marcaj | 0,27 m asfalt | acostament cu iarba (fara bordura) | gard
+ * Masinile parcheaza pe stanga cu rotile din stanga pe trotuar.
+ */
+export const ROAD_HW = 2.2;
 export const KERB_H = 0.13;
 export const WALK_W = 1.25;
+export const MARK_L = -(ROAD_HW - 0.68);          // axul marcajului din stanga
+export const MARK_R = ROAD_HW - 0.27;             // axul marcajului din dreapta
+export const FENCE_L = -(ROAD_HW + 0.30 + WALK_W + 0.05);   // linia gardurilor din stanga
+export const FENCE_R = 4.3;                       // linia gardurilor din dreapta
+/** Trotuarul de beton de pe dreapta, lipit de garduri: doar unde apare in poze. */
+export const WALK_R_SPANS = [[-47, -96]];
+const WALK_R0 = 3.05, WALK_R1 = FENCE_R - 0.08;
 export const HERO = ZONA.hero;                     // z0 = capatul SV, z1 = capatul NE
 export const BOUNDS = ZONA.bounds;                 // [x0, x1, z0, z1] unde se poate merge
 export const DETAIL = ZONA.detail;
@@ -82,7 +98,20 @@ export function inJunction(side, z) {
 const HERO_Z0 = HERO.z0 - 6.5;                     // bordura incepe dupa strada principala
 const HERO_Z1 = HERO.z1 + 0.5;
 
-/** Profilul transversal al strazii-erou: bombament -> bordura -> trotuar. */
+function inWalkR(z) {
+  for (const [a, b] of WALK_R_SPANS) if (z <= a && z >= b) return true;
+  return false;
+}
+const CROWN = 0.024;                               // bombament 2,4 %
+
+/** Acostamentul din dreapta: rigola usoara langa asfalt, apoi urca spre garduri. */
+function vergeY(d) {
+  const e = -CROWN * ROAD_HW;
+  if (d < ROAD_HW + 0.55) return lerp(e, e - 0.05, smoothstep(ROAD_HW, ROAD_HW + 0.55, d));
+  return lerp(e - 0.05, 0.03, smoothstep(ROAD_HW + 0.55, FENCE_R, d));
+}
+
+/** Profilul transversal al strazii-erou (vezi antetul fisierului). */
 function heroOffset(x, z) {
   if (z > HERO.z0 + 8 || z < HERO.z1 - 6) return 0;
   const d = Math.abs(x);
@@ -90,14 +119,21 @@ function heroOffset(x, z) {
   const side = x < 0 ? -1 : 1;
   // capetele strazii: bordura dispare lin
   const endFade = smoothstep(HERO_Z0 + 1, HERO_Z0 - 2, z) * smoothstep(HERO_Z1 - 1, HERO_Z1 + 2, z);
-  const hasKerb = endFade > 0.01 && !inJunction(side, z);
-  if (d <= ROAD_HW) return -0.026 * d;
-  if (!hasKerb) return lerp(-0.026 * ROAD_HW, 0, smoothstep(ROAD_HW, 7, d));
+  const edge = -CROWN * ROAD_HW;
+  if (d <= ROAD_HW) return -CROWN * d;
+  const plain = lerp(edge, 0, smoothstep(ROAD_HW, 7, d));
+  if (endFade < 0.01 || inJunction(side, z)) return plain;
   let k;
-  if (d <= ROAD_HW + 0.16) k = lerp(-0.026 * ROAD_HW, KERB_H, smoothstep(ROAD_HW, ROAD_HW + 0.16, d));
-  else if (d <= ROAD_HW + 0.16 + WALK_W + 0.14) k = lerp(KERB_H, 0.16, (d - ROAD_HW - 0.16) / (WALK_W + 0.14));
-  else k = lerp(0.16, 0, smoothstep(ROAD_HW + 1.55, 9.5, d));
-  return lerp(lerp(-0.026 * ROAD_HW, 0, smoothstep(ROAD_HW, 7, d)), k, endFade);
+  if (side < 0) {
+    if (d <= ROAD_HW + 0.16) k = lerp(edge, KERB_H, smoothstep(ROAD_HW, ROAD_HW + 0.16, d));
+    else if (d <= ROAD_HW + 0.30 + WALK_W) k = lerp(KERB_H, 0.155, (d - ROAD_HW - 0.16) / (WALK_W + 0.14));
+    else k = lerp(0.155, 0, smoothstep(-FENCE_L, 9.5, d));
+  } else {
+    k = d < FENCE_R ? vergeY(d) : lerp(0.03, 0, smoothstep(FENCE_R, 9.5, d));
+    // dalele de beton de langa garduri stau cu 8 cm peste iarba
+    if (d > WALK_R0 - 0.02 && d < WALK_R1 + 0.02 && inWalkR(z)) k = 0.10;
+  }
+  return lerp(plain, k, endFade);
 }
 
 /** Inaltimea suprafetei pe care se calca, in orice punct. */
@@ -142,8 +178,9 @@ export function distToPrahova(x, z) { return polyDist(x, z, PRAHOVA.pts); }
 export function surfaceKind(x, z) {
   const y = surfaceY(x, z);
   if (inRiverBed(x, z)) return y < waterLevelAt(x, z) - 0.04 ? 'water' : 'gravel';
-  if (Math.abs(x) <= ROAD_HW + 0.2 && z < HERO.z0 + 6 && z > HERO.z1 - 1) return 'asphalt';
-  if (Math.abs(x) <= ROAD_HW + 1.7 && x < 0 && z < HERO_Z0 && z > HERO_Z1) return 'asphalt';
+  if (Math.abs(x) <= ROAD_HW + 0.1 && z < HERO.z0 + 6 && z > HERO.z1 - 1) return 'asphalt';
+  if (x < 0 && x >= FENCE_L && z < HERO_Z0 && z > HERO_Z1) return 'asphalt';
+  if (x >= WALK_R0 && x <= WALK_R1 && inWalkR(z)) return 'asphalt';
   for (const r of ROADS) {
     if (polyDist(x, z, r.pts) <= r.hw + 0.2) return r.surface === 'asphalt' ? 'asphalt' : 'gravel';
   }
@@ -207,7 +244,7 @@ export function heroAsphalt(lift = 0) {
   const gs = [], seg = 6, s = 1 / 2.6;
   for (let k = 0; k < seg; k++) {
     const d0 = lerp(-ROAD_HW, ROAD_HW, k / seg), d1 = lerp(-ROAD_HW, ROAD_HW, (k + 1) / seg);
-    gs.push(heroRibbon(HERO.z0 + 6, HERO.z1, d0, d1, -0.026 * Math.abs(d0) + lift, -0.026 * Math.abs(d1) + lift, 2, s, s));
+    gs.push(heroRibbon(HERO.z0 + 6, HERO.z1, d0, d1, -CROWN * Math.abs(d0) + lift, -CROWN * Math.abs(d1) + lift, 2, s, s));
   }
   return gs;
 }
@@ -225,36 +262,85 @@ export function kerbSpans(side, za = HERO_Z0, zb = HERO_Z1) {
   return spans.filter(([a, b]) => a - b > 1.0);
 }
 
+/** Bordura exista doar pe stanga; pe dreapta asfaltul da direct in iarba. */
 export function heroKerbs() {
   const out = [];
-  for (const side of [-1, 1]) {
+  for (const side of [-1]) {
     for (const [za, zb] of kerbSpans(side)) {
       const h = ROAD_HW * side, s = 1 / 1.2;
-      out.push(heroRibbon(za, zb, h, h + 0.16 * side, -0.026 * ROAD_HW, KERB_H, 2, s, s, landY));
+      out.push(heroRibbon(za, zb, h, h + 0.16 * side, -CROWN * ROAD_HW, KERB_H, 2, s, s, landY));
       out.push(heroRibbon(za, zb, h + 0.16 * side, h + 0.30 * side, KERB_H, KERB_H + 0.004, 2, s, s, landY));
     }
   }
   return out;
 }
 
-export function heroWalk(side, width = WALK_W, spans = null) {
+export function heroWalk(side) {
   const out = [];
-  for (const [za, zb] of (spans || kerbSpans(side))) {
-    const d0 = (ROAD_HW + 0.30) * side, d1 = (ROAD_HW + 0.30 + width) * side;
-    out.push(heroRibbon(za, zb, d0, d1, KERB_H + 0.004, 0.155, 2.5, 1, 1, landY));
+  if (side < 0) {
+    for (const [za, zb] of kerbSpans(-1)) {
+      out.push(heroRibbon(za, zb, -(ROAD_HW + 0.30), FENCE_L, KERB_H + 0.004, 0.155, 2.5, 1, 1, landY));
+    }
+    return out;
+  }
+  // dreapta: dale de beton lipite de garduri, cu muchie vizibila spre iarba
+  for (const [za, zb] of WALK_R_SPANS) {
+    for (const [a, b] of kerbSpans(1, za, zb)) {
+      out.push(heroRibbon(a, b, WALK_R0, WALK_R1, 0.10, 0.10, 2.5, 1, 1, landY));
+      out.push(heroRibbon(a, b, WALK_R0 - 0.02, WALK_R0, vergeY(WALK_R0) - 0.03, 0.10, 2.5, 1, 1, landY));
+    }
   }
   return out;
 }
 
-/** Marcaj lateral discontinuu (ca in poze): linie 1,5 m, pauza 2,0 m. */
-export function heroMarkings({ dash = 1.5, gap = 2.0, width = 0.12, inset = 0.45 } = {}) {
+/** Fasiile de curte din spatele gardurilor, pana la x = +-6,2 (acopera grila coborata). */
+export function heroYards() {
+  const out = [];
+  const Y = (x, z) => surfaceY(x, z) - 0.02;
+  for (const side of [-1, 1]) {
+    const a = side < 0 ? FENCE_L - 0.02 : FENCE_R + 0.12, b = 6.4 * side;
+    out.push(heroRibbon(HERO.z0 + 6, HERO.z1 - 4, a, b, 0, -0.03, 2.5, 1 / 3.2, 1 / 3.2, Y));
+  }
+  return out;
+}
+
+/** Acostamentul inierbat din dreapta, cu rezolutie laterala fina (grila terenului are 3 m). */
+export function heroVerge() {
+  const out = [];
+  const ds = [ROAD_HW - 0.05, ROAD_HW + 0.3, ROAD_HW + 0.55, ROAD_HW + 0.9, 3.3, 3.8, FENCE_R + 0.15];
+  for (const [za, zb] of kerbSpans(1)) {
+    for (let i = 0; i < ds.length - 1; i++) {
+      const a = ds[i], b = ds[i + 1];
+      out.push(heroRibbon(za, zb, a, b, vergeY(a) - 0.012, vergeY(b) - 0.012, 2.5, 1 / 3.2, 1 / 3.2, landY));
+    }
+  }
+  return out;
+}
+
+/** Marcaj lateral discontinuu, masurat pe poze: linie ~0,9 m, pauza ~0,8 m. */
+export function heroMarkings({ dash = 0.9, gap = 0.8, width = 0.12 } = {}) {
   const out = [];
   for (const side of [-1, 1]) {
-    const d = (ROAD_HW - inset) * side;
+    const d = side < 0 ? MARK_L : MARK_R;
     for (let z = HERO_Z0 - 2; z > HERO_Z1 + 3; z -= dash + gap) {
       if (inJunction(side, z) || inJunction(side, z - dash)) continue;
-      const lo = -0.026 * Math.abs(d - width / 2) + 0.006, hi = -0.026 * Math.abs(d + width / 2) + 0.006;
+      const lo = -CROWN * Math.abs(d - width / 2) + 0.006, hi = -CROWN * Math.abs(d + width / 2) + 0.006;
       out.push(heroRibbon(z, z - dash, d - width / 2, d + width / 2, lo, hi, dash, 4, 0.6));
+    }
+  }
+  return out;
+}
+
+/**
+ * Rosturi transversale de bitum (cele din poze: linia din prim-planul pozei 1
+ * si benzile de reparatie din pozele 2-3), peste toata latimea carosabilului.
+ */
+export const SEAMS = [[40, 0.12], [12.5, 0.12], [-27.7, 0.34], [-35.6, 0.16], [-64.1, 0.13], [-98, 0.12], [-131, 0.3]];
+export function heroSeams() {
+  const out = [];
+  for (const [z, w] of SEAMS) {
+    for (const [d0, d1] of [[-ROAD_HW, 0], [0, ROAD_HW]]) {
+      out.push(heroRibbon(z + w / 2, z - w / 2, d0, d1, -CROWN * Math.abs(d0) + 0.005, -CROWN * Math.abs(d1) + 0.005, w, 1, 1));
     }
   }
   return out;
@@ -262,9 +348,10 @@ export function heroMarkings({ dash = 1.5, gap = 2.0, width = 0.12, inset = 0.45
 
 export function heroTireTracks() {
   const out = [];
-  for (const off of [-1.05, 1.05]) {
-    out.push(heroRibbon(HERO.z0 + 4, HERO.z1 + 2, off - 0.42, off + 0.42,
-      -0.026 * Math.abs(off - 0.42) + 0.004, -0.026 * Math.abs(off + 0.42) + 0.004, 3, 1 / 0.84, 1 / 8));
+  const mid = (MARK_L + MARK_R) / 2;               // mijlocul benzii, pe unde trec rotile
+  for (const off of [mid - 0.8, mid + 0.8]) {
+    out.push(heroRibbon(HERO.z0 + 4, HERO.z1 + 2, off - 0.38, off + 0.38,
+      -CROWN * Math.abs(off - 0.38) + 0.004, -CROWN * Math.abs(off + 0.38) + 0.004, 3, 1 / 0.76, 1 / 8));
   }
   return out;
 }
@@ -335,7 +422,14 @@ export function terrainGeos(stride = 1) {
   const pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = DG.x0 + i * st, z = DG.z0 + j * st, k = j * nx + i;
-    pos[k * 3] = x; pos[k * 3 + 1] = surfaceY(x, z) - 0.045; pos[k * 3 + 2] = z;
+    let y = surfaceY(x, z);
+    // sub strada-erou grila (3 m) ar taia prin benzile de 0,3-1,3 m ale profilului:
+    // coboram varfurile la minimul vecinatatii, benzile strazii acopera restul
+    if (Math.abs(x) <= 6.5 && z < HERO.z0 + 9 && z > HERO.z1 - 7) {
+      for (let t = -st; t <= st; t += 0.25) y = Math.min(y, surfaceY(x + t, z));
+      y -= 0.03;
+    }
+    pos[k * 3] = x; pos[k * 3 + 1] = y - 0.045; pos[k * 3 + 2] = z;
     uv[k * 2] = x / 3.2; uv[k * 2 + 1] = z / 3.2;
   }
   const grass = [];

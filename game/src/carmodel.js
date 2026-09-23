@@ -55,13 +55,15 @@ export const CAR_TYPES = {
 export const CAR_COLORS = [
   { name: 'negru',        c: 0x14161a, m: 0.05, r: 0.34 },
   { name: 'gri grafit',   c: 0x3a3f47, m: 0.35, r: 0.32 },
-  { name: 'argintiu',     c: 0x979da4, m: 0.62, r: 0.29 },
+  { name: 'argintiu',     c: 0xa3a8ae, m: 0.4, r: 0.3 },
   { name: 'alb',          c: 0xbdbab4, m: 0.04, r: 0.34 },
   { name: 'albastru',     c: 0x1e3352, m: 0.28, r: 0.30 },
   { name: 'rosu inchis',  c: 0x64181d, m: 0.12, r: 0.32 },
   { name: 'bej',          c: 0xa89b8c, m: 0.22, r: 0.36 },
   { name: 'verde inchis', c: 0x22423a, m: 0.20, r: 0.32 },
 ];
+
+const BODY_BEVEL = 0.065;                              // cu cat iese tabla peste profilul lateral
 
 function bodyGeometry(t) {
   const { L, W, prof, sill, archR, wb, tumble, taper } = t;
@@ -81,7 +83,7 @@ function bodyGeometry(t) {
   // subtire, ca latimea finala sa fie exact W (altfel geamurile raman in tabla).
   const BT = 0.05;
   const g = new THREE.ExtrudeGeometry(shape, {
-    depth: W - 2 * BT, bevelEnabled: true, bevelThickness: BT, bevelSize: 0.065,
+    depth: W - 2 * BT, bevelEnabled: true, bevelThickness: BT, bevelSize: BODY_BEVEL,
     bevelSegments: 3, curveSegments: 14,
   });
   g.rotateY(-Math.PI / 2);
@@ -144,17 +146,35 @@ function glassGeometry(t) {
     out.push(gg);
   }
 
-  // parbriz + luneta
-  const wsA = glass[0], wsB = glass[1];
-  const ws = new THREE.PlaneGeometry(W * 0.78, Math.hypot(wsB[0] - wsA[0], wsB[1] - wsA[1]) * 1.04);
-  ws.rotateX(-Math.PI / 2 + Math.atan2(wsB[1] - wsA[1], wsB[0] - wsA[0]) + Math.PI / 2);
-  ws.translate(0, (wsA[1] + wsB[1]) / 2, (wsA[0] + wsB[0]) / 2);
-  out.push(ws);
-  const rlA = glass[glass.length - 3], rlB = glass[glass.length - 2];
-  const rl = new THREE.PlaneGeometry(W * 0.74, Math.hypot(rlB[0] - rlA[0], rlB[1] - rlA[1]) * 1.04);
-  rl.rotateX(-Math.PI / 2 + Math.atan2(rlB[1] - rlA[1], rlB[0] - rlA[0]) + Math.PI / 2);
-  rl.translate(0, (rlA[1] + rlB[1]) / 2, (rlA[0] + rlB[0]) / 2);
-  out.push(rl);
+  // parbriz + luneta. Linia geamului din profil e cu ~5 cm in interiorul tablei:
+  // planele se scot in afara pe normala, altfel din fata/spate masina n-are sticla.
+  // distanta pe normala pana la tabla (profilul lateral, ca poligon inchis)
+  const toBody = (pz, py, nz, ny) => {
+    let best = 0;
+    for (let i = 0; i < prof.length; i++) {
+      const [az, ay] = prof[i], [bz, by] = prof[(i + 1) % prof.length];
+      const ez = bz - az, ey = by - ay, den = nz * ey - ny * ez;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((az - pz) * ey - (ay - py) * ez) / den;
+      const u = ((az - pz) * ny - (ay - py) * nz) / den;
+      if (t > 0 && u >= 0 && u <= 1 && (best === 0 || t < best)) best = t;
+    }
+    return best;
+  };
+  const pane = (A, B, w) => {
+    const dz = B[0] - A[0], dy = B[1] - A[1], len = Math.hypot(dz, dy);
+    const nz = -dy / len, ny = dz / len;                // normala spre exterior (in planul z-y)
+    let off = 0;
+    for (const k of [0.1, 0.5, 0.9]) off = Math.max(off, toBody(A[0] + dz * k, A[1] + dy * k, nz, ny));
+    off += BODY_BEVEL + 0.012;                          // tabla e extrudata cu bevel peste profil
+    const g = new THREE.PlaneGeometry(w, len * 1.02);
+    // axa y a planului pe directia segmentului, fata (+z local) spre exterior
+    g.rotateX(Math.atan2(dz, dy) + Math.PI);
+    g.translate(0, (A[1] + B[1]) / 2 + ny * off, (A[0] + B[0]) / 2 + nz * off);
+    return g;
+  };
+  out.push(pane(glass[0], glass[1], W * 0.74));
+  out.push(pane(glass[glass.length - 3], glass[glass.length - 2], W * 0.70));
   return mergeGeos(out);
 }
 
@@ -228,16 +248,16 @@ let PLATE = null;
 function sharedMats(env) {
   if (MAT.glass) return MAT;
   MAT.glass = new THREE.MeshPhysicalMaterial({
-    color: 0x0a0d13, metalness: 0.0, roughness: 0.06, opacity: 0.92, transparent: true,
-    envMap: env, envMapIntensity: 2.2, reflectivity: 0.75,
+    color: 0x0a0d13, metalness: 0.0, roughness: 0.16, opacity: 0.92, transparent: true,
+    envMap: env, envMapIntensity: 0.5, reflectivity: 0.6,
   });
   MAT.black = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, metalness: 0.15, roughness: 0.82 });
   MAT.rubber = new THREE.MeshStandardMaterial({ color: 0x171819, metalness: 0.0, roughness: 0.95 });
   MAT.rim = new THREE.MeshStandardMaterial({ color: 0xb2b6bb, metalness: 0.88, roughness: 0.30, envMap: env, envMapIntensity: 1.3 });
-  MAT.chrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.95, roughness: 0.18, envMap: env, envMapIntensity: 1.4 });
+  MAT.chrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.95, roughness: 0.24, envMap: env, envMapIntensity: 1.0 });
   // farurile sunt stinse: masinile sunt parcate, deci doar sticla reflecta
-  MAT.head = new THREE.MeshStandardMaterial({ color: 0x9fa8b6, metalness: 0.15, roughness: 0.22, envMap: env, envMapIntensity: 1.4 });
-  MAT.tail = new THREE.MeshStandardMaterial({ color: 0x5e1216, metalness: 0.1, roughness: 0.28, envMap: env, envMapIntensity: 1.2 });
+  MAT.head = new THREE.MeshStandardMaterial({ color: 0x9fa8b6, metalness: 0.15, roughness: 0.3, envMap: env, envMapIntensity: 0.9 });
+  MAT.tail = new THREE.MeshStandardMaterial({ color: 0x5e1216, metalness: 0.1, roughness: 0.32, envMap: env, envMapIntensity: 0.8 });
   return MAT;
 }
 
@@ -247,7 +267,7 @@ function paintFor(color, env) {
     // vopsea: pigment difuz + lac lucios deasupra (asa arata tabla reala)
     m = new THREE.MeshPhysicalMaterial({
       color: color.c, metalness: color.m, roughness: color.r,
-      clearcoat: 1.0, clearcoatRoughness: 0.055, envMap: env, envMapIntensity: 1.25,
+      clearcoat: 1.0, clearcoatRoughness: 0.2, envMap: env, envMapIntensity: 0.55,
     });
     PAINT.set(color.name, m);
   }

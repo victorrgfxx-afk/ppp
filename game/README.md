@@ -35,7 +35,7 @@ jocul detectează ecranul tactil și pornește cu presetul *Telefon*.
 | `V` | `CAM` | persoana I ↔ persoana a III‑a |
 | `H` | — | ascunzi interfața |
 | `P` | — | salvezi o captură PNG |
-| `R` | — | revii la începutul străzii |
+| `R` | — | revii la locul din care e făcută poza 3 |
 | `ESC` | `☰` | meniu și setări |
 
 Pe desktop, privirea cu mouse-ul pornește după un click pe canvas (pointer lock).
@@ -59,14 +59,61 @@ adevărat.
   terasament de piatră spartă, peroane cu lămpi, stâlpi de catenară;
 - **străzile din jur** cu numele lor reale (Cireșului, Rozelor, Zarzărului,
   aleile Măceșului și Magnoliei), afișate în HUD când ești pe ele;
-- **pe strada principală**, după fotografii: stâlpi la 28 m cu lămpi
-  cobra‑head și rețeaua de cabluri, 18 mașini parcate cu plăcuțe românești,
-  bordură de 13 cm, trotuar, marcaj lateral discontinuu, garduri, porți,
-  cutii de branșament, capace de canal, guri de scurgere.
+- **pe strada principală**, după fotografii (vezi mai jos): carosabil de
+  4,4 m, bordură și trotuar doar pe stânga, acostament înierbat pe dreapta,
+  marcaj scurt și des, stâlpi de beton la ~34 m cu lămpi LED, rețea torsadată,
+  mașinile din poze parcate cu două roți pe trotuar și gardurile din poze.
 
 Apa e fizică: intri în ea, iar viteza scade cu adâncimea (la 0,73 m mergi cu
 2,5 m/s). Sunetul râului crește pe măsură ce te apropii, iar din când în când
 se aude un tren în gară.
+
+## Strada refăcută după fotografii
+
+Cele trei poze sunt făcute noaptea, pe Strada Gării, privind spre Prahova.
+Pentru fiecare am reconstruit camera, fără nicio presupunere despre obiectiv:
+
+- **fuga de perspectivă** a marcajelor dă orizontul și direcția străzii;
+- **lățimea reală a mașinilor** din poze (BMW Seria 3 E90 = 1,82 m, Opel Corsa C =
+  1,65 m) dă înălțimea telefonului: toate cele trei poze dau **~1,33 m** de sol;
+- de aici, orice punct de pe asfalt se poate măsura lateral în metri.
+
+Ce a ieșit și e acum în joc:
+
+| Măsurat pe poze | Valoare |
+|---|---|
+| carosabil (bordură stânga → marginea din dreapta) | ~4,4 m |
+| banda dintre marcaje | ~3,45 m |
+| marcajul lateral | linie ~0,9 m, pauză ~0,8 m |
+| bordura și trotuarul | doar pe stânga, trotuar de ~1,25 m până la gard |
+| dreapta | fără bordură: asfalt → acostament cu iarbă → gard, la ~2,2 m de marcaj |
+| mașinile parcate | pe stânga, cu roțile din stânga pe trotuar, ies 0,3–0,7 m în bandă |
+| stâlpii | pe trotuarul din stânga, lampa LED la ~6,9 m, ieșită ~1,3 m peste stradă |
+| pasul stâlpilor | ~34 m (umbra fotografului pune lampa din spate la ~10 m în poza 3 și ~15 m în poza 2) |
+
+Locurile pozelor (z în metri pe axul străzii, spre râu z scade): poza 3 la
+z = −18 (acolo începe jocul), poza 2 la z = −24, poza 1 la z = −60. În dreptul
+lor, fiecare element e pus după poze:
+
+- **stânga:** panouri bordurate 3D pe soclu de piatră (poza 2), poarta de curte
+  din golul de ~10 m dintre SUV și Corsa, apoi gard viu des (poza 1);
+- **dreapta:** gard înalt de scânduri maro, tabla gri cu banca din fața ei,
+  stâlpul de beton fără lampă, portița verde‑albăstruie (pozele 2–3), apoi zidul
+  bej cu burlan și contor și poarta maro cu streașină (poza 1); în spatele
+  gardurilor, pomi înalți;
+- **mașinile**, în ordinea din poze: hatchback argintiu, SUV închis cu botul spre
+  noi, Opel Corsa C argintiu, o mașină gri cu botul spre noi, un break negru,
+  apoi (poza 1) un break argintiu, BMW‑ul negru cu botul spre noi, un SUV cu
+  spatele spre noi și, departe, singura mașină parcată pe dreapta;
+- **rosturile transversale de bitum** de pe asfalt.
+
+Restul străzii, pe care pozele nu‑l arată, folosește aceleași tipuri de garduri,
+porți și mașini, în proporțiile din poze.
+
+Luminile sunt calibrate tot pe poze. Pixelii asfaltului, ai ierbii și ai gardului
+din joc sunt comparați cu cei din fotografii, în aceleași zone. Lămpile LED au
+distribuția „batwing” a corpurilor stradale reale: lumină uniformă între stâlpi,
+nu o pată albă sub fiecare.
 
 ## Date și surse
 
@@ -98,10 +145,12 @@ Generatorul:
 3. netezește DEM-ul, sapă albia după poligonul OSM cu un nivel al apei
    calculat de‑a lungul râului (nu un plan înclinat, pentru că râul cotește) și
    aplatizează drumurile pe profile longitudinale netezite;
-4. exportă totul, cu atribuirile incluse, în `src/zona.js`.
+4. taie partea dinspre stradă a amprentelor care intră în culoarul măsurat pe
+   poze (vezi *Limite cunoscute*);
+5. exportă totul, cu atribuirile incluse, în `src/zona.js`.
 
 Pe datele descărcate la 23.09.2026, rularea reproduce `src/zona.js` identic,
-byte cu byte. O descărcare ulterioară aduce starea curentă a OSM, deci harta se
+byte cu byte (verificat și după o descărcare nouă). O descărcare ulterioară aduce starea curentă a OSM, deci harta se
 poate schimba dacă între timp cineva editează zona.
 
 ### Limite cunoscute
@@ -111,11 +160,14 @@ poate schimba dacă între timp cineva editează zona.
 - OSM dă doar amprenta și numărul de niveluri. Fațadele, acoperișurile,
   gardurile și curțile sunt generate procedural; doar strada principală e
   refăcută după fotografii.
-- Casa nr. 128 e mutată cu 0,75 m, pentru că amprenta ei din OSM intra pe
-  carosabil.
+- Amprentele OSM de lângă stradă intră 1–3 m în culoarul măsurat pe poze
+  (sunt trasate după acoperișuri, cu decalajul imaginilor aeriene). Partea lor
+  dinspre stradă e tăiată la liniile din poze: 5 m de ax pe stânga, 6,5 m pe
+  dreapta, pentru 14 clădiri.
 - Adâncimea apei e modelată, nu măsurată.
-- Mașinile și stâlpii de pe strada principală sunt așezați după fotografii,
-  nu după măsurători la fața locului.
+- Pozițiile pozelor și ale obiectelor din ele sunt estimate din imagini, cu o
+  precizie de ordinul a 1–3 m pe lungimea străzii și de câțiva zeci de cm lateral.
+  Modelele de mașini sunt generice (siluete reale ca dimensiuni, nu mărci exacte).
 
 ## Cum e făcut
 
@@ -156,6 +208,11 @@ de lumini ar varia, Three.js ar recompila shaderele și jocul ar sacada. Lămpil
 îndepărtate sunt redate prin bălți de lumină proiectate, care preiau exact cât
 lasă lumina reală — fără dublă contribuție.
 
+**Lumină batwing.** Fiecare dintre cele 6 SpotLight‑uri proiectează o textură
+de distribuție: puțină lumină direct dedesubt, maximul spre 60–68° de la
+verticală, tăiere netă după ~70°. Asfaltul dintre stâlpi e luminat uniform, ca
+în poze.
+
 **Auto‑expunere.** Luminozitatea medie a cadrului se măsoară pe GPU (ponderată
 spre centrul și partea de jos a imaginii) și se adaptează treptat, ca ochiul:
 sub lămpi imaginea nu se arde, iar pe malul întunecat al râului se deschide.
@@ -164,8 +221,8 @@ sub lămpi imaginea nu se arde, iar pe malul întunecat al râului se deschide.
 după contur, astfel încât malul urmează linia reală, fără trepte.
 
 **Performanță.** Geometria statică e unită pe material și pe plăci spațiale,
-iar mașinile sunt coapte în geometrie statică. Pe *Ridicată*: ~625 draw‑call‑uri
-și ~550 k triunghiuri. Pe *Telefon*: ~165 draw‑call‑uri și ~260 k triunghiuri.
+iar mașinile sunt coapte în geometrie statică. Pe *Ridicată*: ~600 draw‑call‑uri
+și ~535 k triunghiuri. Pe *Telefon*: ~110 draw‑call‑uri și ~200 k triunghiuri.
 
 ## Setări
 

@@ -100,7 +100,7 @@ class Game {
 
     this.postfx = new PostFX(renderer, this.scene, this.camera, {
       msaa: q.msaa, levels: q.levels, scale: q.scale,
-      exposure: 1.28, bloom: 0.55, threshold: 0.72, grain: 0.034,
+      exposure: 0.55, bloom: 0.55, threshold: 0.72, grain: 0.015,
       vignette: 0.88, ca: 0.0024, sat: 0.9,
     });
     this.postfx.setSize(window.innerWidth, window.innerHeight);

@@ -37,13 +37,39 @@ void main() {
 }`;
 
 export class StreetLights {
+  /**
+   * Distributia "batwing" a corpurilor LED stradale (proiectata ca textura a
+   * SpotLight-ului): putina lumina direct dedesubt, maximul spre 60-68 de grade
+   * de la verticala, taiere neta dupa ~70. Fara ea, un spot clasic face o pata
+   * alba sub stalp si intuneric intre stalpi - pe poze strada e luminata uniform.
+   * Coordonatele texturii: u = de-a lungul strazii, v = peste strada.
+   */
+  static batwing(angle) {
+    const N = 128, data = new Uint8Array(N * N * 4), T = Math.tan(angle);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const u = (i + 0.5) / N * 2 - 1, v = (j + 0.5) / N * 2 - 1;
+      const r = Math.hypot(u, v * 1.3);                      // mai ingust peste strada
+      const th = Math.atan(r * T) * 180 / Math.PI;
+      let k = 0.30 + 0.70 * smoothstep(8, 62, th);
+      k *= 1 - smoothstep(66, 72, th);
+      const b = Math.round(clamp(k, 0, 1) * 255), o = (j * N + i) * 4;
+      data[o] = data[o + 1] = data[o + 2] = b; data[o + 3] = 255;
+    }
+    const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+    t.colorSpace = THREE.NoColorSpace;
+    t.minFilter = THREE.LinearFilter; t.magFilter = THREE.LinearFilter;
+    t.generateMipmaps = false;
+    t.needsUpdate = true;
+    return t;
+  }
+
   constructor(scene, tex, opts = {}) {
     this.scene = scene;
     this.tex = tex;
     this.lamps = [];
     this.opts = Object.assign({
       poolSize: 6, shadowCount: 2, intensity: 1150, color: 0xfff0d2,
-      distance: 72, angle: 1.2, penumbra: 0.55, haze: true, flares: true,
+      distance: 72, angle: 1.25, penumbra: 0.1, haze: true, flares: true,
       shadowMapSize: 1024,
     }, opts);
     this.lights = [];
@@ -67,8 +93,10 @@ export class StreetLights {
 
   finalize() {
     const o = this.opts;
+    const bw = StreetLights.batwing(o.angle);
     for (let i = 0; i < o.poolSize; i++) {
       const l = new THREE.SpotLight(o.color, 0, o.distance, o.angle, o.penumbra, 2);
+      l.map = bw;
       l.target = new THREE.Object3D();
       this.group.add(l, l.target);
       if (i < o.shadowCount) {
@@ -123,6 +151,9 @@ export class StreetLights {
         return m;
       };
       this.glowIM = mk(this.tex.glow, 0xfff0d2, 6);
+      // miezul haloului trebuie sa treaca de pragul de bloom: in poze lampile
+      // indepartate sunt puncte arse, cu stralucire rotunda, pana in capatul strazii
+      this.glowIM.material.color.multiplyScalar(1.7);
       this.flareIM = mk(this.tex.flare, 0xffe9c0, 7);
     }
 
@@ -157,15 +188,17 @@ export class StreetLights {
     // balta: centrata putin spre axul strazii, alungita pe lungul ei
     const [dx, dz] = lamp.dir;
     const cx = lamp.pos.x + dx * 1.2, cz = lamp.pos.z + dz * 1.2;
-    const RX = lamp.poolWid, RZ = lamp.poolLen, N = 8;
-    const g = new THREE.PlaneGeometry(RX * 2, RZ * 2, N, N);
+    // grila deasa pe latime: cu 1,8 m intre varfuri, balta taia pe sub bombament
+    // si lasa o dunga intunecata pe axul strazii
+    const RX = lamp.poolWid, RZ = lamp.poolLen;
+    const g = new THREE.PlaneGeometry(RX * 2, RZ * 2, Math.ceil(RX * 2 / 0.7), 10);
     g.rotateX(-Math.PI / 2);
     g.rotateY(Math.atan2(-dz, dx));
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i) + cx, z = p.getZ(i) + cz;
       p.setX(i, x); p.setZ(i, z);
-      p.setY(i, surfaceY(x, z) + 0.016);
+      p.setY(i, surfaceY(x, z) + 0.03);
     }
     p.needsUpdate = true;
     g.computeVertexNormals();
@@ -215,12 +248,13 @@ export class StreetLights {
       if (this.glowIM) {
         const vis = d < 300 && masterOn > 0.01 ? 1 : 0;
         const near = smoothstep(4, 14, d);
-        const gs = clamp(0.9 + d * 0.016, 0.9, 3.4) * vis;
-        const fs = clamp(1.6 + d * 0.026, 1.6, 6.0) * vis;
+        // LED-urile din poze: punct foarte stralucitor, halou mic (~0,6 grade departe)
+        const gs = clamp(0.55 + d * 0.011, 0.55, 1.9) * vis;
+        const fs = clamp(0.8 + d * 0.014, 0.8, 2.8) * vis;
         pos.copy(lamp.pos);
         im.compose(pos, camQuat || _q0, sc.set(gs, gs, gs)); this.glowIM.setMatrixAt(li, im);
         im.compose(pos, camQuat || _q0, sc.set(fs, fs, fs)); this.flareIM.setMatrixAt(li, im);
-        const go = masterOn * (0.75 + 0.25 * near);
+        const go = masterOn * (1.0 + 0.35 * near);
         const fo = masterOn * clamp(0.30 + d * 0.004, 0.30, 0.62) * near;
         this.glowIM.instanceColor.setXYZ(li, go, go, go);
         this.flareIM.instanceColor.setXYZ(li, fo, fo, fo);
