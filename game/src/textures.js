@@ -659,6 +659,165 @@ export function nightSky(w = 1024, h = 512) {
   return t;
 }
 
+
+/* ======================= ALBIA PRAHOVEI: PRUNDIS ======================== */
+
+/** Bolovani rotunjiti de rau, de marimi diferite - albedo + relief. */
+export function riverGravel(size = 512) {
+  const N = size;
+  const albedo = new Uint8Array(N * N * 4);
+  const height = new Float32Array(N * N);
+  const idxOf = new Int32Array(N * N).fill(-1);
+  const rnd = makeRng(419);
+  const stones = [];
+  for (let i = 0; i < 1500; i++) {
+    const big = rnd() < 0.18;
+    const r = big ? 9 + rnd() * 13 : 2.5 + rnd() * 6.5;
+    const tone = rnd();
+    stones.push({
+      x: rnd() * N, y: rnd() * N, r, e: 0.7 + rnd() * 0.5, a: rnd() * Math.PI,
+      col: tone < 0.55 ? [132 + rnd() * 40, 128 + rnd() * 36, 118 + rnd() * 32]
+         : tone < 0.85 ? [96 + rnd() * 30, 92 + rnd() * 26, 86 + rnd() * 24]
+         : [150 + rnd() * 30, 138 + rnd() * 26, 112 + rnd() * 22],
+    });
+  }
+  // nisip/mal intre bolovani
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x;
+    const n = fbm((x / N) * 60, (y / N) * 60, { octaves: 3, period: 60, seed: 5 });
+    height[i] = n * 0.15;
+    albedo[i * 4] = 92 + n * 34; albedo[i * 4 + 1] = 86 + n * 30; albedo[i * 4 + 2] = 74 + n * 24; albedo[i * 4 + 3] = 255;
+  }
+  for (let k = 0; k < stones.length; k++) {
+    const st = stones[k];
+    const R = Math.ceil(st.r * 1.3);
+    const ca = Math.cos(st.a), sa = Math.sin(st.a);
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const lx = (dx * ca + dy * sa) / st.r, ly = (-dx * sa + dy * ca) / (st.r * st.e);
+      const q = lx * lx + ly * ly;
+      if (q >= 1) continue;
+      const h = Math.sqrt(1 - q) * (0.35 + st.r / 22);
+      const px = (((Math.round(st.x) + dx) % N) + N) % N, py = (((Math.round(st.y) + dy) % N) + N) % N;
+      const i = py * N + px;
+      if (h + 0.15 > height[i]) {
+        height[i] = h + 0.15;
+        const sh = 0.78 + 0.22 * Math.sqrt(1 - q);
+        albedo[i * 4] = clamp(st.col[0] * sh, 0, 255);
+        albedo[i * 4 + 1] = clamp(st.col[1] * sh, 0, 255);
+        albedo[i * 4 + 2] = clamp(st.col[2] * sh, 0, 255);
+        idxOf[i] = k;
+      }
+    }
+  }
+  const rough = new Uint8Array(N * N);
+  for (let i = 0; i < N * N; i++) rough[i] = idxOf[i] >= 0 ? 150 + (idxOf[i] % 7) * 8 : 238;
+  const nrm = heightToNormal(height, N, N, 3.2);
+  return { map: dataTex(albedo, N, { srgb: true }), normalMap: dataTex(new Uint8Array(nrm.buffer), N), roughnessMap: grayTex(rough, N) };
+}
+
+/* ===================== CALE FERATA: BALAST + TRAVERSE ===================== */
+
+/** Tile: 3.2 m pe latime (u) x 3.0 m pe lungime (v), 5 traverse de beton. */
+export function ballast(size = 256) {
+  const N = size;
+  const albedo = new Uint8Array(N * N * 4);
+  const height = new Float32Array(N * N);
+  const rnd = makeRng(733);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x;
+    const n = fbm((x / N) * 90, (y / N) * 90, { octaves: 3, period: 90, seed: 9 });
+    const g = vnoise((x / N) * 150, (y / N) * 150, 150, 21);
+    const v = 58 + n * 40 + (g - 0.5) * 34 + (rnd() - 0.5) * 10;
+    albedo[i * 4] = clamp(v * 1.02, 0, 255); albedo[i * 4 + 1] = clamp(v * 0.98, 0, 255); albedo[i * 4 + 2] = clamp(v * 0.93, 0, 255);
+    albedo[i * 4 + 3] = 255;
+    height[i] = n * 0.5 + g * 0.5;
+  }
+  const pitch = N / 5, sw = pitch * 0.43;
+  for (let k = 0; k < 5; k++) {
+    const y0 = Math.round(k * pitch + pitch * 0.5 - sw / 2);
+    for (let y = y0; y < y0 + sw; y++) for (let x = Math.round(N * 0.09); x < Math.round(N * 0.91); x++) {
+      const i = ((y % N) * N + x);
+      const t = fbm((x / N) * 40, (y / N) * 40, { octaves: 2, period: 40, seed: 3 });
+      const v = 132 + t * 34;
+      albedo[i * 4] = v; albedo[i * 4 + 1] = v * 0.98; albedo[i * 4 + 2] = v * 0.94;
+      height[i] = 1.6 + t * 0.1;
+    }
+  }
+  const nrm = heightToNormal(height, N, N, 2.0);
+  return { map: dataTex(albedo, N, { srgb: true }), normalMap: dataTex(new Uint8Array(nrm.buffer), N), roughness: 0.95 };
+}
+
+/* ======================== GARD METALIC: SIPCI ========================== */
+
+/** 4 sipci pe latimea texturii (0,54 m), cu margine luminata: un singur quad
+ *  inlocuieste ~18 cutii pe panou. */
+export function pickets(size = 256) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  const w = size / 4, bw = w * 0.17;
+  for (let k = 0; k < 4; k++) {
+    const x = k * w + (w - bw) / 2;
+    const g = ctx.createLinearGradient(x, 0, x + bw, 0);
+    g.addColorStop(0, '#cfd3d6'); g.addColorStop(0.35, '#ffffff'); g.addColorStop(1, '#8e9396');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, bw, size);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping;
+  t.anisotropy = ANISO;
+  t.needsUpdate = true;
+  return t;
+}
+
+/* ============================ APA: ONDULATII ============================ */
+
+export function waterNormal(size = 256) {
+  const N = size;
+  const h = new Float32Array(N * N);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    // intinse pe directia curgerii (v): valurele de curent, nu cercuri
+    const a = fbm((x / N) * 6, (y / N) * 14, { octaves: 5, period: 14, seed: 77, gain: 0.55 });
+    const b = fbm((x / N) * 22, (y / N) * 36, { octaves: 3, period: 36, seed: 91 });
+    h[y * N + x] = a * 0.8 + b * 0.2;
+  }
+  const nrm = heightToNormal(h, N, N, 5.5);
+  const t = dataTex(new Uint8Array(nrm.buffer), N);
+  return t;
+}
+
+/* ===================== PLACUTE CU NUMERE DE CASA ======================== */
+
+/** Placute albastre emailate, ca in Romania: atlas cu toate numerele din zona. */
+export function housePlates(numbers) {
+  const cols = 8, cw = 128, ch = 92;
+  const list = [...new Set(numbers.filter(Boolean))];
+  const rows = Math.max(1, Math.ceil(list.length / cols));
+  const c = document.createElement('canvas');
+  c.width = cols * cw; c.height = rows * ch;
+  const ctx = c.getContext('2d');
+  const uv = {};
+  list.forEach((nr, k) => {
+    const x = (k % cols) * cw, y = Math.floor(k / cols) * ch;
+    ctx.fillStyle = '#16428f';
+    ctx.fillRect(x + 4, y + 4, cw - 8, ch - 8);
+    ctx.strokeStyle = '#f2f4f8'; ctx.lineWidth = 4;
+    ctx.strokeRect(x + 10, y + 10, cw - 20, ch - 20);
+    ctx.fillStyle = '#f5f7fb';
+    ctx.font = `bold ${nr.length > 3 ? 40 : 50}px "Arial Narrow", Arial, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(nr, x + cw / 2, y + ch / 2 + 2);
+    uv[nr] = [x / c.width, 1 - (y + ch) / c.height, (x + cw) / c.width, 1 - y / c.height];
+  });
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = ANISO;
+  t.needsUpdate = true;
+  return { tex: t, uv, aspect: cw / ch };
+}
+
 /* ============================== ORCHESTRARE ============================= */
 
 export async function buildAll(onProgress = () => {}, quality = 'high') {
@@ -677,6 +836,8 @@ export async function buildAll(onProgress = () => {}, quality = 'high') {
     ['iarba', () => { T.grass = groundGrass(S); T.leaf = leafCluster(256); T.leafDark = leafCluster(256, [26, 46, 28]); T.leafLight = leafCluster(256, [74, 96, 52]); T.blades = grassBlades(128); }],
     ['lumini', () => { T.flare = flare(512); T.glow = radialGlow(256); T.pool = lightPool(256); }],
     ['detalii', () => { T.windowOff = windowGlass(256, false); T.windowOn = windowGlass(256, true); T.paint = roadPaint(256); T.sky = nightSky(); }],
+    ['albia raului', () => { T.gravel = riverGravel(S); T.waterN = waterNormal(Math.min(256, S)); }],
+    ['calea ferata', () => { T.ballast = ballast(Math.min(256, S)); T.pickets = pickets(256); }],
   ];
   for (let i = 0; i < steps.length; i++) {
     onProgress(i / steps.length, steps[i][0]);

@@ -24,9 +24,10 @@ Deploy to Vercel; plug Supabase, OpenAI, Resend; optional Telegram.
 
 ## `game/` — Strada (plimbare 3D)
 
-Joc 3D în browser care reconstituie o stradă de cartier noaptea, pornind de la
-fotografii: te plimbi liber pe jos, harta e la scara 1:1, totul e generat
-procedural (fără assete externe). Vezi [`game/README.md`](game/README.md).
+Joc 3D în browser: Strada Gării din Câmpina (nr. 103–128), la scara 1:1, până
+la capătul ei de pe malul Prahovei. Harta vine din OpenStreetMap și relieful din
+Copernicus GLO-30; te plimbi liber pe jos, noaptea. Vezi
+[`game/README.md`](game/README.md).
 
 ```bash
 python3 -m http.server 8000   # apoi http://localhost:8000/game/

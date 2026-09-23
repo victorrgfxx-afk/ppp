@@ -82,8 +82,28 @@ export class GameAudio {
     trill.connect(trillGain).connect(this.cricketGain.gain);
     trill.start();
 
+    /* ---- Prahova: curgere peste prundis (doua benzi) ---- */
+    this.riverGain = ctx.createGain();
+    this.riverGain.gain.value = 0;
+    this.riverGain.connect(this.bus);
+    for (const [f, q, g] of [[720, 0.6, 1.0], [240, 0.8, 0.55], [2600, 1.2, 0.22]]) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise; src.loop = true;
+      src.playbackRate.value = 0.9 + Math.random() * 0.2;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+      const gg = ctx.createGain(); gg.gain.value = g;
+      src.connect(bp).connect(gg).connect(this.riverGain);
+      src.start(0, Math.random() * 2);
+    }
+    const rl = ctx.createOscillator(); rl.frequency.value = 0.11;
+    const rlg = ctx.createGain(); rlg.gain.value = 0.18;
+    rl.connect(rlg).connect(this.riverGain.gain); rl.start();
+    this.riverLevel = 0;
+
     this.ready = true;
     this._nextBark = ctx.currentTime + 12 + Math.random() * 30;
+    this._nextTrain = ctx.currentTime + 45 + Math.random() * 60;
   }
 
   resume() {
@@ -123,10 +143,61 @@ export class GameAudio {
 
   footstep(surface = 'asphalt', hard = false) {
     if (!this.ready) return;
-    if (surface === 'grass') this._burst(2100 + Math.random() * 900, 1.1, 0.10, hard ? 0.16 : 0.085);
-    else {
-      this._burst(320 + Math.random() * 130, 2.4, 0.075, hard ? 0.20 : 0.10);
-      this._burst(3600 + Math.random() * 1400, 3.0, 0.045, hard ? 0.09 : 0.045);
+    const k = hard ? 1.8 : 1;
+    if (surface === 'grass') this._burst(2100 + Math.random() * 900, 1.1, 0.10, 0.085 * k);
+    else if (surface === 'gravel') {
+      // pietris: scrasnet in doua reprize
+      this._burst(1900 + Math.random() * 900, 1.4, 0.13, 0.11 * k);
+      setTimeout(() => this._burst(2800 + Math.random() * 900, 2.0, 0.08, 0.07 * k), 35);
+    } else if (surface === 'water') {
+      this._burst(520 + Math.random() * 250, 0.9, 0.32, 0.16 * k, 'lowpass');
+      this._burst(1600 + Math.random() * 900, 1.8, 0.2, 0.06 * k);
+    } else {
+      this._burst(320 + Math.random() * 130, 2.4, 0.075, 0.10 * k);
+      this._burst(3600 + Math.random() * 1400, 3.0, 0.045, 0.045 * k);
+    }
+  }
+
+  /** 0..1 dupa distanta pana la firul apei. */
+  setRiver(level) {
+    this.riverLevel = level;
+  }
+
+  /** Un tren care trece prin gara Campina: huruit + bataia rotilor la joante. */
+  train(distance = 150) {
+    if (!this.ready) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const vol = Math.max(0.12, Math.min(1, 1 - distance / 450)) * 0.22;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0, t);
+    out.gain.linearRampToValueAtTime(vol, t + 9);
+    out.gain.setValueAtTime(vol, t + 19);
+    out.gain.linearRampToValueAtTime(0, t + 30);
+    if (pan) {
+      pan.pan.setValueAtTime(-0.8, t);
+      pan.pan.linearRampToValueAtTime(0.8, t + 30);
+      out.connect(pan).connect(this.bus);
+    } else out.connect(this.bus);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise; src.loop = true;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 170;
+    src.connect(lp).connect(out);
+    src.start(t); src.stop(t + 31);
+    // joantele: perechi de batai, ritmul urmeaza viteza trenului
+    let tt = t + 6;
+    while (tt < t + 25) {
+      for (const d of [0, 0.11]) {
+        const s2 = ctx.createBufferSource(); s2.buffer = this.noise;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 2;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, tt + d);
+        g.gain.linearRampToValueAtTime(0.6, tt + d + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.001, tt + d + 0.07);
+        s2.connect(bp).connect(g).connect(out);
+        s2.start(tt + d, Math.random() * 2); s2.stop(tt + d + 0.1);
+      }
+      tt += 0.62;
     }
   }
 
@@ -153,7 +224,12 @@ export class GameAudio {
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    this.cricketGain.gain.value = 0.010 * (state.outdoors ? 1 : 0.4);
+    this.cricketGain.gain.value = 0.010 * (state.outdoors ? 1 : 0.4) * (1 - this.riverLevel * 0.6);
+    this.riverGain.gain.setTargetAtTime(0.16 * this.riverLevel * this.riverLevel, t, 0.4);
+    if (t > this._nextTrain) {
+      this._nextTrain = t + 120 + Math.random() * 180;
+      this.train(state.railDist || 200);
+    }
 
     if (t > this._nextBark) {
       this._nextBark = t + 20 + Math.random() * 55;

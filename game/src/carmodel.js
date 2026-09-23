@@ -221,6 +221,59 @@ export function plateTexture(text = 'B 42 CLD') {
 }
 
 const sharedGeoCache = new Map();
+const MAT = {};
+const PAINT = new Map();
+let PLATE = null;
+
+function sharedMats(env) {
+  if (MAT.glass) return MAT;
+  MAT.glass = new THREE.MeshPhysicalMaterial({
+    color: 0x0a0d13, metalness: 0.0, roughness: 0.06, opacity: 0.92, transparent: true,
+    envMap: env, envMapIntensity: 2.2, reflectivity: 0.75,
+  });
+  MAT.black = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, metalness: 0.15, roughness: 0.82 });
+  MAT.rubber = new THREE.MeshStandardMaterial({ color: 0x171819, metalness: 0.0, roughness: 0.95 });
+  MAT.rim = new THREE.MeshStandardMaterial({ color: 0xb2b6bb, metalness: 0.88, roughness: 0.30, envMap: env, envMapIntensity: 1.3 });
+  MAT.chrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.95, roughness: 0.18, envMap: env, envMapIntensity: 1.4 });
+  // farurile sunt stinse: masinile sunt parcate, deci doar sticla reflecta
+  MAT.head = new THREE.MeshStandardMaterial({ color: 0x9fa8b6, metalness: 0.15, roughness: 0.22, envMap: env, envMapIntensity: 1.4 });
+  MAT.tail = new THREE.MeshStandardMaterial({ color: 0x5e1216, metalness: 0.1, roughness: 0.28, envMap: env, envMapIntensity: 1.2 });
+  return MAT;
+}
+
+function paintFor(color, env) {
+  let m = PAINT.get(color.name);
+  if (!m) {
+    // vopsea: pigment difuz + lac lucios deasupra (asa arata tabla reala)
+    m = new THREE.MeshPhysicalMaterial({
+      color: color.c, metalness: color.m, roughness: color.r,
+      clearcoat: 1.0, clearcoatRoughness: 0.055, envMap: env, envMapIntensity: 1.25,
+    });
+    PAINT.set(color.name, m);
+  }
+  return m;
+}
+
+/** Un singur atlas cu toate placutele, ca masinile sa poata fi contopite. */
+export function preparePlates(texts) {
+  const list = [...new Set(texts)];
+  const cols = 4, cw = 256, ch = 58;
+  const c = document.createElement('canvas');
+  c.width = cols * cw; c.height = Math.ceil(list.length / cols) * ch;
+  const ctx = c.getContext('2d');
+  const uv = {};
+  list.forEach((t, k) => {
+    const src = plateTexture(t).image;
+    const x = (k % cols) * cw, y = Math.floor(k / cols) * ch;
+    ctx.drawImage(src, x, y);
+    uv[t] = [x / c.width, 1 - (y + ch) / c.height, (x + cw) / c.width, 1 - y / c.height];
+  });
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  PLATE = { uv, mat: new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.0 }) };
+  return PLATE;
+}
 
 export function buildCar(opts = {}) {
   const {
@@ -242,29 +295,10 @@ export function buildCar(opts = {}) {
   const group = new THREE.Group();
 
   // vopsea: pigment difuz + lac lucios deasupra (asa arata tabla reala)
-  const paint = new THREE.MeshPhysicalMaterial({
-    color: color.c, metalness: color.m, roughness: color.r,
-    clearcoat: 1.0, clearcoatRoughness: 0.055,
-    envMap: env, envMapIntensity: 1.25,
-  });
-  const glassMat = new THREE.MeshPhysicalMaterial({
-    color: 0x0a0d13, metalness: 0.0, roughness: 0.06,
-    opacity: 0.92, transparent: true,
-    envMap: env, envMapIntensity: 2.2, reflectivity: 0.75,
-  });
-  const black = new THREE.MeshStandardMaterial({ color: 0x1a1c1f, metalness: 0.15, roughness: 0.82 });
-  const rubber = new THREE.MeshStandardMaterial({ color: 0x171819, metalness: 0.0, roughness: 0.95 });
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xb2b6bb, metalness: 0.88, roughness: 0.30, envMap: env, envMapIntensity: 1.3 });
-  const chrome = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, metalness: 0.95, roughness: 0.18, envMap: env, envMapIntensity: 1.4 });
-  // farurile sunt stinse: masinile sunt parcate, deci doar sticla reflecta
-  const headMat = new THREE.MeshStandardMaterial({
-    color: 0x9fa8b6, metalness: 0.15, roughness: 0.22,
-    envMap: env, envMapIntensity: 1.4,
-  });
-  const tailMat = new THREE.MeshStandardMaterial({
-    color: 0x5e1216, metalness: 0.1, roughness: 0.28,
-    envMap: env, envMapIntensity: 1.2,
-  });
+  const M = sharedMats(env);
+  const paint = paintFor(color, env);
+  const glassMat = M.glass, black = M.black, rubber = M.rubber, rimMat = M.rim;
+  const chrome = M.chrome, headMat = M.head, tailMat = M.tail;
 
   const bodyMesh = new THREE.Mesh(cache.body, paint);
   bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
@@ -341,15 +375,18 @@ export function buildCar(opts = {}) {
   const tailMesh = new THREE.Mesh(mergeGeos(tailGeos), tailMat);
   group.add(tailMesh);
 
-  // placute
-  const plateTex = plateTexture(plate);
-  const plateMat = new THREE.MeshStandardMaterial({ map: plateTex, roughness: 0.6, metalness: 0.0 });
+  // placute (din atlasul comun, daca exista)
+  const cell = PLATE && PLATE.uv[plate];
+  const plateMat = cell ? PLATE.mat : new THREE.MeshStandardMaterial({ map: plateTexture(plate), roughness: 0.6 });
   for (const [zz, ry] of [[-L / 2 + 0.035, Math.PI], [L / 2 - 0.025, 0]]) {
     const g = new THREE.PlaneGeometry(0.52, 0.118);
+    if (cell) {
+      const uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, cell[0] + uv.getX(i) * (cell[2] - cell[0]), cell[1] + uv.getY(i) * (cell[3] - cell[1]));
+    }
     g.rotateY(ry);
     g.translate(0, t.sill + 0.12, zz);
-    const m = new THREE.Mesh(g, plateMat);
-    group.add(m);
+    group.add(new THREE.Mesh(g, plateMat));
   }
 
   // roti
@@ -395,4 +432,50 @@ export function placeOnGround(obj, surfaceY, x, z, yaw) {
   obj.rotateX(pitch);
   obj.rotateZ(roll);
   return { y, roll, pitch };
+}
+
+/**
+ * Masinile parcate sunt decor static: le contopim pe material, ca toate
+ * masinile sa coste ~15 draw-call-uri in loc de ~8 per masina.
+ */
+export function bakeCars(scene, groups, tile = 0) {
+  const byMat = new Map();
+  for (const g of groups) {
+    const tk = tile > 0 ? Math.floor(g.position.x / tile) + ',' + Math.floor(g.position.z / tile) : '0';
+    g.updateMatrixWorld(true);
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      // scara negativa (jantele oglindite) inverseaza triunghiurile: le reintoarcem,
+      // altfel ar fi eliminate de back-face culling dupa coacere
+      if (o.matrixWorld.determinant() < 0) {
+        if (!geo.index) {
+          const n = geo.attributes.position.count, idx = new Uint32Array(n);
+          for (let i = 0; i < n; i++) idx[i] = i;
+          geo.setIndex(new THREE.BufferAttribute(idx, 1));
+        }
+        const a = geo.index.array;
+        for (let i = 0; i < a.length; i += 3) { const t = a[i + 1]; a[i + 1] = a[i + 2]; a[i + 2] = t; }
+        geo.index.needsUpdate = true;
+      }
+      if (!geo.attributes.uv) {
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+      }
+      const key = o.material.uuid + '|' + tk;
+      let arr = byMat.get(key);
+      if (!arr) { arr = { mat: o.material, geos: [] }; byMat.set(key, arr); }
+      arr.geos.push(geo);
+    });
+  }
+  const meshes = [];
+  for (const { mat, geos } of byMat.values()) {
+    const m = new THREE.Mesh(mergeGeos(geos), mat);
+    m.castShadow = !mat.transparent;
+    m.receiveShadow = true;
+    m.name = 'cars';
+    if (mat.transparent) m.renderOrder = 2;
+    scene.add(m);
+    meshes.push(m);
+  }
+  return meshes;
 }

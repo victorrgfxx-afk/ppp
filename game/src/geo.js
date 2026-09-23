@@ -4,7 +4,7 @@
  */
 import * as THREE from '../vendor/three.module.min.js';
 
-const ATTRS = ['position', 'normal', 'uv'];
+const ATTRS = ['position', 'normal', 'uv', 'color'];
 
 /** Concateneaza geometrii non-indexate/indexate intr-una singura. */
 export function mergeGeos(geos) {
@@ -19,9 +19,12 @@ export function mergeGeos(geos) {
   }
   const out = new THREE.BufferGeometry();
   const buffers = {};
+  const hasColor = list.some((g) => g.attributes.color);
   for (const name of ATTRS) {
+    if (name === 'color' && !hasColor) continue;
     const size = name === 'uv' ? 2 : 3;
     buffers[name] = new Float32Array(vCount * size);
+    if (name === 'color') buffers[name].fill(1);
   }
   const indices = vCount > 65535 ? new Uint32Array(iCount) : new Uint16Array(iCount);
 
@@ -29,6 +32,7 @@ export function mergeGeos(geos) {
   for (const g of list) {
     const n = g.attributes.position.count;
     for (const name of ATTRS) {
+      if (!buffers[name]) continue;
       const size = name === 'uv' ? 2 : 3;
       const src = g.attributes[name];
       if (src) buffers[name].set(src.array.subarray(0, n * size), vOff * size);
@@ -48,6 +52,7 @@ export function mergeGeos(geos) {
     g.dispose();
   }
   for (const name of ATTRS) {
+    if (!buffers[name]) continue;
     out.setAttribute(name, new THREE.BufferAttribute(buffers[name], name === 'uv' ? 2 : 3));
   }
   out.setIndex(new THREE.BufferAttribute(indices, 1));

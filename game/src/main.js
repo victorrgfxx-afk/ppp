@@ -10,7 +10,7 @@ import { Player } from './player.js';
 import { PostFX } from './postfx.js';
 import { GameAudio } from './audio.js';
 import { HUD } from './hud.js';
-import { surfaceY } from './terrain.js';
+import { surfaceY, distToPrahova } from './terrain.js';
 import { clamp } from './noise.js';
 import { TouchControls, isTouchDevice, isPhone } from './touch.js';
 
@@ -84,7 +84,7 @@ class Game {
     await new Promise((r) => requestAnimationFrame(r));
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.14, 900);
+    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.14, 520);
 
     this.world = new World(this.scene, T, renderer, {
       quality: this.quality, haze: q.haze, lampPool: q.lamps,
@@ -306,7 +306,7 @@ class Game {
     }
 
     if (!this.paused) this.step(dt);
-    this.render();
+    this.render(dt);
   }
 
   step(dt) {
@@ -322,8 +322,12 @@ class Game {
       this.player.stepEvent = 0;
     }
 
-    this.world.lamps.update(this.camera.position, dt, lampsOn);
-    this.audio.update(dt, { speed: this.player.speed, outdoors: true });
+    this.world.lamps.update(this.camera.position, dt, lampsOn, this.camera.quaternion);
+    this.world.update(dt);
+    const pp = this.player.pos;
+    // Prahova se aude de la ~220 m; cel mai tare pe prundis
+    this.audio.setRiver(clamp(1 - (distToPrahova(pp.x, pp.z) - 8) / 210, 0, 1));
+    this.audio.update(dt, { speed: this.player.speed, outdoors: true, railDist: Math.abs(pp.z - 155) });
 
     const p = this.player.pos;
     this.hud.drawMinimap(p.x, p.z, this.player.yaw, this.world.cars, this.world.lamps.lamps);
@@ -333,8 +337,8 @@ class Game {
       + ((s ? s.tris : 0) / 1000).toFixed(0) + 'k tri');
   }
 
-  render() {
-    this.postfx.render(this.time, this.fade);
+  render(dt = 0.016) {
+    this.postfx.render(this.time, this.fade, dt);
     if (this.shot) {
       this.shot = false;
       try {

@@ -5,7 +5,7 @@
  */
 import * as THREE from '../vendor/three.module.min.js';
 import { closestOnCollider } from './geo.js';
-import { surfaceY, onRoad } from './terrain.js';
+import { surfaceY, surfaceKind, waterLevelAt, inRiverBed, BOUNDS } from './terrain.js';
 import { clamp, lerp } from './noise.js';
 
 const R = 0.34;            // raza capsulei
@@ -102,6 +102,7 @@ export class Player {
     this._hit = { lx: 0, lz: 0, qx: 0, qz: 0, wx: 0, wz: 0 };
     this._list = [];
     this._smoothY = this.pos.y;
+    this.depth = 0;
   }
 
   get height() { return H - this.crouch * 0.62; }
@@ -123,7 +124,13 @@ export class Player {
 
     this.crouch = lerp(this.crouch, input.crouch ? 1 : 0, 1 - Math.pow(0.001, dt));
 
-    const base = input.crouch ? 1.35 : (input.sprint ? 5.6 : 2.15);
+    // prin apa se merge greu: cu cat e mai adanc, cu atat mai incet
+    this.depth = 0;
+    if (inRiverBed(this.pos.x, this.pos.z)) {
+      this.depth = Math.max(0, waterLevelAt(this.pos.x, this.pos.z) - this.pos.y);
+    }
+    const wade = this.depth > 0.03 ? clamp(1 - this.depth * 0.75, 0.3, 0.8) : 1;
+    const base = (input.crouch ? 1.35 : (input.sprint ? 5.6 : 2.15)) * wade;
     const target = moving ? base * Math.min(1, mag) : 0;
     const accel = this.onGround ? (moving ? 26 : 22) : 5;
     const desiredX = wx * target, desiredZ = wz * target;
@@ -142,7 +149,9 @@ export class Player {
     let nz = this.pos.z + this.vel.z * dt;
     const feet = this.pos.y;
     const res = this.resolve(nx, nz, feet);
-    this.pos.x = res.x; this.pos.z = res.z;
+    // marginea zonei reale: nu iesim din datele harti
+    this.pos.x = clamp(res.x, BOUNDS[0], BOUNDS[1]);
+    this.pos.z = clamp(res.z, BOUNDS[2], BOUNDS[3]);
     if (res.hit) {
       this.vel.x *= 0.5; this.vel.z *= 0.5;
     }
@@ -294,6 +303,6 @@ export class Player {
   }
 
   surfaceType() {
-    return onRoad(this.pos.x, this.pos.z) ? 'asphalt' : 'grass';
+    return surfaceKind(this.pos.x, this.pos.z);
   }
 }

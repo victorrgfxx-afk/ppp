@@ -48,6 +48,8 @@
   }
   .card h2 { margin: 0 0 4px; font-size: 21px; font-weight: 650; }
   .card p.lead { margin: 0 0 18px; color: var(--dim); font-size: 13px; line-height: 1.5; }
+  .card p.credits { margin: 14px 0 0; color: var(--dim); font-size: 10.5px; line-height: 1.45; opacity: .75; }
+  .card p.credits a { color: inherit; }
   .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 22px; margin-bottom: 20px; }
   .keys div { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--dim); }
   kbd {
@@ -170,11 +172,11 @@
   <div class="card">
     <h2>Strada — plimbare 3D</h2>
     <p class="lead">
-      Strada din fotografii, reconstruita la scara 1:1: carosabil de 6 m cu marcaj lateral
-      discontinuu, masini parcate langa bordura, stalpi cu lampi cobra-head si reteaua de
-      cabluri suspendate, garduri de lemn, piatra si metal, curti cu thuja si case cu tigla.
-      Te plimbi liber pe jos, oriunde vrei. Totul e generat procedural, direct in browser:
-      nu se descarca niciun model si nicio textura.
+      Strada Garii (nr. 103-128) din Campina, la scara 1:1, pana la capatul ei de pe malul
+      Prahovei. Traseul strazii, casele, calea ferata si albia raului vin din OpenStreetMap,
+      relieful din modelul digital Copernicus; detaliile de pe strada (masini, stalpi, garduri,
+      lampi) sunt refacute dupa fotografii. Te plimbi liber pe jos, noaptea, pana in apa.
+      Totul e generat direct in browser: nu se descarca niciun model si nicio textura.
     </p>
     <div class="keys" id="kbdkeys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mergi</div>
@@ -202,6 +204,9 @@
       <button class="btn" id="startbtn">Intra in joc</button>
       <button class="btn" id="btnFull" style="background:rgba(255,255,255,.1);color:var(--fg)">Ecran complet</button>
     </div>
+    <p class="credits">Harta: &copy; contribuitorii <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (ODbL).
+      Relief: Copernicus GLO-30 DEM &copy; DLR e.V. 2010-2014 si &copy; Airbus Defence and Space GmbH 2014-2018,
+      furnizat prin programul COPERNICUS al Uniunii Europene si ESA.</p>
   </div>
 </div>
 
@@ -231,12 +236,15 @@
     </div>
     <hr class="sep">
     <button class="btn" id="resume">Inapoi in joc</button>
+    <p class="credits">Harta: &copy; contribuitorii <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> (ODbL).
+      Relief: Copernicus GLO-30 DEM &copy; DLR e.V. 2010-2014 si &copy; Airbus Defence and Space GmbH 2014-2018,
+      furnizat prin programul COPERNICUS al Uniunii Europene si ESA.</p>
   </div>
 </div>
 
 <div id="loader">
   <h1>Strada</h1>
-  <div class="sub">cartier romanesc, noaptea · totul generat procedural</div>
+  <div class="sub">Strada Garii, Campina · malul Prahovei, noaptea</div>
   <div id="track"><div id="bar"></div></div>
   <div id="lstatus">pornesc...</div>
 </div>

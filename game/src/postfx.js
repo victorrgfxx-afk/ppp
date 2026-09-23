@@ -37,6 +37,45 @@ void main() {
   gl_FragColor = vec4(s, 1.0);
 }`;
 
+const LUM_FS = `
+uniform sampler2D tDiffuse;
+varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(tDiffuse, vUv).rgb;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  // limitam lampile: o singura sursa foarte luminoasa nu trebuie sa innegreasca tot.
+  // Masurare ponderata spre centru-jos (ca la aparatul foto): cerul conteaza putin.
+  float w = mix(0.15, 1.0, smoothstep(0.85, 0.35, vUv.y));
+  gl_FragColor = vec4(log(clamp(l, 1e-5, 4.0)) * w, w, 0.0, 1.0);
+}`;
+
+const REDUCE_FS = `
+uniform sampler2D tDiffuse;
+uniform vec2 uTexel;
+varying vec2 vUv;
+void main() {
+  vec2 s = vec2(0.0);
+  for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++)
+    s += texture2D(tDiffuse, vUv + (vec2(float(x), float(y)) - 1.5) * uTexel).rg;
+  gl_FragColor = vec4(s / 16.0, 0.0, 1.0);
+}`;
+
+const ADAPT_FS = `
+uniform sampler2D tPrev;
+uniform sampler2D tCur;
+uniform float uDt;
+uniform float uInit;
+varying vec2 vUv;
+void main() {
+  float prev = texture2D(tPrev, vec2(0.5)).r;
+  vec2 cw = texture2D(tCur, vec2(0.5)).rg;
+  float cur = cw.x / max(cw.y, 1e-4);
+  // ochiul se adapteaza repede la lumina si incet la intuneric
+  float rate = cur > prev ? 1.4 : 0.26;
+  float a = mix(prev + (cur - prev) * (1.0 - exp(-uDt * rate)), cur, uInit);
+  gl_FragColor = vec4(a, 0.0, 0.0, 1.0);
+}`;
+
 const COMP_FS = `
 uniform sampler2D tScene;
 uniform sampler2D tB0;
@@ -44,6 +83,10 @@ uniform sampler2D tB1;
 uniform sampler2D tB2;
 uniform sampler2D tB3;
 uniform sampler2D tB4;
+uniform sampler2D tAdapt;
+uniform float uAutoKey;
+uniform float uAutoMin;
+uniform float uAutoMax;
 uniform float uExposure;
 uniform float uBloom;
 uniform float uGrain;
@@ -90,7 +133,11 @@ void main() {
              + texture2D(tB4, uv).rgb * 0.30;
   col += bloom * uBloom;
 
-  col *= uExposure;
+  // expunere automata: raportul dintre luminanta-tinta si cea la care s-a adaptat ochiul
+  float adapted = exp(texture2D(tAdapt, vec2(0.5)).r);
+  // adaptare aproape completa (exponent 0,85), ca modul de noapte al telefonului din poze
+  float auto_ = uAutoKey > 0.0 ? clamp(pow(uAutoKey / max(adapted, 1e-5), 0.85), uAutoMin, uAutoMax) : 1.0;
+  col *= uExposure * auto_;
   col = aces(col);
 
   // gradare: umbre reci, lumini calde (sodiu/LED cald), desaturare in umbra
@@ -126,8 +173,9 @@ export class PostFX {
     this.opts = Object.assign({
       levels: 5, msaa: 4, exposure: 0.85, bloom: 0.62, threshold: 0.78,
       knee: 0.45, grain: 0.055, vignette: 0.85, ca: 0.0022, sat: 0.92,
-      scale: 1.0,
+      scale: 1.0, autoKey: 0.015,
     }, opts);
+    this._adaptInit = 1;
 
     this.orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     this.fsScene = new THREE.Scene();
@@ -157,8 +205,32 @@ export class PostFX {
         uHighTint: { value: new THREE.Color(1.10, 1.02, 0.90) },
         uFade: { value: 1 },
         uRes: { value: new THREE.Vector2(1920, 1080) },
+        tAdapt: { value: null },
+        uAutoKey: { value: this.opts.autoKey },
+        uAutoMin: { value: 0.7 },
+        uAutoMax: { value: 10.0 },
       },
     });
+
+    this.lumMat = new THREE.ShaderMaterial({
+      vertexShader: VS, fragmentShader: LUM_FS, depthTest: false, depthWrite: false,
+      uniforms: { tDiffuse: { value: null } },
+    });
+    this.reduceMat = new THREE.ShaderMaterial({
+      vertexShader: VS, fragmentShader: REDUCE_FS, depthTest: false, depthWrite: false,
+      uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2() } },
+    });
+    this.adaptMat = new THREE.ShaderMaterial({
+      vertexShader: VS, fragmentShader: ADAPT_FS, depthTest: false, depthWrite: false,
+      uniforms: { tPrev: { value: null }, tCur: { value: null }, uDt: { value: 0.016 }, uInit: { value: 1 } },
+    });
+    const small = (n) => new THREE.WebGLRenderTarget(n, n, {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
+      minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, colorSpace: THREE.LinearSRGBColorSpace,
+    });
+    this.lumChain = [small(64), small(16), small(4), small(1)];
+    this.adapt = [small(1), small(1)];
+    this.adaptIdx = 0;
 
     this.quad = quad(this.brightMat);
     this.quad.frustumCulled = false;
@@ -214,7 +286,7 @@ export class PostFX {
     this.renderer.render(this.fsScene, this.orthoCam);
   }
 
-  render(time, fade = 1) {
+  render(time, fade = 1, dt = 0.016) {
     const r = this.renderer;
     r.info.reset();
     r.setRenderTarget(this.sceneRT);
@@ -239,7 +311,26 @@ export class PostFX {
       this._pass(this.blurMat, dst);
     }
 
+    // luminanta medie a cadrului -> 1 pixel -> adaptare lina in timp
+    this.lumMat.uniforms.tDiffuse.value = this.sceneRT.texture;
+    this._pass(this.lumMat, this.lumChain[0]);
+    for (let i = 1; i < this.lumChain.length; i++) {
+      const src = this.lumChain[i - 1];
+      this.reduceMat.uniforms.tDiffuse.value = src.texture;
+      this.reduceMat.uniforms.uTexel.value.set(1 / src.width, 1 / src.height);
+      this._pass(this.reduceMat, this.lumChain[i]);
+    }
+    const prev = this.adapt[this.adaptIdx], next = this.adapt[1 - this.adaptIdx];
+    this.adaptMat.uniforms.tPrev.value = prev.texture;
+    this.adaptMat.uniforms.tCur.value = this.lumChain[this.lumChain.length - 1].texture;
+    this.adaptMat.uniforms.uDt.value = Math.min(0.1, dt);
+    this.adaptMat.uniforms.uInit.value = this._adaptInit;
+    this._adaptInit = 0;
+    this._pass(this.adaptMat, next);
+    this.adaptIdx = 1 - this.adaptIdx;
+
     const u = this.compMat.uniforms;
+    u.tAdapt.value = next.texture;
     u.tScene.value = this.sceneRT.texture;
     for (let i = 0; i < 5; i++) {
       u['tB' + i].value = this.rts[Math.min(i, this.rts.length - 1)].texture;
@@ -258,5 +349,6 @@ export class PostFX {
     else if (key === 'ca') this.compMat.uniforms.uCA.value = value;
     else if (key === 'sat') this.compMat.uniforms.uSat.value = value;
     else if (key === 'threshold') this.brightMat.uniforms.uThreshold.value = value;
+    else if (key === 'auto') this.compMat.uniforms.uAutoMax.value = value ? 10.0 : 1.0;
   }
 }
