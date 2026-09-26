@@ -304,6 +304,7 @@ async function main() {
   });
 
   function screenshot() {
+    if (window.top !== window) { hud.toast('Captura de ecran (P) merge când rulezi jocul local'); return; }
     post.composer.render(0);
     const a = document.createElement('a');
     a.href = renderer.domElement.toDataURL('image/png');
