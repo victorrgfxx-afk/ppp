@@ -8,7 +8,8 @@ Open data sources (downloaded into geo/raw by fetch_raw.sh):
   * Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0, modified Copernicus Sentinel data 2023) - ground colour
 
 Game frame: metres, y up, +z along Strada Gării towards NE (bearing 42.02 deg), +x towards NW.
-The origin lies on the street axis in front of the photographed house (OSM way 264516816, no. 123).
+The origin lies on the street axis in front of the photographed house, Strada Gării 123H
+(mapped in OSM as way 264516816, housenumber 123, without the letter).
 Outputs go to ../assets/geo.
 """
 import base64, json, math, os, glob, xml.etree.ElementTree as ET
