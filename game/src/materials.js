@@ -76,6 +76,18 @@ export function buildMaterials() {
   std('wallPlaster', { map: TEX.wall_plaster, normalMap: TEX.wall_plasterN, normalScale: n(0, 1.2), roughness: 0.97, color: 0xf4f2ef });
   std('gateBoards', { map: TEX.picket, normalMap: TEX.picketN, roughness: 0.6, color: 0xf0e4e4 });
   std('houseNo10', { map: TEX.houseNo10, roughness: 0.4 });
+  std('doorMat', { map: TEX.doorMat, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  std('horezu', { map: TEX.horezu, roughness: 0.25, color: 0xffffff });
+  std('lattice', { map: TEX.lattice, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 });
+  std('rattan', { map: TEX.picket, roughness: 0.9, color: 0x5a5a5e });
+  std('cushion', { roughness: 0.95, color: 0xe9e6de });
+  std('tablecloth', { roughness: 0.95, color: 0xc2b3dc, side: THREE.DoubleSide });
+  std('umbrella', { roughness: 0.9, color: 0xf2efe6, side: THREE.DoubleSide });
+  std('coco', { map: TEX.grass, roughness: 1, color: 0x9a7a55 });
+  std('wicker', { map: TEX.chain, alphaTest: 0.5, roughness: 0.8, color: 0xf4f4f0, side: THREE.DoubleSide });
+  std('clothesA', { roughness: 0.95, color: 0x8a1f3d, side: THREE.DoubleSide });
+  std('clothesB', { roughness: 0.95, color: 0x2a6a7e, side: THREE.DoubleSide });
+  std('clothesC', { roughness: 0.95, color: 0x3b4b7a, side: THREE.DoubleSide });
   std('brick', { map: TEX.brick, normalMap: TEX.brickN, roughness: 0.85 });
   std('wood', { map: TEX.wood, normalMap: TEX.woodN, roughness: 0.72, color: 0x5e3322 });      // stained soffit/rafters
   std('woodDark', { map: TEX.wood, normalMap: TEX.woodN, roughness: 0.74, color: 0x3f2117 });
@@ -127,7 +139,8 @@ export function buildMaterials() {
   leaf('leavesSmall', TEX.leavesSmall, 0xe8f0d8, 0.04);
   leaf('leavesDark', TEX.leaves, 0x93a67e, 0.035);
   leaf('fir', TEX.fir, 0x9fb59a, 0.018);
-  leaf('sumac', TEX.fir, 0xd8e0a0, 0.05);           // pinnate sumac fronds (photo 7, across the street)
+  leaf('sumac', TEX.fir, 0xd8e0a0, 0.05);
+  leaf('flowers', TEX.flowers, 0xffffff, 0.03);           // pinnate sumac fronds (photo 7, across the street)
   M.yucca = addWind(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }), 0.05, 1.5);
   M.firCore = std('firCore', { color: 0x1c2a1e, roughness: 1 });
 

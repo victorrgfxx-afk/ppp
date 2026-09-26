@@ -1,6 +1,6 @@
 # Strada · Prahova — joc open‑world first‑person
 
-Strada și casa din cele 10 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci).
+Strada, casa și curtea din cele 14 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci).
 
 ## Pornire
 
@@ -25,7 +25,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | F / E | urcă în mașina de lângă tine | coboară |
 | V | – | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
-| 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare din cele 10 poze | |
+| 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, sunet) | |
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
@@ -35,6 +35,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
 * **Texturi reale din poze** (`tools/extract_textures.py`): fațada prispei și a verandei (fereastra albă, pălăria roșie, jaluzelele, ușa), peretele bej cu aerisirile, tabla acoperișului, ecranul de iederă al gardului (tăiat exact între bare, ca barele 3D să cadă peste cele din poză), placajul de piatră, zidul de piatră al vecinului, betonul, cornierul ruginit de la bordură și asfaltul (rectificat de sus din poza 1).
 * **Dimensiuni**: estimate din poze folosind repere cu mărime cunoscută (lățimea Opel Corsa C = 1,65 m, BMW E90 = 4,52 m, înălțimea camerei ≈ 1,5 m, lățimea ușii). Poziția casei, a gardului, a stâlpului, a BMW‑ului și a Opel‑ului „PH 13 KLI”, a SUV‑ului, a gropii de canal și a marcajelor sunt puse după poze; eroarea e de ordinul zecilor de centimetri, nu măsurători cu ruleta.
 * **Partea de sud** (pozele 6–10): Peugeot 508 gri „PH 77 XXS”, straturile cu plante (yucca, urechea‑ursului, arbuști) cu bordură de beton, zidul gri de vizavi cu tencuială reală din poză, soclu de piatră, coamă de țiglă, poarta mare de lemn și portița nr. 10 cu cutia poștală, platforma de beton, gardul vișiniu cu oțetarul, stâlpii cu lămpi LED pe partea de est, trecătorul cu sacoșa galbenă și dealul de la capăt cu râpa de lut.
+* **Curtea** (pozele 11–14): prispa adâncă de ~2,5 m cu stâlpii de lemn și căpriorii la vedere, ușa verandei cu plasă, cele două trepte cu gresie și preșul „HELLO”, vaza de Horezu, ghiveciul pe suport de răchită, peretele cu placaj tip cărămidă și ușa de la capătul prispei, coșurile suspendate, setul de ratan, uscătorul de rufe, stratul cu bordură de beton, țevile galbene de gaz spre firida de lângă gard și grădina din sud cu gazon, bancă, masă cu față de masă, umbrelă și spalier.
 * **Restul străzii** (casele mai îndepărtate, curțile din spate) e generat procedural în stilul străzii, ca să ai unde să te plimbi.
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 

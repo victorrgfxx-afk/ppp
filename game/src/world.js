@@ -6,7 +6,7 @@ import { buildStreet, buildGround, buildHills } from './terrain.js';
 import { buildHero } from './hero.js';
 import { genericHouse, addWindow, wallGeos, wallMatrix, FACE, hipRoof, gableRoof } from './buildings.js';
 import { ironIvyFence, stoneWallChainFence, picketFence, panelFence, wallFence, fenceGate, plasterWall, boardGate } from './fences.js';
-import { Forest, spruceArchetype, broadleafArchetype, buildGrass, sumacArchetype, yuccaArchetype } from './vegetation.js';
+import { Forest, spruceArchetype, broadleafArchetype, buildGrass, sumacArchetype, yuccaArchetype, flowerArchetype } from './vegetation.js';
 import { concretePole, wire } from './poles.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -25,6 +25,7 @@ const fx = {
   lambEar: () => broadleafArchetype(33, { H: 0.55, crown: 0.4, bush: true, leafMat: 'leavesSmall', density: 0.35 }),
   potPlant: () => broadleafArchetype(34, { H: 0.4, crown: 0.3, bush: true, leafMat: 'leavesSmall', density: 0.4 }),
   sumac: () => sumacArchetype(41, 4.3),
+  flowers: () => flowerArchetype(43, 0.2, 0.15, 14),
   yucca: () => yuccaArchetype(42, 0.85),
   flowerBox: () => broadleafArchetype(35, { H: 0.22, crown: 0.2, bush: true, leafMat: 'leavesSmall', density: 0.3 }),
 };
@@ -55,7 +56,7 @@ export function buildWorld(scene, world, quality) {
 
   // ---------- photographed lots ----------
   buildHero(batch, world, forest, fx);
-  houses.push({ side: 1, z0: -6, z1: 6.8, x: 6.3, drop: V(6.05, 5.05, -0.17), hero: true });
+  houses.push({ side: 1, z0: -6, z1: 8.2, x: 7.7, drop: V(7.45, 5.05, -0.17), hero: true });
 
   // North neighbour: white single-storey house, spruce, green chain fence on a stone wall (photos 1, 2)
   chunked(stoneWallChainFence, { x: W.EAST_FENCE, z0: -26.5, z1: -5.8 });
@@ -122,8 +123,8 @@ export function buildWorld(scene, world, quality) {
   }
   for (const [x, z, s] of [[3.35, 9.6, 1.0], [3.25, 13.4, 1.15], [3.45, 15.6, 0.8]]) forest.add('yucca', fx.yucca, x, bedY, z, z * 2, s);
   for (const [x, z, s] of [[3.45, 7.9, 1.2], [3.5, 11.6, 1.35], [3.4, 16.2, 1.0]]) forest.add('bush', fx.bush, x, bedY, z, z, s);
-  forest.add('fruitTree', fx.fruitTree, 5.5, 0.3, 11.0, 0.3, 1.25);
-  forest.add('broad', fx.broad, 6.0, 0.3, 14.5, 2.3, 0.8);
+  forest.add('fruitTree', fx.fruitTree, 5.3, 0.25, 10.6, 0.3, 1.25);
+  forest.add('broad', fx.broad, 6.2, 0.25, 16.5, 2.3, 0.8);
 
   // ---------- opposite side (west) as in photo 1 ----------
   chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -12.3, z1: 2.3, postMat: M.tealMetal, rounded: false, h: 1.55 });
@@ -268,11 +269,13 @@ export function buildWorld(scene, world, quality) {
 
   // grass on the verges / strips
   const areas = [
-    { x0: W.WEST_FENCE + 0.05, x1: -W.ROAD_HALF - 0.08, z0: -150, z1: 110, d: 30 },
+    { x0: W.WEST_FENCE + 0.05, x1: -W.ROAD_HALF - 0.08, z0: -150, z1: 2.3, d: 30 },
+    { x0: W.WEST_FENCE + 0.05, x1: -W.ROAD_HALF - 0.08, z0: 12.7, z1: 110, d: 30 },
     { x0: W.EAST_FENCE - 0.35, x1: W.EAST_FENCE - 0.02, z0: -52, z1: -5.9, d: 14, s: 1.2 },
     { x0: 2.75, x1: 3.68, z0: 6.9, z1: 27, d: 26 },
-    { x0: 14.6, x1: 23.8, z0: -5.8, z1: 8.8, d: 9 },
-    { x0: 4.0, x1: 5.25, z0: -5.4, z1: -2.35, d: 18 },
+    { x0: 16.0, x1: 25.8, z0: -5.8, z1: 8.6, d: 9 },
+    { x0: 4.2, x1: 25.8, z0: 9.0, z1: 19.8, d: 10 },
+    { x0: 4.4, x1: 5.4, z0: -5.4, z1: -2.35, d: 18 },
     { x0: W.EAST_FENCE - 0.3, x1: W.EAST_FENCE - 0.02, z0: 27, z1: 110, d: 16, s: 1.4 },
     { x0: W.EAST_FENCE - 0.3, x1: W.EAST_FENCE - 0.02, z0: -150, z1: -52, d: 16, s: 1.4 },
   ];

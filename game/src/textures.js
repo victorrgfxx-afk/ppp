@@ -552,6 +552,78 @@ function genHouseNo(text, key) {
   TEX[key] = tex(c, { repeat: false });
 }
 
+// Coir door mat with "HELLO" and a cat & dog line drawing (photo 12)
+function genDoorMat() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 320;
+  const g = c.getContext('2d');
+  const img = g.createImageData(512, 320);
+  for (let i = 0; i < 512 * 320; i++) {
+    const n = Math.random();
+    img.data[i * 4] = 128 + n * 40; img.data[i * 4 + 1] = 92 + n * 30; img.data[i * 4 + 2] = 55 + n * 20; img.data[i * 4 + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  g.strokeStyle = '#1b1510'; g.fillStyle = '#1b1510'; g.lineWidth = 7;
+  g.beginPath(); g.ellipse(150, 170, 95, 110, 0, 0, 7); g.stroke();
+  g.beginPath(); g.arc(150, 125, 32, 0, 7); g.stroke();                 // dog head
+  g.beginPath(); g.moveTo(120, 110); g.quadraticCurveTo(100, 150, 125, 160); g.stroke();
+  g.beginPath(); g.arc(150, 215, 34, Math.PI * 1.1, Math.PI * 2.1); g.stroke();   // cat head
+  g.beginPath(); g.moveTo(125, 200); g.lineTo(122, 178); g.lineTo(138, 190); g.moveTo(175, 200); g.lineTo(178, 178); g.lineTo(162, 190); g.stroke();
+  g.lineWidth = 3; for (const s of [-1, 1]) for (const d of [-6, 6]) { g.beginPath(); g.moveTo(150 + s * 12, 225 + d * 0.5); g.lineTo(150 + s * 45, 222 + d); g.stroke(); }
+  g.font = 'bold 74px Arial'; g.textBaseline = 'middle'; g.fillText('HELLO', 255, 230);
+  TEX.doorMat = tex(c, { repeat: false });
+}
+
+// Horezu-style glazed ceramic vase: cream with brown/ochre ornamental bands (photo 12)
+function genHorezu() {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#efe3cf'; g.fillRect(0, 0, 512, 512);
+  g.strokeStyle = '#9a5a33'; g.fillStyle = '#9a5a33';
+  for (const y of [40, 60, 440, 470]) { g.lineWidth = 6; g.beginPath(); g.moveTo(0, y); g.lineTo(512, y); g.stroke(); }
+  g.lineWidth = 3;
+  for (let i = 0; i < 8; i++) {
+    const x = i * 64 + 32;
+    g.beginPath(); g.moveTo(x, 90); g.bezierCurveTo(x - 30, 170, x + 30, 250, x, 330); g.bezierCurveTo(x - 25, 380, x + 25, 400, x, 420); g.stroke();
+    for (let k = 0; k < 6; k++) { g.beginPath(); g.ellipse(x + (k % 2 ? 14 : -14), 120 + k * 50, 10, 5, (k % 2 ? 0.6 : -0.6), 0, 7); g.fill(); }
+  }
+  g.fillStyle = '#c28a3c';
+  for (let i = 0; i < 16; i++) { g.beginPath(); g.arc(i * 32 + 16, 50, 6, 0, 7); g.fill(); }
+  TEX.horezu = tex(c);
+}
+
+// Small balcony flowers (petunia/lobelia purple, geranium red, marigold orange, white) with leaves, alpha
+function genFlowers() {
+  const n = 256;
+  const r = rng(505);
+  const c = document.createElement('canvas'); c.width = c.height = n;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 70; i++) {
+    const x = 20 + r() * 216, y = 20 + r() * 216, a = r() * 6.28;
+    g.fillStyle = `rgb(${40 + r() * 30 | 0},${95 + r() * 50 | 0},${35 + r() * 20 | 0})`;
+    g.save(); g.translate(x, y); g.rotate(a); g.beginPath(); g.ellipse(0, 0, 11, 5, 0, 0, 7); g.fill(); g.restore();
+  }
+  const cols = ['#7b4fc4', '#8d5fd6', '#f2f0f4', '#c9222f', '#e8791c', '#6a3db0', '#d84a8a'];
+  for (let i = 0; i < 26; i++) {
+    const x = 26 + r() * 204, y = 26 + r() * 204, col = cols[Math.floor(r() * cols.length)], s = 5 + r() * 5;
+    g.fillStyle = col;
+    for (let k = 0; k < 5; k++) { const a = k / 5 * 6.28; g.beginPath(); g.arc(x + Math.cos(a) * s * 0.7, y + Math.sin(a) * s * 0.7, s * 0.6, 0, 7); g.fill(); }
+    g.fillStyle = '#f5d33a'; g.beginPath(); g.arc(x, y, s * 0.3, 0, 7); g.fill();
+  }
+  TEX.flowers = tex(c, { repeat: false });
+}
+
+// Red-brown garden trellis lattice with alpha (photo 14)
+function genLattice() {
+  const n = 256;
+  const c = paint(n, n, (x, y, p) => {
+    const a = ((x + y) % 64), b = ((x - y + 1024) % 64);
+    const on = a < 9 || b < 9;
+    const k = 0.85 + 0.15 * valueNoise(x / 3, y / 3, 1e9, 4);
+    p[0] = 150 * k; p[1] = 62 * k; p[2] = 46 * k; p[3] = on ? 255 : 0;
+  });
+  TEX.lattice = tex(c);
+}
+
 function genWheel(key, spokes = 5, color = '#b9bcc0', twin = true, bmw = false) {
   const n = 256;
   const c = document.createElement('canvas'); c.width = c.height = n;
@@ -644,6 +716,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   genPlate('PH 13 KLI', 'plateOpel');
   genPlate('PH 07 ALX', 'plateBMW');
   genPlate('PH 77 XXS', 'plate508');
+  genDoorMat(); genHorezu(); genLattice(); genFlowers();
   genHouseNo('10', 'houseNo10');
   genPlate('B 162 DDC', 'plateSUV');
   genPlate('PH 22 VIC', 'plateA');

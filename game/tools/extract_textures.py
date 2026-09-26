@@ -81,7 +81,9 @@ porch_full = np.vstack([porch, low])
 save('facade_porch.jpg', cv2.resize(porch_full, (1280, 834), interpolation=cv2.INTER_LANCZOS4))
 
 # Veranda inchisa (ferestre lemn cu jaluzele, usa). Prelungim ferestrele in jos.
-ver = p4[948:1233, 830:1932]
+ver = p4[948:1233, 830:1932].copy()
+# the fence-post lantern in front of the right window pier: clone the clean rows above it
+ver[230:285, 700:792] = ver[230 - 56:285 - 56, 700:792]
 ext = ver[-66:]
 ver_full = np.vstack([ver, ext])
 save('facade_veranda.jpg', cv2.resize(ver_full, (1600, 510), interpolation=cv2.INTER_LANCZOS4))

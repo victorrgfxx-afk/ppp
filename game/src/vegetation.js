@@ -120,6 +120,22 @@ export function broadleafArchetype(seed, { H = 7, crown = 3, trunkR = 0.18, leaf
   return { parts: [[mergeGeometries(wood), M.bark], [mergeGeometries(cards), M[leafMat]]] };
 }
 
+// Tuft of flowering plants for window boxes, pots and hanging baskets.
+export function flowerArchetype(seed, spread = 0.18, H = 0.16, n = 12) {
+  const r = rng(seed);
+  const cards = [];
+  for (let i = 0; i < n; i++) {
+    const s = 0.1 + r() * 0.08;
+    const g = new THREE.PlaneGeometry(s, s);
+    g.rotateX(-Math.PI / 2 + (r() - 0.5) * 1.3);
+    g.rotateY(r() * Math.PI * 2);
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * spread;
+    g.translate(Math.cos(a) * d, H * (0.3 + r() * 0.7), Math.sin(a) * d * 0.6);
+    cards.push(strip(g));
+  }
+  return { parts: [[mergeGeometries(cards), M.flowers]] };
+}
+
 // Staghorn sumac (Rhus typhina): a few leaning stems with drooping pinnate fronds at the top.
 export function sumacArchetype(seed, H = 4.2) {
   const r = rng(seed);
