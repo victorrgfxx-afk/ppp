@@ -1,0 +1,15 @@
+{
+  "name": "strada-prahova",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Joc open-world first-person reconstruit din fotografii (Three.js, fara build).",
+  "scripts": {
+    "start": "python3 -m http.server 8765",
+    "test": "node tools/smoke-test.mjs shots high",
+    "textures": "python3 tools/extract_textures.py"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

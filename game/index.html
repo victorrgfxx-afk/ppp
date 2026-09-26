@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Strada · Prahova</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="Joc open-world first-person, reconstruit din fotografii: strada, casa și mașinile, cu grafică PBR în browser.">
+<style>
+  :root {
+    --bg: #0d0f12; --panel: rgba(14, 16, 20, 0.78); --text: #f1f2f3; --muted: #a9afb6; --accent: #ffcf3f; --line: rgba(255,255,255,0.14);
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0d0f12; } }
+  :root[data-theme="dark"] { --bg: #0d0f12; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; user-select: none; touch-action: none; }
+  canvas#c { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .ov { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .ov.on { display: flex; }
+  #loader { display: flex; flex-direction: column; gap: 14px; background: radial-gradient(ellipse at center, #1b2026 0%, #0b0d10 70%); z-index: 20; transition: opacity .6s; }
+  #loader.done { opacity: 0; pointer-events: none; }
+  #loader h1, #start h1 { margin: 0; font-weight: 800; letter-spacing: .02em; font-size: clamp(28px, 5vw, 52px); }
+  #loader .sub { color: var(--muted); font-size: 14px; }
+  .barwrap { width: min(420px, 80vw); height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  #bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  #loadText { color: var(--muted); font-size: 13px; min-height: 1.2em; }
+  #loader.err #loadText { color: #ff7b7b; }
+  .card { background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; max-width: 720px; width: 100%; max-height: calc(100vh - 32px); overflow: auto; }
+  .card p { color: var(--muted); line-height: 1.5; margin: 8px 0 16px; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px 18px; font-size: 14px; margin: 12px 0 18px; }
+  .keys b { display: inline-block; min-width: 64px; color: var(--accent); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  button, select { font: inherit; color: var(--text); background: #262a31; border: 1px solid var(--line); border-radius: 9px; padding: 9px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #111; border: none; font-weight: 800; padding: 12px 26px; font-size: 17px; }
+  label { color: var(--muted); font-size: 14px; display: flex; gap: 8px; align-items: center; }
+  #views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  #views button { font-size: 13px; padding: 6px 10px; }
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 5; }
+  #hud.on { display: block; }
+  #cross { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: rgba(255,255,255,.75); box-shadow: 0 0 2px #000; }
+  #prompt { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); background: var(--panel); padding: 8px 14px; border-radius: 8px; font-size: 15px; opacity: 0; transition: opacity .2s; white-space: nowrap; }
+  #prompt.on { opacity: 1; }
+  #toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: var(--panel); padding: 8px 14px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity .3s; max-width: calc(100vw - 32px); text-align: center; }
+  #toast.on { opacity: 1; }
+  #minimap { position: absolute; left: 16px; bottom: 16px; width: 170px; height: 170px; border-radius: 50%; border: 3px solid rgba(0,0,0,.55); box-shadow: 0 2px 12px rgba(0,0,0,.4); }
+  #loc { position: absolute; left: 16px; bottom: 194px; font-size: 13px; background: var(--panel); padding: 4px 9px; border-radius: 6px; }
+  #speed { position: absolute; right: 18px; bottom: 16px; text-align: right; opacity: 0; transition: opacity .2s; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  #speed.on { opacity: 1; }
+  #speedVal { font-size: 54px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  #speed small { font-size: 14px; color: var(--muted); }
+  #gear { display: inline-block; margin-left: 10px; font-size: 22px; font-weight: 700; color: var(--accent); }
+  #carName { font-size: 13px; color: var(--muted); }
+  #fps { position: absolute; right: 12px; top: 10px; font-size: 12px; color: var(--muted); }
+  #menuBtn { position: absolute; right: 12px; top: 30px; pointer-events: auto; padding: 6px 10px; font-size: 13px; background: var(--panel); }
+  #touch { display: none; }
+  @media (pointer: coarse) {
+    #touch { display: block; position: fixed; inset: 0; pointer-events: none; z-index: 6; }
+    #cross { display: none; }
+    #minimap { width: 120px; height: 120px; left: 12px; top: 12px; bottom: auto; }
+    #loc { left: 12px; top: 138px; bottom: auto; }
+    #speed { bottom: 190px; }
+  }
+  #stick { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); background: rgba(0,0,0,.18); opacity: 0; left: 40px; bottom: 40px; }
+  #stick.on { opacity: 1; }
+  #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.45); }
+  .tbtns { position: absolute; right: 14px; bottom: 18px; display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; pointer-events: auto; }
+  .tbtns button { width: 64px; height: 64px; border-radius: 50%; padding: 0; font-size: 12px; font-weight: 700; background: rgba(20,22,26,.55); border: 2px solid rgba(255,255,255,.3); }
+  .tbtns button.on { background: rgba(255,207,63,.6); color: #111; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="loader" class="ov on">
+  <h1>Strada · Prahova</h1>
+  <div class="sub">Reconstruită din fotografiile tale</div>
+  <div class="barwrap"><div id="bar"></div></div>
+  <div id="loadText">Încarc texturile…</div>
+</div>
+
+<div id="start" class="ov">
+  <div class="card">
+    <h1>Strada · Prahova</h1>
+    <p>Casa, strada și mașinile sunt reconstruite din cele 5 fotografii (texturi reale rectificate din poze). Mergi liber, intră în curte pe poarta deschisă, urcă în orice mașină parcată și condu.</p>
+    <div class="keys">
+      <div><b>W A S D</b> mers</div>
+      <div><b>Mouse</b> privire</div>
+      <div><b>Shift</b> fugă</div>
+      <div><b>Space</b> săritură / frână de mână</div>
+      <div><b>C</b> ghemuit</div>
+      <div><b>F</b> urcă / coboară din mașină</div>
+      <div><b>V</b> cameră mașină (spate / interior)</div>
+      <div><b>L</b> faruri · <b>H</b> claxon</div>
+      <div><b>1–5</b> punctele din poze</div>
+      <div><b>P</b> captură ecran · <b>Esc</b> meniu</div>
+    </div>
+    <div class="row">
+      <button id="play" class="primary">Joacă</button>
+      <label>Grafică <select id="quality"><option value="low">Scăzută</option><option value="medium">Medie</option><option value="high">Înaltă</option><option value="ultra">Ultra</option></select></label>
+      <label>Sensibilitate <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
+    </div>
+    <div id="views"></div>
+  </div>
+</div>
+
+<div id="pause" class="ov">
+  <div class="card">
+    <h1 style="font-size:32px;margin:0 0 8px">Pauză</h1>
+    <div class="row">
+      <button id="resume" class="primary">Continuă</button>
+      <label>Grafică <select id="quality2"><option value="low">Scăzută</option><option value="medium">Medie</option><option value="high">Înaltă</option><option value="ultra">Ultra</option></select></label>
+      <button id="mute">Sunet: pornit</button>
+    </div>
+    <p style="margin-top:14px">Tastele 1–5 te duc exact în locurile din care au fost făcute fotografiile, ca să compari.</p>
+  </div>
+</div>
+
+<div id="hud">
+  <div id="cross"></div>
+  <div id="prompt"></div>
+  <div id="toast"></div>
+  <canvas id="minimap" width="340" height="340"></canvas>
+  <div id="loc">Acasă</div>
+  <div id="speed"><div><span id="speedVal">0</span><small> km/h</small><span id="gear">1</span></div><div id="carName"></div></div>
+  <div id="fps"></div>
+  <button id="menuBtn">Meniu</button>
+</div>
+
+<div id="touch">
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tbtns">
+    <button data-key="KeyV">Cam</button>
+    <button data-key="KeyH">Claxon</button>
+    <button data-key="KeyF">F</button>
+    <button data-key="KeyC">Jos</button>
+    <button data-key="ShiftLeft">Fugi</button>
+    <button data-key="Space">Sari</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
