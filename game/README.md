@@ -1,6 +1,25 @@
-# Strada · Prahova — joc open‑world first‑person
+# Strada Gării · Poiana Câmpina — joc open‑world first‑person (versiunea cu harta reală)
 
-Strada, casa și curtea din cele 14 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci).
+Strada, casa și curtea din cele 14 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci) — **așezate în zona reală de 3 × 3 km** din jurul punctului 45,13403° N, 25,71109° E, construită din date cartografice deschise.
+
+> Branch‑ul `claude/realistic-first-person-gta-game-aq1h6w` rămâne harta inițială (doar din poze). Branch‑ul acesta (`…-geo`) e copia cu harta reală.
+
+## Harta reală: surse și ce e exact
+
+| Ce | Sursă (date deschise) | Cum e folosit |
+|---|---|---|
+| Clădiri (2650), străzi (473), gară, peroane, poduri, linia CF 300 electrificată, linia de 110 kV (turnuri), râuri, lacuri, păduri, livezi, terenuri | OpenStreetMap (© contribuitorii OSM, ODbL) | amprentele exacte ale caselor, extrudate cu numărul de niveluri din OSM; drumuri cu lățimea din benzi/clasă și materialul din `surface` |
+| Relief ±1,5 km (grilă 5 m) | Terrain Tiles AWS (terrarium z15, EU‑DEM/SRTM) | teren, profilul real al Străzii Gării, săpături/umpluturi sub drumuri și calea ferată |
+| Relief până la 8 km (dealurile de la orizont) | Copernicus GLO‑30 | inelul îndepărtat (cele două DEM‑uri diferă cu 1–3 m în zonă) |
+| Culoarea solului | Sentinel‑2 cloudless 2023 by EOX (CC BY‑NC‑SA 4.0) | colorează textura de iarbă/pământ/pietriș; unde e verde în imagine se pun copaci în curți |
+| Râul Prahova | OSM (albia ca poligon, axul cu lățime 20 m) + DEM | nivelul apei scade monoton în aval (≈ 0,8 %: 419,6 → 384,7 m pe 4,3 km), prundiș în albie |
+| Soarele | calcul astronomic | 26 sept., 11:30: elevație 38,7°, azimut 148° (SSE) |
+
+**Aliniere**: axa Străzii Gării (way 16947629) are azimutul 42,02° și e dreaptă de la intersecția din SV până la capătul spre râu, exact ca în poze. Casa din poze e amprenta OSM **nr. 123** (fața la 5,6–6,1 m de ax, ca veranda măsurată pe poze; grădina din sud, gardul vișiniu și vecinii se potrivesc cu pozele 1, 6, 7). Capătul „sud” al străzii din poze e spre NE: malul înalt al Prahovei cu râpa de lut (poza 7) e terasa de ~55 m de peste râu, la 450–600 m.
+
+**Ce e dedus, nu măsurat**: culorile pereților și acoperișurilor caselor care nu apar în poze (OSM nu le are), forma acoperișului (în patru ape din descompunerea amprentei, în două ape la unele case), ferestrele (textură), gardurile de pe celelalte străzi și stâlpii de iluminat (generați de‑a lungul străzilor), pozițiile copacilor (din poligoanele de pădure/livadă și verdele din Sentinel‑2), înălțimea caselor cu tag implicit `height=4` (luată din numărul de niveluri). Vecinii din poze (casa albă, casa din lemn închis, casa cu coș, casele de după zidul gri și gardul vișiniu) au amprenta din OSM și aspectul din poze; două dintre ele sunt mutate 3 m mai departe de stradă, ca în poze.
+
+**Refacerea datelor**: `python3 geo/fetch_raw.py` (descarcă ~40 MB în `geo/raw`) apoi `python3 geo/build_geo.py` → `assets/geo/`. `geo/debug_map.py` desenează o hartă de control; `node tools/geo-test.mjs` face capturi automate.
 
 ## Pornire
 
@@ -36,7 +55,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
 * **Dimensiuni**: estimate din poze folosind repere cu mărime cunoscută (lățimea Opel Corsa C = 1,65 m, BMW E90 = 4,52 m, înălțimea camerei ≈ 1,5 m, lățimea ușii). Poziția casei, a gardului, a stâlpului, a BMW‑ului și a Opel‑ului „PH 13 KLI”, a SUV‑ului, a gropii de canal și a marcajelor sunt puse după poze; eroarea e de ordinul zecilor de centimetri, nu măsurători cu ruleta.
 * **Partea de sud** (pozele 6–10): Peugeot 508 gri „PH 77 XXS”, straturile cu plante (yucca, urechea‑ursului, arbuști) cu bordură de beton, zidul gri de vizavi cu tencuială reală din poză, soclu de piatră, coamă de țiglă, poarta mare de lemn și portița nr. 10 cu cutia poștală, platforma de beton, gardul vișiniu cu oțetarul, stâlpii cu lămpi LED pe partea de est, trecătorul cu sacoșa galbenă și dealul de la capăt cu râpa de lut.
 * **Curtea** (pozele 11–14): prispa adâncă de ~2,5 m cu stâlpii de lemn și căpriorii la vedere, ușa verandei cu plasă, cele două trepte cu gresie și preșul „HELLO”, vaza de Horezu, ghiveciul pe suport de răchită, peretele cu placaj tip cărămidă și ușa de la capătul prispei, coșurile suspendate, setul de ratan, uscătorul de rufe, stratul cu bordură de beton, țevile galbene de gaz spre firida de lângă gard și grădina din sud cu gazon, bancă, masă cu față de masă, umbrelă și spalier.
-* **Restul străzii** (casele mai îndepărtate, curțile din spate) e generat procedural în stilul străzii, ca să ai unde să te plimbi.
+* **Restul străzii și tot satul** vin din harta reală (secțiunea de mai sus): fiecare casă pe amprenta ei din OpenStreetMap, pe relieful real.
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 
 ## Grafică

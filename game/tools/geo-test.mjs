@@ -9,6 +9,7 @@ fs.mkdirSync(out, { recursive: true });
 const exe = process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 const browser = await chromium.launch({ executablePath: exe, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+page.setDefaultTimeout(300000);
 const errors = [], logs = [];
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); else logs.push(m.text()); });
 page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
@@ -39,6 +40,8 @@ const cams = [
   ['river_bank', { x: 20, y: 3, z: 150, yaw: Math.PI - 0.3, pitch: 0.0 }],
   ['station', { x: 40, y: 12, z: -200, yaw: 0.4, pitch: -0.15 }],
   ['overview', { x: 700, y: 650, z: -900, yaw: 2.6, pitch: -0.5 }],
+  ['backyard', { x: 27, y: 2.2, z: 14, yaw: 0.9, pitch: -0.05 }],
+  ['cliff', { x: 0.2, y: 1.6, z: 140, yaw: Math.PI, pitch: 0.06 }],
 ];
 for (const [name, c] of cams) {
   if (only && !only.includes(name)) continue;
@@ -56,8 +59,13 @@ console.log('scene stats (view 1, single pass):', JSON.stringify(stats));
 // walk + drive sanity: ground height along the street and outside
 console.log('ground', JSON.stringify(await page.evaluate(() => { const w = window.__game.world; return [[0, 0], [5, 0], [-6, 0], [0, 100], [0, -200], [300, 300], [-100, 200]].map(([x, z]) => [x, z, +w.groundHeight(x, z).toFixed(2)]); })));
 if (!only || only.includes('drive')) {
-  await page.evaluate(() => { const g = window.__game; g.cam = null; g.gotoView(0); g.enterCar(g.vehicles[0]); g.input.keys.add('KeyW'); });
-  await frames(60);
+  // the BMW is parked right behind the pole (photo 2): steer out around it, then straight
+  await page.evaluate(() => { const g = window.__game; g.cam = null; g.gotoView(0); g.enterCar(g.vehicles[0]); g.input.keys.add('KeyW'); g.input.keys.add('KeyA'); });
+  await frames(12);
+  await page.evaluate(() => { const g = window.__game; g.input.keys.delete('KeyA'); g.input.keys.add('KeyD'); });
+  await frames(10);
+  await page.evaluate(() => window.__game.input.keys.delete('KeyD'));
+  await frames(40);
   await page.evaluate(() => window.__game.input.keys.delete('KeyW'));
   await frames(4);
   await page.screenshot({ path: `${out}/drive.png` });

@@ -9,12 +9,12 @@ import { rng } from '../util.js';
 // rendered from the same models. A vertex-shader distance switch avoids drawing both.
 
 const TYPES = [
-  { name: 'oak', H: 15, crown: 5.0, trunkR: 0.34, cards: 150, leaf: 'leavesDark', tint: 0xb9c7a3 },
-  { name: 'hornbeam', H: 12, crown: 3.8, trunkR: 0.24, cards: 130, leaf: 'leaves', tint: 0xc4d0a8 },
+  { name: 'oak', H: 15, crown: 5.0, trunkR: 0.34, cards: 115, leaf: 'leavesDark', tint: 0xb9c7a3 },
+  { name: 'hornbeam', H: 12, crown: 3.8, trunkR: 0.24, cards: 100, leaf: 'leaves', tint: 0xc4d0a8 },
   { name: 'spruce', H: 17, crown: 3.0, conifer: true },
-  { name: 'fruit', H: 5.2, crown: 2.4, trunkR: 0.13, cards: 95, leaf: 'leavesSmall', tint: 0xd8e0c0 },
-  { name: 'walnut', H: 13, crown: 5.4, trunkR: 0.36, cards: 150, leaf: 'leaves', tint: 0xb4c49c },
-  { name: 'willow', H: 11, crown: 4.0, trunkR: 0.3, cards: 130, leaf: 'leavesSmall', tint: 0xc8d7a0, droop: true },
+  { name: 'fruit', H: 5.2, crown: 2.4, trunkR: 0.13, cards: 80, leaf: 'leavesSmall', tint: 0xd8e0c0 },
+  { name: 'walnut', H: 13, crown: 5.4, trunkR: 0.36, cards: 115, leaf: 'leaves', tint: 0xb4c49c },
+  { name: 'willow', H: 11, crown: 4.0, trunkR: 0.3, cards: 100, leaf: 'leavesSmall', tint: 0xc8d7a0, droop: true },
 ];
 
 function cyl(p0, p1, r0, r1, seg) {
@@ -60,26 +60,33 @@ function broadModel(t, seed) {
     cards.push(clean(g));
   }
   // dark, slightly lumpy inner volume so the crown reads as a solid mass from a distance
-  const core = new THREE.IcosahedronGeometry(1, 1);
-  const cp = core.attributes.position;
-  for (let k = 0; k < cp.count; k++) {
-    const f = 0.8 + r() * 0.3;
-    cp.setXYZ(k, cp.getX(k) * t.crown * 0.66 * f, cp.getY(k) * t.H * 0.26 * f + c.y, cp.getZ(k) * t.crown * 0.66 * f);
+  const parts = [[mergeGeometries(wood.map(clean)), 'bark'], [mergeGeometries(cards), 'leaf']];
+  if (t.crown > 3) {
+    const core = new THREE.IcosahedronGeometry(1, 1);
+    const cp = core.attributes.position, cn = core.attributes.normal;
+    for (let k = 0; k < cp.count; k++) {
+      const x = cp.getX(k), y = cp.getY(k), z = cp.getZ(k);
+      const f = 0.85 + 0.2 * Math.sin(x * 3.1 + seed) * Math.cos(z * 2.7 + y * 1.3);
+      cp.setXYZ(k, x * t.crown * 0.5 * f, y * t.H * 0.22 * f + c.y, z * t.crown * 0.5 * f);
+      const v = new THREE.Vector3(x, y * 0.7 + 0.35, z).normalize();
+      cn.setXYZ(k, v.x, v.y, v.z);                       // smooth, sky-facing normals
+    }
+    parts.splice(1, 0, [clean(core), 'crown']);
   }
-  core.computeVertexNormals();
-  return [[mergeGeometries(wood.map(clean)), 'bark'], [clean(core), 'crown'], [mergeGeometries(cards), 'leaf']];
+  return parts;
 }
 
 function spruceModel(t, seed) {
   const r = rng(seed);
   const cards = [];
-  const core = new THREE.ConeGeometry(t.crown * 0.7, t.H - 1.2, 8, 4);
-  core.translate(0, 1.2 + (t.H - 1.2) / 2, 0);
-  for (let y = 1.4; y < t.H - 0.5; y += 1.25) {
-    const k = (y - 1.2) / (t.H - 1.2), R = t.crown * (1 - k) + 0.3;
-    for (let i = 0; i < 6; i++) {
-      const a = i / 6 * Math.PI * 2 + r() * 0.8;
-      const g = new THREE.PlaneGeometry(R * 0.9, R * 1.1);
+  const core = new THREE.ConeGeometry(t.crown * 0.42, t.H - 1.6, 8, 4);
+  core.translate(0, 1.6 + (t.H - 1.6) / 2, 0);
+  for (let y = 1.3; y < t.H - 0.4; y += 0.85) {
+    const k = (y - 1.2) / (t.H - 1.2), R = t.crown * Math.pow(1 - k, 0.9) + 0.35;
+    const nW = 7 + Math.round(3 * (1 - k));
+    for (let i = 0; i < nW; i++) {
+      const a = i / nW * Math.PI * 2 + r() * 0.8;
+      const g = new THREE.PlaneGeometry(R * 1.05, R * 1.25);
       g.translate(0, R * 0.55, 0);
       g.rotateX(-(Math.PI / 2 + 0.35));
       g.rotateY(a);
@@ -137,7 +144,7 @@ export function buildTrees(scene, world, renderer, quality) {
   const nearR = { 'Scăzută': 110, 'Medie': 150, 'Înaltă': 200 }[quality.label] ?? 260;
   const mats = {
     bark: M.bark, core: M.firCore, fir: M.fir,
-    crown: new THREE.MeshStandardMaterial({ color: 0x2c3a22, roughness: 1 }),
+    crown: new THREE.MeshStandardMaterial({ color: 0x3a4b2c, roughness: 1 }),
   };
   const models = TYPES.map((t, i) => {
     const parts = t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);

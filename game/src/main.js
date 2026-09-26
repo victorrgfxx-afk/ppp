@@ -12,7 +12,8 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { createComposer } from './post.js';
-import { WIND, damp, clamp } from './util.js';
+import { WIND, damp, clamp, rng } from './util.js';
+import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, profileAt } from './geo/index.js';
 
@@ -70,7 +71,7 @@ async function main() {
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.56, 0.60, 0.65);
-  scene.fog = new THREE.FogExp2(fogColor, 1 / 3200);
+  scene.fog = new THREE.FogExp2(fogColor, 1 / 4000);
   scene.background = fogColor;
   const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 12000);
 
@@ -116,6 +117,32 @@ async function main() {
   park('hatch', paintMaterial(0xe9e9e7, { metallic: 0.15, rough: 0.28 }), 'plateB', -1.45, 58, 0, {});
   park('hatch', paintMaterial(0x6e1f1f, { metallic: 0.6, rough: 0.3 }), 'plateA', 1.72, 96, Math.PI, {});
   park('corsa', paintMaterial(0x2f4f7a, { metallic: 0.7, rough: 0.3 }), 'plateB', -1.35, -70, 0, {});
+  // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
+  {
+    const rr = rng(77);
+    const models = ['corsa', 'sedan', 'hatch', 'suv', 'p508', 'hatch', 'sedan'];
+    const paints = [0xbfc2c5, 0x1d2024, 0xe9e9e7, 0x6e1f1f, 0x2f4f7a, 0x8a8f94, 0x3b4b3a, 0xd9d4c8];
+    const plates = ['plateA', 'plateB', 'plateC'];
+    const cand = GEO.roads.filter(r => ['residential', 'living_street', 'tertiary', 'unclassified'].includes(r.c) && r.s === 'asphalt' && !r.br && !r.hand);
+    let placed = 0;
+    for (let tries = 0; tries < 600 && placed < 24 && cand.length; tries++) {
+      const r = cand[Math.floor(rr() * cand.length)];
+      const k = Math.floor(rr() * (r.p.length / 2 - 1));
+      const ax = r.p[2 * k], az = r.p[2 * k + 1], bx = r.p[2 * k + 2], bz = r.p[2 * k + 3];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 9) continue;
+      const t = 0.2 + rr() * 0.6, x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+      const d0 = Math.hypot(x, z);
+      if (d0 > 650 || (Math.abs(x) < 8 && z > world.streetZ[0] - 10 && z < world.streetZ[1] + 10)) continue;
+      const dx = (bx - ax) / L, dz = (bz - az) / L, off = r.w / 2 - 1.0;
+      const px = x + dz * off, pz = z - dx * off, h = Math.atan2(-dx, -dz);
+      const probe = new world.Box(px, pz, 1.05, 2.4, h);
+      if (world.query(px, pz, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) continue;
+      const v = park(models[placed % models.length], paintMaterial(paints[Math.floor(rr() * paints.length)], { metallic: rr() * 0.8, rough: 0.3, dusty: rr() * 0.4 }), plates[placed % 3], px, pz, h, {});
+      v.update(0.016, null);
+      placed++;
+    }
+  }
   for (const v of vehicles) v.update(0.016, null);
   // the neighbour walking home with a yellow bag (photo 7)
   const walkers = [new Walker(scene, world, { x: -0.4, z0: 40, z1: 104 })];
@@ -322,6 +349,7 @@ async function main() {
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
       geoWorld.update(camera.position);
       roadName = roadNameAt(pos0().x, pos0().z);
+      for (const v of vehicles) v.car.group.visible = v === active || Math.hypot(v.x - camera.position.x, v.z - camera.position.z) < 320;
     }
 
     // HUD
@@ -354,7 +382,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, sun: sunInfo, walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, sun: sunInfo, post, walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

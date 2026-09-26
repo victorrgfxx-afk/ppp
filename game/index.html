@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Strada · Prahova</title>
+<title>Strada Gării · Poiana Câmpina</title>
 <link rel="icon" href="data:,">
-<meta name="description" content="Joc open-world first-person, reconstruit din fotografii: strada, casa și mașinile, cu grafică PBR în browser.">
+<meta name="description" content="Joc open-world first-person pe harta reală din jurul Străzii Gării, Poiana Câmpina (OSM, relief EU-DEM/Copernicus, Sentinel-2), cu strada și casa reconstruite din fotografii.">
 <style>
   :root {
     --bg: #0d0f12; --panel: rgba(14, 16, 20, 0.78); --text: #f1f2f3; --muted: #a9afb6; --accent: #ffcf3f; --line: rgba(255,255,255,0.14);
@@ -22,6 +22,7 @@
   #loader.done { opacity: 0; pointer-events: none; }
   #loader h1, #start h1 { margin: 0; font-weight: 800; letter-spacing: .02em; font-size: clamp(28px, 5vw, 52px); }
   #loader .sub { color: var(--muted); font-size: 14px; }
+  .credits { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 12px 0 0; }
   .barwrap { width: min(420px, 80vw); height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
   #bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
   #loadText { color: var(--muted); font-size: 13px; min-height: 1.2em; }
@@ -76,16 +77,16 @@
 <canvas id="c"></canvas>
 
 <div id="loader" class="ov on">
-  <h1>Strada · Prahova</h1>
-  <div class="sub">Reconstruită din fotografiile tale</div>
+  <h1>Strada Gării · Poiana Câmpina</h1>
+  <div class="sub">Harta reală (OSM, relief, Sentinel-2) + casa din fotografiile tale</div>
   <div class="barwrap"><div id="bar"></div></div>
   <div id="loadText">Încarc texturile…</div>
 </div>
 
 <div id="start" class="ov">
   <div class="card">
-    <h1>Strada · Prahova</h1>
-    <p>Casa, curtea, strada și mașinile sunt reconstruite din cele 14 fotografii (texturi reale rectificate din poze). Mergi liber, intră în curte pe poarta deschisă, urcă în orice mașină parcată și condu.</p>
+    <h1>Strada Gării · Poiana Câmpina</h1>
+    <p>Zona reală de 3 × 3 km din jurul străzii (45,134° N, 25,711° E): toate clădirile, străzile, gara Câmpina, podurile, râul Prahova, pădurile și linia de 110 kV după hărțile deschise, pe relieful real. Casa, curtea și strada sunt reconstruite din cele 14 fotografii. Mergi liber sau urcă în orice mașină parcată și condu oriunde pe hartă.</p>
     <div class="keys">
       <div><b>W A S D</b> mers</div>
       <div><b>Mouse</b> privire</div>
@@ -104,6 +105,7 @@
       <label>Sensibilitate <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
     </div>
     <div id="views"></div>
+    <p class="credits">Date: © OpenStreetMap contributors (ODbL) · relief EU-DEM / SRTM (AWS Terrain Tiles) și Copernicus GLO-30 · culoarea solului: Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0, date Copernicus Sentinel modificate)</p>
   </div>
 </div>
 

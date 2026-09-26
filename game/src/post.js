@@ -64,7 +64,8 @@ export function createComposer(renderer, scene, camera, q) {
     composer.addPass(gtao);
   }
   if (q.bloom) {
-    bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.18, 0.6, 0.92);
+    // only really bright things (sun glints, lamps) bloom: a bright overcast sky must not veil the view
+    bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.1, 0.4, 1.3);
     composer.addPass(bloom);
   }
   composer.addPass(new OutputPass());

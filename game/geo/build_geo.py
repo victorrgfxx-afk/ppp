@@ -551,7 +551,8 @@ def main():
     Y = H - H0
     gzs, gxs = np.gradient(Y, STEP)
     slope = np.degrees(np.arctan(np.hypot(gxs, gzs)))
-    CLAY = (slope > 15) & (np.abs(X) < 140) & (Z > 380) & (Z < 560)
+    cn = ndimage.gaussian_filter(np.random.default_rng(3).standard_normal((N, N)), 1.6); cn /= cn.std()
+    CLAY = (slope > 17) & (np.abs(X + 5 + 12 * cn) < 42 + 10 * cn) & (Z > 400) & (Z < 545) & (cn > -0.9)
     CLAY = ndimage.binary_opening(CLAY, iterations=1)
     np.clip(np.round(Y * 100), -32000, 32000).astype('<i2').tofile(os.path.join(OUT, 'height.bin'))
     Xf, Zf = grid_xz(FAR_N, FAR_EXT)
@@ -576,9 +577,23 @@ def main():
     TN = 1024
     Xt, Zt = grid_xz(TN, EXT)
     s2n = s2_mosaic_sampler(15)(*game_to_ll(Xt, Zt))
-    clay_t = cv2.GaussianBlur(cv2.resize(CLAY.astype(np.float32), (TN, TN), interpolation=cv2.INTER_LINEAR), (0, 0), 2.0)
-    clay_bgr = np.array([88, 118, 150], np.float32)             # ochre clay of the eroded bank (photo 7)
+    clay_t = cv2.GaussianBlur(cv2.resize(CLAY.astype(np.float32), (TN, TN), interpolation=cv2.INTER_LINEAR), (0, 0), 1.2)
+    # erosion gullies: vertical streaks (down the slope, i.e. along +z) of darker clay and scrub
+    streak = cv2.GaussianBlur(np.random.default_rng(4).random((TN, TN)).astype(np.float32), (0, 0), sigmaX=1.0, sigmaY=6.0)
+    streak = (streak - streak.mean()) / streak.std()
+    clay_t = np.clip(clay_t * (0.8 + 0.25 * streak), 0, 1)
+    clay_bgr = np.array([118, 138, 156], np.float32)            # grey-ochre clay of the eroded bank (photo 7)
     s2n = (s2n * (1 - clay_t[..., None]) + clay_bgr * clay_t[..., None]).astype(np.uint8)
+    # roofs and asphalt are modelled in 3D: paint them out of the ground colour (else they glow as halos)
+    bm = np.zeros((TN, TN), np.uint8)
+    for outers, _, tg, _ in osm.areas(lambda t: 'building' in t):
+        for r in outers:
+            cv2.fillPoly(bm, [np.round(to_px(r, TN, EXT) * 8).astype(np.int32)], 255, cv2.LINE_8, 3)
+    bm = cv2.dilate(bm, np.ones((5, 5), np.uint8))
+    s2n = cv2.inpaint(s2n, bm, 4, cv2.INPAINT_TELEA)
+    # 10 m pixels in the village mix roofs, yards and gardens: pull them towards garden green
+    vil = cv2.GaussianBlur(cv2.dilate(bm, np.ones((9, 9), np.uint8)).astype(np.float32) / 255, (0, 0), 3) * 0.45
+    s2n = (s2n * (1 - vil[..., None]) + np.array([52, 92, 70], np.float32) * vil[..., None]).astype(np.uint8)
     cv2.imwrite(os.path.join(OUT, 'ortho.jpg'), s2n, [cv2.IMWRITE_JPEG_QUALITY, 88])
     Xft, Zft = grid_xz(TN, FAR_EXT)
     cv2.imwrite(os.path.join(OUT, 'ortho_far.jpg'), s2_mosaic_sampler(12)(*game_to_ll(Xft, Zft)), [cv2.IMWRITE_JPEG_QUALITY, 85])
