@@ -11,7 +11,7 @@ Game frame: metres, y up, +z along Strada Gării towards NE (bearing 42.02 deg),
 The origin lies on the street axis in front of the photographed house (OSM way 264516816, no. 123).
 Outputs go to ../assets/geo.
 """
-import json, math, os, glob, xml.etree.ElementTree as ET
+import base64, json, math, os, glob, xml.etree.ElementTree as ET
 import numpy as np, cv2
 from scipy import ndimage
 
@@ -31,6 +31,12 @@ N = int(2 * EXT / STEP) + 1
 FAR_EXT, FAR_N = 8000.0, 257                # far ring grid (62.5 m cells)
 HERO_ID = '264516816'
 GARII_ID = '16947629'                        # straight part of Strada Gării (built by hand in the game)
+
+
+def write_b64(name, arr):
+    """little-endian binary as base64 inside JSON (artifact hosting serves only web types)"""
+    with open(os.path.join(OUT, name), 'w') as f:
+        json.dump({'dtype': str(arr.dtype), 'b64': base64.b64encode(arr.tobytes()).decode()}, f)
 
 
 def ll_to_game(lat, lon):
@@ -554,12 +560,12 @@ def main():
     cn = ndimage.gaussian_filter(np.random.default_rng(3).standard_normal((N, N)), 1.6); cn /= cn.std()
     CLAY = (slope > 17) & (np.abs(X + 5 + 12 * cn) < 42 + 10 * cn) & (Z > 400) & (Z < 545) & (cn > -0.9)
     CLAY = ndimage.binary_opening(CLAY, iterations=1)
-    np.clip(np.round(Y * 100), -32000, 32000).astype('<i2').tofile(os.path.join(OUT, 'height.bin'))
+    write_b64('height.json', np.clip(np.round(Y * 100), -32000, 32000).astype('<i2'))
     Xf, Zf = grid_xz(FAR_N, FAR_EXT)
     laf, lof = game_to_ll(Xf, Zf)
     Yf = cop(laf, lof) - H0
     Yf[np.hypot(Xf, Zf) > FAR_EXT * 1.02] = -3276.8      # outside the DEM window: no data
-    np.clip(np.round(Yf * 10), -32000, 32000).astype('<i2').tofile(os.path.join(OUT, 'far.bin'))
+    write_b64('far.json', np.clip(np.round(Yf * 10), -32768, 32000).astype('<i2'))
     log('height range', Y.min().round(1), Y.max().round(1), 'far', Yf.min().round(1), Yf.max().round(1))
 
     # water cells (cell (i, j) spans grid nodes i..i+1, j..j+1)
@@ -760,7 +766,7 @@ def main():
     tt = np.concatenate([t[2] for t in T_]); ts = np.concatenate([t[3] for t in T_])
     rec = np.zeros(len(tx), dtype=[('x', '<i2'), ('z', '<i2'), ('t', 'u1'), ('s', 'u1')])
     rec['x'] = np.round(tx * 10); rec['z'] = np.round(tz * 10); rec['t'] = tt; rec['s'] = np.round(ts * 100)
-    rec.tofile(os.path.join(OUT, 'trees.bin'))
+    write_b64('trees.json', rec)
     log('trees', len(rec), [len(t[0]) for t in T_])
 
     # ---- street fences (lot fronts) and utility poles along village streets

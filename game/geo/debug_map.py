@@ -3,7 +3,9 @@ import json, sys, numpy as np, cv2, os
 OUT = os.path.join(os.path.dirname(__file__), '..', 'assets', 'geo')
 g = json.load(open(os.path.join(OUT, 'geo.json')))
 n, ext = g['meta']['grid']['n'], g['meta']['grid']['ext']
-Y = np.fromfile(os.path.join(OUT, 'height.bin'), '<i2').reshape(n, n) / 100
+import base64
+b64 = lambda f: base64.b64decode(json.load(open(os.path.join(OUT, f)))['b64'])
+Y = np.frombuffer(b64('height.json'), '<i2').reshape(n, n) / 100
 cx, cz, R, S = float(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])   # centre, half-size (m), px/m
 W = int(2 * R * S)
 def px(p): return np.round(((np.asarray(p).reshape(-1, 2) - [cx - R, cz - R]) * S) * 8).astype(np.int32)
@@ -35,7 +37,7 @@ for f in g['fences']:
 for run in [r["p"] for r in g["poles"]]:
     for q in run:
         c = tuple(int(v) for v in ((np.array(q) - [cx - R, cz - R]) * S)); cv2.circle(img, c, 2, (0, 0, 0), -1)
-t = np.fromfile(os.path.join(OUT, 'trees.bin'), dtype=[('x', '<i2'), ('z', '<i2'), ('t', 'u1'), ('s', 'u1')])
+t = np.frombuffer(b64('trees.json'), dtype=[('x', '<i2'), ('z', '<i2'), ('t', 'u1'), ('s', 'u1')])
 cols = [(30, 110, 30), (50, 150, 60), (20, 70, 20), (60, 180, 120), (20, 90, 60), (90, 170, 150)]
 for x, z, ty, s in t:
     x, z = x / 10, z / 10

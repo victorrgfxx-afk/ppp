@@ -5,8 +5,10 @@ import * as THREE from 'three';
 export const GEO = { ready: false };
 
 export async function loadGeo(base) {
-  const get = (f, type) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r[type](); });
-  const [json, h, far, trees] = await Promise.all([get('geo.json', 'json'), get('height.bin', 'arrayBuffer'), get('far.bin', 'arrayBuffer'), get('trees.bin', 'arrayBuffer')]);
+  const get = (f) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
+  // binary grids travel as base64 in JSON (static hosts may refuse .bin)
+  const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
+  const [json, h, far, trees] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('far.json').then(bin), get('trees.json').then(bin)]);
   Object.assign(GEO, json);
   const g = json.meta.grid;
   GEO.n = g.n; GEO.ext = g.ext; GEO.step = g.step;
