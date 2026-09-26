@@ -55,7 +55,7 @@ export function wallAlongZ(x, z0, z1, yBotOff, yTopOff, facing = 1, tile = 1, st
 }
 
 export function buildStreet(batch, world, opts) {
-  const { zA, zB, aprons } = opts;
+  const { zA, zB, aprons, beds = [], westAprons = [] } = opts;
   const flat = (off) => (x, z, b) => b + off;
 
   // Asphalt with a slight crown (2%) so light plays across it like on the real road
@@ -67,7 +67,7 @@ export function buildStreet(batch, world, opts) {
   batch.add(M.curb, wallAlongZ(W.PAVER_X1, zA, zB, 0.0, W.CURB_H, -1, 0.5, 2), null, { noCast: true });
 
   // East strip (curb top .. fence): gravel, with concrete aprons (driveways) where given
-  const cuts = [...aprons].sort((a, b) => a.z0 - b.z0);
+  const cuts = [...aprons.map(a => ({ ...a, kind: 'apron' })), ...beds.map(a => ({ ...a, kind: 'bed' }))].sort((a, b) => a.z0 - b.z0);
   let z = zA;
   const curbTop = (x0, x1, za, zb, material, tile) => {
     batch.add(M.curb, stripGeo([W.PAVER_X1, W.CURB_X1], za, zb, flat(W.CURB_H), 0.5, 0.5, 2), null, { noCast: true });
@@ -75,17 +75,29 @@ export function buildStreet(batch, world, opts) {
   };
   for (const c of cuts) {
     if (c.z0 > z) curbTop(W.CURB_X1, W.EAST_FENCE + 0.4, z, c.z0, M.gravel, 1.2);
-    // apron: concrete sloping from curb to the gate
     batch.add(M.curb, stripGeo([W.PAVER_X1, W.CURB_X1], c.z0, c.z1, flat(W.CURB_H), 0.5, 0.5, 2), null, { noCast: true });
-    batch.add(M.concrete, stripGeo([W.CURB_X1, W.EAST_FENCE + 0.4], c.z0, c.z1,
-      (x, zz, b) => b + W.CURB_H + (x - W.CURB_X1) * 0.05, 2.2, 1.1, 2), null, { noCast: true });
+    if (c.kind === 'bed') {
+      // flower bed: raised concrete edging + planted soil (photo 6)
+      batch.add(M.curb, wallAlongZ(W.CURB_X1, c.z0, c.z1, W.CURB_H, W.CURB_H + 0.1, -1, 0.5, 2), null, { noCast: true });
+      batch.add(M.curb, stripGeo([W.CURB_X1, W.CURB_X1 + 0.08], c.z0, c.z1, flat(W.CURB_H + 0.1), 0.5, 0.5, 2), null, { noCast: true });
+      batch.add(M.soil, stripGeo([W.CURB_X1 + 0.08, W.EAST_FENCE + 0.4], c.z0, c.z1, flat(W.CURB_H + 0.07), 1.5, 1.5, 2), null, { noCast: true });
+    } else {
+      // apron: concrete sloping from curb to the gate
+      batch.add(M.concrete, stripGeo([W.CURB_X1, W.EAST_FENCE + 0.4], c.z0, c.z1,
+        (x, zz, b) => b + W.CURB_H + (x - W.CURB_X1) * 0.05, 2.2, 1.1, 2), null, { noCast: true });
+    }
     z = c.z1;
   }
   if (z < zB) curbTop(W.CURB_X1, W.EAST_FENCE + 0.4, z, zB, M.gravel, 1.2);
 
-  // West grass verge
-  batch.add(M.grassGround, stripGeo([W.WEST_FENCE - 0.4, -2.6, -W.ROAD_HALF], zA, zB,
-    (x, zz, b) => b + (x > -2.2 ? 0.0 : 0.04), 3, 3, 2), null, { noCast: true });
+  // West grass verge, interrupted by concrete aprons in front of gates (photo 8)
+  let wz = zA;
+  for (const a of [...westAprons].sort((p, q) => p.z0 - q.z0)) {
+    if (a.z0 > wz) batch.add(M.grassGround, stripGeo([W.WEST_FENCE - 0.4, -2.6, -W.ROAD_HALF], wz, a.z0, (x, zz, b) => b + (x > -2.2 ? 0.0 : 0.04), 3, 3, 2), null, { noCast: true });
+    batch.add(M.concrete, stripGeo([a.x1 - 0.1, -W.ROAD_HALF], a.z0, a.z1, (x, zz, b) => b + 0.01 + (-W.ROAD_HALF - x) * 0.03, 2.2, 1.1, 2), null, { noCast: true });
+    wz = a.z1;
+  }
+  if (wz < zB) batch.add(M.grassGround, stripGeo([W.WEST_FENCE - 0.4, -2.6, -W.ROAD_HALF], wz, zB, (x, zz, b) => b + (x > -2.2 ? 0.0 : 0.04), 3, 3, 2), null, { noCast: true });
   // asphalt edge lip on the west
   batch.add(M.asphalt, wallAlongZ(-W.ROAD_HALF, zA, zB, -0.1, 0.0, -1, 1.3, 4), null, { noCast: true });
 
@@ -141,26 +153,28 @@ export function buildGround(batch) {
   // road continues beyond the playable area (visible into the haze)
 }
 
-// Distant forested hills with aerial perspective, like the hill at the end of the street.
+// Distant forested hills with aerial perspective: the wooded ridge at the north end (photo 1)
+// and the closer hill with a bare, eroded clay slope at the south end (photos 6-8).
 export function buildHills(scene) {
-  const segA = 160, segR = 10;
-  const pos = [], uv = [], col = [], idx = [];
-  const r0 = 520, r1 = 1700;
+  const segA = 200, segR = 12;
+  const pos = [], uv = [], idx = [];
+  const r0 = 360, r1 = 1700;
+  const a0 = Math.PI - 0.07;                    // south hill, slightly east of the street axis
   for (let j = 0; j <= segR; j++) {
     const t = j / segR;
-    const rad = r0 + (r1 - r0) * Math.pow(t, 1.3);
+    const rad = r0 + (r1 - r0) * Math.pow(t, 1.35);
     for (let i = 0; i <= segA; i++) {
       const a = i / segA * Math.PI * 2;
       const x = Math.sin(a) * rad, z = -Math.cos(a) * rad;
-      // stronger relief to the north (end of the street), lower to the sides
-      const north = Math.max(0, -Math.cos(a));
+      const north = Math.max(0, Math.cos(a));
       const ridge = fbm(Math.cos(a) * 3 + 10, Math.sin(a) * 3 + 10, 5, 1e9, 3);
-      let h = (40 + 170 * north + 120 * ridge) * Math.min(1, t * 2.2 + 0.05);
-      h *= 0.6 + 0.5 * fbm(x / 250, z / 250, 3, 1e9, 9);
+      let h = (35 + 160 * north + 100 * ridge) * Math.min(1, t * 2.4 + 0.05);
+      const da = Math.atan2(Math.sin(a - a0), Math.cos(a - a0));
+      h += 75 * Math.exp(-((da / 0.42) ** 2)) * Math.min(1, t * 3.2) * Math.exp(-Math.max(0, rad - 520) / 500);
+      h *= 0.65 + 0.45 * fbm(x / 250, z / 250, 3, 1e9, 9);
       if (j === 0) h = -6;
       pos.push(x, h + baseHeight(Math.max(-200, Math.min(130, z))) * 0.5, z);
       uv.push(a * 60, rad / 30);
-      col.push(t, 0, 0);
     }
   }
   for (let j = 0; j < segR; j++) for (let i = 0; i < segA; i++) {
@@ -175,20 +189,32 @@ export function buildHills(scene) {
   const matl = new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: TEX.forest },
+      uNoise: { value: TEX.noise },
       uSun: { value: new THREE.Vector3(-0.45, 0.62, 0.64).normalize() },
       uHaze: { value: new THREE.Color(0.56, 0.60, 0.65) },
-      uFogStart: { value: 250 }, uFogEnd: { value: 2200 },
+      uFogStart: { value: 200 }, uFogEnd: { value: 2200 },
+      uCliff: { value: new THREE.Vector3(Math.sin(a0) * 400 - 12, 0, -Math.cos(a0) * 400) },
     },
-    vertexShader: `varying vec2 vUv; varying vec3 vN; varying float vD; varying float vH;
+    vertexShader: `varying vec2 vUv; varying vec3 vN; varying float vD; varying vec3 vW;
       void main(){ vUv = uv; vN = normalize(normal); vec4 wp = modelMatrix*vec4(position,1.0);
-      vD = length(wp.xyz - cameraPosition); vH = position.y;
+      vW = wp.xyz; vD = length(wp.xyz - cameraPosition);
       gl_Position = projectionMatrix*viewMatrix*wp; }`,
-    fragmentShader: `uniform sampler2D uMap; uniform vec3 uSun; uniform vec3 uHaze; uniform float uFogStart; uniform float uFogEnd;
-      varying vec2 vUv; varying vec3 vN; varying float vD; varying float vH;
+    fragmentShader: `uniform sampler2D uMap; uniform sampler2D uNoise; uniform vec3 uSun; uniform vec3 uHaze; uniform float uFogStart; uniform float uFogEnd; uniform vec3 uCliff;
+      varying vec2 vUv; varying vec3 vN; varying float vD; varying vec3 vW;
       void main(){
-        vec3 alb = texture2D(uMap, vUv).rgb;
-        alb = pow(alb, vec3(2.2));
-        float ndl = max(dot(normalize(vN), uSun), 0.0);
+        vec3 n = normalize(vN);
+        vec3 alb = pow(texture2D(uMap, vUv).rgb, vec3(2.2));
+        // eroded clay slope on the north face of the south hill
+        vec2 dq = (vW.xz - uCliff.xz) / vec2(48.0, 70.0);
+        float nz = texture2D(uNoise, vW.xz * 0.012).g;
+        float mask = (1.0 - smoothstep(0.55, 1.0, length(dq) + (nz - 0.5) * 0.6));
+        mask *= smoothstep(-0.05, -0.35, n.z);
+        mask *= smoothstep(4.0, 14.0, vW.y) * (1.0 - smoothstep(38.0, 60.0, vW.y + (nz - 0.5) * 20.0));
+        float streak = 0.75 + 0.25 * sin(vW.x * 0.9 + nz * 9.0) * texture2D(uNoise, vec2(vW.x * 0.05, vW.y * 0.01)).r;
+        vec3 clay = vec3(0.47, 0.42, 0.34) * streak;
+        float scrub = smoothstep(0.55, 0.75, texture2D(uNoise, vW.xz * 0.05 + vW.y * 0.03).b);
+        alb = mix(alb, mix(clay, alb, scrub * 0.8), mask);
+        float ndl = max(dot(n, uSun), 0.0);
         vec3 lit = alb * (0.5 + 0.9 * ndl) * 1.2;
         float f = clamp((vD - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
         f = 1.0 - pow(1.0 - f, 1.6);

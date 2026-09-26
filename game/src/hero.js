@@ -194,8 +194,9 @@ export function buildHero(batch, world, forest, fx) {
     const T = wallMatrix(gx, py, gz0, FACE.W);
     const opsGF = [[0.9, 2.1, 1.0 - 0.1, 2.3 - 0.05], [2.55, 3.45, 0.0, 2.2]];
     const opL = [lz0 - gz0, lz1 - gz0, ly0 - py, eave - py];
-    for (const g of wallGeos(gz1 - gz0, eave - py, [...opsGF, opL], 1.5)) batch.add(M.stuccoGrayLight, g, T);
-    addWindow(batch, T, opsGF[0], { frame: M.woodLight, glass: M.windowBlinds, reveal: M.stuccoGrayLight });
+    for (const g of wallGeos(gz1 - gz0, 2.9 - py, opsGF, 0.5)) batch.add(M.brick, g, T);
+    for (const g of wallGeos(gz1 - gz0, eave - 2.9, [[opL[0], opL[1], opL[2] - (2.9 - py), opL[3] - (2.9 - py)]], 1.5)) { g.translate(0, 2.9 - py, 0); batch.add(M.stuccoGrayLight, g, T); }
+    addWindow(batch, T, opsGF[0], { frame: M.woodLight, glass: M.windowBlinds, reveal: M.brick });
     addWindow(batch, T, opsGF[1], { door: true, frame: M.woodDark, doorMat: M.woodDark, reveal: M.stuccoGrayLight });
     // gable triangle minus the loggia opening (polygons CCW in the (z, y) plane => facing -X)
     const zAtY = (y, side) => zc + side * hw * (ridge - y) / (ridge - eave);

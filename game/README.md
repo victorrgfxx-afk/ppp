@@ -1,6 +1,6 @@
 # Strada · Prahova — joc open‑world first‑person
 
-Strada și casa din cele 5 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci).
+Strada și casa din cele 10 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci).
 
 ## Pornire
 
@@ -25,7 +25,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | F / E | urcă în mașina de lângă tine | coboară |
 | V | – | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
-| 1 – 5 | te duce exact în punctul din care a fost făcută fiecare poză | |
+| 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare din cele 10 poze | |
 | P / Esc | captură ecran / meniu (calitate grafică, sunet) | |
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
@@ -34,6 +34,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
 
 * **Texturi reale din poze** (`tools/extract_textures.py`): fațada prispei și a verandei (fereastra albă, pălăria roșie, jaluzelele, ușa), peretele bej cu aerisirile, tabla acoperișului, ecranul de iederă al gardului (tăiat exact între bare, ca barele 3D să cadă peste cele din poză), placajul de piatră, zidul de piatră al vecinului, betonul, cornierul ruginit de la bordură și asfaltul (rectificat de sus din poza 1).
 * **Dimensiuni**: estimate din poze folosind repere cu mărime cunoscută (lățimea Opel Corsa C = 1,65 m, BMW E90 = 4,52 m, înălțimea camerei ≈ 1,5 m, lățimea ușii). Poziția casei, a gardului, a stâlpului, a BMW‑ului și a Opel‑ului „PH 13 KLI”, a SUV‑ului, a gropii de canal și a marcajelor sunt puse după poze; eroarea e de ordinul zecilor de centimetri, nu măsurători cu ruleta.
+* **Partea de sud** (pozele 6–10): Peugeot 508 gri „PH 77 XXS”, straturile cu plante (yucca, urechea‑ursului, arbuști) cu bordură de beton, zidul gri de vizavi cu tencuială reală din poză, soclu de piatră, coamă de țiglă, poarta mare de lemn și portița nr. 10 cu cutia poștală, platforma de beton, gardul vișiniu cu oțetarul, stâlpii cu lămpi LED pe partea de est, trecătorul cu sacoșa galbenă și dealul de la capăt cu râpa de lut.
 * **Restul străzii** (casele mai îndepărtate, curțile din spate) e generat procedural în stilul străzii, ca să ai unde să te plimbi.
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 
@@ -51,6 +52,7 @@ src/main.js           bucla jocului, camere, intrare/ieșire din mașină
 src/hero.js           casa din poze (fațadă, prispă, verandă, foișor, poartă, țevi de gaz)
 src/world.js          stradă, vecini, stâlpi, fire, mașini parcate, vegetație
 src/cars.js           caroserii parametrice   src/vehicle.js  fizica mașinii
+src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 tools/extract_textures.py   extrage și rectifică texturile din reference/*.jpg
@@ -65,4 +67,4 @@ python3 -m http.server 8765 &
 node tools/smoke-test.mjs shots high
 ```
 
-Încarcă jocul, verifică erorile din consolă, face capturi din cele 5 unghiuri ale pozelor și conduce BMW‑ul câțiva metri.
+Încarcă jocul, verifică erorile din consolă, face capturi din cele 10 unghiuri ale pozelor și conduce BMW‑ul câțiva metri.

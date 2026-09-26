@@ -5,8 +5,8 @@ import { Batcher, rng, mat, boxGeo, cylGeo, tubeGeo } from './util.js';
 import { buildStreet, buildGround, buildHills } from './terrain.js';
 import { buildHero } from './hero.js';
 import { genericHouse, addWindow, wallGeos, wallMatrix, FACE, hipRoof, gableRoof } from './buildings.js';
-import { ironIvyFence, stoneWallChainFence, picketFence, panelFence, wallFence, fenceGate } from './fences.js';
-import { Forest, spruceArchetype, broadleafArchetype, buildGrass } from './vegetation.js';
+import { ironIvyFence, stoneWallChainFence, picketFence, panelFence, wallFence, fenceGate, plasterWall, boardGate } from './fences.js';
+import { Forest, spruceArchetype, broadleafArchetype, buildGrass, sumacArchetype, yuccaArchetype } from './vegetation.js';
 import { concretePole, wire } from './poles.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -24,6 +24,8 @@ const fx = {
   bush: () => broadleafArchetype(32, { H: 1.7, crown: 0.9, bush: true, density: 0.8 }),
   lambEar: () => broadleafArchetype(33, { H: 0.55, crown: 0.4, bush: true, leafMat: 'leavesSmall', density: 0.35 }),
   potPlant: () => broadleafArchetype(34, { H: 0.4, crown: 0.3, bush: true, leafMat: 'leavesSmall', density: 0.4 }),
+  sumac: () => sumacArchetype(41, 4.3),
+  yucca: () => yuccaArchetype(42, 0.85),
   flowerBox: () => broadleafArchetype(35, { H: 0.22, crown: 0.2, bush: true, leafMat: 'leavesSmall', density: 0.3 }),
 };
 
@@ -46,6 +48,8 @@ export function buildWorld(scene, world, quality) {
   CB = batch; CW = world;
   const forest = new Forest(scene);
   const aprons = [{ z0: -5.45, z1: 6.75 }];
+  const beds = [{ z0: 6.75, z1: 17.0 }];
+  const westAprons = [{ z0: 2.4, z1: 12.6, x1: -4.3 }];
   const houses = [];      // for service drops / minimap
   const r = rng(2024);
 
@@ -112,16 +116,17 @@ export function buildWorld(scene, world, quality) {
 
   // South neighbour: maroon picket fence, planted strip (photo 5)
   chunked(picketFence, { x: W.EAST_FENCE, z0: 9.0, z1: 27 });
-  for (let z = 9.4; z < 16.5; z += 0.7) {
-    forest.add('lambEar', fx.lambEar, 3.0 + r() * 0.55, baseHeight(z) + W.CURB_H, z + r() * 0.3, r() * 6, 0.8 + r() * 0.6);
+  const bedY = W.CURB_H + 0.07;
+  for (let z = 7.4; z < 16.6; z += 0.55) {
+    forest.add('lambEar', fx.lambEar, 2.95 + r() * 0.35, bedY, z + r() * 0.3, r() * 6, 0.7 + r() * 0.6);
   }
-  forest.add('bush', fx.bush, 3.4, W.CURB_H, 10.5, 0.5, 1.15);
-  forest.add('bush', fx.bush, 3.3, W.CURB_H, 12.8, 2.5, 1.0);
+  for (const [x, z, s] of [[3.35, 9.6, 1.0], [3.25, 13.4, 1.15], [3.45, 15.6, 0.8]]) forest.add('yucca', fx.yucca, x, bedY, z, z * 2, s);
+  for (const [x, z, s] of [[3.45, 7.9, 1.2], [3.5, 11.6, 1.35], [3.4, 16.2, 1.0]]) forest.add('bush', fx.bush, x, bedY, z, z, s);
   forest.add('fruitTree', fx.fruitTree, 5.5, 0.3, 11.0, 0.3, 1.25);
   forest.add('broad', fx.broad, 6.0, 0.3, 14.5, 2.3, 0.8);
 
   // ---------- opposite side (west) as in photo 1 ----------
-  chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -12.3, z1: 12, postMat: M.tealMetal, rounded: false, h: 1.55 });
+  chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -12.3, z1: 2.3, postMat: M.tealMetal, rounded: false, h: 1.55 });
   fenceGate(batch, world, { x: W.WEST_FENCE, dir: -1, z0: -13.35, z1: -12.35, groundY: 0.04, open: 0, style: 'picket' });
   chunked(panelFence, { x: W.WEST_FENCE, dir: -1, z0: -36, z1: -13.4 });
   {
@@ -130,10 +135,36 @@ export function buildWorld(scene, world, quality) {
     genericHouse(batch, world, T, { seed: 7, zc, fx: 9.5, width: 9.5, depth: 9, floors: 2, baseY: 0.34, wall: 'stuccoWhite', roof: 'roofMetalGray', roofType: 'gable' });
     // brick chimney visible above the roof in photo 1
     batch.add(M.brick, boxGeo(0.55, 2.2, 0.55, 0.6), mat(-13.2, 8.7, -10.2));
-    for (const [x, z, s, t] of [[-6.2, -3.2, 1.1, 'walnut'], [-5.4, -9.8, 0.85, 'broad'], [-6.0, 4.5, 0.9, 'broadDark'], [-4.6, 8.5, 0.7, 'broad']]) forest.add(t, fx[t], x, 0.04, z, x * z, s);
+    for (const [x, z, s, t] of [[-6.2, -3.2, 1.1, 'walnut'], [-5.4, -9.8, 0.85, 'broad']]) forest.add(t, fx[t], x, 0.04, z, x * z, s);
     houses.push({ side: -1, z0: zc - 4.75, z1: zc + 4.75, x: -9.5, drop: V(-9.6, 5.5, zc - 3) });
     world.addRegion(-40, W.WEST_FENCE - 0.3, -40, 12, 0.3);
   }
+  // Across from the gate: gray plaster wall, stone ledge, tile coping, wooden car gate,
+  // pedestrian door no. 10 with a mailbox, wide concrete apron (photo 8)
+  {
+    const wx = -4.3, gy = 0.06;
+    plasterWall(batch, world, { x: wx, z0: 2.35, z1: 2.75, groundY: gy, h: 1.95, ledge: false });
+    boardGate(batch, world, { x: wx, z0: 2.75, z1: 6.25, groundY: gy, h: 2.05, peak: 0.32 });
+    plasterWall(batch, world, { x: wx, z0: 6.25, z1: 6.6, groundY: gy, h: 1.95, ledge: false });
+    plasterWall(batch, world, { x: wx, z0: 6.6, z1: 8.85, groundY: gy, h: 1.72 });
+    batch.add(M.woodDark, boxGeo(0.14, 0.34, 0.3), mat(wx + 0.07, gy + 1.38, 8.55));
+    boardGate(batch, world, { x: wx, z0: 8.85, z1: 9.8, groundY: gy, h: 1.92, peak: 0.2, board: 0.105, number: 'houseNo10', handle: true });
+    plasterWall(batch, world, { x: wx, z0: 9.8, z1: 12.3, groundY: gy, h: 1.72 });
+    genericHouse(batch, world, westT(8.5), { seed: 11, zc: 8.5, fx: 10.5, width: 10, depth: 8.5, floors: 1, baseY: 0.34, wall: 'stuccoCream', roof: 'roofMetalGray', roofType: 'hip' });
+    houses.push({ side: -1, z0: 3.5, z1: 13.5, x: -10.5, drop: V(-10.6, 3.1, 5) });
+    forest.add('walnut', fx.walnut, -7.2, 0.3, 11.8, 0.7, 1.05);
+    forest.add('broad', fx.broad, -6.8, 0.3, 4.2, 2.1, 0.95);
+    world.addRegion(-40, wx - 0.3, 2.3, 12.6, 0.3);
+  }
+  // then a grass verge and a maroon corrugated fence with a staghorn sumac (photo 7)
+  chunked(panelFence, { x: -4.6, dir: -1, z0: 12.8, z1: 33.5, m: M.roofMetalRed });
+  forest.add('sumac', fx.sumac, -5.6, 0.3, 21.5, 0.4, 1.0);
+  forest.add('sumac', fx.sumac, -5.2, 0.3, 26.0, 2.0, 0.85);
+  forest.add('bush', fx.bush, -3.9, 0.04, 14.2, 1.3, 1.1);
+  forest.add('bush', fx.bush, -4.1, 0.04, 30.5, 0.2, 0.9);
+  genericHouse(batch, world, westT(24), { seed: 12, zc: 24, fx: 12, width: 11, depth: 9, floors: 1, baseY: 0.34, wall: 'stuccoPeach', roof: 'roofMetalBrown', roofType: 'gable' });
+  houses.push({ side: -1, z0: 18.5, z1: 29.5, x: -12, drop: V(-12.1, 3.1, 20) });
+  world.addRegion(-40, -4.9, 12.6, 34, 0.3);
   {
     const zc = -25;
     genericHouse(batch, world, westT(zc), { seed: 8, zc, fx: 8.5, width: 10, depth: 8, floors: 1, baseY: 0.34, wall: 'stuccoCream', roof: 'roofMetalBrown', roofType: 'hip' });
@@ -191,19 +222,20 @@ export function buildWorld(scene, world, quality) {
   for (let z = 27; z < STREET.zB - 20;) { const w = r.range(16, 22); genLot(1, z, z + w, seed++); z += w; }
   // west
   for (let z = -36; z > STREET.zA + 20;) { const w = r.range(16, 22); genLot(-1, z - w, z, seed++); z -= w; }
-  for (let z = 12; z < STREET.zB - 20;) { const w = r.range(16, 22); genLot(-1, z, z + w, seed++); z += w; }
+  for (let z = 34; z < STREET.zB - 20;) { const w = r.range(16, 22); genLot(-1, z, z + w, seed++); z += w; }
 
   // ---------- street surface ----------
-  buildStreet(batch, world, { zA: STREET.zA, zB: STREET.zB, aprons });
+  buildStreet(batch, world, { zA: STREET.zA, zB: STREET.zB, aprons, beds, westAprons });
   for (const a of aprons.slice(1)) world.addRegion(W.CURB_X1, W.EAST_FENCE, a.z0, a.z1, 0, (x, z, bb) => bb + W.CURB_H + (x - W.CURB_X1) * 0.05);
   buildGround(batch);
 
   // ---------- poles, wires, street lamps ----------
-  const westZ = [-15.8, -52, -88, -124, -160, -196, -232, 20, 56, 92, 128, 164].sort((a, b) => a - b);
-  const eastZ = [-5.9, -40, -76, -112, -148, -184, -220, 30, 66, 102, 138, 174].sort((a, b) => a - b);
+  const westZ = [-15.8, -52, -88, -124, -160, -196, -232].sort((a, b) => a - b);
+  // south of the house the line runs on the east side, with LED street lamps (photos 6-8)
+  const eastZ = [-5.9, -40, -76, -112, -148, -184, -220, 30, 58, 86, 114, 142, 170].sort((a, b) => a - b);
   const wp = westZ.map((z, i) => concretePole(batch, world, -2.95, z, { h: 12, type: 'MV', lamp: i % 2 === 0 ? 1 : 0 }));
-  const ep = eastZ.map((z) => concretePole(batch, world, 3.3, z, { h: z === -5.9 ? 9.4 : 9.6, type: 'SC' }));
-  const lamps = wp.filter(p => p.lampHead).map(p => p.lampHead);
+  const ep = eastZ.map((z) => concretePole(batch, world, 3.3, z, { h: z === -5.9 ? 9.4 : 9.6, type: 'SC', lamp: z > 0 ? -1 : 0 }));
+  const lamps = [...wp, ...ep].filter(p => p.lampHead).map(p => p.lampHead);
   for (let i = 0; i < wp.length - 1; i++) {
     const a = wp[i], b = wp[i + 1];
     for (const ox of [-0.9, 0, 0.9]) wire(batch, V(a.x + ox, a.top - 0.1, a.z), V(b.x + ox, b.top - 0.1, b.z), 0.9, 0.01);
@@ -216,7 +248,7 @@ export function buildWorld(scene, world, quality) {
     wire(batch, V(a.x, a.top - 1.0, a.z), V(b.x, b.top - 1.0, b.z), 0.5, 0.02);
   }
   // wires crossing the street diagonally (photo 1 has lots of them)
-  for (const e of ep) {
+  for (const e of ep.filter(q => q.z < 0)) {
     const w = wp.reduce((best, p) => Math.abs(p.z - e.z) < Math.abs(best.z - e.z) ? p : best, wp[0]);
     wire(batch, V(w.x, w.top - 2.3, w.z), V(e.x, e.top - 0.3, e.z), 0.35, 0.012);
     wire(batch, V(w.x - 0.9, w.top - 0.1, w.z), V(e.x, e.top - 1.0, e.z), 0.5, 0.009);

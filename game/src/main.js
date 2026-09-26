@@ -13,6 +13,7 @@ import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { createComposer } from './post.js';
 import { WIND, damp, clamp } from './util.js';
+import { Walker } from './npc.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -27,6 +28,11 @@ const PHOTO_VIEWS = [
   { x: 1.25, z: 1.9, yaw: -1.3, pitch: 0.12, label: 'Poza 3 — casa și tufa' },
   { x: 2.35, z: 3.0, yaw: -Math.PI / 2, pitch: 0.1, label: 'Poza 4 — fațada' },
   { x: 2.2, z: 3.9, yaw: -2.05, pitch: 0.06, label: 'Poza 5 — poarta' },
+  { x: 2.35, z: 4.2, yaw: -2.8, pitch: 0.04, label: 'Poza 6 — straturile și Peugeot-ul' },
+  { x: 0.3, z: 2.0, yaw: Math.PI, pitch: 0.02, label: 'Poza 7 — strada spre sud' },
+  { x: 0.2, z: 2.6, yaw: 2.62, pitch: 0.03, label: 'Poza 8 — zidul gri de vizavi' },
+  { x: -1.4, z: 1.2, yaw: -Math.PI / 2, pitch: 0.12, label: 'Poza 9 — toată fațada' },
+  { x: 0.4, z: 0.8, yaw: -2.25, pitch: 0.08, label: 'Poza 10 — fațada și poarta' },
 ];
 
 async function main() {
@@ -81,15 +87,19 @@ async function main() {
     vehicles.push(v);
     return v;
   };
+  park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', 1.58, 13.7, Math.PI, { power: 1.1, vmax: 58 });
   park('bmw', paintMaterial(0x040405, { metallic: 0.0, rough: 0.25, dusty: 0.55 }), 'plateBMW', 2.32, -2.96, 0, { power: 1.25, vmax: 62 });
   park('corsa', paintMaterial(0xa9adb1, { metallic: 0.85, rough: 0.35, dusty: 0.3 }), 'plateOpel', 1.55, -11.75, Math.PI, { power: 0.85, vmax: 48 });
   park('suv', paintMaterial(0x1d2024, { metallic: 0.55, rough: 0.3 }), 'plateSUV', 1.72, -20.3, 0, { power: 1.1, vmax: 55 });
   park('sedan', paintMaterial(0xbfc2c5, { metallic: 0.85, rough: 0.33 }), 'plateA', 1.75, -26.3, 0, {});
   park('hatch', paintMaterial(0xe4e4e2, { metallic: 0.1, rough: 0.3 }), 'plateB', 1.7, -31.6, 0, {});
   park('sedan', paintMaterial(0xdadcdd, { metallic: 0.3, rough: 0.3 }), 'plateC', -1.35, -44.5, Math.PI, {});
-  park('hatch', paintMaterial(0x6e1f1f, { metallic: 0.6, rough: 0.3 }), 'plateA', 1.72, 24.0, Math.PI, {});
-  park('corsa', paintMaterial(0x2f4f7a, { metallic: 0.7, rough: 0.3 }), 'plateB', -1.35, 38, 0, {});
+  park('hatch', paintMaterial(0xe9e9e7, { metallic: 0.15, rough: 0.28 }), 'plateB', -1.45, 58, 0, {});
+  park('hatch', paintMaterial(0x6e1f1f, { metallic: 0.6, rough: 0.3 }), 'plateA', 1.72, 96, Math.PI, {});
+  park('corsa', paintMaterial(0x2f4f7a, { metallic: 0.7, rough: 0.3 }), 'plateB', -1.35, -70, 0, {});
   for (const v of vehicles) v.update(0.016, null);
+  // the neighbour walking home with a yellow bag (photo 7)
+  const walkers = [new Walker(scene, world, { x: -0.4, z0: 40, z1: 104 })];
 
   // ---------- player / input / audio / HUD ----------
   const player = new Player(camera, world);
@@ -217,7 +227,7 @@ async function main() {
     if (!paused) {
       if (input.hit('KeyP')) screenshot();
       if (mode === 'foot') {
-        for (let i = 0; i < 5; i++) if (input.hit('Digit' + (i + 1))) gotoView(i);
+        for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) gotoView(i);
         player.update(dt, input, audio, sens());
         const near = nearestCar();
         if (near) {
@@ -236,6 +246,7 @@ async function main() {
       }
       // parked cars (and cars pushed by collisions) settle
       for (const v of vehicles) if (v !== active) v.update(dt, null);
+      for (const w of walkers) w.update(dt);
     }
 
     // camera for driving
@@ -314,7 +325,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

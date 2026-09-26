@@ -227,3 +227,46 @@ export function fenceGate(batch, world, { x, z0, z1, groundY, dir = 1, open = 0,
   const b = world.addStatic(new Box(c.x, c.z, 0.05, w / 2, -dir * open, -5, 2, 'gate'));
   return b;
 }
+
+// Gray textured-plaster wall with a protruding stone ledge at the base and a red tile cap
+// (the fence across the street, photo 8). Built along Z between z0..z1 at face x.
+export function plasterWall(batch, world, { x, z0, z1, groundY, dir = -1, h = 1.75, ledge = true }) {
+  const L = z1 - z0, t = 0.3, cx = x + dir * t / 2, zc = (z0 + z1) / 2;
+  batch.add(M.wallPlaster, boxGeo(t, h, L, 1.2), mat(cx, groundY + h / 2, zc));
+  // tile coping, slightly overhanging, in two slopes
+  for (const sg of [-1, 1]) {
+    batch.add(M.roofTiles, boxGeo(0.22, 0.04, L + 0.06, 0.5), mat(cx + sg * 0.09, groundY + h + 0.035, zc, 0, 0, sg * 0.28));
+  }
+  if (ledge) {
+    const lw = 0.26, lh = 0.42;
+    batch.add(M.stoneCladding, boxGeo(lw, lh, L - 0.1, 1.2), mat(x - dir * lw / 2 + dir * 0.02, groundY + lh / 2, zc));
+    batch.add(M.concrete, boxGeo(lw + 0.03, 0.04, L - 0.06, 0.6), mat(x - dir * lw / 2 + dir * 0.02, groundY + lh + 0.02, zc));
+  }
+  world.addAABB(Math.min(x - dir * (ledge ? 0.28 : 0), x + dir * t), Math.max(x - dir * (ledge ? 0.28 : 0), x + dir * t), z0, z1, -5, 3, 'fence');
+}
+
+// Wooden board gate (double car gate or pedestrian door) with a gabled top.
+export function boardGate(batch, world, { x, z0, z1, groundY, dir = -1, h = 2.05, peak = 0.28, board = 0.13, number = null, handle = false }) {
+  const L = z1 - z0, zc = (z0 + z1) / 2, cx = x + dir * 0.1;
+  const n = Math.max(2, Math.round(L / board));
+  const bw = L / n;
+  for (let i = 0; i < n; i++) {
+    const z = z0 + (i + 0.5) * bw;
+    const u = Math.abs(z - zc) / (L / 2);
+    const hh = h + peak * (1 - u);
+    batch.add(M.gateBoards, boxGeo(0.035, hh, bw - 0.008, 0.25, 1.9), mat(cx, groundY + 0.05 + hh / 2, z));
+  }
+  // top trim following the gable
+  const half = L / 2, len = Math.hypot(half, peak), ang = Math.atan2(peak, half);
+  for (const sg of [-1, 1]) batch.add(M.woodDark, boxGeo(0.05, 0.05, len), mat(cx, groundY + 0.05 + h + peak / 2 + 0.02, zc + sg * half / 2, sg * ang, 0, 0));
+  // frame rails on the inner side
+  for (const yy of [0.35, h - 0.3]) batch.add(M.woodDark, boxGeo(0.05, 0.1, L - 0.1), mat(cx + dir * 0.04, groundY + yy, zc));
+  if (number) {
+    batch.add(M[number], new THREE.PlaneGeometry(0.16, 0.12), mat(cx - dir * 0.022, groundY + h - 0.05, zc, 0, dir < 0 ? Math.PI / 2 : -Math.PI / 2, 0));
+  }
+  if (handle) {
+    batch.add(M.whitePVC, boxGeo(0.03, 0.03, 0.14), mat(cx - dir * 0.04, groundY + 1.0, z1 - 0.14));
+    batch.add(M.whitePVC, boxGeo(0.03, 0.12, 0.03), mat(cx - dir * 0.04, groundY + 0.95, z1 - 0.08));
+  }
+  world.addAABB(Math.min(x, x + dir * 0.2), Math.max(x, x + dir * 0.2), z0, z1, -5, 3, 'gate');
+}

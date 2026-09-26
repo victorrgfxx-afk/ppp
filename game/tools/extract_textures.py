@@ -63,7 +63,7 @@ def _unused_remove_fence(img, y_from):
     m = cv2.dilate(cv2.bitwise_or(vert, tips), np.ones((7, 7), np.uint8))
     return cv2.inpaint(img, m, 9, cv2.INPAINT_TELEA)
 
-p1, p2, p3, p4, p5 = (load(i) for i in range(1, 6))
+p1, p2, p3, p4, p5, p6, p7, p8 = (load(i) for i in range(1, 9))
 
 # --- Fatada casei (poza 4, aproape frontala) ---
 # Portiunea deschisa a prispei (perete cu fereastra alba, palaria rosie, ghivece).
@@ -118,3 +118,7 @@ save('asphalt.jpg', seamless(asph, 'xy', 0.35), 90)
 # --- Zid de piatra sub gardul verde (poza 2) ---
 wall = quad(p2, (252, 1356), (648, 1404), (648, 1488), (252, 1426), 1024, 250)
 save('stone_wall.jpg', seamless(wall, 'x', 0.3))
+
+# --- Zidul gri de vizavi (poza 8): tencuiala decorativa grunjoasa ---
+plaster = cv2.resize(p8[1300:1430, 1450:1665], (512, 310), interpolation=cv2.INTER_LANCZOS4)
+save('wall_plaster.jpg', seamless(plaster, 'xy', 0.4))

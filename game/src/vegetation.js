@@ -120,6 +120,64 @@ export function broadleafArchetype(seed, { H = 7, crown = 3, trunkR = 0.18, leaf
   return { parts: [[mergeGeometries(wood), M.bark], [mergeGeometries(cards), M[leafMat]]] };
 }
 
+// Staghorn sumac (Rhus typhina): a few leaning stems with drooping pinnate fronds at the top.
+export function sumacArchetype(seed, H = 4.2) {
+  const r = rng(seed);
+  const wood = [], fronds = [];
+  const stems = 3 + Math.floor(r() * 2);
+  for (let s = 0; s < stems; s++) {
+    const a = r() * Math.PI * 2, lean = 0.15 + r() * 0.25;
+    const top = new THREE.Vector3(Math.cos(a) * H * lean, H * (0.8 + r() * 0.25), Math.sin(a) * H * lean);
+    const mid = top.clone().multiplyScalar(0.5).add(new THREE.Vector3((r() - 0.5) * 0.3, 0, (r() - 0.5) * 0.3));
+    wood.push(strip(taperedCyl(new THREE.Vector3(0, -0.1, 0), mid, 0.07, 0.055, 6)));
+    wood.push(strip(taperedCyl(mid, top, 0.055, 0.03, 5)));
+    const n = 11 + Math.floor(r() * 5);
+    for (let i = 0; i < n; i++) {
+      const fa = i / n * Math.PI * 2 + r() * 0.4;
+      const L = 0.8 + r() * 0.4;
+      const g = cardGeo(0.42, L, fa, -0.15 + r() * 0.55, 0, 0);
+      g.translate(top.x, top.y - 0.05, top.z);
+      fronds.push(strip(g));
+    }
+  }
+  return { parts: [[mergeGeometries(wood), M.bark], [mergeGeometries(fronds), M.sumac]] };
+}
+
+// Yucca / agave rosette (the spiky plants in the flower strip, photo 6).
+export function yuccaArchetype(seed, H = 0.8) {
+  const r = rng(seed);
+  const pos = [], col = [], idx = [];
+  let base = 0;
+  const blades = 34;
+  for (let b = 0; b < blades; b++) {
+    const a = b * 2.39996 + r() * 0.2;
+    const up = 0.35 + r() * 0.9;                 // angle from horizontal
+    const L = H * (0.6 + r() * 0.5);
+    const w = 0.028 + r() * 0.018;
+    const dx = Math.cos(a), dz = Math.sin(a);
+    const segs = 3;
+    for (let s = 0; s <= segs; s++) {
+      const t = s / segs;
+      const ang = up - t * t * 0.35;
+      const rr = L * t * Math.cos(ang), yy = L * t * Math.sin(up) - t * t * L * 0.12;
+      const ww = w * (1 - t * 0.95) * (s === 0 ? 0.7 : 1);
+      const cx = dx * rr, cz = dz * rr;
+      pos.push(cx - dz * ww, yy, cz + dx * ww, cx + dz * ww, yy, cz - dx * ww);
+      const g = 0.55 + 0.45 * t;
+      const c = [0.13 * g + 0.05, 0.27 * g + 0.06, 0.12 * g + 0.03];
+      col.push(...c, c[0] + 0.12 * t, c[1] + 0.1 * t, c[2]);
+    }
+    for (let s = 0; s < segs; s++) { const a0 = base + s * 2; idx.push(a0, a0 + 1, a0 + 2, a0 + 1, a0 + 3, a0 + 2); }
+    base += (segs + 1) * 2;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return { parts: [[g, M.yucca]] };
+}
+
 // ---------- instanced placement ----------
 export class Forest {
   constructor(scene) { this.scene = scene; this.types = new Map(); }

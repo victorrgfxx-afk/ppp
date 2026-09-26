@@ -16,6 +16,7 @@ const PHOTOS = {
   roof_panels:    { file: 'roof_panels.jpg',    normal: 1.5 },
   ivy:            { file: 'ivy.jpg',            normal: 2.0 },
   rust_strip:     { file: 'rust_strip.jpg',     normal: 1.0 },
+  wall_plaster:   { file: 'wall_plaster.jpg',   normal: 3.0 },
 };
 
 function loadImage(url) {
@@ -542,7 +543,16 @@ function genPlate(text, key) {
   TEX[key] = tex(c, { repeat: false });
 }
 
-function genWheel(key, spokes = 5, color = '#b9bcc0', twin = true) {
+function genHouseNo(text, key) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f2f2ee'; g.beginPath(); g.ellipse(64, 48, 60, 44, 0, 0, 7); g.fill();
+  g.strokeStyle = '#222'; g.lineWidth = 4; g.stroke();
+  g.fillStyle = '#111'; g.font = 'bold 52px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 64, 52);
+  TEX[key] = tex(c, { repeat: false });
+}
+
+function genWheel(key, spokes = 5, color = '#b9bcc0', twin = true, bmw = false) {
   const n = 256;
   const c = document.createElement('canvas'); c.width = c.height = n;
   const ctx = c.getContext('2d');
@@ -563,8 +573,10 @@ function genWheel(key, spokes = 5, color = '#b9bcc0', twin = true) {
   }
   ctx.beginPath(); ctx.arc(cx, cx, cx * 0.25, 0, 7); ctx.fill();
   ctx.fillStyle = '#e8e8e8'; ctx.beginPath(); ctx.arc(cx, cx, cx * 0.1, 0, 7); ctx.fill();
-  ctx.fillStyle = '#2863b8';
-  for (let q = 0; q < 2; q++) { ctx.beginPath(); ctx.moveTo(cx, cx); ctx.arc(cx, cx, cx * 0.085, q * Math.PI, q * Math.PI + Math.PI / 2); ctx.fill(); }
+  if (bmw) {
+    ctx.fillStyle = '#2863b8';
+    for (let q = 0; q < 2; q++) { ctx.beginPath(); ctx.moveTo(cx, cx); ctx.arc(cx, cx, cx * 0.085, q * Math.PI, q * Math.PI + Math.PI / 2); ctx.fill(); }
+  } else { ctx.fillStyle = '#8d9196'; ctx.beginPath(); ctx.arc(cx, cx, cx * 0.07, 0, 7); ctx.fill(); }
   // lug nuts
   ctx.fillStyle = '#777';
   for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2 + 0.3; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * cx * 0.17, cx + Math.sin(a) * cx * 0.17, 4, 0, 7); ctx.fill(); }
@@ -631,11 +643,14 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   for (const [label, fn] of gens) { fn(); tick(label); await yieldUI(); }
   genPlate('PH 13 KLI', 'plateOpel');
   genPlate('PH 07 ALX', 'plateBMW');
+  genPlate('PH 77 XXS', 'plate508');
+  genHouseNo('10', 'houseNo10');
   genPlate('B 162 DDC', 'plateSUV');
   genPlate('PH 22 VIC', 'plateA');
   genPlate('PH 05 RMN', 'plateB');
   genPlate('B 93 MHD', 'plateC');
-  genWheel('wheelBMW', 5, '#b7babe', true);
+  genWheel('wheelBMW', 5, '#b7babe', true, true);
+  genWheel('wheel508', 5, '#aeb2b7', true);
   genWheel('wheelOpel', 6, '#a9adb2', false);
   genWheel('wheelSUV', 5, '#2d2f33', true);
   genWheel('wheelGen', 7, '#c3c6ca', false);

@@ -143,6 +143,7 @@ export class Vehicle {
         if (b === this.box || b.y1 < 0.45 || b.ghost) continue;
         const p = boxBox(this.box, b);
         if (!p) continue;
+        if (b.npc) { b.npc.hit(this, p); continue; }
         any = true;
         if (b.vehicle) {
           // push both cars (equal mass), exchange normal velocity

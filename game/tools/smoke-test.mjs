@@ -1,4 +1,4 @@
-// Headless smoke test: loads the game, checks for errors, captures the 5 photo viewpoints
+// Headless smoke test: loads the game, checks for errors, captures the 10 photo viewpoints
 // and a driving shot.  Usage:
 //   python3 -m http.server 8765   (in game/)
 //   node tools/smoke-test.mjs [outDir] [quality]
@@ -27,7 +27,7 @@ const ok = await page.evaluate(() => !!window.__game);
 if (!ok) { console.log(await page.textContent('#loadText')); }
 await page.evaluate(() => window.__game.begin());
 const frames = async (n) => { for (let i = 0; i < n; i++) await page.evaluate(() => new Promise(r => requestAnimationFrame(() => r()))); };
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < 10; i++) {
   await page.evaluate((k) => window.__game.gotoView(k), i);
   await frames(6);
   await page.screenshot({ path: `${out}/view${i + 1}.png` });
