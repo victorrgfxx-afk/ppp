@@ -12,13 +12,17 @@ export const W = {
   CURB_H: 0.13,
   EAST_FENCE: 3.7,          // face of east fences / stone walls
   WEST_FENCE: -3.3,         // face of west fences
-  Z_MIN: -205, Z_MAX: 135,  // playable area along the street
+  Z_MIN: -1440, Z_MAX: 1440, // playable area: the whole mapped square (+-1.5 km)
+  X_MIN: -1440, X_MAX: 1440,
   LOT_DEPTH: 34,            // lots are 34 m deep on each side
 };
 
-// Road/terrain base elevation along the street. Flat in the photographed part,
-// rising gently at both ends (as seen at the far end of photo 1).
+// Road/terrain base elevation along the street: the real long profile of Strada Gării
+// (EU-DEM, cut & fill like the road), level in the photographed stretch.
+let PROFILE = null;
+export function setProfile(fn) { PROFILE = fn; }
 export function baseHeight(z) {
+  if (PROFILE) return PROFILE(z);
   let h = 0;
   const n = Math.max(0, -38 - z);
   h += 0.072 * (n - 12 * (1 - Math.exp(-n / 12)));

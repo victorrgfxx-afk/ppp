@@ -2,7 +2,7 @@ import { W } from './config.js';
 
 // GTA-style round minimap (rotates with the view), prompts, speedometer.
 export class HUD {
-  constructor(world, houses) {
+  constructor(world, houses, opts = {}) {
     this.el = {
       prompt: document.getElementById('prompt'),
       speed: document.getElementById('speed'),
@@ -16,6 +16,7 @@ export class HUD {
     this.map = document.getElementById('minimap');
     this.ctx = this.map.getContext('2d');
     this.fpsAcc = 0; this.fpsN = 0; this.toastT = 0;
+    if (opts.geo) { this.geoMap(opts.geo, opts.ortho); return; }
     // pre-render the static map (1 px = 0.5 m)
     const S = 2, X0 = -70, X1 = 70, Z0 = -270, Z1 = 200;
     this.S = S; this.X0 = X0; this.Z0 = Z0;
@@ -39,6 +40,40 @@ export class HUD {
     this.static = c;
     void houses;
   }
+  // GTA-style map of the real area: Sentinel-2 ground, water, OSM roads, rails and buildings
+  geoMap(G, orthoImg) {
+    const ext = G.ext, S = 0.6;
+    this.northRot = Math.PI - G.meta.origin.bearing * Math.PI / 180;   // real north in the game frame
+    this.S = S; this.X0 = -ext; this.Z0 = -ext;
+    const c = document.createElement('canvas');
+    c.width = c.height = Math.round(2 * ext * S);
+    const g = c.getContext('2d');
+    g.filter = 'saturate(0.55) brightness(0.62) contrast(1.1)';
+    if (orthoImg) g.drawImage(orthoImg, 0, 0, c.width, c.height);
+    g.filter = 'none';
+    const X = (x) => (x + ext) * S;
+    g.fillStyle = '#3f7fc4';
+    for (const [i, j] of G.water) g.fillRect(X(-ext + i * G.step) - 0.3, X(-ext + j * G.step) - 0.3, G.step * S + 0.6, G.step * S + 0.6);
+    const line = (flat, w, color, dash = null) => {
+      g.strokeStyle = color; g.lineWidth = Math.max(0.8, w * S); g.setLineDash(dash || []);
+      g.beginPath();
+      for (let i = 0; i < flat.length; i += 2) { const px = X(flat[i]), pz = X(flat[i + 1]); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); }
+      g.stroke();
+    };
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const r of G.rails) line(r.p, 2.2, '#5a5550', [3, 2]);
+    const major = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary']);
+    for (const r of G.roads) if (!major.has(r.c)) line(r.p, Math.max(2.5, r.w + 1), r.s === 'asphalt' ? '#b9b7b1' : '#a89a7e');
+    for (const r of G.roads) if (major.has(r.c)) line(r.p, r.w + 2, r.c.startsWith('trunk') ? '#e8b04a' : '#f2f0ea');
+    g.setLineDash([]);
+    g.fillStyle = '#d9cdb8'; g.strokeStyle = 'rgba(40,35,30,0.6)'; g.lineWidth = 0.6;
+    for (const b of G.buildings) {
+      g.beginPath();
+      for (let i = 0; i < b.p.length; i += 2) { const px = X(b.p[i]), pz = X(b.p[i + 1]); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); }
+      g.closePath(); g.fill(); g.stroke();
+    }
+    this.static = c;
+  }
   toast(msg, t = 2.5) { this.el.toast.textContent = msg; this.el.toast.classList.add('on'); this.toastT = t; }
   update(dt, st) {
     // fps
@@ -56,7 +91,7 @@ export class HUD {
     this.el.loc.textContent = st.location;
     // minimap
     const g = this.ctx, w = this.map.width, h = this.map.height, S = this.S;
-    const zoom = st.driving ? 1.1 : 1.8;
+    const zoom = (st.driving ? 1.1 : 1.8) * (this.S < 1 ? 2.2 : 1);
     g.save();
     g.clearRect(0, 0, w, h);
     g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2); g.clip();
@@ -83,7 +118,7 @@ export class HUD {
     g.restore();
     // north marker
     g.save();
-    g.translate(w / 2, h / 2); g.rotate(st.yaw);
+    g.translate(w / 2, h / 2); g.rotate(st.yaw + (this.northRot || 0));
     g.fillStyle = '#fff'; g.font = 'bold 13px system-ui'; g.textAlign = 'center';
     g.fillText('N', 0, -h / 2 + 16);
     g.restore();

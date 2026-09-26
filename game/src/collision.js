@@ -16,7 +16,7 @@ export class Box {
 
 const CELL = 8;
 export class CollisionWorld {
-  constructor() { this.grid = new Map(); this.dynamic = new Set(); this.regions = []; this.all = []; this.Box = Box; }
+  constructor() { this.grid = new Map(); this.dynamic = new Set(); this.regions = []; this.all = []; this.Box = Box; this.terrainFn = null; this.streetZ = [-1e9, 1e9]; }
   _key(i, j) { return i * 100003 + j; }
   addStatic(b) {
     this.all.push(b);
@@ -57,6 +57,7 @@ export class CollisionWorld {
     for (const r of this.regions) {
       if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.fn ? r.fn(x, z, b) : b + r.h;
     }
+    if (this.terrainFn && (z < this.streetZ[0] || z > this.streetZ[1] || x < W.WEST_FENCE - 0.4 || x > W.EAST_FENCE + 0.4)) return this.terrainFn(x, z);
     if (x > -W.ROAD_HALF && x < W.ROAD_HALF) return b;
     if (x >= W.ROAD_HALF && x < W.PAVER_X1) return b + 0.005;
     if (x >= W.PAVER_X1) return b + W.CURB_H;

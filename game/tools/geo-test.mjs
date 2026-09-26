@@ -1,0 +1,68 @@
+// Headless test of the map-built world: load time, errors, stats and screenshots.
+//   python3 -m http.server 8765  (in game/)   then   node tools/geo-test.mjs [outDir] [quality]
+import { chromium } from 'playwright-core';
+import fs from 'node:fs';
+
+const out = process.argv[2] || 'shots-geo';
+const quality = process.argv[3] || 'high';
+fs.mkdirSync(out, { recursive: true });
+const exe = process.env.CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const browser = await chromium.launch({ executablePath: exe, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [], logs = [];
+page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`); else logs.push(m.text()); });
+page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
+await page.addInitScript((q) => localStorage.setItem('strada.quality', JSON.stringify(q)), quality);
+const t0 = Date.now();
+await page.goto('http://localhost:8765/index.html');
+await page.waitForFunction(() => window.__game || document.getElementById('loader').classList.contains('err'), null, { timeout: 600000 });
+console.log('loaded in', ((Date.now() - t0) / 1000).toFixed(1), 's');
+for (const l of logs) if (l.startsWith('[geo]')) console.log(l);
+if (!(await page.evaluate(() => !!window.__game))) { console.log(await page.textContent('#loadText')); for (const e of errors) console.log(e); process.exit(1); }
+console.log('geo', JSON.stringify(await page.evaluate(() => window.__game.geo)), 'sun', JSON.stringify(await page.evaluate(() => ({ el: window.__game.sun.el, az: window.__game.sun.az }))));
+await page.evaluate(() => window.__game.begin());
+const frames = async (n) => { for (let i = 0; i < n; i++) await page.evaluate(() => new Promise(r => requestAnimationFrame(() => r()))); };
+const only = process.argv[4] ? process.argv[4].split(',') : null;
+const shots = [
+  ['view1', 0], ['view7', 6], ['view9', 8], ['view2', 1],
+];
+for (const [name, k] of shots) {
+  if (only && !only.includes(name)) continue;
+  await page.evaluate((k) => { window.__game.cam = null; window.__game.gotoView(k); }, k);
+  await frames(8);
+  await page.screenshot({ path: `${out}/${name}.png` });
+}
+const cams = [
+  ['aerial_home', { x: -120, y: 90, z: -160, yaw: Math.PI + 0.6, pitch: -0.45 }],
+  ['aerial_river', { x: -60, y: 140, z: -40, yaw: Math.PI - 0.1, pitch: -0.32 }],
+  ['street_ne', { x: 0.3, y: 1.6, z: 60, yaw: Math.PI, pitch: 0.03 }],
+  ['river_bank', { x: 20, y: 3, z: 150, yaw: Math.PI - 0.3, pitch: 0.0 }],
+  ['station', { x: 40, y: 12, z: -200, yaw: 0.4, pitch: -0.15 }],
+  ['overview', { x: 700, y: 650, z: -900, yaw: 2.6, pitch: -0.5 }],
+];
+for (const [name, c] of cams) {
+  if (only && !only.includes(name)) continue;
+  await page.evaluate((c) => { window.__game.cam = c; }, c);
+  await frames(8);
+  await page.screenshot({ path: `${out}/${name}.png` });
+}
+const stats = await page.evaluate(() => {
+  const g = window.__game, r = g.renderer, i = r.info;
+  g.cam = null; g.gotoView(0); i.autoReset = false; i.reset(); r.render(g.scene, g.camera);
+  const o = { calls: i.render.calls, tris: i.render.triangles, geometries: i.memory.geometries, textures: i.memory.textures };
+  i.autoReset = true; return o;
+});
+console.log('scene stats (view 1, single pass):', JSON.stringify(stats));
+// walk + drive sanity: ground height along the street and outside
+console.log('ground', JSON.stringify(await page.evaluate(() => { const w = window.__game.world; return [[0, 0], [5, 0], [-6, 0], [0, 100], [0, -200], [300, 300], [-100, 200]].map(([x, z]) => [x, z, +w.groundHeight(x, z).toFixed(2)]); })));
+if (!only || only.includes('drive')) {
+  await page.evaluate(() => { const g = window.__game; g.cam = null; g.gotoView(0); g.enterCar(g.vehicles[0]); g.input.keys.add('KeyW'); });
+  await frames(60);
+  await page.evaluate(() => window.__game.input.keys.delete('KeyW'));
+  await frames(4);
+  await page.screenshot({ path: `${out}/drive.png` });
+  console.log('drive', JSON.stringify(await page.evaluate(() => { const v = window.__game.vehicles[0]; return { x: +v.x.toFixed(1), z: +v.z.toFixed(1), speed: +v.speed.toFixed(1) }; })));
+}
+console.log('errors/warnings:', errors.length);
+for (const e of errors.slice(0, 30)) console.log(e);
+await browser.close();

@@ -172,6 +172,7 @@ export class Vehicle {
       if (!any) break;
     }
     this.z = clamp(this.z, W.Z_MIN, W.Z_MAX);
+    this.x = clamp(this.x, W.X_MIN, W.X_MAX);
   }
   // world position of the driver's door (left side) for exiting
   doorPos(side = -1) {

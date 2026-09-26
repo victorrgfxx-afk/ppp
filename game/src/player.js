@@ -102,6 +102,6 @@ export class Player {
     }
     // keep inside the playable area
     this.pos.z = clamp(this.pos.z, W.Z_MIN, W.Z_MAX);
-    this.pos.x = clamp(this.pos.x, -30, 30);
+    this.pos.x = clamp(this.pos.x, W.X_MIN, W.X_MAX);
   }
 }

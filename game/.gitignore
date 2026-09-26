@@ -1,2 +1,4 @@
 node_modules
 shots/
+geo/raw/
+geo/__pycache__/

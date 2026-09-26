@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { QUALITY, defaultQuality, W, baseHeight } from './config.js';
+import { QUALITY, defaultQuality, W, setProfile } from './config.js';
 import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment } from './sky.js';
@@ -14,6 +14,13 @@ import { HUD } from './hud.js';
 import { createComposer } from './post.js';
 import { WIND, damp, clamp } from './util.js';
 import { Walker } from './npc.js';
+import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, profileAt } from './geo/index.js';
+
+// Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
+THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
+  '1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth )', '1.0 - exp( - fogDensity * vFogDepth )');
+// Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina.
+const SUN_TIME = new Date('2026-09-26T08:30:00Z');
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -57,16 +64,21 @@ async function main() {
   const progress = (p, label) => { $('bar').style.width = Math.round(p * 80) + '%'; $('loadText').textContent = label; };
   await loadTextures('assets/textures/', progress, renderer.capabilities.getMaxAnisotropy());
   buildMaterials();
+  progress(0.8, 'Încarc harta reală: OSM, relief EU-DEM/Copernicus, Sentinel-2…');
+  const gt = await loadGeoAll('assets/geo/');
+  setProfile(profileAt);
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.56, 0.60, 0.65);
-  scene.fog = new THREE.FogExp2(fogColor, 0.0021);
+  scene.fog = new THREE.FogExp2(fogColor, 1 / 3200);
   scene.background = fogColor;
-  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.06, 3000);
+  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 12000);
 
   const sky = createSky();
   scene.add(sky);
   const sunDir = sky.material.uniforms.uSunDir.value;
+  const sunInfo = sunDirection(SUN_TIME);
+  sunDir.copy(sunInfo.dir);
   const { sun } = createLights(scene, sunDir);
   sun.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
   sun.shadow.radius = Q.shadowRadius;
@@ -75,10 +87,13 @@ async function main() {
   scene.environment = buildEnvironment(renderer, sky);
   scene.environmentIntensity = 0.75;
 
-  progress(0.85, 'Construiesc strada și casa…');
+  progress(0.85, 'Construiesc harta: relief, clădiri OSM, drumuri, Prahova, păduri…');
   await new Promise(r => setTimeout(r, 20));
   const world = new CollisionWorld();
-  const built = buildWorld(scene, world, Q);
+  world.terrainFn = geoGround;
+  world.streetZ = [GEO.meta.street.z0, GEO.meta.street.z1];
+  const geoWorld = buildGeoWorld(scene, world, Q, renderer, gt, (label, ms) => console.log('[geo]', label, Math.round(ms), 'ms'));
+  const built = buildWorld(scene, world, Q, { geo: true, street: world.streetZ, fronts: geoWorld.fronts, blocked: footprintIndex() });
 
   // ---------- parked cars exactly as in the photos ----------
   progress(0.93, 'Parchez mașinile…');
@@ -109,7 +124,7 @@ async function main() {
   const player = new Player(camera, world);
   const input = new Input(canvas);
   const audio = new Audio();
-  const hud = new HUD(world, built.houses);
+  const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image });
   const post = createComposer(renderer, scene, camera, Q);
 
   let mode = 'foot';       // 'foot' | 'car'
@@ -217,6 +232,9 @@ async function main() {
 
   // ---------- main loop ----------
   const clock = new THREE.Timer();
+  let roadName = null;
+  const pos0 = () => (mode === 'car' && active ? active.car.group.position : player.pos);
+  geoWorld.update(camera.position);
   let t = 0, frameNo = 0;
   const focus = new THREE.Vector3();
   const tmpV = new THREE.Vector3();
@@ -296,11 +314,15 @@ async function main() {
     // sun + shadow box follow the view (snapped to reduce shimmering)
     const fp = mode === 'car' && active ? active.car.group.position : player.pos;
     const snap = 0.5;
-    sun.target.position.set(Math.round(fp.x / snap) * snap, baseHeight(fp.z), Math.round(fp.z / snap) * snap);
+    sun.target.position.set(Math.round(fp.x / snap) * snap, world.groundHeight(fp.x, fp.z), Math.round(fp.z / snap) * snap);
     sun.position.copy(sun.target.position).addScaledVector(sunDir, 100);
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
-    if ((frameNo++ & 7) === 0) for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56;
+    if ((frameNo++ & 7) === 0) {
+      for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
+      geoWorld.update(camera.position);
+      roadName = roadNameAt(pos0().x, pos0().z);
+    }
 
     // HUD
     const pos = mode === 'car' && active ? active.car.group.position : player.pos;
@@ -310,9 +332,12 @@ async function main() {
       prompt, driving: mode === 'car', kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
-      location: dHome < 14 ? 'Acasă' : `Acasă: ${Math.round(dHome)} m ${pos.z < 0 ? 'N' : 'S'}`,
+      location: (roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`),
     });
     audio.update(dt, { driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
+    const fc = window.__game?.cam;
+    if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); geoWorld.update(camera.position); }
     post.grade.uniforms.uTime.value = t;
     post.composer.render(dt);
     input.endFrame();
@@ -329,7 +354,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, sun: sunInfo, walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {
