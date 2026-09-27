@@ -64,7 +64,8 @@ export function buildFences(B, world, mats) {
         if (style.solid) B.quad(mat, x1, z1, x0, z0, y1 - 0.05, y1 + style.h, y0 - 0.05, y0 + style.h, u1, u0, 0, vt, 0, vt, null);
         acc += l;
       }
-      world.addStatic(new world.Box((ax + bx) / 2, (az + bz) / 2, L / 2, 0.08, Math.atan2(-(bz - az), bx - ax), -5, 1e4, 'fence'));
+      const ga = heightAt(ax, az), gb = heightAt(bx, bz);
+      world.addStatic(new world.Box((ax + bx) / 2, (az + bz) / 2, L / 2, 0.08, Math.atan2(-(bz - az), bx - ax), Math.min(ga, gb) - 2, Math.max(ga, gb) + 2.5, 'fence'));
       n++;
     }
   }

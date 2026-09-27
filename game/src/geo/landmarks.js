@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, upRoad, upHeight } from './data.js';
 import { M } from '../materials.js';
+import { buildPrahovaBridge } from './bridge.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -76,6 +77,8 @@ export function buildLandmarks(B, world) {
   const lms = GEO.landmarks || [];
   for (const U of GEO.ups || []) out.push(buildUnderpass(B, world, U));
   buildStreetDetails(B, world);
+  const br = buildPrahovaBridge(B, world);
+  if (br) out.push(br);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

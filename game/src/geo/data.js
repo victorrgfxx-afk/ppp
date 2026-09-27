@@ -133,6 +133,30 @@ export function forestCode(x, z) {
   return (B[k >> 2] >> ((k & 3) << 1)) & 3;
 }
 
+// Areas kept free of trees (bridge decks, the canal by the Prahova bridge): oriented rectangles centred on c,
+// half-length hl along (ux, uz), half-width hw across. The forest raster is cleared under them.
+export function addHole(c, hl, hw, ux, uz) {
+  const h = { x: c[0], z: c[1], hl, hw, ux, uz, r: Math.hypot(hl, hw) };
+  (GEO.holes ??= []).push(h);
+  const F = GEO.forest, B = GEO.forestBits;
+  if (!B) return;
+  const i0 = Math.max(0, Math.floor((h.x - h.r + F.ext) / F.step)), i1 = Math.min(F.n - 1, Math.ceil((h.x + h.r + F.ext) / F.step));
+  const j0 = Math.max(0, Math.floor((h.z - h.r + F.ext) / F.step)), j1 = Math.min(F.n - 1, Math.ceil((h.z + h.r + F.ext) / F.step));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    if (!inHoleOf(h, -F.ext + i * F.step, -F.ext + j * F.step, 2)) continue;
+    const k = j * F.n + i;
+    B[k >> 2] &= ~(3 << ((k & 3) << 1));
+  }
+}
+function inHoleOf(h, x, z, m = 0) {
+  const dx = x - h.x, dz = z - h.z;
+  return Math.abs(dx * h.ux + dz * h.uz) <= h.hl + m && Math.abs(dz * h.ux - dx * h.uz) <= h.hw + m;
+}
+export function inHole(x, z) {
+  for (const h of GEO.holes || []) if (Math.abs(x - h.x) <= h.r && Math.abs(z - h.z) <= h.r && inHoleOf(h, x, z)) return true;
+  return false;
+}
+
 // Street profile of the hand-built part of Strada Gării (used by config.baseHeight).
 export function profileAt(z) {
   const p = GEO.profile;

@@ -18,10 +18,12 @@ export async function loadGeoAll(base) {
 }
 
 // ground under (x, z) outside the hand-built street: bridge decks, else the terrain mesh
-export function geoGround(x, z) {
+// ref: the height of whoever asks (feet, car): below a deck (driving under a bridge) the terrain counts
+export function geoGround(x, z, ref) {
   const t = heightAt(x, z);
   const b = bridgeHeight(x, z);
-  return b !== null && b > t - 0.5 ? Math.max(b, t) : t;
+  if (b === null || b <= t - 0.5 || (ref !== undefined && ref < b - 2.5)) return t;
+  return Math.max(b, t);
 }
 
 export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {}) {
@@ -38,6 +40,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const rm = makeRoadMaterials();
   buildRoads(B, world, rm);
   const lines = [];
+  for (const l of landmarks) if (l && l.wires) for (const v of l.wires) lines.push(v);
   buildRail(B, lines, rm);
   const pm = makePropMaterials();
   // small street furniture disappears sooner

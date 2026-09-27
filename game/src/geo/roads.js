@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GEO, heightAt, railHeightAt } from './data.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
+import { prahovaBridge } from './bridge.js';
 
 // OSM roads as ribbons on the (cut & filled) terrain, bridges, lane markings, railway tracks with
 // catenary, station platforms.
@@ -121,7 +122,12 @@ function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
   const N = normals(P);
   const mat = mats[surf] ?? mats.asphalt;
   let yfn;
-  if (r.br) {
+  const custom = r.br && r.id === prahovaBridge()?.r.id ? prahovaBridge() : null;
+  if (custom) {
+    // the Prahova bridge (bridge.js): its own deck profile, barriers, railings and piers
+    yfn = (k) => custom.yAt(custom.local(P[k][0], P[k][1])[0]);
+    bridges.push({ P, w: 0, y: [], fn: custom.surface, x0: custom.x0, x1: custom.x1, z0: custom.z0, z1: custom.z1 });
+  } else if (r.br) {
     // bridge deck: straight line between the abutments with a slight camber
     const y0 = heightAt(P[0][0], P[0][1]) + 0.05, y1 = heightAt(P[P.length - 1][0], P[P.length - 1][1]) + 0.05;
     const L = []; let acc = 0; L.push(0);
@@ -140,15 +146,15 @@ function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
     ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + sw, (k) => yfn(k) - 0.02, 1.2);
     ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k) => yfn(k) - 0.02, 1.2);
   }
-  if (major && surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, yfn, r, nearJunction);
+  if (major && surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, yfn, r, nearJunction, custom ? { solid: true, edges: false } : {});
   if (r.n) names.push({ n: r.n, P: P0 });
 }
 
-function markings(B, mats, P, N, w, yfn, r, nearJunction) {
+function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
   const lw = 0.15, off = w / 2 - 0.35;
   const ok = P.map(p => !nearJunction(p[0], p[1], 9));
   // continuous edge lines
-  for (const side of [-1, 1]) {
+  for (const side of opt.edges === false ? [] : [-1, 1]) {
     let run = [];
     const flush = () => {
       if (run.length > 1) {
@@ -163,7 +169,7 @@ function markings(B, mats, P, N, w, yfn, r, nearJunction) {
   // centre line: dashed 3 m / 6 m (solid on the trunk road)
   const oneway = r.ow === 'yes';
   if (oneway && !(Number(r.lanes) >= 2)) return;
-  const solid = r.c === 'trunk' && !oneway;
+  const solid = opt.solid || (r.c === 'trunk' && !oneway);
   let acc = 0;
   for (let k = 0; k < P.length - 1; k++) {
     const L = Math.hypot(P[k + 1][0] - P[k][0], P[k + 1][1] - P[k][1]);
@@ -215,6 +221,12 @@ export function bridgeHeight(x, z) {
   const list = GEO.bridges;
   if (!list) return null;
   for (const b of list) {
+    if (b.fn) {
+      if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
+      const h = b.fn(x, z);
+      if (h !== null) return h;
+      continue;
+    }
     const P = b.P;
     for (let i = 0; i < P.length - 1; i++) {
       const [ax, az] = P[i], [bx, bz] = P[i + 1];

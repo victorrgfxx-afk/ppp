@@ -16,7 +16,7 @@ import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
-import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, profileAt } from './geo/index.js';
+import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, profileAt, bridgeHeight } from './geo/index.js';
 
 // Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
@@ -166,8 +166,9 @@ async function main() {
       if ((placed < 24 ? d0 > 650 : d0 > GEO.worldExt - 300) || (Math.abs(x) < 8 && z > world.streetZ[0] - 10 && z < world.streetZ[1] + 10)) continue;
       const dx = (bx - ax) / L, dz = (bz - az) / L, off = r.w / 2 - 1.0;
       const px = x + dz * off, pz = z - dx * off, h = Math.atan2(-dx, -dz);
-      const probe = new world.Box(px, pz, 1.05, 2.4, h);
-      if (world.query(px, pz, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) continue;
+      if (bridgeHeight(px, pz) !== null) continue;                 // not on or under a bridge
+      const probe = new world.Box(px, pz, 1.05, 2.4, h), gy = world.groundHeight(px, pz);
+      if (world.query(px, pz, 4, []).some(b => b.y1 > gy + 0.45 && b.y0 < gy + 2.2 && boxBox(probe, b))) continue;
       const v = park(models[placed % models.length], paintMaterial(paints[Math.floor(rr() * paints.length)], { metallic: rr() * 0.8, rough: 0.3, dusty: rr() * 0.4 }), plates[placed % 3], px, pz, h, {});
       v.update(0.016, null);
       placed++;
@@ -264,6 +265,17 @@ async function main() {
       look([-565.5, -213.5], [sx, sz], 0.07, 'Poza 28 — magazinul SHOPPING Oana');
     }
     look([-567.0, -213.0], W(-U.wt, -2.5), 0.05, 'Poza 29 — DJ100E spre pasaj, după pod');
+  }
+  // photos 30-32 (the user's Street View screenshots at 45.12914 N 25.71874 E): the DJ100E bridge over the Prahova
+  const brLm = geoWorld.landmarks?.find(l => l.type === 'bridge');
+  if (brLm && !PHOTO_VIEWS.some(v => v.br)) {
+    const view = (s, o, dir, pitch, label) => {
+      const [x, z] = brLm.W(s, o), d = dir === 'east' ? brLm.W(s + 1, o) : dir === 'west' ? brLm.W(s - 1, o) : [x + dir[0], z + dir[1]];
+      PHOTO_VIEWS.push({ br: true, x, z, yaw: Math.atan2(-(d[0] - x), -(d[1] - z)), pitch, fov: 75, label });
+    };
+    view(67, -1.9, 'east', -0.07, 'Poza 30 — podul peste Prahova, spre Câmpina');
+    view(67, -1.9, 'west', -0.07, 'Poza 31 — podul peste Prahova, spre Poiana Câmpina');
+    view(61, -5.3, [0.89, 0.46], -0.2, 'Poza 32 — Prahova în amonte de pod: canalul și pragul');
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
@@ -373,7 +385,7 @@ async function main() {
         const dist = 6.3 + sp * 0.03;
         const g = active.car.group.position;
         const want = tmpV.set(g.x + Math.sin(cy) * dist * Math.cos(orbit.pitch), g.y + 1.3 + Math.sin(orbit.pitch) * dist, g.z + Math.cos(cy) * dist * Math.cos(orbit.pitch));
-        const minY = world.groundHeight(want.x, want.z) + 0.4;
+        const minY = world.groundHeight(want.x, want.z, g.y) + 0.4;
         want.y = Math.max(want.y, minY);
         const ck = 10 + sp * 0.25;                      // stiffer follow at speed: no 15 m lag at 500 km/h
         camera.position.x = damp(camera.position.x, want.x, ck, dt);
@@ -425,7 +437,7 @@ async function main() {
       prompt, driving: mode === 'car', kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
-      location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`),
+      location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`),
     });
     audio.update(dt, { driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})

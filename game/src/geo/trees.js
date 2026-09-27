@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { GEO, heightAt, forestCode } from './data.js';
+import { GEO, heightAt, forestCode, inHole } from './data.js';
 import { M, addWind } from '../materials.js';
 import { rng } from '../util.js';
 
@@ -214,6 +214,7 @@ export function buildTrees(scene, world, renderer, quality) {
   let count = 0;
   for (let i = 0; i < n; i++) {
     if (density < 1 && r() > density) continue;
+    if (inHole(T.x[i], T.z[i])) { r(); r(); r(); continue; }
     const k = count++;
     X[k] = T.x[i]; Z[k] = T.z[i]; Y[k] = heightAt(X[k], Z[k]) - 0.05;
     TY[k] = Math.min(TYPES.length - 1, T.t[i]); R[k] = r() * Math.PI * 2; S[k] = T.s[i] * (0.9 + r() * 0.2); V[k] = 0.85 + r() * 0.3;

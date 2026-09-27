@@ -3,6 +3,7 @@ import { GEO, normalAt, heightAt, underpassAt } from './data.js';
 import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
 import { WIND } from '../util.js';
+import { riverCellKept } from './bridge.js';
 
 // Near terrain (+-3 km, 5 m grid) and world terrain (+-8 km, 10 m grid) in LOD chunks,
 // far ring (+-20 km Copernicus DEM), water surfaces.
@@ -213,6 +214,7 @@ export function buildWater(scene) {
   if (GEO.W && GEO.water2) for (const c of GEO.water2) cells.push([GEO.W.ext, GEO.W.step, c]);
   for (const [ext, step, [i, j, lc]] of cells) {
     const x0 = -ext + i * step, z0 = -ext + j * step, y = lc / 100;
+    if (!riverCellKept(x0 + step / 2, z0 + step / 2)) continue;
     const key = Math.floor(x0 / 500) + ',' + Math.floor(z0 / 500);
     if (!byChunk.has(key)) byChunk.set(key, []);
     const a = byChunk.get(key);

@@ -62,7 +62,7 @@ export class Player {
     }
     // vertical
     this.pos.y += this.vel.y * dt;
-    const gh = this.world.groundHeight(this.pos.x, this.pos.z);
+    const gh = this.world.groundHeight(this.pos.x, this.pos.z, this.pos.y);
     if (this.pos.y <= gh + 0.001) {
       if (!this.onGround && this.vel.y < -3) { this.landShake = Math.min(0.08, -this.vel.y * 0.012); audio?.land(this.surface()); }
       this.pos.y = gh; this.vel.y = 0; this.onGround = true;

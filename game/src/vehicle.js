@@ -44,9 +44,10 @@ export class Vehicle {
     const s = Math.sin(this.h), c = Math.cos(this.h);
     const hw = this.m.W / 2 - 0.15;
     const zf = this.m.axles[0] - this.m.L / 2, zr = this.m.axles[1] - this.m.L / 2;
-    const at = (lx, lz) => this.world.groundHeight(this.x + lx * c + lz * s, this.z - lx * s + lz * c);
+    const at = (lx, lz) => this.world.groundHeight(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.gy);
     const fl = at(-hw, zf), fr = at(hw, zf), rl = at(-hw, zr), rr = at(hw, zr);
     const y = (fl + fr + rl + rr) / 4;
+    this.gy = y;
     const pitchG = Math.atan2((fl + fr) / 2 - (rl + rr) / 2, this.wheelbase);
     const rollG = Math.atan2((fr + rr) / 2 - (fl + fr + rl + rr - (fr + rr)) / 2, hw * 2);
     g.position.set(this.x, y, this.z);
@@ -182,12 +183,13 @@ export class Vehicle {
   }
   resolveStatic() {
     const list = this.world.query(this.x, this.z, 4, tmp);
+    const gy = this.gy ?? this.world.groundHeight(this.x, this.z);
     this.impact = 0;
     for (let it = 0; it < 3; it++) {
       let any = false;
       this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
       for (const b of list) {
-        if (b === this.box || b.y1 < 0.45 || b.ghost) continue;
+        if (b === this.box || b.y1 < gy + 0.45 || b.y0 > gy + 2.2 || b.ghost) continue;   // curbs and decks overhead don't count
         const p = boxBox(this.box, b);
         if (!p) continue;
         if (b.npc) { b.npc.hit(this, p); continue; }
@@ -211,7 +213,10 @@ export class Vehicle {
           const vn = this.vx * p.nx + this.vz * p.nz;
           if (vn < 0) {
             this.vx -= p.nx * vn * 1.25; this.vz -= p.nz * vn * 1.25;
-            this.vx *= 0.8; this.vz *= 0.8;
+            // Coulomb friction of the scrape (mu 0.5 on the normal impulse): a glancing hit keeps most of the speed,
+            // a head-on one still stops the car
+            const tx = -p.nz, tz = p.nx, vt = this.vx * tx + this.vz * tz, dv = Math.sign(vt) * Math.min(Math.abs(vt), 0.5 * 1.25 * -vn);
+            this.vx -= tx * dv; this.vz -= tz * dv;
             this.impact = Math.max(this.impact, -vn);
           }
         }

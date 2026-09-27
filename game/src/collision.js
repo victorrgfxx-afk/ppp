@@ -55,12 +55,13 @@ export class CollisionWorld {
   // Height regions (raised floors, ramps). fn(x,z) returns absolute height or null.
   addRegion(x0, x1, z0, z1, h, fn = null) { this.regions.push({ x0, x1, z0, z1, h, fn }); }
 
-  groundHeight(x, z) {
+  // ref (optional): the current height of the one asking, so that under a bridge deck the ground below counts
+  groundHeight(x, z, ref) {
     const b = baseHeight(z);
     for (const r of this.regions) {
       if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.fn ? r.fn(x, z, b) : b + r.h;
     }
-    if (this.terrainFn && (z < this.streetZ[0] || z > this.streetZ[1] || x < W.WEST_FENCE - 0.4 || x > W.EAST_FENCE + 0.4)) return this.terrainFn(x, z);
+    if (this.terrainFn && (z < this.streetZ[0] || z > this.streetZ[1] || x < W.WEST_FENCE - 0.4 || x > W.EAST_FENCE + 0.4)) return this.terrainFn(x, z, ref);
     if (x > -W.ROAD_HALF && x < W.ROAD_HALF) return b;
     if (x >= W.ROAD_HALF && x < W.PAVER_X1) return b + 0.005;
     if (x >= W.PAVER_X1) return b + W.CURB_H;
