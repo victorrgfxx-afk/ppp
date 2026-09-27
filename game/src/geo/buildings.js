@@ -12,7 +12,7 @@ const WALLS = [0xefede7, 0xeae2cf, 0xe9dcb0, 0xe6c9a8, 0xd2dcc0, 0xd3d8dc, 0xe6c
 const BLOCKS = [0xd9d2c3, 0xc9c8c2, 0xe0d6bf, 0xd8c8b0, 0xc7ccd0];
 const ROOF_METAL = [0x7a3b30, 0x5a3a2c, 0x52565b, 0x3b3e43, 0x4a5c4c, 0x6d3530, 0x9aa0a6, 0x86503a, 0x5f6368];
 const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a, ochre: 0xd8a94e, gray: 0xb3b2ac, shingle: 0x7c7771, stampedGray: 0xa9acad, sand: 0xe3d0a0 };
-const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d };
+const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d, tileRed: 0xffffff };
 // facade texture per wall material
 const FKEY = { house: 'facadeHouse', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle', stamped: 'facadeStamped' };
 
@@ -43,6 +43,7 @@ export function makeBuildingMaterials() {
     shinglePlain: facade('facadeShingleP'),
     ind: facade('facadeInd'),
     plinth: M.stuccoGray,
+    plinthBrown: new THREE.MeshStandardMaterial({ color: 0x5a3a2e, roughness: 0.8 }),
     stone: M.stoneCladding,
     roofMetal: new THREE.MeshStandardMaterial({ map: TEX.roofMetal, normalMap: TEX.roofMetalN, roughness: 0.48, metalness: 0.45, vertexColors: true, side: THREE.DoubleSide }),
     roofTiles: new THREE.MeshStandardMaterial({ map: TEX.roofTiles, normalMap: TEX.roofTilesN, roughness: 0.78, vertexColors: true, side: THREE.DoubleSide }),
@@ -149,7 +150,7 @@ export function buildBuildings(B, world, mats) {
       const vTop = (top - floor0) / floorH;
       B.quad(wallMat, A[0], A[1], C[0], C[1], floor0, top, floor0, top, u0, u1, 0, vTop, 0, vTop, wc);
       // plinth / foundation following the terrain
-      B.quad(o.plinth === 'stoneCladding' ? mats.stone : mats.plinth, A[0], A[1], C[0], C[1], base, floor0, base, floor0, 0, L, 0, floor0 - base, 0, floor0 - base, null, { noCast: true });
+      B.quad(o.plinth === 'stoneCladding' ? mats.stone : o.plinth === 'brown' ? mats.plinthBrown : mats.plinth, A[0], A[1], C[0], C[1], base, floor0, base, floor0, 0, L, 0, floor0 - base, 0, floor0 - base, null, { noCast: true });
       world.addStatic(new world.Box((A[0] + C[0]) / 2, (A[1] + C[1]) / 2, L / 2, 0.2, Math.atan2(-(C[1] - A[1]), C[0] - A[0]), base - 2, top + 6, 'house'));
     }
     stats.n++;
@@ -177,7 +178,7 @@ export function buildBuildings(B, world, mats) {
       }
     } else {
       const tiles = !o.roof && r() < 0.24;
-      const roofMat = tiles ? mats.roofTiles : o.roofMat === 'metalTile' ? mats.roofMetalTile : mats.roofMetal;
+      const roofMat = tiles || o.roofMat === 'tiles' ? mats.roofTiles : o.roofMat === 'metalTile' ? mats.roofMetalTile : mats.roofMetal;
       const rc = o.roof ? col(OVR_ROOF[o.roof] ?? 0xa8adb3) : tiles ? col([0xffffff, 0xd8c8c0, 0xb89a90][h % 3]) : col(ROOF_METAL[h % ROOF_METAL.length]);
       const pitch = THREE.MathUtils.degToRad(o.pitch ?? (tiles ? 34 : 27 + (h % 7)));
       const gable = o.roofType === 'gable' || (!o.roofType && b.r.length === 1 && r() < 0.28 && Math.max(b.r[0][2], b.r[0][3]) > 1.3 * Math.min(b.r[0][2], b.r[0][3]));

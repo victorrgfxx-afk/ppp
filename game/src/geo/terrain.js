@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, normalAt } from './data.js';
+import { GEO, normalAt, heightAt, underpassAt } from './data.js';
 import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
 import { WIND } from '../util.js';
@@ -86,6 +86,36 @@ export function buildTerrain(scene, gt, quality) {
   return { lods: near.lods.concat(world.lods), material: near.material, worldMaterial: world.material };
 }
 
+// 1 m heightfield for the cut-out cells; edges shared with kept cells follow the coarse grid exactly (no cracks)
+function patchCells(holes, pos, nor, idx, X, Z, cx, cz, step, m, H, n, i0, j0) {
+  const K = Math.round(step), nv = new THREE.Vector3();
+  const nodeH = (a, b) => H[(j0 + b) * n + i0 + a];
+  for (const key of holes) {
+    const [a, b] = key.split(',').map(Number);
+    const kept = { s: !holes.has(a + ',' + (b - 1)), n: !holes.has(a + ',' + (b + 1)), w: !holes.has((a - 1) + ',' + b), e: !holes.has((a + 1) + ',' + b) };
+    const base = pos.length / 3;
+    for (let v = 0; v <= K; v++) for (let u = 0; u <= K; u++) {
+      const x = X(a) + u * step / K, z = Z(b) + v * step / K, wx = x + cx, wz = z + cz;
+      let y;
+      const lerp = (p, q, t) => p + (q - p) * t;
+      if (v === 0 && kept.s) y = lerp(nodeH(a, b), nodeH(a + 1, b), u / K);
+      else if (v === K && kept.n) y = lerp(nodeH(a, b + 1), nodeH(a + 1, b + 1), u / K);
+      else if (u === 0 && kept.w) y = lerp(nodeH(a, b), nodeH(a, b + 1), v / K);
+      else if (u === K && kept.e) y = lerp(nodeH(a + 1, b), nodeH(a + 1, b + 1), v / K);
+      else y = heightAt(wx, wz);
+      pos.push(x, y, z);
+      const e = 0.35, hx = heightAt(wx + e, wz) - heightAt(wx - e, wz), hz = heightAt(wx, wz + e) - heightAt(wx, wz - e);
+      nv.set(-hx / (2 * e), 1, -hz / (2 * e)).normalize();
+      nor.push(nv.x, nv.y, nv.z);
+    }
+    for (let v = 0; v < K; v++) for (let u = 0; u < K; u++) {
+      const A = base + v * (K + 1) + u, B = A + 1, C = A + K + 1, D = C + 1;
+      idx.push(A, C, B, B, C, D);
+    }
+  }
+  void m;
+}
+
 function gridTerrain(scene, G, mat, CH, levels, skip = null) {
   const { n, ext, step, H } = G;
   const nc = (n - 1) / CH;
@@ -104,10 +134,15 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
         pos.push(-ext + i * step - cx, H[j * n + i], -ext + j * step - cz);
         normalAt(i, j, nrm, G); nor.push(nrm.x, nrm.y, nrm.z);
       }
+      // underpass boxes: at full resolution their cells are cut out and rebuilt at 1 m (vertical abutments, level road)
+      const holes = s === 1 && G === GEO && GEO.ups?.length ? new Set() : null;
+      const inHole = (a, b) => !!underpassAt(-ext + (ci * CH + a + 0.5) * step, -ext + (cj * CH + b + 0.5) * step);
       for (let b = 0; b < m - 1; b++) for (let a = 0; a < m - 1; a++) {
         const A = b * m + a, B = A + 1, C = A + m, D = C + 1;
+        if (holes && inHole(a, b)) { holes.add(a + ',' + b); continue; }
         idx.push(A, C, B, B, C, D);
       }
+      if (holes && holes.size) patchCells(holes, pos, nor, idx, (a) => -ext + (ci * CH + a) * step - cx, (b) => -ext + (cj * CH + b) * step - cz, cx, cz, step, m, H, n, ci * CH, cj * CH);
       // skirts hide cracks between chunks of different LOD
       const border = [];
       for (let a = 0; a < m; a++) border.push(a);

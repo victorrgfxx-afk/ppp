@@ -430,6 +430,7 @@ OVERRIDES = {
     '264515510': dict(wall='stampedGray', roof='roofMetalRust', roofType='hip', levels=1, pitch=24, dx=-2.9, note='casa nr. 111 (poza 22): tencuială gri decorativă, acoperiș în patru ape din tablă veche ruginie'),
     '264516642': dict(wall='sand', roof='metalTileBrown', roofMat='metalTile', note='casa nr. 122 de după gardul cu stâlpi de piatră (poza 23)'),
     '304010713': dict(dx=-0.8, note='șopronul de lemn din spatele gardului maro (poza 17)'),
+    '202270178': dict(shape='hip', roof='tileRed', roofMat='tiles', note='Bloc 19 de lângă pasaj: acoperiș în patru ape cu țiglă roșie (pozele 26, 27)'),
     '222896491': dict(wall='stuccoPeach', roof='metalTileBrown', roofMat='metalTile', roofType='gable', levels=2, ridge='x', note='casa piersicie cu 2 etaje și țiglă metalică maro, la capătul străzii (poza 17)'),
 }
 # landmarks from the user's photos: position from the coordinates they sent, orientation and size from the photo
@@ -441,6 +442,25 @@ LANDMARKS = [
 # forest stands whose OSM polygon has no leaf_type but the photos show the mix: the hill across the Prahova
 # (photos 7, 17, 23: black pines between the beeches and hornbeams)
 FOREST_MIXED_AT = [(20.0, 560.0), (-120.0, 520.0), (140.0, 520.0)]
+# OSM footprints that are two buildings in reality: cut along a line (game xz), each part with its own look
+SPLITS = {
+    # photo 28: the shop 'SHOPPING Oana' (gable facing the DJ100E junction) and the lower wing along the lane
+    '265121046': dict(line=((-526.7, -229.3), (-522.5, -240.1)), parts=[
+        dict(o=dict(b='house', wall='stuccoCream', roof='roofMetalRed', roofMat='metalTile', roofType='gable', ridge='z', pitch=40, eave=4.3, plinth='brown', shop='oana', note='magazinul SHOPPING Oana (poza 28)')),
+        dict(o=dict(b='house', shape='flat', wall='stuccoCream', levels=1, h=3.4, note='aripa magazinului, cu copertina roșie (poza 28)')),
+    ]),
+}
+# railway underpasses the 25 m DEM cannot see (the embankment is smoothed away): rebuilt from the clearance on the photos.
+# photos 25-29 (the user's Street View screenshots at 45.12956 N 25.71549 E): DJ100E under the CF 300 line by Strada Gării,
+# 3 m height limit, deck on stone masonry abutments, sidewalk with a yellow railing on the +x (north-west) side
+UNDERPASSES = [
+    dict(name='Pasajul CF de pe DJ100E', south=(-579.0, -209.6), north=(-593.3, -156.8), rails=('515450788', '515450789'),
+         clear=3.4, deck=0.95, l0=-4.0, l1=5.4, curb=3.9, wtop=5.4, grade=0.004, reach=260.0, fade=160.0, A=17.0, L=20.0,
+         Lw=8.0, atEnd=9.4, wend=1.3),        # splayed stone wing walls: 8 m long, out to 9.4 m from the tracks' axis, 1.3 m high at the end
+]
+# no generated lot fences here (the photos show verges, lamps and the railway): x0, x1, z0, z1
+NO_FENCES = [(-650.0, -520.0, -245.0, -135.0),          # around the underpass (photos 26-29)
+             (-600.0, -330.0, -180.0, -138.0)]          # Strada Gării east of the junction (photo 25)
 HERO_SPLIT = 15.4, 10.1        # parts of footprint 123 not covered by the hand-built house: x > 15.4 (rear) and z > 9.95 (garden annex)
 
 
@@ -622,6 +642,76 @@ def main():
         lm_out.append(dict(type=lm['type'], x=round(x, 2), z=round(z, 2), y=round(pad - H0, 2), rot=round(math.atan2(-az, ax), 4), clear=lm['clear']))
     log('landmarks', lm_out)
 
+    # ---- railway underpasses: embankment rebuilt along the rails, level road through the opening
+    road_mask = draw_lines(N, EXT, [(p_, road_width(w_, t_) + 2.5) for _, w_, p_, t_ in roads if t_['highway'] not in ('path', 'footway', 'steps', 'track', 'cycleway', 'pedestrian')], 3) > 0.5
+    G_flat = H.copy()
+    Gf = Grid(G_flat)
+    for k_up, U in enumerate(UNDERPASSES):
+        ps, pn = np.array(U['south']), np.array(U['north'])
+        ur = (pn - ps) / np.linalg.norm(pn - ps); nr = np.array([ur[1], -ur[0]])
+        br = [osm.pts(w_) for w_ in U['rails']]
+        dirs = [(q[-1] - q[0]) / np.linalg.norm(q[-1] - q[0]) for q in br]
+        dirs = [d_ if d_ @ dirs[0] > 0 else -d_ for d_ in dirs]
+        ut = np.mean(dirs, 0); ut /= np.linalg.norm(ut); nt = np.array([ut[1], -ut[0]])
+        ct = np.mean(np.concatenate(br), 0)
+        # O = road axis x rail centreline
+        M_ = np.array([[ur[0], -ut[0]], [ur[1], -ut[1]]]); t_, _ = np.linalg.solve(M_, ct - ps)
+        O = ps + ur * t_
+        # the smoothed DEM leaves a bump where the embankment was: grade the road straight between the box ends
+        ends = [float(Gf.at(np.float32([O[0] + s_ * U['A'] * ur[0]]), np.float32([O[1] + s_ * U['A'] * ur[1]])).ravel()[0]) for s_ in (-1, 1)]
+        def unbump(Gv, av):
+            ax_ = Gf.at((O[0] + av * ur[0]).astype(np.float32), (O[1] + av * ur[1]).astype(np.float32)).reshape(np.shape(av))
+            lin = ends[0] + (ends[1] - ends[0]) * (np.clip(av, -U['A'], U['A']) + U['A']) / (2 * U['A'])
+            return Gv - np.maximum(0, ax_ - lin) * (np.abs(av) <= U['A'])
+        G0 = float(unbump(np.array([Gf.at(np.float32([O[0]]), np.float32([O[1]])).ravel()[0]]), np.array([0.0]))[0])
+        top = G0 + U['clear'] + U['deck']
+        # general raise along every rail near the underpass
+        R_ = U['reach'] + U['fade']
+        near_rails = [(w_, q) for w_, q, _ in rails if np.min(np.hypot(*(q - O).T)) < R_ + 60]
+        win = window(np.array([O - R_ - 40, O + R_ + 40]), 0)
+        Xw_, Zw_ = X[win], Z[win]
+        best = np.full(Xw_.shape, 1e9, np.float32); base = np.zeros(Xw_.shape, np.float32)
+        for w_, q in near_rails:
+            rq_, rd_ = resample(q, 2.5)
+            lvl = Gf.at(rq_[:, 0].astype(np.float32), rq_[:, 1].astype(np.float32)).ravel()
+            d_, st_ = polyline_field(q, Xw_, Zw_)
+            m_ = d_ < best
+            best[m_] = d_[m_]; base[m_] = np.interp(st_[m_], rd_, lvl)
+        s_al = np.abs((Xw_ - O[0]) * ut[0] + (Zw_ - O[1]) * ut[1])
+        e_ = np.maximum(0, top - U['grade'] * s_al - base) * (1 - smoothstep(U['reach'], R_, s_al))
+        surf = base + e_ - np.maximum(0, best - 3.2) / 1.5
+        raise_ = (e_ > 0.05) & (surf > H[win]) & ~road_mask[win]
+        H[win] = np.where(raise_, surf, H[win])
+        # the box around the opening: exact profile (the game rebuilds it at 1 m, see src/geo/terrain.js)
+        a_ = (X - O[0]) * ur[0] + (Z - O[1]) * ur[1]; l_ = (X - O[0]) * nr[0] + (Z - O[1]) * nr[1]
+        at_ = (X - O[0]) * nt[0] + (Z - O[1]) * nt[1]
+        box = (np.abs(a_) <= U['A']) & (np.abs(l_) <= U['L'])
+        # same profile as upHeight() in src/geo/data.js: road through the opening (and 0.8 m behind the wall faces),
+        # abutments, splayed wing walls with a grass slope above them, plain embankment slopes beyond
+        Gb = unbump(G_flat, a_)
+        A_ = np.abs(at_)
+        embT = top - np.maximum(0, A_ - U['wtop']) / 1.5
+        e_ = np.where(l_ < U['l0'], U['l0'] - l_, np.where(l_ > U['l1'], l_ - U['l1'], -1.0))
+        f_ = np.clip(e_ / U['Lw'], 0, 1)
+        atW = U['wtop'] + (U['atEnd'] - U['wtop']) * f_
+        wTop = top - (top - (G0 + U['wend'])) * f_
+        wing = np.where(A_ > atW - 0.8, Gb, np.maximum(Gb, np.minimum(embT, wTop + (atW - A_) / 1.5)))
+        prof = np.where(e_ < 0.8, Gb, np.where(e_ <= U['Lw'], wing, np.maximum(Gb, embT)))
+        H = np.where(box, prof, H)
+        # road level under the box, 1 m grid in box coordinates (a along the road, l across)
+        ga = np.arange(-U['A'] - 2, U['A'] + 2.01, 1.0); gl = np.arange(-U['L'] - 2, U['L'] + 2.01, 1.0)
+        GA, GL = np.meshgrid(ga, gl)
+        gx = O[0] + GA * ur[0] + GL * nr[0]; gz = O[1] + GA * ur[1] + GL * nr[1]
+        gv = unbump(Gf.at(gx.astype(np.float32), gz.astype(np.float32)).reshape(GA.shape), GA)
+        up_rec = dict(type='underpass', name=U['name'], x=round(float(O[0]), 3), z=round(float(O[1]), 3),
+                      ur=[round(float(v), 5) for v in ur], nr=[round(float(v), 5) for v in nr], nt=[round(float(v), 5) for v in nt],
+                      A=U['A'], L=U['L'], l0=U['l0'], l1=U['l1'], curb=U['curb'], wt=U['wtop'], top=round(top - H0, 3), g0=round(G0 - H0, 3),
+                      Lw=U['Lw'], atEnd=U['atEnd'], wend=U['wend'],
+                      clear=U['clear'], deck=U['deck'], rails=list(U['rails']),
+                      g=dict(a0=float(ga[0]), l0=float(gl[0]), step=1.0, na=len(ga), nl=len(gl), v=np.round(gv - H0, 3).ravel().tolist()))
+        lm_out.append(up_rec)
+        log('underpass', U['name'], 'O', O.round(1), 'road', round(G0 - H0, 2), 'deck top', round(top - H0, 2), 'rails raised near', len(near_rails))
+
     # ---- stitch: the near grid's edge follows the world grid; the world grid takes the near grid inside
     edge = np.maximum(np.abs(X), np.abs(Z))
     we = smoothstep(EXT - 200, EXT, edge)
@@ -746,13 +836,15 @@ def main():
         p = p + [max(dx, 0) if cx > 0 else min(dx, 0), 0]
         cx = p[:, 0].mean()
         ys = ysamp(np.append(p[:, 0], cx), np.append(p[:, 1], cz))
-        b = tg.get('building')
+        ov = OVERRIDES.get(wid, {})
+        b = ov.get('b', tg.get('building'))
         lv = num(tg.get('building:levels'))
         ht = num(tg.get('height'))
         rects, ok = decompose(p)
         flat = (b in ('industrial', 'warehouse', 'retail', 'supermarket', 'commercial', 'office', 'manufacture', 'hangar', 'storage_tank', 'sports_hall', 'hospital')
                 or (lv or 1) >= 3 or area > 900)
         roof = 'flat' if flat else ('tank' if b == 'storage_tank' else 'hip')
+        if ov.get('shape'): roof = ov['shape']
         if b in ('garage', 'garages', 'shed') and area < 60: roof = 'shed'
         if b == 'church' or tg.get('amenity') == 'place_of_worship': roof = 'church'
         rec = dict(id=wid, p=np.round(p, 2).ravel().tolist(), y0=round(float(ys.min()), 2), y1=round(float(ys.max()), 2),
@@ -762,6 +854,25 @@ def main():
         if tg.get('addr:housenumber'): rec['no'] = tg['addr:housenumber']
         if tg.get('name'): rec['name'] = tg['name']
         if wid in OVERRIDES: rec['o'] = OVERRIDES[wid]
+        if wid in SPLITS:
+            from shapely.geometry import Polygon
+            sp_ = SPLITS[wid]
+            A_, B_ = np.array(sp_['line'][0]), np.array(sp_['line'][1])
+            d_ = (B_ - A_) / np.linalg.norm(B_ - A_); nn_ = np.array([-d_[1], d_[0]])
+            poly = Polygon(p)
+            for k, part_def in enumerate(sp_['parts']):
+                sg_ = -1 if k == 0 else 1
+                half = Polygon([A_ - d_ * 500, B_ + d_ * 500, B_ + d_ * 500 + nn_ * 500 * sg_, A_ - d_ * 500 + nn_ * 500 * sg_])
+                part = poly.intersection(half)
+                if part.geom_type == 'MultiPolygon': part = max(part.geoms, key=lambda g_: g_.area)
+                if part.is_empty or part.area < 4: continue
+                q = ring_clean(np.array(part.exterior.coords))
+                if signed_area(q) < 0: q = q[::-1]
+                o_ = part_def['o']
+                ys_ = ysamp(q[:, 0], q[:, 1])
+                bl.append(dict(rec, id=wid + 'ab'[k], p=np.round(q, 2).ravel().tolist(), r=decompose(q)[0], b=o_.get('b', b),
+                               roof=o_.get('shape', 'hip'), o=o_, y0=round(float(ys_.min()), 2), y1=round(float(ys_.max()), 2), **({'h': o_['h']} if 'h' in o_ else {})))
+            continue
         if wid == HERO_ID:
             from shapely.geometry import Polygon, box
             poly = Polygon(p)
@@ -792,6 +903,8 @@ def main():
         rec = dict(id=wid, p=np.round(p, 2).ravel().tolist(), svc=tg.get('service', ''), el=1 if tg.get('electrified') == 'contact_line' else 0,
                    main=1 if tg.get('usage') == 'main' and not tg.get('service') else 0)
         if tg.get('bridge'): rec['br'] = 1
+        for k_up, U in enumerate(UNDERPASSES):
+            if wid in U['rails']: rec['up'] = k_up
         ral.append(rec)
     inmap = lambda q: len(q) and np.max(np.abs(q)) < WEXT + 200
     plat = [dict(id=wid, p=np.round(o[0], 2).ravel().tolist()) for o, _, tg, wid in osm.areas(lambda t: t.get('railway') == 'platform') if inmap(o[0])]
@@ -903,6 +1016,13 @@ def main():
     # scattered field trees
     sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10), keep=0.35, out_keep=1.0)
     T_.append((sx_, sz_, trng.choice([0, 1, 4], len(sx_)), trng.uniform(0.8, 1.2, len(sx_))))
+    for lm in lm_out:
+        if lm['type'] != 'underpass': continue
+        ur_, nr_ = np.array(lm['ur']), np.array(lm['nr'])
+        spots = [(9.5, 8.0, 0.62), (12.0, 11.5, 0.55), (-9.0, 9.0, 0.66), (-12.5, 12.0, 0.5), (10.0, -9.0, 0.6), (13.5, -12.0, 0.55),
+                 (-10.0, -8.5, 0.62), (15.0, 6.0, 0.5), (-15.0, 7.0, 0.55)]            # (l, a, scale): thujas / junipers
+        pts = np.array([[lm['x'] + a * ur_[0] + l * nr_[0], lm['z'] + a * ur_[1] + l * nr_[1]] for l, a, _ in spots])
+        T_.append((pts[:, 0], pts[:, 1], np.full(len(pts), 2), np.array([s_ for _, _, s_ in spots])))
     if trees_osm:
         a = np.array(trees_osm)
         T_.append((a[:, 0], a[:, 1], np.full(len(a), 0), np.full(len(a), 1.0)))
@@ -934,6 +1054,7 @@ def main():
             fi = np.clip(np.round((q[:, 0] + WEXT) * frs).astype(int), 0, FN - 1); fj = np.clip(np.round((q[:, 1] + WEXT) * frs).astype(int), 0, FN - 1)
             valid = (FR[fj, fi] == 0) & ~blk[jj, ii] & ~rb_x[jj, ii] & ~forest_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < WEXT - 40)
             if wid == GARII_ID: valid &= ~((q[:, 1] > LOTS[2] - 8) & (q[:, 1] < LOTS[3] + 8))
+            for x0_, x1_, z0_, z1_ in NO_FENCES: valid &= ~((q[:, 0] > x0_) & (q[:, 0] < x1_) & (q[:, 1] > z0_) & (q[:, 1] < z1_))
             k = 0
             while k < len(q):
                 if not valid[k]: k += 1; continue

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, heightAt } from './data.js';
+import { GEO, heightAt, railHeightAt } from './data.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
 
@@ -235,13 +235,15 @@ export function buildRail(B, lines, mats) {
     if (P.length < 2) continue;
     const N = normals(P);
     let yfn;
-    if (r.br) {
+    if (r.up !== undefined) {
+      yfn = (k) => railHeightAt(P[k][0], P[k][1]);            // custom underpass deck (landmarks.js)
+    } else if (r.br) {
       const y0 = heightAt(P[0][0], P[0][1]), y1 = heightAt(P[P.length - 1][0], P[P.length - 1][1]);
       const L = [0]; let acc = 0;
       for (let i = 1; i < P.length; i++) { acc += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); L.push(acc); }
       yfn = (k) => y0 + (y1 - y0) * L[k] / (acc || 1);
       bridgeStructure(B, mats, P, N, 4.2, (k) => yfn(k) - 0.2);
-    } else yfn = (k) => heightAt(P[k][0], P[k][1]);
+    } else yfn = (k) => railHeightAt(P[k][0], P[k][1]);
     ribbon(B, mats.ballast, P, N, -2.1, 2.1, (k) => yfn(k) + 0.02, 1.2);
     ribbon(B, mats.track, P, N, -1.4, 1.4, (k) => yfn(k) + 0.07, 1.2, { along: true });
     // two rails (head 7 cm, 15 cm high)

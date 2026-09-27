@@ -246,6 +246,24 @@ async function main() {
     const fx = Math.cos((10 + 47.98) * Math.PI / 180), fz = Math.cos((10 - 42.02) * Math.PI / 180);
     PHOTO_VIEWS.push({ cross: true, x: crossLm.x - fx * 11, z: crossLm.z - fz * 11, yaw: Math.atan2(-fx, -fz), pitch: 0.3, label: 'Poza 24 — crucea de pe deal' });
   }
+  // photos 25-29 (the user's Street View screenshots): the railway underpass of DJ100E by Strada Gării
+  const up = geoWorld.landmarks?.find(l => l.type === 'underpass');
+  if (up && !PHOTO_VIEWS.some(v => v.up)) {
+    const { U, W } = up;
+    const look = (from, to, pitch, label) => {
+      const dx = to[0] - from[0], dz = to[1] - from[1];
+      PHOTO_VIEWS.push({ up: true, x: from[0], z: from[1], yaw: Math.atan2(-dx, -dz), pitch, label });
+    };
+    look([-594.5, -155.0], [-560, -155.6], 0.03, 'Poza 25 — Strada Gării de la pasaj');
+    look(W(U.A + 8, -0.6), W(-4, 0.4), 0.06, 'Poza 26 — pasajul CF, intrarea dinspre Strada Gării');
+    look(W(U.A + 4, -9), W(U.wt, U.l1 + 1.5), 0.1, 'Poza 27 — colțul pasajului și borna DJ 100E');
+    const shop = GEO.buildings.find(b => b.o && b.o.shop === 'oana');
+    if (shop) {
+      let sx = 0, sz = 0; const n = shop.p.length / 2; for (let i = 0; i < shop.p.length; i += 2) { sx += shop.p[i] / n; sz += shop.p[i + 1] / n; }
+      look([-565.5, -213.5], [sx, sz], 0.07, 'Poza 28 — magazinul SHOPPING Oana');
+    }
+    look([-567.0, -213.0], W(-U.wt, -2.5), 0.05, 'Poza 29 — DJ100E spre pasaj, după pod');
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

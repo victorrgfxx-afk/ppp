@@ -24,6 +24,12 @@ export async function loadGeo(base) {
     GEO.W = { n: w.n, ext: w.ext, step: w.step, H };
   }
   GEO.worldExt = GEO.W ? GEO.W.ext : GEO.ext;
+  // railway underpasses rebuilt at 1 m (see geo/build_geo.py): oriented box, road level grid, embankment
+  GEO.ups = (json.landmarks || []).filter(l => l.type === 'underpass');
+  for (const U of GEO.ups) {
+    const ext = Math.abs(U.ur[0]) * U.A + Math.abs(U.nr[0]) * U.L, ezt = Math.abs(U.ur[1]) * U.A + Math.abs(U.nr[1]) * U.L;
+    Object.assign(U, { bx0: U.x - ext, bx1: U.x + ext, bz0: U.z - ezt, bz1: U.z + ezt, G: Float32Array.from(U.g.v) });
+  }
   // forest stands, 2 bits per 5 m cell (0 none, 1 broadleaved, 2 mixed, 3 needleleaved)
   GEO.forestBits = forest && json.forest ? new Uint8Array(forest) : null;
   const fi = new Int16Array(far);
@@ -46,8 +52,47 @@ export async function loadGeo(base) {
 // Height of the terrain mesh at (x, z): same triangulation as the rendered grid (diagonal b-c).
 // The near grid covers +-GEO.ext; beyond it the world grid (its edge values match the near grid's edge).
 export function heightAt(x, z) {
+  if (GEO.ups.length) { const u = underpassAt(x, z); if (u) return upHeight(u, x, z, true); }
   if (GEO.W && (x < -GEO.ext || x > GEO.ext || z < -GEO.ext || z > GEO.ext)) return gridHeight(GEO.W, x, z);
   return gridHeight(GEO, x, z);
+}
+
+// the underpass box containing (x, z), or null
+export function underpassAt(x, z) {
+  for (const U of GEO.ups) {
+    if (x < U.bx0 || x > U.bx1 || z < U.bz0 || z > U.bz1) continue;
+    const dx = x - U.x, dz = z - U.z;
+    if (Math.abs(dx * U.ur[0] + dz * U.ur[1]) <= U.A && Math.abs(dx * U.nr[0] + dz * U.nr[1]) <= U.L) return U;
+  }
+  return null;
+}
+export function upRoad(U, a, l) {
+  const g = U.g, fa = Math.min(g.na - 1.001, Math.max(0, (a - g.a0) / g.step)), fl = Math.min(g.nl - 1.001, Math.max(0, (l - g.l0) / g.step));
+  const i = Math.floor(fa), j = Math.floor(fl), u = fa - i, v = fl - j, G = U.G, n = g.na;
+  return (G[j * n + i] * (1 - u) + G[j * n + i + 1] * u) * (1 - v) + (G[(j + 1) * n + i] * (1 - u) + G[(j + 1) * n + i + 1] * u) * v;
+}
+// ground in the box: road level through the opening (1 m behind the wall planes), else the embankment
+export function upHeight(U, x, z, opening = true) {
+  const dx = x - U.x, dz = z - U.z;
+  const a = dx * U.ur[0] + dz * U.ur[1], l = dx * U.nr[0] + dz * U.nr[1], at = dx * U.nt[0] + dz * U.nt[1];
+  const g = upRoad(U, a, l), A = Math.abs(at);
+  const embT = U.top - Math.max(0, A - U.wt) / 1.5;
+  if (!opening) return Math.max(g, embT);
+  // same profile as geo/build_geo.py: road level through the opening and 0.8 m behind the wall faces,
+  // splayed wing walls with the grass slope above them, plain embankment slopes beyond the wings
+  const e = l < U.l0 ? U.l0 - l : l > U.l1 ? l - U.l1 : -1;
+  if (e < 0.8) return g;
+  if (e <= U.Lw) {
+    const f = e / U.Lw, atW = U.wt + (U.atEnd - U.wt) * f, wTop = U.top - (U.top - (U.g0 + U.wend)) * f;
+    if (A > atW - 0.8) return g;
+    return Math.max(g, Math.min(embT, wTop + (atW - A) / 1.5));
+  }
+  return Math.max(g, embT);
+}
+// rail bed: over an underpass the embankment top continues across the opening
+export function railHeightAt(x, z) {
+  const u = GEO.ups.length ? underpassAt(x, z) : null;
+  return u ? upHeight(u, x, z, false) : heightAt(x, z);
 }
 
 export function gridHeight(G, x, z) {

@@ -26,7 +26,7 @@ const frames = async (n) => { for (let i = 0; i < n; i++) await page.evaluate(()
 const only = process.argv[4] ? process.argv[4].split(',') : null;
 const shots = [
   ['view1', 0], ['view7', 6], ['view9', 8], ['view2', 1],
-  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23],
+  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28],
 ];
 for (const [name, k] of shots) {
   if (only && !only.includes(name)) continue;
