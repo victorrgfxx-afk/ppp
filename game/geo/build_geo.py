@@ -432,6 +432,12 @@ OVERRIDES = {
     '304010713': dict(dx=-0.8, note='șopronul de lemn din spatele gardului maro (poza 17)'),
     '222896491': dict(wall='stuccoPeach', roof='metalTileBrown', roofMat='metalTile', roofType='gable', levels=2, ridge='x', note='casa piersicie cu 2 etaje și țiglă metalică maro, la capătul străzii (poza 17)'),
 }
+# landmarks from the user's photos: position from the coordinates they sent, orientation and size from the photo
+LANDMARKS = [
+    # photo 24: white lattice steel cross on the hill above Strada Măgurii (45.1184046 N, 25.7037585 E); nudged 5 m off the
+    # lane that OSM maps right next to the pin; arms along bearing ~120 deg (right arm nearer in the photo) (the photo looks north, sun behind the camera)
+    dict(type='cross', lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), arms_bearing=120.0, pad=5.5, clear=28.0),
+]
 HERO_SPLIT = 15.4, 10.1        # parts of footprint 123 not covered by the hand-built house: x > 15.4 (rear) and z > 9.95 (garden annex)
 
 
@@ -598,6 +604,20 @@ def main():
         outside = rows & ~((zc >= z0) & (zc <= z1))
         H[outside, ic + di] = 0.5 * H[outside, ic + di] + 0.5 * (prof2[outside] + off)
     log('street + lots, H0 =', round(H0, 2))
+
+    # ---- landmarks: a level pad for the foundation (near grid), recorded for the game
+    lm_out = []
+    for lm in LANDMARKS:
+        x, z = ll_to_game(lm['lat'], lm['lon'])
+        x, z = float(x) + lm['shift'][0], float(z) + lm['shift'][1]
+        pad = float(Grid(H).at(np.float32([x]), np.float32([z])).ravel()[0])
+        d = np.hypot(X - x, Z - z)
+        w = 1 - smoothstep(lm['pad'], lm['pad'] + 9, d)
+        H = H * (1 - w) + pad * w
+        b = math.radians(lm['arms_bearing'])
+        ax, az = math.cos(b - math.radians(312.02)), math.cos(b - THETA)      # bearing -> game (x, z)
+        lm_out.append(dict(type=lm['type'], x=round(x, 2), z=round(z, 2), y=round(pad - H0, 2), rot=round(math.atan2(-az, ax), 4), clear=lm['clear']))
+    log('landmarks', lm_out)
 
     # ---- stitch: the near grid's edge follows the world grid; the world grid takes the near grid inside
     edge = np.maximum(np.abs(X), np.abs(Z))
@@ -817,6 +837,8 @@ def main():
     clay_x[ci0:ci1, ci0:ci1] = cv2.resize(CLAY.astype(np.uint8), (ci1 - ci0, ci1 - ci0), interpolation=cv2.INTER_NEAREST) > 0
     edge_x = np.maximum(np.abs(XX), np.abs(ZZ))
     free = (EXR == 0) & ~clay_x & ~rb_x & (dr_x > 12) & ~lots & (edge_x < WEXT - 20)
+    for lm in lm_out:                                     # meadow around the landmarks (photo 24)
+        free &= (XX - lm['x']) ** 2 + (ZZ - lm['z']) ** 2 > lm['clear'] ** 2
     forest_x = fill_areas(XN, WEXT, forest_a, dtype=np.uint8) > 0
     orch_x = fill_areas(XN, WEXT, orchard_a, dtype=np.uint8) > 0
     resid_x = fill_areas(XN, WEXT, resid_a, dtype=np.uint8) > 0
@@ -927,7 +949,8 @@ def main():
             for k in range(int(off.length // 38) + 1):
                 c = np.array(off.interpolate(min(off.length, 6 + k * 38)).coords[0])
                 i_, j_ = int(round((c[0] + WEXT) * s_)), int(round((c[1] + WEXT) * s_))
-                if not (0 <= i_ < XN and 0 <= j_ < XN) or EXR[j_, i_] == 1 or lots[j_, i_] or rb_x[j_, i_] or max(abs(c[0]), abs(c[1])) > WEXT - 30:
+                near_lm = any(math.hypot(c[0] - lm['x'], c[1] - lm['z']) < 45 for lm in lm_out)     # open hilltop around the cross (photo 24)
+                if not (0 <= i_ < XN and 0 <= j_ < XN) or EXR[j_, i_] == 1 or lots[j_, i_] or rb_x[j_, i_] or near_lm or max(abs(c[0]), abs(c[1])) > WEXT - 30:
                     if len(seq) > 1: poles.append(dict(s=side, p=seq))
                     seq = []; continue
                 seq.append([round(float(c[0]), 2), round(float(c[1]), 2)])
@@ -945,7 +968,7 @@ def main():
         profile=dict(z0=float(zs[0]), step=STEP, y=np.round(prof2[rows] - H0, 3).tolist()),
         buildings=bl, roads=rl, rails=ral, platforms=plat, power=power, water=cells, water2=cells_w,
         river=dict(p=np.round(rp, 1).ravel().tolist(), lev=np.round(lev - H0, 2).tolist()),
-        fences=fences, poles=poles)
+        fences=fences, poles=poles, landmarks=lm_out)
     with open(os.path.join(OUT, 'geo.json'), 'w') as f:
         json.dump(geo, f, separators=(',', ':'), ensure_ascii=False)
     log('geo.json', os.path.getsize(os.path.join(OUT, 'geo.json')) // 1024, 'KB')

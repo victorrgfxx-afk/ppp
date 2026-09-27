@@ -6,6 +6,7 @@ import { makeBuildingMaterials, buildBuildings, footprintIndex } from './buildin
 import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight } from './roads.js';
 import { makePropMaterials, buildFences, buildPower, addWires } from './props.js';
 import { buildTrees } from './trees.js';
+import { buildLandmarks } from './landmarks.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -31,6 +32,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
+  const landmarks = buildLandmarks(B, world);
   log('clădiri ' + stats.n, performance.now() - t0);
   const rm = makeRoadMaterials();
   buildRoads(B, world, rm);
@@ -53,7 +55,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   let cullI = 0;
   const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, water: water.length, meshes: meshes.length };
   return {
-    fronts, info, terrain,
+    fronts, info, terrain, landmarks,
     update(camPos) {
       trees.update(camPos);
       // distance culling of the merged chunks (a few per frame is enough: they change slowly)
