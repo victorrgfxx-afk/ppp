@@ -716,6 +716,8 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   genPlate('PH 13 KLI', 'plateOpel');
   genPlate('PH 07 ALX', 'plateBMW');
   genPlate('PH 77 XXS', 'plate508');
+  genPlate('PH 22 PXZ', 'plateFocus');   // photos 18-20
+  genPlate('PH 71 GRK', 'plateBMW1');    // photo 19
   genDoorMat(); genHorezu(); genLattice(); genFlowers();
   genHouseNo('10', 'houseNo10');
   genPlate('B 162 DDC', 'plateSUV');

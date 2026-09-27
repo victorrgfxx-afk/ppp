@@ -8,6 +8,7 @@ import { genericHouse, addWindow, wallGeos, wallMatrix, FACE, hipRoof, gableRoof
 import { ironIvyFence, stoneWallChainFence, picketFence, panelFence, wallFence, fenceGate, plasterWall, boardGate } from './fences.js';
 import { Forest, spruceArchetype, broadleafArchetype, buildGrass, sumacArchetype, yuccaArchetype, flowerArchetype } from './vegetation.js';
 import { concretePole, wire } from './poles.js';
+import { stopSign } from './signs.js';
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 export const STREET = { zA: -262, zB: 192 };
@@ -104,7 +105,7 @@ export function buildWorld(scene, world, quality, opts = {}) {
     forest.add('fruitTree', fx.fruitTree, 18.5, b, -12, 0, 1.0);
   }
   // Second house north: dark wood-clad two-storey (far right in photo 1)
-  if (geo) forest.add('broad', fx.broad, 5.8, 0.13, -48, 1, 0.9);
+  if (geo) forest.add('sumac', fx.sumac, 4.9, 0.13, -49.6, 1, 1.15);        // staghorn sumac, photo 19
   else {
     const T = new THREE.Matrix4();
     const zc = -41;
@@ -138,9 +139,19 @@ export function buildWorld(scene, world, quality, opts = {}) {
   forest.add('broad', fx.broad, 6.2, 0.25, 16.5, 2.3, 0.8);
 
   // ---------- opposite side (west) as in photo 1 ----------
-  chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -12.3, z1: 2.3, postMat: M.tealMetal, rounded: false, h: 1.55 });
-  fenceGate(batch, world, { x: W.WEST_FENCE, dir: -1, z0: -13.35, z1: -12.35, groundY: 0.04, open: 0, style: 'picket' });
-  chunked(panelFence, { x: W.WEST_FENCE, dir: -1, z0: -36, z1: -13.4 });
+  if (!geo) {
+    chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -12.3, z1: 2.3, postMat: M.tealMetal, rounded: false, h: 1.55 });
+    fenceGate(batch, world, { x: W.WEST_FENCE, dir: -1, z0: -13.35, z1: -12.35, groundY: 0.04, open: 0, style: 'picket' });
+    chunked(panelFence, { x: W.WEST_FENCE, dir: -1, z0: -36, z1: -13.4 });
+  } else {
+    // photos 18-20: maroon boards on teal posts with a teal chain-link gate, then (from the pole with
+    // the blue base) a mint-green picket fence on a stone footing, then maroon corrugated sheet
+    chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -8.6, z1: 2.3, postMat: M.tealMetal, rounded: false, h: 1.55 });
+    fenceGate(batch, world, { x: W.WEST_FENCE, dir: -1, z0: -9.6, z1: -8.6, groundY: 0.04, open: 0, style: 'mesh' });
+    chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -13.3, z1: -9.6, postMat: M.tealMetal, rounded: false, h: 1.55 });
+    chunked(picketFence, { x: W.WEST_FENCE, dir: -1, z0: -20.5, z1: -13.4, m: M.mintPicket, baseMat: M.stoneCladding, rounded: false, h: 1.35, bw: 0.1, gap: 0.035 });
+    chunked(panelFence, { x: W.WEST_FENCE, dir: -1, z0: -58, z1: -20.9, m: M.roofMetalRed, h: 1.6 });
+  }
   {
     const zc = -7.5;
     const T = westT(zc);
@@ -183,8 +194,15 @@ export function buildWorld(scene, world, quality, opts = {}) {
     houses.push({ side: -1, z0: 18.5, z1: 29.5, x: -12, drop: V(-12.1, 3.1, 20) });
     world.addRegion(-40, -4.9, 12.6, 34, 0.3);
   }
-  if (geo) forest.add('broad', fx.broad, -6.5, 0.04, -31, 0.5, 0.9);
-  else {
+  if (geo) {
+    // photo 17: the maroon sheet continues, then dark-brown boards in front of the wooden shed
+    chunked(panelFence, { x: -4.6, dir: -1, z0: 33.9, z1: 46.9, m: M.roofMetalRed });
+    chunked(picketFence, { x: -4.3, dir: -1, z0: 47.1, z1: 55.9, m: M.woodDark, postMat: M.woodDark, rounded: false, h: 1.75, bw: 0.13, gap: 0.012 });
+    // STOP at the corner with the lane to the west (photo 17) and at the T junction to the south (photo 19)
+    stopSign(batch, world, -2.7, 68.8, baseHeight(68.8) + 0.04, Math.PI);
+    stopSign(batch, world, 3.4, -118.2, baseHeight(-118.2) + 0.1, 0);
+    forest.add('broad', fx.broad, -5.8, 0.04, -47.6, 0.5, 1.0);
+  } else {
     const zc = -25;
     genericHouse(batch, world, westT(zc), { seed: 8, zc, fx: 8.5, width: 10, depth: 8, floors: 1, baseY: 0.34, wall: 'stuccoCream', roof: 'roofMetalBrown', roofType: 'hip' });
     forest.add('broad', fx.broad, -6.5, 0.04, -31, 0.5, 0.9);
@@ -258,7 +276,7 @@ export function buildWorld(scene, world, quality, opts = {}) {
   // south of the house the line runs on the east side, with LED street lamps (photos 6-8)
   const eastZ = [-5.9, -40, -76, -112, -148, -184, -220, 30, 58, 86, 114, 142, 170].filter(inStreet).sort((a, b) => a - b);
   if (opts.fronts) houses.push(...opts.fronts);
-  const wp = westZ.map((z, i) => concretePole(batch, world, -2.95, z, { h: 12, type: 'MV', lamp: i % 2 === 0 ? 1 : 0 }));
+  const wp = westZ.map((z, i) => concretePole(batch, world, -2.95, z, { h: 12, type: 'MV', lamp: i % 2 === 0 ? 1 : 0, ...(geo && z === -15.8 ? { round: true, paint: true } : {}) }));
   const ep = eastZ.map((z) => concretePole(batch, world, 3.3, z, { h: z === -5.9 ? 9.4 : 9.6, type: 'SC', lamp: z > 0 ? -1 : 0 }));
   const lamps = [...wp, ...ep].filter(p => p.lampHead).map(p => p.lampHead);
   for (let i = 0; i < wp.length - 1; i++) {

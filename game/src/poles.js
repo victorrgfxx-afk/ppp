@@ -5,16 +5,17 @@ import { baseHeight } from './config.js';
 
 // Concrete utility poles (Romanian SC/SE type), insulators, LED street lamps, sagging wires.
 
-export function concretePole(batch, world, x, z, { h = 10, type = 'SC', lamp = 0, ry = 0 } = {}) {
+export function concretePole(batch, world, x, z, { h = 10, type = 'SC', lamp = 0, ry = 0, round = false, paint = false } = {}) {
   const y = baseHeight(z) + (x > 0 ? 0.13 : 0.04);
   const w0 = type === 'MV' ? 0.32 : 0.26, d0 = type === 'MV' ? 0.26 : 0.19;
-  // tapered rectangular shaft
-  const g = new THREE.CylinderGeometry(0.5, 0.5, h, 4, 8);
-  g.rotateY(Math.PI / 4);
+  // tapered rectangular shaft (or a round spun-concrete one, photo 18)
+  const g = new THREE.CylinderGeometry(0.5, 0.5, h, round ? 14 : 4, 8);
+  if (!round) g.rotateY(Math.PI / 4);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const t = (p.getY(i) + h / 2) / h;
-    const k = 1 - 0.45 * t;
+    const k = 1 - (round ? 0.3 : 0.45) * t;
+    if (round) { p.setX(i, p.getX(i) * 0.34 * k); p.setZ(i, p.getZ(i) * 0.34 * k); continue; }
     p.setX(i, p.getX(i) / 0.7071 * (w0 / 2) * k);
     p.setZ(i, p.getZ(i) / 0.7071 * (d0 / 2) * k);
   }
@@ -23,6 +24,8 @@ export function concretePole(batch, world, x, z, { h = 10, type = 'SC', lamp = 0
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 0.6, uv.getY(i) * h / 1.5);
   const T = mat(x, y + h / 2 - 0.4, z, 0, ry, 0);
   batch.add(M.concretePole, g, T);
+  // light-blue paint on the lower 2.4 m (photos 18-20)
+  if (paint) batch.add(M.poleBlue, cylGeo(0.176, 0.172, 2.4, 14), mat(x, y + 0.8, z));
   // the long recessed slots of SC poles (photo 2)
   if (type === 'SC') {
     for (let s = 0; s < 6; s++) {

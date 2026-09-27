@@ -108,6 +108,8 @@ export function buildMaterials() {
   std('greenMetal', { roughness: 0.45, metalness: 0.4, color: 0x2f6b3a });
   std('tealMetal', { roughness: 0.5, metalness: 0.35, color: 0x5fa39a });
   std('tealPanel', { roughness: 0.55, metalness: 0.3, color: 0x9fd0c2 });
+  std('mintPicket', { normalMap: TEX.picketN, roughness: 0.62, color: 0xa4dccb });       // painted boards, photo 18
+  std('poleBlue', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.8, color: 0xb4cde0 }); // painted pole base
   std('gasPipe', { roughness: 0.4, metalness: 0.2, color: 0xe8c21a });
   std('whitePVC', { roughness: 0.35, color: 0xf2f2ef });
   std('meterBox', { roughness: 0.6, color: 0xdedcd6 });

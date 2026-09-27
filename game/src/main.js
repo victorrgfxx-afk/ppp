@@ -48,6 +48,12 @@ const PHOTO_VIEWS = [
   { x: 4.75, z: 5.9, yaw: -2.9, pitch: 0.04, label: 'Poza 14 — aleea spre grădină' },
   { x: 4.2, z: 13.6, yaw: -2.53, pitch: -0.42, label: 'Poza 15 — câinele negru în grădină' },
   { x: 4.15, z: 5.65, yaw: -0.82, pitch: -0.6, label: 'Poza 16 — câinele roșcat pe prispă' },
+  // photos 17-19 were taken with the 2x lens: fov = its vertical field of view
+  { x: 0.4, z: 17, yaw: Math.PI - 0.05, pitch: 0.14, fov: 40, label: 'Poza 17 — strada spre deal și râpa de lut' },
+  { x: -0.2, z: -6.2, yaw: 0.36, pitch: 0.16, fov: 40, label: 'Poza 18 — stâlpul albastru și gardul verde' },
+  { x: -1.0, z: -2.0, yaw: 0.0, pitch: 0.03, fov: 40, label: 'Poza 19 — spre intersecția cu STOP' },
+  { x: -0.6, z: 2.6, yaw: 0.03, pitch: 0.05, label: 'Poza 20 — strada spre casa cu șindrilă' },
+  { x: -2.0, z: 14.5, yaw: 0.3, pitch: 0.04, label: 'Poza 21 — poarta nr. 10' },
 ];
 
 async function main() {
@@ -116,13 +122,24 @@ async function main() {
   park('bmw', paintMaterial(0x040405, { metallic: 0.0, rough: 0.25, dusty: 0.55 }), 'plateBMW', 2.32, -2.96, 0, { power: 1.25, vmax: 62 });
   park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', 1.58, 13.7, Math.PI, { power: 1.1, vmax: 58 });
   park('corsa', paintMaterial(0xa9adb1, { metallic: 0.85, rough: 0.35, dusty: 0.3 }), 'plateOpel', 1.55, -11.75, Math.PI, { power: 0.85, vmax: 48 });
-  park('suv', paintMaterial(0x1d2024, { metallic: 0.55, rough: 0.3 }), 'plateSUV', 1.72, -20.3, 0, { power: 1.1, vmax: 55 });
-  park('sedan', paintMaterial(0xbfc2c5, { metallic: 0.85, rough: 0.33 }), 'plateA', 1.75, -26.3, 0, {});
-  park('hatch', paintMaterial(0xe4e4e2, { metallic: 0.1, rough: 0.3 }), 'plateB', 1.7, -31.6, 0, {});
-  park('sedan', paintMaterial(0xdadcdd, { metallic: 0.3, rough: 0.3 }), 'plateC', -1.35, -44.5, Math.PI, {});
+  // photos 19-20 (newer than photo 1): the BMW 1 Series stands a few metres behind the Corsa, a silver sedan further on
+  park('sedan', paintMaterial(0xbfc2c5, { metallic: 0.85, rough: 0.33 }), 'plateA', 1.75, -50, 0, {});
   park('hatch', paintMaterial(0xe9e9e7, { metallic: 0.15, rough: 0.28 }), 'plateB', -1.45, 58, 0, {});
   park('hatch', paintMaterial(0x6e1f1f, { metallic: 0.6, rough: 0.3 }), 'plateA', 1.72, 96, Math.PI, {});
   park('corsa', paintMaterial(0x2f4f7a, { metallic: 0.7, rough: 0.3 }), 'plateB', -1.35, -70, 0, {});
+  // from the newer photos 17-19: Ford Focus + a dark hatch on the west side, BMW 1 Series facing north,
+  // a dark-blue VW Golf IV by the brown board fence and a white Ford Kuga past the T junction
+  // west side: parked half on the gravel shoulder, one behind the other (photos 18-20)
+  park('hatch', paintMaterial(0xe6e7e6, { metallic: 0.25, rough: 0.3, dusty: 0.2 }), 'plateFocus', -2.15, -31.9, Math.PI, {});
+  park('hatch', paintMaterial(0x34373c, { metallic: 0.6, rough: 0.3 }), 'plateC', -2.15, -37.2, Math.PI, {});
+  park('sedan', paintMaterial(0xdadcdd, { metallic: 0.3, rough: 0.3 }), 'plateB', -2.1, -42.6, Math.PI, {});
+  park('hatch', paintMaterial(0x2a2d31, { metallic: 0.7, rough: 0.28, dusty: 0.15 }), 'plateBMW1', 1.72, -24.1, Math.PI, { power: 1.15, vmax: 58 });
+  park('hatch', paintMaterial(0x8e1c1f, { metallic: 0.5, rough: 0.3 }), 'plateA', 2.05, -109.5, Math.PI, {});   // red car by the STOP (photo 19)
+  park('hatch', paintMaterial(0x16213d, { metallic: 0.55, rough: 0.3, dusty: 0.2 }), 'plateB', -1.45, 45.5, Math.PI, {});
+  {
+    const probe = new world.Box(0.9, -129.8, 1.05, 2.4, 0);
+    if (!world.query(0.9, -129.8, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) park('suv', paintMaterial(0xf1f1ef, { metallic: 0.3, rough: 0.3 }), 'plateA', 0.9, -129.8, 0, {});
+  }
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
     const rr = rng(77);
@@ -163,6 +180,7 @@ async function main() {
   let mode = 'foot';       // 'foot' | 'car'
   let active = null;       // vehicle being driven
   let camMode = store.get('camMode', 'chase');
+  let photoFov = null;      // zoomed photo views keep the lens' field of view until you walk away
   const orbit = { yaw: 0, pitch: 0.18, idle: 0 };
   const cockpitLook = { yaw: 0, pitch: 0 };
   let paused = true, started = false, hornOn = false;
@@ -226,6 +244,8 @@ async function main() {
     const v = PHOTO_VIEWS[i];
     if (mode === 'car') exitCar(true);
     player.setPose(v.x, v.z, v.yaw, v.pitch);
+    photoFov = v.fov ? { fov: v.fov, x: v.x, z: v.z } : null;
+    camera.fov = v.fov ?? 70; camera.updateProjectionMatrix();
     hud.toast(v.label);
   };
 
@@ -341,7 +361,8 @@ async function main() {
         fov = 72;
       }
     } else {
-      fov = 70 + player.fovKick;
+      if (photoFov && Math.hypot(player.pos.x - photoFov.x, player.pos.z - photoFov.z) > 0.25) photoFov = null;
+      fov = (photoFov ? photoFov.fov : 70) + player.fovKick;
     }
     if (shake > 0) {
       camera.position.x += (Math.random() - 0.5) * shake * 0.2;

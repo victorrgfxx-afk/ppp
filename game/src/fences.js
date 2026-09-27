@@ -125,28 +125,27 @@ export function stoneWallChainFence(batch, world, { x, z0, z1, groundY, dir = 1,
 }
 
 // Vertical-board wooden fence (maroon stained) with metal or wooden posts (photos 1 & 5).
-export function picketFence(batch, world, { x, z0, z1, groundY, dir = 1, h = 1.6, postMat = null, base = true, rounded = true, seed = 1 }) {
+export function picketFence(batch, world, { x, z0, z1, groundY, dir = 1, h = 1.6, postMat = null, base = true, rounded = true, seed = 1, m = M.picket, baseMat = M.curb, bw = 0.09, gap = 0.022 }) {
   const r = rng(seed);
   const cx = x + dir * 0.05;
   const L = z1 - z0;
-  if (base) batch.add(M.curb, boxGeo(0.16, 0.18, L, 0.5), mat(x + dir * 0.08, groundY + 0.07, (z0 + z1) / 2));
+  if (base) batch.add(baseMat, boxGeo(0.16, 0.18, L, 0.5), mat(x + dir * 0.08, groundY + 0.07, (z0 + z1) / 2));
   const y0 = groundY + (base ? 0.16 : 0.04);
   world.addAABB(Math.min(x, x + dir * 0.2), Math.max(x, x + dir * 0.2), z0, z1, -5, 2.2, 'fence');
-  const bw = 0.09, gap = 0.022;
   const n = Math.floor(L / (bw + gap));
   for (let i = 0; i < n; i++) {
     const z = z0 + (i + 0.5) * (bw + gap);
     const hh = h - (rounded ? 0.04 : 0) + (r() - 0.5) * 0.015;
-    batch.add(M.picket, boxGeo(0.018, hh, bw, 0.2, 1.6), mat(cx, y0 + hh / 2, z));
+    batch.add(m, boxGeo(0.018, hh, bw, 0.2, 1.6), mat(cx, y0 + hh / 2, z));
     if (rounded) {
       const cap = new THREE.CylinderGeometry(bw / 2, bw / 2, 0.018, 4, 1, false, 0, Math.PI);
-      batch.add(M.picket, cap, mat(cx, y0 + hh, z, 0, 0, Math.PI / 2));
+      batch.add(m, cap, mat(cx, y0 + hh, z, 0, 0, Math.PI / 2));
     }
   }
   // rails behind the boards
-  for (const yy of [0.3, h - 0.3]) batch.add(M.picket, boxGeo(0.04, 0.08, L), mat(cx + dir * 0.035, y0 + yy, (z0 + z1) / 2));
+  for (const yy of [0.3, h - 0.3]) batch.add(m, boxGeo(0.04, 0.08, L), mat(cx + dir * 0.035, y0 + yy, (z0 + z1) / 2));
   // posts
-  const pm = postMat ?? M.picket;
+  const pm = postMat ?? m;
   for (let z = z0; z <= z1 + 0.01; z += 2.4) {
     batch.add(pm, boxGeo(0.07, h + 0.05, 0.07), mat(cx + dir * 0.07, y0 + (h + 0.05) / 2 - 0.02, Math.min(z, z1)));
   }
@@ -205,7 +204,7 @@ export function fenceGate(batch, world, { x, z0, z1, groundY, dir = 1, open = 0,
   const hinge = z1;
   const cx = x + dir * 0.12;
   const m = (lx, ly, lz) => new THREE.Matrix4().multiplyMatrices(mat(cx, groundY, hinge, 0, -dir * open, 0), mat(lx, ly, lz));
-  const frame = style === 'black' ? M.blackMetal : M.picket;
+  const frame = style === 'black' ? M.blackMetal : style === 'mesh' ? M.tealMetal : M.picket;
   batch.add(frame, boxGeo(0.04, 0.04, w), m(0, 0.12, -w / 2));
   batch.add(frame, boxGeo(0.04, 0.04, w), m(0, 1.55, -w / 2));
   batch.add(frame, boxGeo(0.04, 1.45, 0.04), m(0, 0.84, -w + 0.02));
@@ -220,6 +219,9 @@ export function fenceGate(batch, world, { x, z0, z1, groundY, dir = 1, open = 0,
       fleurDeLis(batch, wp.x, wp.y, wp.z, 0.6);
     }
     for (let k = 0; k < Math.floor(w / 0.08); k++) batch.add(M.blackMetal, boxGeo(0.01, 0.2, 0.01), m(0, 0.24, -0.04 - k * 0.08).multiply(mat(0, 0, 0, 0.6, 0, 0)));
+  } else if (style === 'mesh') {
+    // teal frame with chain-link infill (photos 18, 20)
+    batch.add(M.chain, quadGeo(w - 0.06, 1.38, 0, 0, (w - 0.06) / 0.25, 1.38 / 0.25), m(0, 0.84, -w / 2).multiply(mat(0, 0, 0, 0, Math.PI / 2, 0)));
   } else {
     for (let k = 0; k < Math.floor(w / 0.11); k++) batch.add(M.picket, boxGeo(0.018, 1.5, 0.09), m(0.02, 0.85, -0.06 - k * 0.11));
   }

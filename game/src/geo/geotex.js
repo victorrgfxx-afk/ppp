@@ -17,7 +17,7 @@ function tex(c, { srgb = true, repeat = true } = {}) {
 function toData(c) { return c.getContext('2d').getImageData(0, 0, c.width, c.height); }
 
 // A wall bay (one window per bay and floor). Alpha = 1 where the wall may be tinted by the building colour.
-function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, wall = 'stucco', band = false, shutter = true, seed = 1 }) {
+function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, wall = 'stucco', band = false, shutter = true, windows = true, seed = 1 }) {
   const w = Math.round(W * ppm), h = Math.round(Hf * ppm);
   const c = canvas(w, h), ctx = c.getContext('2d');
   const img = ctx.createImageData(w, h);
@@ -36,13 +36,23 @@ function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, w
       const seam = plank < 0.008 ? 0.55 : 1;
       const g = 0.82 + 0.25 * fbm(x / 2, y / 40, 3, 1e9, 9) + 0.05 * valueNoise(Math.floor(x / (0.14 * ppm)) * 7.1, 0, 1e9, 3);
       col = [215 * g * seam, 205 * g * seam, 195 * g * seam]; hgt = seam < 1 ? 0.3 : 0.5 + 0.1 * g;
+    } else if (wall === 'shingle') {
+      // weathered wooden shingles (photos 19, 20): staggered courses with rounded butts
+      const rowH = h / 24, sw = w / 30;                           // whole courses per tile: seamless
+      const row = Math.floor(y / rowH), fy = (y % rowH) / rowH;
+      const xx = x + (row % 2) * sw * 0.5, k = Math.floor(xx / sw) % 30, fx = (xx % sw) / sw;
+      const d = Math.abs(fx - 0.5) * 2;
+      const gap = fx < 0.07 || (fy > 0.72 && d > Math.sqrt(Math.max(0, (1 - fy) / 0.28)));
+      const g = 0.72 + 0.3 * valueNoise(k * 3.1, row * 7.7, 1e9, 11) + 0.12 * fbm(x / 1.5, y / 18, 3, 1e9, 13);
+      const sh = gap ? 0.42 : 0.8 + 0.2 * fy;
+      col = [200 * g * sh, 192 * g * sh, 184 * g * sh]; hgt = gap ? 0.25 : 0.4 + 0.35 * fy;
     } else {
       const g = 0.9 + 0.1 * fbm(x / 6, y / 6, 4, 1e9, seed) - 0.05 * fbm(x / 60, y / 40, 3, 1e9, seed + 5);
       col = [236 * g, 234 * g, 230 * g]; hgt = 0.5 + 0.15 * fbm(x / 3, y / 3, 3, 1e9, 4);
     }
     if (band && y > h - 0.18 * ppm) { col = [150, 150, 146]; a = 0; hgt = 0.62; rough = 0.9; }
-    const inX = x >= x0 - 3 && x <= x1 + 3, inY = y >= yt - 3 && y <= yb + 3;
-    if (shutter && x >= x0 - 2 && x <= x1 + 2 && y >= yt - 0.2 * ppm && y < yt - 2) { col = [232, 232, 228]; a = 0; hgt = 0.7; rough = 0.45; }
+    const inX = windows && x >= x0 - 3 && x <= x1 + 3, inY = y >= yt - 3 && y <= yb + 3;
+    if (windows && shutter && x >= x0 - 2 && x <= x1 + 2 && y >= yt - 0.2 * ppm && y < yt - 2) { col = [232, 232, 228]; a = 0; hgt = 0.7; rough = 0.45; }
     if (inX && y > yb + 3 && y < yb + 0.06 * ppm) { col = [205, 205, 200]; a = 0; hgt = 0.8; rough = 0.5; }     // sill
     if (inX && inY) {
       const inner = x > x0 + fr && x < x1 - fr && y > yt + fr && y < yb - fr;
@@ -156,6 +166,8 @@ export function genGeoTextures() {
   facade('facadeHouse', { seed: 3 });
   facade('facadeBlock', { W: 3.0, Hf: 2.75, win: [1.5, 1.4, 0.85], band: true, shutter: false, seed: 5 });
   facade('facadeWood', { wall: 'wood', seed: 7 });
+  facade('facadeShingle', { wall: 'shingle', shutter: false, seed: 9 });
+  facade('facadeShingleP', { wall: 'shingle', windows: false, seed: 9 });
   industrial();
   track();
   fenceBars('fencePicket', { boardW: 0.1, gap: 0.035, color: [96, 36, 32], pointed: false });

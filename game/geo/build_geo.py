@@ -415,10 +415,14 @@ SKIP_TREES = (-40.0, 40.0, -62.0, 48.0)
 # photographed neighbours: appearance from the photos, footprint from OSM
 OVERRIDES = {
     '264516818': dict(wall='stuccoWhite', roof='roofMetalGray', roofType='hip', plinth='stoneCladding', frame='woodDark', note='casa albă (poza 1-2)'),
-    '264516920': dict(wall='woodDark', roof='roofMetalGray', roofType='gable', levels=2, frame='whitePVC', note='casa din lemn închis (poza 1)'),
-    '264515491': dict(wall='stuccoWhite', roof='roofMetalGray', roofType='gable', levels=2, chimney=True, dx=-3.0, note='casa albă cu coș de cărămidă (poza 1): retrasă de la stradă ca în poză'),
-    '264515508': dict(wall='stuccoCream', roof='roofMetalGray', roofType='hip', note='casa de după zidul gri (poza 8)'),
+    '264516920': dict(wall='shingle', roof='roofMetalLight', roofType='gable', levels=2, ridge='x', pitch=20, note='casa înaltă cu șindrilă închisă și fereastră arcuită (pozele 1, 19, 20)'),
+    '264516921': dict(wall='gray', roof='roofMetalLight', note='anexa joasă cu tablă zincată din fața casei cu șindrilă (poza 20)'),
+    '264515491': dict(wall='stuccoWhite', roof='roofMetalLight', roofType='gable', levels=2, chimney=True, ridge='x', dx=-3.0, note='casa albă cu coș de cărămidă, fronton spre stradă (pozele 1, 18, 20)'),
+    '264515456': dict(wall='gray', roof='roofMetalLight', roofType='gable', ridge='x', ridgeAll=True, pitch=17, note='clădirea joasă cu tablă zincată din spatele gardului mentă (poza 18)'),
+    '264515508': dict(wall='ochre', roof='metalTileBrown', roofMat='metalTile', roofType='gable', ridge='z', note='casa ocru cu țiglă metalică maro de după zidul gri, poarta nr. 10 (pozele 8, 21)'),
     '264515510': dict(wall='stuccoPeach', roof='roofMetalBrown', roofType='gable', dx=-2.9, note='casa de după gardul vișiniu (poza 7): în spatele scumpiei'),
+    '304010713': dict(dx=-0.8, note='șopronul de lemn din spatele gardului maro (poza 17)'),
+    '222896491': dict(wall='stuccoPeach', roof='metalTileBrown', roofMat='metalTile', roofType='gable', levels=2, ridge='x', note='casa piersicie cu 2 etaje și țiglă metalică maro, la capătul străzii (poza 17)'),
 }
 HERO_SPLIT = 15.4, 10.1        # parts of footprint 123 not covered by the hand-built house: x > 15.4 (rear) and z > 9.95 (garden annex)
 
@@ -560,7 +564,8 @@ def main():
     gzs, gxs = np.gradient(Y, STEP)
     slope = np.degrees(np.arctan(np.hypot(gxs, gzs)))
     cn = ndimage.gaussian_filter(np.random.default_rng(3).standard_normal((N, N)), 1.6); cn /= cn.std()
-    CLAY = (slope > 17) & (np.abs(X + 5 + 12 * cn) < 42 + 10 * cn) & (Z > 400) & (Z < 545) & (cn > -0.9)
+    # position from photos 7 and 17: left of the street axis, i.e. towards +x (NW), ~80 m wide
+    CLAY = (slope > 16) & (np.abs(X - 45 + 12 * cn) < 42 + 10 * cn) & (Z > 395) & (Z < 545) & (cn > -0.9)
     CLAY = ndimage.binary_opening(CLAY, iterations=1)
     write_b64('height.json', np.clip(np.round(Y * 100), -32000, 32000).astype('<i2'))
     Xf, Zf = grid_xz(FAR_N, FAR_EXT)

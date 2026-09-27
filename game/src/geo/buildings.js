@@ -11,8 +11,10 @@ const col = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const WALLS = [0xefede7, 0xeae2cf, 0xe9dcb0, 0xe6c9a8, 0xd2dcc0, 0xd3d8dc, 0xe6cbc2, 0xc9c6bf, 0xdcc08e, 0xf1efe9, 0xe4e0d4];
 const BLOCKS = [0xd9d2c3, 0xc9c8c2, 0xe0d6bf, 0xd8c8b0, 0xc7ccd0];
 const ROOF_METAL = [0x7a3b30, 0x5a3a2c, 0x52565b, 0x3b3e43, 0x4a5c4c, 0x6d3530, 0x9aa0a6, 0x86503a, 0x5f6368];
-const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a };
-const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24 };
+const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a, ochre: 0xd8a94e, gray: 0xb3b2ac, shingle: 0x7c7771 };
+const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36 };
+// facade texture per wall material
+const FKEY = { house: 'facadeHouse', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle' };
 
 function hashId(id) { let h = 2166136261; for (const ch of String(id)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
 
@@ -35,11 +37,16 @@ export function makeBuildingMaterials() {
     house: facade('facadeHouse'),
     block: facade('facadeBlock'),
     wood: facade('facadeWood'),
+    shingle: facade('facadeShingle'),
+    // gable ends of shingled houses: the same shingles without windows, mapped in metres
+    shinglePlain: facade('facadeShingleP'),
     ind: facade('facadeInd'),
     plinth: M.stuccoGray,
     stone: M.stoneCladding,
     roofMetal: new THREE.MeshStandardMaterial({ map: TEX.roofMetal, normalMap: TEX.roofMetalN, roughness: 0.48, metalness: 0.45, vertexColors: true, side: THREE.DoubleSide }),
     roofTiles: new THREE.MeshStandardMaterial({ map: TEX.roofTiles, normalMap: TEX.roofTilesN, roughness: 0.78, vertexColors: true, side: THREE.DoubleSide }),
+    // pressed-steel 'metal tile' roofing (photos 17, 21): the tile relief, glossy painted steel
+    roofMetalTile: new THREE.MeshStandardMaterial({ normalMap: TEX.roofTilesN, normalScale: new THREE.Vector2(1.3, 1.3), roughness: 0.42, metalness: 0.35, vertexColors: true, side: THREE.DoubleSide }),
     roofFlat: new THREE.MeshStandardMaterial({ map: TEX.gravel, roughness: 0.95, color: 0x6b6b68 }),
     brick: M.brick,
     spire: new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.8, color: 0x8a8f94 }),
@@ -63,10 +70,12 @@ function pushFace(B, material, pts, uvs, color) {
 }
 
 // hipped (or gable) roof over one rectangle
-function rectRoof(B, mats, r, top, pitch, ov, color, roofMat, gable, wallColor) {
+function rectRoof(B, mats, r, top, pitch, ov, color, roofMat, gable, wallColor, { ridge = null, gableMat = mats.house } = {}) {
   let [cx, cz, hw, hd, a] = r;
   let ex = [Math.cos(a), Math.sin(a)], ez = [-Math.sin(a), Math.cos(a)];
-  if (hd > hw) { [hw, hd] = [hd, hw]; ex = [ez[0], ez[1]]; ez = [-Math.cos(a), -Math.sin(a)]; }
+  // ridge along the longer side, unless the photos say otherwise ('x' / 'z' = the game axis it follows)
+  const swap = ridge === 'x' ? Math.abs(ex[0]) < Math.abs(ez[0]) : ridge === 'z' ? Math.abs(ex[1]) < Math.abs(ez[1]) : hd > hw;
+  if (swap) { [hw, hd] = [hd, hw]; ex = [ez[0], ez[1]]; ez = [-Math.cos(a), -Math.sin(a)]; }
   const t = Math.tan(pitch);
   const rise = Math.min(4.8, hd * t);
   const tt = rise / hd;
@@ -92,7 +101,9 @@ function rectRoof(B, mats, r, top, pitch, ov, color, roofMat, gable, wallColor) 
       const ax = pts[1][0] - pts[0][0], az = pts[1][2] - pts[0][2], L = Math.hypot(ax, az);
       const nx = -az / L, nz = ax / L;
       const pos = [...pts[0], ...pts[1], ...pts[2]];
-      B.tris(mats.house, pos, [nx, 0, nz, nx, 0, nz, nx, 0, nz], [0.04, 0.05, 0.04, 0.05, 0.1, 0.3], wallColor);
+      const uv = gableMat === mats.house ? [0.04, 0.05, 0.04, 0.05, 0.1, 0.3]
+        : [-hd / 3.2, top / 2.8, hd / 3.2, top / 2.8, 0, ridgeY / 2.8].map((v, i) => s < 0 && i % 2 === 0 ? -v : v);
+      B.tris(gableMat, pos, [nx, 0, nz, nx, 0, nz, nx, 0, nz], uv, wallColor);
     }
   }
   return { ridgeY, eaveY };
@@ -113,9 +124,10 @@ export function buildBuildings(B, world, mats) {
     const isBlock = kind === 'apartments' || lv >= 4;
     const isInd = ['industrial', 'warehouse', 'manufacture', 'hangar', 'retail', 'supermarket', 'commercial', 'storage_tank', 'sports_hall'].includes(kind);
     const isShed = b.roof === 'shed' || kind === 'garage' || kind === 'garages' || kind === 'shed';
-    const wallMat = o.wall === 'woodDark' ? mats.wood : isBlock ? mats.block : (isInd || isShed) ? mats.ind : mats.house;
-    const bayW = TEX[wallMat === mats.block ? 'facadeBlock' : wallMat === mats.ind ? 'facadeInd' : 'facadeHouse'].userData.W;
-    const floorH = TEX[wallMat === mats.block ? 'facadeBlock' : wallMat === mats.ind ? 'facadeInd' : 'facadeHouse'].userData.Hf;
+    const wk = o.wall === 'woodDark' ? 'wood' : o.wall === 'shingle' ? 'shingle' : isBlock ? 'block' : (isInd || isShed) ? 'ind' : 'house';
+    const wallMat = mats[wk];
+    const bayW = TEX[FKEY[wk]].userData.W;
+    const floorH = TEX[FKEY[wk]].userData.Hf;
     const wc = col(o.wall ? OVR_WALL[o.wall] ?? 0xe8e6e0 : isBlock ? BLOCKS[h % BLOCKS.length] : isInd || isShed ? [0xcfd2d4, 0xb9bcbf, 0xd8d4c8][h % 3] : WALLS[h % WALLS.length]);
     const base = b.y0 - 0.3;
     const floor0 = o.eave !== undefined ? b.y1 : b.y1 + 0.45;
@@ -156,7 +168,7 @@ export function buildBuildings(B, world, mats) {
           const j = i / 9 * 6; const t0 = uv[j + 2], t1 = uv[j + 3]; uv[j + 2] = uv[j + 4]; uv[j + 3] = uv[j + 5]; uv[j + 4] = t0; uv[j + 5] = t1;
         }
       }
-      B.tris(isShed ? mats.roofMetal : mats.roofFlat, pos, nrm, uv, isShed ? col(ROOF_METAL[h % ROOF_METAL.length]) : null);
+      B.tris(isShed ? mats.roofMetal : mats.roofFlat, pos, nrm, uv, isShed ? col(o.roof ? OVR_ROOF[o.roof] ?? 0xa8adb3 : ROOF_METAL[h % ROOF_METAL.length]) : null);
       // coping on the parapet
       if (!isShed) for (let k = 0; k < n; k++) {
         const A = P[k], C = P[(k + 1) % n];
@@ -164,14 +176,16 @@ export function buildBuildings(B, world, mats) {
       }
     } else {
       const tiles = !o.roof && r() < 0.24;
-      const roofMat = tiles ? mats.roofTiles : mats.roofMetal;
+      const roofMat = tiles ? mats.roofTiles : o.roofMat === 'metalTile' ? mats.roofMetalTile : mats.roofMetal;
       const rc = o.roof ? col(OVR_ROOF[o.roof] ?? 0xa8adb3) : tiles ? col([0xffffff, 0xd8c8c0, 0xb89a90][h % 3]) : col(ROOF_METAL[h % ROOF_METAL.length]);
-      const pitch = THREE.MathUtils.degToRad(tiles ? 34 : 27 + (h % 7));
+      const pitch = THREE.MathUtils.degToRad(o.pitch ?? (tiles ? 34 : 27 + (h % 7)));
       const gable = o.roofType === 'gable' || (!o.roofType && b.r.length === 1 && r() < 0.28 && Math.max(b.r[0][2], b.r[0][3]) > 1.3 * Math.min(b.r[0][2], b.r[0][3]));
       if (gable) stats.gable++; else stats.hip++;
       let ridge = top;
-      for (const rr of b.r) {
-        const res = rectRoof(B, mats, rr, top, pitch, 0.45, rc, roofMat, gable, wc);
+      const gableMat = wk === 'shingle' ? mats.shinglePlain : mats.house;
+      for (const [i, rr] of b.r.entries()) {
+        // o.ridge applies to the main (largest) rectangle; the others keep their own axis (cross wings)
+        const res = rectRoof(B, mats, rr, top, pitch, 0.45, rc, roofMat, gable, wc, { ridge: i === 0 || o.ridgeAll ? o.ridge : null, gableMat });
         ridge = Math.max(ridge, res.ridgeY);
       }
       if (b.roof === 'church') {
