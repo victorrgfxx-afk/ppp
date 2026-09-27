@@ -37,7 +37,7 @@ const PHOTO_VIEWS = [
   { x: 1.25, z: 1.9, yaw: -1.3, pitch: 0.12, label: 'Poza 3 — casa și tufa' },
   { x: 2.35, z: 3.0, yaw: -Math.PI / 2, pitch: 0.1, label: 'Poza 4 — fațada' },
   { x: 2.2, z: 3.9, yaw: -2.05, pitch: 0.06, label: 'Poza 5 — poarta' },
-  { x: 2.35, z: 4.2, yaw: -2.8, pitch: 0.04, label: 'Poza 6 — straturile de flori' },
+  { x: 2.35, z: 4.2, yaw: -2.8, pitch: 0.04, label: 'Poza 6 — straturile și Peugeot-ul' },
   { x: 0.3, z: 2.0, yaw: Math.PI, pitch: 0.02, label: 'Poza 7 — strada spre sud' },
   { x: 0.2, z: 2.6, yaw: 2.62, pitch: 0.03, label: 'Poza 8 — zidul gri de vizavi' },
   { x: -1.4, z: 1.2, yaw: -Math.PI / 2, pitch: 0.12, label: 'Poza 9 — toată fațada' },
@@ -125,8 +125,9 @@ async function main() {
   park('bmw', paintMaterial(0x040405, { metallic: 0.0, rough: 0.25, dusty: 0.55 }), 'plateBMW', 2.32, -2.96, 0, { power: 1.25, vmax: 62 });
   // photos 17 and 23 (newer than 6-7): the Peugeot parked across the street by the maroon sheet fence,
   // and a silver hatchback with its door open where it used to stand
-  park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', -1.9, 41.5, Math.PI, { power: 1.1, vmax: 58 });
-  park('hatch', paintMaterial(0xc4c7cb, { metallic: 0.85, rough: 0.28, dusty: 0.1 }), 'plateC', 1.6, 13.4, 0, { name: 'Mercedes argintiu' });
+  // the user's Peugeot 508 at the gate (photos 6-7), tuned on request: 500 km/h (limiter), 0-100 in 2.0 s
+  park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', 1.58, 13.7, Math.PI, { hyper: true, name: 'Peugeot 508 · 500 km/h' });
+  park('hatch', paintMaterial(0xc4c7cb, { metallic: 0.85, rough: 0.28, dusty: 0.1 }), 'plateC', -1.9, 41.5, Math.PI, { name: 'Mercedes argintiu' });
   park('corsa', paintMaterial(0xa9adb1, { metallic: 0.85, rough: 0.35, dusty: 0.3 }), 'plateOpel', 1.55, -11.75, Math.PI, { power: 0.85, vmax: 48 });
   // photos 19-20 (newer than photo 1): the BMW 1 Series stands a few metres behind the Corsa, a silver sedan further on
   park('sedan', paintMaterial(0xbfc2c5, { metallic: 0.85, rough: 0.33 }), 'plateA', 1.75, -50, 0, {});
@@ -374,12 +375,13 @@ async function main() {
         const want = tmpV.set(g.x + Math.sin(cy) * dist * Math.cos(orbit.pitch), g.y + 1.3 + Math.sin(orbit.pitch) * dist, g.z + Math.cos(cy) * dist * Math.cos(orbit.pitch));
         const minY = world.groundHeight(want.x, want.z) + 0.4;
         want.y = Math.max(want.y, minY);
-        camera.position.x = damp(camera.position.x, want.x, 10, dt);
-        camera.position.y = damp(camera.position.y, want.y, 10, dt);
-        camera.position.z = damp(camera.position.z, want.z, 10, dt);
+        const ck = 10 + sp * 0.25;                      // stiffer follow at speed: no 15 m lag at 500 km/h
+        camera.position.x = damp(camera.position.x, want.x, ck, dt);
+        camera.position.y = damp(camera.position.y, want.y, ck, dt);
+        camera.position.z = damp(camera.position.z, want.z, ck, dt);
         focus.set(g.x - Math.sin(active.h) * 1.5, g.y + 1.05, g.z - Math.cos(active.h) * 1.5);
         camera.lookAt(focus);
-        fov = 62 + Math.min(14, sp * 0.3);
+        fov = 62 + Math.min(14, sp * 0.3) + Math.max(0, Math.min(14, (sp - 50) * 0.16));
         active.car.glass.opacity = 0.86;
       } else {
         cockpitLook.yaw = clamp(cockpitLook.yaw - m.x * sens(), -2.2, 2.2);

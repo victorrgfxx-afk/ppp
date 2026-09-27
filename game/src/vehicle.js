@@ -7,6 +7,10 @@ import { W } from './config.js';
 // 5-speed gearbox for the engine sound, per-wheel ground sampling for pitch/roll.
 const GEARS = [3.6, 2.2, 1.5, 1.12, 0.9];
 const tmp = [];
+// 'hyper' tune (the user's Peugeot 508): 1400 W/kg with a 1.43 g traction limit, drag for a natural 580 km/h,
+// electronic limiter at 500 km/h -> 0-100 km/h 2.0 s, 0-300 6.4 s, 0-500 14 s (tools/../README); 8-speed box
+const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, lat: 17, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505] };
+HYPER.cd = (HYPER.P / HYPER.top - 0.15) / (HYPER.top * HYPER.top);
 
 export class Vehicle {
   constructor(car, world, x, z, heading, opts = {}) {
@@ -21,6 +25,7 @@ export class Vehicle {
     this.spin = 0; this.lightsOn = false;
     this.power = opts.power ?? 1;
     this.vmax = opts.vmax ?? 52;
+    this.hyper = opts.hyper ? HYPER : null;
     this.wheelbase = this.m.axles[1] - this.m.axles[0];
     this.box = new Box(x, z, car.half.w, car.half.l, heading, -1, 1.6, 'car');
     this.box.vehicle = this;
@@ -59,6 +64,16 @@ export class Vehicle {
     this.car.lights.headMat.emissiveIntensity = on ? 2.5 : 0;
   }
   update(dt, ctl) {
+    // sub-steps at speed: never move more than ~0.8 m per step (no tunnelling through walls at 500 km/h)
+    const n = this._sub ? 1 : Math.min(10, Math.ceil(Math.hypot(this.vx, this.vz) * dt / 0.8));
+    if (n > 1) {
+      let imp = 0;
+      this._sub = true;
+      for (let i = 0; i < n; i++) { this.update(dt / n, ctl); imp = Math.max(imp, this.impact); }
+      this._sub = false;
+      this.impact = imp;
+      return;
+    }
     const fwdX = -Math.sin(this.h), fwdZ = -Math.cos(this.h);
     const rtX = Math.cos(this.h), rtZ = -Math.sin(this.h);
     let vF = this.vx * fwdX + this.vz * fwdZ;
@@ -69,7 +84,12 @@ export class Vehicle {
       steerIn = ctl.steer;
       hand = ctl.handbrake;
       const t = ctl.throttle;
-      if (t > 0) {
+      const Hy = this.hyper;
+      if (t > 0 && Hy) {
+        if (vF < -0.5) { accel = Hy.brake; this.brake = 1; }
+        else accel = t * Math.min(Hy.A0, Hy.P / Math.max(1, vF));
+      } else if (t < 0 && Hy && vF > 0.5) { accel = -Hy.brake; this.brake = 1; }
+      else if (t > 0) {
         if (vF < -0.5) { accel = 9; this.brake = 1; }
         else {
           const k = 1 - Math.pow(Math.max(0, vF) / this.vmax, 2);
@@ -86,14 +106,18 @@ export class Vehicle {
       hand = true;
     }
     // rolling resistance + aero drag + engine braking
-    const drag = 0.02 * vF * Math.abs(vF) * 0.06 + Math.sign(vF) * (ctl && ctl.throttle ? 0.15 : 0.55);
+    const cd = this.hyper ? this.hyper.cd : 0.0012;
+    const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * (ctl && ctl.throttle ? 0.15 : 0.55);
     if (Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle)) { vF *= Math.exp(-6 * dt); }
     else vF -= drag * dt;
     if (hand) vF *= Math.exp(-(ctl ? 1.2 : 5) * dt);
     vF += accel * dt;
+    if (this.hyper) vF = Math.min(vF, this.hyper.limit);
 
     // steering (less lock at speed)
-    const maxSteer = 0.58 / (1 + (vF * vF) / 220);
+    let maxSteer = 0.58 / (1 + (vF * vF) / 220);
+    // with the hyper tune, cap the steering so lateral acceleration stays within the tyres (+ downforce)
+    if (this.hyper && Math.abs(vF) > 20) maxSteer = Math.min(maxSteer, Math.atan(this.hyper.lat * this.wheelbase / (vF * vF)));
     this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
     const yawRate = -vF * Math.tan(this.steer) / this.wheelbase;
     const slip = hand && Math.abs(vF) > 4 ? 1.55 : 1;
@@ -120,12 +144,21 @@ export class Vehicle {
 
     // gearbox & rpm
     const kmh = Math.abs(vF) * 3.6;
-    const up = [0, 22, 45, 70, 98];
-    let g = 1; for (let i = 0; i < up.length; i++) if (kmh > up[i]) g = i + 1;
-    this.gear = g;
-    const wheelRpm = Math.abs(vF) / (2 * Math.PI * this.m.r) * 60;
-    const target = Math.max(850, wheelRpm * GEARS[g - 1] * 3.9 + (ctl && ctl.throttle > 0 ? 900 : 0));
-    this.rpm = damp(this.rpm, Math.min(6800, target), 8, dt);
+    if (this.hyper) {
+      const up = this.hyper.shifts;
+      let g = 1; for (let i = 0; i < up.length - 1; i++) if (kmh > up[i]) g = i + 1;
+      this.gear = g;
+      const f = (kmh - up[g - 1]) / (up[g] - up[g - 1]);
+      const target = kmh < 3 ? 900 + (ctl && ctl.throttle > 0 ? 2600 : 0) : 3000 + 5000 * Math.min(1, f);
+      this.rpm = damp(this.rpm, target, 10, dt);
+    } else {
+      const up = [0, 22, 45, 70, 98];
+      let g = 1; for (let i = 0; i < up.length; i++) if (kmh > up[i]) g = i + 1;
+      this.gear = g;
+      const wheelRpm = Math.abs(vF) / (2 * Math.PI * this.m.r) * 60;
+      const target = Math.max(850, wheelRpm * GEARS[g - 1] * 3.9 + (ctl && ctl.throttle > 0 ? 900 : 0));
+      this.rpm = damp(this.rpm, Math.min(6800, target), 8, dt);
+    }
 
     this.resolveStatic();
     // lights
