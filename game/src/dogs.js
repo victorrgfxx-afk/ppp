@@ -168,7 +168,9 @@ function furryPart(sdf, box, cell, furFn, colFn, look) {
   const im = new THREE.InstancedMesh(g, mat, look.shells);
   const I = new THREE.Matrix4();
   for (let i = 0; i < look.shells; i++) im.setMatrixAt(i, I);
-  im.frustumCulled = false;
+  // bounds grow by the longest hair so culling never clips the coat
+  im.computeBoundingSphere();
+  im.boundingSphere.radius += 0.15;
   im.castShadow = true; im.receiveShadow = true;
   im.userData.noAO = true;
   return im;
@@ -228,11 +230,11 @@ function groenendael() {
   };
   const headFur = (x, y, z) => (y > 0.62 ? 0.004 : z > 0.58 ? 0.006 : z < 0.44 ? 0.075 : 0.014);
   const black = (x, y, z, c) => c.setRGB(0.028, 0.024, 0.022, THREE.SRGBColorSpace);
-  const look = { shells: 14, density: 420, tip: 0x4a2e1a, sheen: 0x6a4a30, gravity: [0, -0.45, -1.05], lift: 0.5, thick: 0.52 };
+  const look = { shells: 11, density: 420, tip: 0x4a2e1a, sheen: 0x6a4a30, gravity: [0, -0.45, -1.05], lift: 0.5, thick: 0.52 };
   const grp = new THREE.Group();
-  const bodyM = furryPart(body, [v3(-0.32, -0.02, -0.62), v3(0.32, 0.5, 0.74)], 0.013, furLen, black, look);
+  const bodyM = furryPart(body, [v3(-0.32, -0.02, -0.62), v3(0.32, 0.5, 0.74)], 0.017, furLen, black, look);
   const headG = new THREE.Group(); headG.position.copy(pivot);
-  const headM = furryPart((x, y, z) => head(x + pivot.x, y + pivot.y, z + pivot.z), [v3(-0.17, -0.1, -0.1), v3(0.17, 0.42, 0.44)], 0.008, (x, y, z) => headFur(x + pivot.x, y + pivot.y, z + pivot.z), black, { ...look, shells: 10, gravity: [0, -0.4, -0.6], lift: 0.7 });
+  const headM = furryPart((x, y, z) => head(x + pivot.x, y + pivot.y, z + pivot.z), [v3(-0.17, -0.1, -0.1), v3(0.17, 0.42, 0.44)], 0.0095, (x, y, z) => headFur(x + pivot.x, y + pivot.y, z + pivot.z), black, { ...look, shells: 9, gravity: [0, -0.4, -0.6], lift: 0.7 });
   headG.add(headM);
   // eyes, nose, tongue (in head space)
   const eyeM = glossy(0x1a0e08, 0.1);
@@ -250,7 +252,7 @@ function groenendael() {
   tongue.position.set(0, 0.42 - pivot.y, 0.69 - pivot.z);
   headG.add(tongue);
   const tailG = new THREE.Group(); tailG.position.set(0, 0.16, -0.44);
-  const tailM = furryPart((x, y, z) => tail(x, y + 0.16, z - 0.44), [v3(-0.12, -0.2, -0.36), v3(0.3, 0.1, 0.06)], 0.01, () => 0.1, black, { ...look, shells: 12 });
+  const tailM = furryPart((x, y, z) => tail(x, y + 0.16, z - 0.44), [v3(-0.12, -0.2, -0.36), v3(0.3, 0.1, 0.06)], 0.013, () => 0.1, black, { ...look, shells: 10 });
   tailG.add(tailM);
   grp.add(bodyM, headG, tailG, contactShadow(0.7, 1.5));
   return { grp, headG, tailG, tongue, body: bodyM, half: [0.24, 0.72], pant: 3.2, tongueY: tongue.position.y };
@@ -296,9 +298,9 @@ function fawnDog() {
   };
   const look = { shells: 4, density: 1100, tip: 0xe6c49a, sheen: 0xc89a68, gravity: [0, -0.3, -0.8], lift: 0.5, thick: 0.8, ao: 0.72, vary: 0.14 };
   const grp = new THREE.Group();
-  const bodyM = furryPart(body, [v3(-0.16, -0.02, -0.25), v3(0.16, 0.42, 0.24)], 0.007, () => 0.006, bodyCol, look);
+  const bodyM = furryPart(body, [v3(-0.16, -0.02, -0.25), v3(0.16, 0.42, 0.24)], 0.0085, () => 0.006, bodyCol, look);
   const headG = new THREE.Group(); headG.position.copy(pivot);
-  const headM = furryPart((x, y, z) => head(x + pivot.x, y + pivot.y, z + pivot.z), [v3(-0.12, -0.06, -0.06), v3(0.12, 0.3, 0.22)], 0.0055,
+  const headM = furryPart((x, y, z) => head(x + pivot.x, y + pivot.y, z + pivot.z), [v3(-0.12, -0.06, -0.06), v3(0.12, 0.3, 0.22)], 0.0065,
     (x, y) => (y + pivot.y > 0.47 ? 0.002 : 0.004), headCol, look);
   headG.add(headM);
   const eyeM = glossy(0x1c0f07, 0.1);
@@ -402,6 +404,8 @@ export function buildDogs(scene, world) {
     update(dt, t, eye) {
       for (const d of dogs) {
         const dx = eye.x - d.x, dz = eye.z - d.z, dist = Math.hypot(dx, dz);
+        d.grp.visible = dist < 90;                   // the yard is hidden beyond that anyway
+        if (!d.grp.visible) continue;
         // head follows a person within 7 m, otherwise idles
         let wantYaw, wantPitch;
         if (dist < 7) {
