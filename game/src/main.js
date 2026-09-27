@@ -15,6 +15,7 @@ import { createComposer } from './post.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
+import { buildDogs } from './dogs.js';
 import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, profileAt } from './geo/index.js';
 
 // Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
@@ -45,6 +46,8 @@ const PHOTO_VIEWS = [
   { x: 5.15, z: 3.4, yaw: -Math.PI / 2, pitch: -0.14, label: 'Poza 12 — ușa și preșul' },
   { x: 5.2, z: 2.9, yaw: 0.06, pitch: 0.08, label: 'Poza 13 — prispa spre nord' },
   { x: 4.75, z: 5.9, yaw: -2.9, pitch: 0.04, label: 'Poza 14 — aleea spre grădină' },
+  { x: 4.2, z: 13.6, yaw: -2.53, pitch: -0.42, label: 'Poza 15 — câinele negru în grădină' },
+  { x: 4.15, z: 5.65, yaw: -0.82, pitch: -0.6, label: 'Poza 16 — câinele roșcat pe prispă' },
 ];
 
 async function main() {
@@ -95,6 +98,7 @@ async function main() {
   world.streetZ = [GEO.meta.street.z0, GEO.meta.street.z1];
   const geoWorld = buildGeoWorld(scene, world, Q, renderer, gt, (label, ms) => console.log('[geo]', label, Math.round(ms), 'ms'));
   const built = buildWorld(scene, world, Q, { geo: true, street: world.streetZ, fronts: geoWorld.fronts, blocked: footprintIndex() });
+  const dogs = buildDogs(scene, world);
 
   // ---------- parked cars exactly as in the photos ----------
   progress(0.93, 'Parchez mașinile…');
@@ -278,8 +282,13 @@ async function main() {
       if (mode === 'foot') {
         for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) gotoView(i);
         player.update(dt, input, audio, sens());
-        const near = nearestCar();
-        if (near) {
+        // a dog right next to you wins over a car parked beyond the fence
+        const dog = dogs.nearest(player.pos.x, player.pos.z);
+        const near = dog ? null : nearestCar();
+        if (dog) {
+          prompt = 'E — mângâie câinele';
+          if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); hud.toast('Câinele dă fericit din coadă'); }
+        } else if (near) {
           prompt = 'F — urcă în ' + near.name;
           if (input.hit('KeyF') || input.hit('KeyE')) enterCar(near);
         }
@@ -297,6 +306,7 @@ async function main() {
       for (const v of vehicles) if (v !== active) v.update(dt, null);
       for (const w of walkers) w.update(dt);
     }
+    dogs.update(dt, t, camera.position);
 
     // camera for driving
     let fov = 70;
@@ -382,7 +392,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, sun: sunInfo, post, walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, sun: sunInfo, post, dogs, walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {
