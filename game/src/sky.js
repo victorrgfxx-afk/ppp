@@ -8,7 +8,8 @@ varying vec3 vDir;
 void main() {
   vDir = normalize((modelMatrix * vec4(position, 0.0)).xyz);
   vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  gl_Position = p.xyww;
+  // just inside the far plane: exactly w/w gets clipped by rounding with a long view distance
+  gl_Position = vec4(p.xy, p.w * 0.99995, p.w);
 }`;
 
 const frag = /* glsl */`

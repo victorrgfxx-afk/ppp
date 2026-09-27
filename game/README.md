@@ -1,6 +1,6 @@
 # Strada Gării · Poiana Câmpina — joc open‑world first‑person (versiunea cu harta reală)
 
-Strada, casa și curtea din cele 14 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci) — **așezate în zona reală de 3 × 3 km** din jurul punctului 45,13403° N, 25,71109° E, construită din date cartografice deschise.
+Strada, casa și curtea din cele 14 fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci) — **așezate în zona reală de 6 × 6 km** din jurul punctului 45,13403° N, 25,71109° E, construită din date cartografice deschise.
 
 > Branch‑ul `claude/realistic-first-person-gta-game-aq1h6w` rămâne harta inițială (doar din poze). Branch‑ul acesta (`…-geo`) e copia cu harta reală.
 
@@ -8,11 +8,11 @@ Strada, casa și curtea din cele 14 fotografii, reconstruite 3D și jucabile în
 
 | Ce | Sursă (date deschise) | Cum e folosit |
 |---|---|---|
-| Clădiri (2650), străzi (473), gară, peroane, poduri, linia CF 300 electrificată, linia de 110 kV (turnuri), râuri, lacuri, păduri, livezi, terenuri | OpenStreetMap (© contribuitorii OSM, ODbL) | amprentele exacte ale caselor, extrudate cu numărul de niveluri din OSM; drumuri cu lățimea din benzi/clasă și materialul din `surface` |
-| Relief ±1,5 km (grilă 5 m) | Terrain Tiles AWS (terrarium z15, EU‑DEM/SRTM) | teren, profilul real al Străzii Gării, săpături/umpluturi sub drumuri și calea ferată |
-| Relief până la 8 km (dealurile de la orizont) | Copernicus GLO‑30 | inelul îndepărtat (cele două DEM‑uri diferă cu 1–3 m în zonă) |
+| Clădiri (8825), străzi (1459), gară, peroane, poduri, linia CF 300 electrificată, liniile de 110 kV (39 de turnuri), râuri, lacuri, păduri, livezi, terenuri | OpenStreetMap (© contribuitorii OSM, ODbL) | amprentele exacte ale caselor, extrudate cu numărul de niveluri din OSM; drumuri cu lățimea din benzi/clasă și materialul din `surface` |
+| Relief ±3 km (grilă 5 m, 1201 × 1201 puncte) | Terrain Tiles AWS (terrarium z15, EU‑DEM/SRTM) | teren, profilul real al Străzii Gării, săpături/umpluturi sub drumuri și calea ferată |
+| Relief până la 12 km (dealurile și munții de la orizont) | Copernicus GLO‑30 | inelul îndepărtat (cele două DEM‑uri diferă cu 1–3 m în zonă) |
 | Culoarea solului | Sentinel‑2 cloudless 2023 by EOX (CC BY‑NC‑SA 4.0) | colorează textura de iarbă/pământ/pietriș; unde e verde în imagine se pun copaci în curți |
-| Râul Prahova | OSM (albia ca poligon, axul cu lățime 20 m) + DEM | nivelul apei scade monoton în aval (≈ 0,8 %: 419,6 → 384,7 m pe 4,3 km), prundiș în albie |
+| Râul Prahova | OSM (albia ca poligon, axul cu lățime 20 m) + DEM | nivelul apei scade monoton în aval (≈ 0,86 %: 438,6 → 371,9 m pe 7,8 km), prundiș în albie |
 | Soarele | calcul astronomic | 26 sept., 11:30: elevație 38,7°, azimut 148° (SSE) |
 
 **Aliniere**: axa Străzii Gării (way 16947629) are azimutul 42,02° și e dreaptă de la intersecția din SV până la capătul spre râu, exact ca în poze. Casa din poze este **Strada Gării nr. 123H**. În OpenStreetMap apare ca nr. **123** (way 264516816; OSM și Nominatim nu au litera H), iar aceasta e exact amprenta pe care e pusă casa (fața la 5,6–6,1 m de ax, ca veranda măsurată pe poze; grădina din sud, gardul vișiniu și vecinii se potrivesc cu pozele 1, 6, 7). Capătul „sud” al străzii din poze e spre NE: malul înalt al Prahovei cu râpa de lut (poza 7) e terasa de ~55 m de peste râu, la 450–600 m.

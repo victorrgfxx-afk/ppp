@@ -24,7 +24,7 @@ export function geoGround(x, z) {
 
 export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {}) {
   const t0 = performance.now();
-  const B = new GeoBuilder(500);
+  const B = new GeoBuilder(750);
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

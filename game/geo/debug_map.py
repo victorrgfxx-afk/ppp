@@ -3,6 +3,7 @@ import json, sys, numpy as np, cv2, os
 OUT = os.path.join(os.path.dirname(__file__), '..', 'assets', 'geo')
 g = json.load(open(os.path.join(OUT, 'geo.json')))
 n, ext = g['meta']['grid']['n'], g['meta']['grid']['ext']
+TN = cv2.imread(os.path.join(OUT, 'ortho.jpg')).shape[0]
 import base64
 b64 = lambda f: base64.b64decode(json.load(open(os.path.join(OUT, f)))['b64'])
 Y = np.frombuffer(b64('height.json'), '<i2').reshape(n, n) / 100
@@ -14,7 +15,7 @@ Yi = cv2.remap(Y.astype(np.float32), ((X + ext) / 5).astype(np.float32), ((Z + e
 gx, gz = np.gradient(Yi, 1 / S)
 shade = np.clip(0.75 + (-gx * 0.6 + gz * 0.4) * 1.5, 0.3, 1.2)
 ortho = cv2.imread(os.path.join(OUT, 'ortho.jpg'))
-O = cv2.remap(ortho, ((X + ext) / (2 * ext) * 1023).astype(np.float32), ((Z + ext) / (2 * ext) * 1023).astype(np.float32), cv2.INTER_LINEAR)
+O = cv2.remap(ortho, ((X + ext) / (2 * ext) * (TN - 1)).astype(np.float32), ((Z + ext) / (2 * ext) * (TN - 1)).astype(np.float32), cv2.INTER_LINEAR)
 img = np.clip(O * shade[..., None] * 0.7 + 60, 0, 255).astype(np.uint8)
 for i, j, l in g['water']:
     x0, z0 = -ext + i * 5, -ext + j * 5

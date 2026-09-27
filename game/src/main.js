@@ -71,12 +71,14 @@ async function main() {
   progress(0.8, 'Încarc harta reală: OSM, relief EU-DEM/Copernicus, Sentinel-2…');
   const gt = await loadGeoAll('assets/geo/');
   setProfile(profileAt);
+  // playable area = the whole mapped square
+  W.X_MIN = W.Z_MIN = -(GEO.ext - 60); W.X_MAX = W.Z_MAX = GEO.ext - 60;
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.56, 0.60, 0.65);
   scene.fog = new THREE.FogExp2(fogColor, 1 / 4000);
   scene.background = fogColor;
-  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 12000);
+  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 17000);
 
   const sky = createSky();
   scene.add(sky);
@@ -375,7 +377,7 @@ async function main() {
     audio.update(dt, { driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
-    if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); geoWorld.update(camera.position); }
+    if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
     post.grade.uniforms.uTime.value = t;
     post.composer.render(dt);
     input.endFrame();

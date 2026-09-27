@@ -27,9 +27,9 @@ KX = 111320 * math.cos(math.radians(LAT0))
 KY = 111132.954 - 559.822 * math.cos(2 * math.radians(LAT0))
 S_, C_ = math.sin(THETA), math.cos(THETA)
 
-EXT, STEP = 1500.0, 5.0                     # near grid: +-1500 m, 5 m cells
+EXT, STEP = 3000.0, 5.0                     # near grid: +-3 km, 5 m cells
 N = int(2 * EXT / STEP) + 1
-FAR_EXT, FAR_N = 8000.0, 257                # far ring grid (62.5 m cells)
+FAR_EXT, FAR_N = 12000.0, 385               # far ring grid (62.5 m cells), radius 12 km
 HERO_ID = '264516816'
 GARII_ID = '16947629'                        # straight part of Strada Gării (built by hand in the game)
 
@@ -147,7 +147,7 @@ def terrarium_sampler():
     def sample(lat, lon):
         X, Y = tile_frac(lat, lon, 15)
         # terrarium pixels are centred at +0.5
-        return cv2.remap(M, ((X - x0) * 256 - 0.5).astype(np.float32), ((Y - y0) * 256 - 0.5).astype(np.float32), cv2.INTER_CUBIC)
+        return cv2.remap(M, ((X - x0) * 256 - 0.5).astype(np.float32), ((Y - y0) * 256 - 0.5).astype(np.float32), cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
     return sample
 
 
@@ -484,6 +484,7 @@ def main():
     for wid, (nd, tg) in osm.ways.items():
         if tg.get('waterway') in ('river', 'stream') and tg.get('name') != 'Prahova':
             p = osm.pts(wid)
+            if len(p): p = p[np.maximum(np.abs(p[:, 0]), np.abs(p[:, 1])) < EXT + 300]   # only the part on the map
             if len(p) < 2 or window(p, 20) is None: continue
             w = window(p, 20)
             rp2, rd2 = resample(p, 5)
@@ -570,18 +571,18 @@ def main():
     log('height range', Y.min().round(1), Y.max().round(1), 'far', Yf.min().round(1), Yf.max().round(1))
 
     # water cells (cell (i, j) spans grid nodes i..i+1, j..j+1)
-    cells = []
-    for j in range(N - 1):
-        for i in range(N - 1):
-            wl4 = WL[j:j + 2, i:i + 2]
-            if np.isnan(wl4).all(): continue
-            lvl = np.nanmean(wl4)
-            if (Y[j:j + 2, i:i + 2] + H0 < lvl + 0.02).any():
-                cells.append([i, j, int(round((lvl - H0) * 100))])
+    W4 = np.stack([WL[:-1, :-1], WL[:-1, 1:], WL[1:, :-1], WL[1:, 1:]])
+    Y4 = np.stack([Y[:-1, :-1], Y[:-1, 1:], Y[1:, :-1], Y[1:, 1:]]) + H0
+    with np.errstate(invalid='ignore'), __import__('warnings').catch_warnings():
+        __import__('warnings').simplefilter('ignore')
+        lvl4 = np.nanmean(W4, 0)
+    sel = ~np.isnan(W4).all(0) & (Y4 < lvl4 + 0.02).any(0)
+    jj_, ii_ = np.nonzero(sel)
+    cells = np.stack([ii_, jj_, np.round((lvl4[sel] - H0) * 100).astype(int)], 1).tolist()
     log('water cells', len(cells))
 
     # ---- textures: Sentinel-2 ground colour (near + far) and land-cover splat
-    TN = 1024
+    TN = 2048
     Xt, Zt = grid_xz(TN, EXT)
     s2n = s2_mosaic_sampler(15)(*game_to_ll(Xt, Zt))
     clay_t = cv2.GaussianBlur(cv2.resize(CLAY.astype(np.float32), (TN, TN), interpolation=cv2.INTER_LINEAR), (0, 0), 1.2)
@@ -692,7 +693,7 @@ def main():
     trees_osm = [[round(a, 2) for a in osm.xz[n]] for n, (la_, lo_, tg) in osm.nodes.items() if tg.get('natural') == 'tree']
 
     # ---- exclusion raster for trees/fences/poles (2048^2, 1.465 m/px)
-    XN = 2048
+    XN = 4096
     def ex_raster():
         m = np.zeros((XN, XN), np.uint8)
         s = (XN - 1) / (2 * EXT)
@@ -707,12 +708,12 @@ def main():
             cv2.polylines(m, [np.round(to_px(p, XN, EXT) * 8).astype(np.int32)], False, 3, max(1, int(7 * s)), cv2.LINE_8, 3)
         return m
     EXR = ex_raster()
-    FN = 6001                                   # 0.5 m raster for fence clearances
+    FN = 10001                                  # 0.6 m raster for fence clearances
     FR = np.zeros((FN, FN), np.uint8)
     for _, wid, p, tg in roads:
-        cv2.polylines(FR, [np.round(to_px(p, FN, EXT) * 8).astype(np.int32)], False, 1, max(1, int(round((road_width(wid, tg) + 1.0) * 2))), cv2.LINE_8, 3)
+        cv2.polylines(FR, [np.round(to_px(p, FN, EXT) * 8).astype(np.int32)], False, 1, max(1, int(round((road_width(wid, tg) + 1.0) * (FN - 1) / (2 * EXT)))), cv2.LINE_8, 3)
     for wid, p, tg in rails:
-        cv2.polylines(FR, [np.round(to_px(p, FN, EXT) * 8).astype(np.int32)], False, 1, 12, cv2.LINE_8, 3)
+        cv2.polylines(FR, [np.round(to_px(p, FN, EXT) * 8).astype(np.int32)], False, 1, int(round(6 * (FN - 1) / (2 * EXT))), cv2.LINE_8, 3)
     for rec_ in bl:
         cv2.fillPoly(FR, [np.round(to_px(np.array(rec_['p']).reshape(-1, 2), FN, EXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
     FR = cv2.dilate(FR, np.ones((3, 3), np.uint8))
@@ -731,9 +732,15 @@ def main():
     resid_x = fill_areas(XN, EXT, resid_a) > 0.5
     farm_x = fill_areas(XN, EXT, farm_a) > 0.5
     near_b = cv2.dilate((EXR == 1).astype(np.uint8), np.ones((41, 41), np.uint8)) > 0     # within ~30 m of a building
+    # town centre: blocks of flats, shops, industry -> no lot fences along those streets
+    blk = np.zeros((XN, XN), np.uint8)
+    for rec_ in bl:
+        if rec_['roof'] == 'flat' or rec_['b'] in ('apartments', 'commercial', 'retail', 'industrial', 'school', 'hospital', 'public', 'office'):
+            cv2.fillPoly(blk, [np.round(to_px(np.array(rec_['p']).reshape(-1, 2), XN, EXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
+    blk = cv2.dilate(blk, np.ones((31, 31), np.uint8)) > 0                                  # ~22 m around them
     trng = np.random.default_rng(11)
 
-    def scatter(spacing, mask, keep=1.0, jitter=0.42):
+    def scatter(spacing, mask, keep=1.0, jitter=0.42, far_keep=1.0):
         n = int(2 * EXT / spacing)
         g = (np.arange(n) + 0.5) * spacing - EXT
         gx, gz = np.meshgrid(g, g)
@@ -741,21 +748,22 @@ def main():
         pz = gz + trng.uniform(-jitter, jitter, gz.shape) * spacing
         ii = np.clip(np.round((px + EXT) / (2 * EXT) * (XN - 1)).astype(int), 0, XN - 1)
         jj = np.clip(np.round((pz + EXT) / (2 * EXT) * (XN - 1)).astype(int), 0, XN - 1)
-        ok = mask[jj, ii] & (trng.random(px.shape) < keep)
+        k = np.where(np.maximum(np.abs(px), np.abs(pz)) > 1600, keep * far_keep, keep)
+        ok = mask[jj, ii] & (trng.random(px.shape) < k)
         return px[ok], pz[ok], jj[ok], ii[ok]
     T_ = []
     # forests: oak / hornbeam / beech with some spruce (CLC: broad-leaved forest)
-    fx_, fz_, _, _ = scatter(6.5, free & forest_x)
+    fx_, fz_, _, _ = scatter(6.5, free & forest_x, far_keep=0.55)
     ty = trng.choice([0, 1, 2], len(fx_), p=[0.5, 0.38, 0.12])
     T_.append((fx_, fz_, ty, trng.uniform(0.8, 1.2, len(fx_))))
     # riverside willows / poplars on the green parts of the river corridor
     wx_, wz_, jj, ii = scatter(7.0, (EXR == 0) & (rb_x < 0.5) & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~forest_x & ~lots)
     T_.append((wx_, wz_, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_))))
     # orchards (plum / apple rows)
-    ox_, oz_, _, _ = scatter(6.0, free & orch_x, keep=0.85, jitter=0.12)
+    ox_, oz_, _, _ = scatter(6.0, free & orch_x, keep=0.85, jitter=0.12, far_keep=0.6)
     T_.append((ox_, oz_, np.full(len(ox_), 3), trng.uniform(0.8, 1.1, len(ox_))))
     # yards: fruit trees, walnuts, spruces where Sentinel-2 shows vegetation
-    yx_, yz_, jj, ii = scatter(10.0, free & (resid_x | near_b) & ~forest_x & ~orch_x & ~farm_x & (green > 4))
+    yx_, yz_, jj, ii = scatter(10.0, free & (resid_x | near_b) & ~forest_x & ~orch_x & ~farm_x & (green > 4), far_keep=0.75)
     T_.append((yx_, yz_, trng.choice([3, 4, 1, 2, 0], len(yx_), p=[0.45, 0.18, 0.17, 0.12, 0.08]), trng.uniform(0.7, 1.15, len(yx_))))
     # scattered field trees
     sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10), keep=0.35)
@@ -790,7 +798,7 @@ def main():
             q = np.array([off.interpolate(k * 1.5).coords[0] for k in range(nS + 1)])
             ii = np.clip(np.round((q[:, 0] + EXT) * s_).astype(int), 0, XN - 1); jj = np.clip(np.round((q[:, 1] + EXT) * s_).astype(int), 0, XN - 1)
             fi = np.clip(np.round((q[:, 0] + EXT) * frs).astype(int), 0, FN - 1); fj = np.clip(np.round((q[:, 1] + EXT) * frs).astype(int), 0, FN - 1)
-            valid = (FR[fj, fi] == 0) & (rb_x[jj, ii] < 0.5) & ~forest_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < EXT - 40)
+            valid = (FR[fj, fi] == 0) & ~blk[jj, ii] & (rb_x[jj, ii] < 0.5) & ~forest_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < EXT - 40)
             if wid == GARII_ID: valid &= ~((q[:, 1] > LOTS[2] - 8) & (q[:, 1] < LOTS[3] + 8))
             k = 0
             while k < len(q):

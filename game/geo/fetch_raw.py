@@ -8,7 +8,8 @@
 """
 import math, os, time, urllib.request
 RAW = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'raw')
-BBOX = (45.108, 25.676, 45.160, 25.752)          # lat0, lon0, lat1, lon1
+BBOX = (45.094, 25.655, 45.175, 25.768)          # lat0, lon0, lat1, lon1: game square +-3 km (rotated 42 deg)
+FAR = (45.02, 25.54, 45.25, 25.88)               # far ring, radius 12 km
 
 
 def get(url, path, tries=5):
@@ -36,12 +37,15 @@ def tiles(bbox, z):
 
 if __name__ == '__main__':
     la0, lo0, la1, lo1 = BBOX
-    lam, lom = (la0 + la1) / 2, (lo0 + lo1) / 2
-    for i, (a, b, c, d) in enumerate([(lo0, la0, lom, lam), (lom, la0, lo1, lam), (lo0, lam, lom, la1), (lom, lam, lo1, la1)]):
-        get(f'https://api.openstreetmap.org/api/0.6/map?bbox={a},{b},{c},{d}', os.path.join(RAW, 'osm', f'q{i + 1}.xml'))
-    for x, y in tiles((45.095, 25.668, 45.165, 25.772), 15):
+    K = 4                                           # 4 x 4 map calls (the API caps nodes per call)
+    for i in range(K):
+        for j in range(K):
+            a, c = lo0 + (lo1 - lo0) * i / K, lo0 + (lo1 - lo0) * (i + 1) / K
+            b, d = la0 + (la1 - la0) * j / K, la0 + (la1 - la0) * (j + 1) / K
+            get(f'https://api.openstreetmap.org/api/0.6/map?bbox={a:.5f},{b:.5f},{c:.5f},{d:.5f}', os.path.join(RAW, 'osm', f't{i}{j}.xml'))
+    for x, y in tiles((BBOX[0] - 0.004, BBOX[1] - 0.006, BBOX[2] + 0.004, BBOX[3] + 0.006), 15):
         get(f'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/15/{x}/{y}.png', os.path.join(RAW, 'dem', f'15_{x}_{y}.png'))
-    for z, bb in ((15, BBOX), (12, (45.05, 25.58, 45.22, 25.84))):
+    for z, bb in ((15, BBOX), (12, FAR)):
         for x, y in tiles(bb, z):
             get(f'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{z}/{y}/{x}.jpg', os.path.join(RAW, 's2', str(z), f'{x}_{y}.jpg'))
     if not os.path.exists(os.path.join(RAW, 'cop30.npy')):
@@ -49,7 +53,7 @@ if __name__ == '__main__':
         from rasterio.windows import from_bounds
         url = '/vsicurl/https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N45_00_E025_00_DEM/Copernicus_DSM_COG_10_N45_00_E025_00_DEM.tif'
         with rasterio.open(url) as ds:
-            w = from_bounds(25.60, 45.06, 25.82, 45.21, ds.transform)
+            w = from_bounds(FAR[1], FAR[0], FAR[3], FAR[2], ds.transform)
             np.save(os.path.join(RAW, 'cop30.npy'), ds.read(1, window=w))
             open(os.path.join(RAW, 'cop30_transform.txt'), 'w').write(repr(tuple(ds.window_transform(w))[:6]))
     print('ok')

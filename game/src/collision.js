@@ -16,7 +16,9 @@ export class Box {
 
 const CELL = 8;
 export class CollisionWorld {
-  constructor() { this.grid = new Map(); this.dynamic = new Set(); this.regions = []; this.all = []; this.Box = Box; this.terrainFn = null; this.streetZ = [-1e9, 1e9]; }
+  constructor() { this.grid = new Map(); this.dynamic = new Set(); this.regions = []; this.all = []; this.Box = Box; this.terrainFn = null; this.streetZ = [-1e9, 1e9]; this.providers = []; }
+  // extra colliders generated on demand (e.g. the ~300k tree trunks of the map)
+  addProvider(fn) { this.providers.push(fn); }
   _key(i, j) { return i * 100003 + j; }
   addStatic(b) {
     this.all.push(b);
@@ -46,6 +48,7 @@ export class CollisionWorld {
       for (const b of list) if (!seen.has(b)) { seen.add(b); out.push(b); }
     }
     for (const b of this.dynamic) out.push(b);
+    for (const p of this.providers) p(x, z, r, out);
     return out;
   }
 

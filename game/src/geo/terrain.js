@@ -69,10 +69,10 @@ uniform float uExt;`)
 
 export function buildTerrain(scene, gt, quality) {
   const { n, ext, step, H } = GEO;
-  const CH = 60;                                   // 60 cells = 300 m per chunk
+  const CH = 120;                                  // 120 cells = 600 m per chunk
   const nc = (n - 1) / CH;
   const mat = terrainMaterial(gt);
-  const levels = quality.label === 'Scăzută' ? [[2, 0], [5, 350], [10, 800]] : [[1, 0], [2, 320], [5, 750]];
+  const levels = quality.label === 'Scăzută' ? [[2, 0], [5, 600], [10, 1300], [20, 2600]] : [[1, 0], [2, 480], [5, 1150], [10, 2300]];
   const nrm = new THREE.Vector3();
   const lods = [];
   for (let cj = 0; cj < nc; cj++) for (let ci = 0; ci < nc; ci++) {

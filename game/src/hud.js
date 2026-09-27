@@ -42,7 +42,7 @@ export class HUD {
   }
   // GTA-style map of the real area: Sentinel-2 ground, water, OSM roads, rails and buildings
   geoMap(G, orthoImg) {
-    const ext = G.ext, S = 0.6;
+    const ext = G.ext, S = Math.min(0.6, 1200 / ext);   // canvas stays <= 2400 px
     this.northRot = Math.PI - G.meta.origin.bearing * Math.PI / 180;   // real north in the game frame
     this.S = S; this.X0 = -ext; this.Z0 = -ext;
     const c = document.createElement('canvas');
@@ -91,7 +91,7 @@ export class HUD {
     this.el.loc.textContent = st.location;
     // minimap
     const g = this.ctx, w = this.map.width, h = this.map.height, S = this.S;
-    const zoom = (st.driving ? 1.1 : 1.8) * (this.S < 1 ? 2.2 : 1);
+    const zoom = (st.driving ? 1.1 : 1.8) * (this.S < 1 ? 1.32 / this.S : 1);
     g.save();
     g.clearRect(0, 0, w, h);
     g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2); g.clip();

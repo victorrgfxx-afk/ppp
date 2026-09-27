@@ -153,82 +153,105 @@ export function buildTrees(scene, world, renderer, quality) {
     const imp = bakeImpostor(renderer, pm, t);
     return { t, parts: pm, imp };
   });
-  // instance lists per chunk and type
-  const CH = 200, chunks = new Map(), all = TYPES.map(() => []);
+  // compact per-tree arrays + chunk lists (near: 300 m, far impostors: 1500 m)
+  const n = T.n, X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n), R = new Float32Array(n), S = new Float32Array(n), V = new Float32Array(n), TY = new Uint8Array(n);
+  const CH = 300, FCH = 1500, near = new Map(), far = new Map(), cell = new Map(), CELL = 16;
   const r = rng(99);
-  for (let i = 0; i < T.n; i++) {
+  let count = 0;
+  for (let i = 0; i < n; i++) {
     if (density < 1 && r() > density) continue;
-    const x = T.x[i], z = T.z[i], ty = Math.min(TYPES.length - 1, T.t[i]), s = T.s[i];
-    const y = heightAt(x, z) - 0.05;
-    const rot = r() * Math.PI * 2;
-    const k = Math.floor(x / CH) + ',' + Math.floor(z / CH);
-    if (!chunks.has(k)) chunks.set(k, { cx: (Math.floor(x / CH) + 0.5) * CH, cz: (Math.floor(z / CH) + 0.5) * CH, lists: TYPES.map(() => []) });
-    const item = [x, y, z, rot, s * (0.9 + r() * 0.2), 0.85 + r() * 0.3];
-    chunks.get(k).lists[ty].push(item);
-    all[ty].push(item);
-    const tr = (TYPES[ty].trunkR ?? 0.3) * s;
-    world.addStatic(new world.Box(x, z, tr + 0.05, tr + 0.05, 0, y - 1, y + 8, 'tree'));
+    const k = count++;
+    X[k] = T.x[i]; Z[k] = T.z[i]; Y[k] = heightAt(X[k], Z[k]) - 0.05;
+    TY[k] = Math.min(TYPES.length - 1, T.t[i]); R[k] = r() * Math.PI * 2; S[k] = T.s[i] * (0.9 + r() * 0.2); V[k] = 0.85 + r() * 0.3;
+    const push = (map, key, cx, cz) => { let c = map.get(key); if (!c) { c = { cx, cz, idx: [] }; map.set(key, c); } c.idx.push(k); };
+    const ci = Math.floor(X[k] / CH), cj = Math.floor(Z[k] / CH);
+    push(near, ci + ',' + cj, (ci + 0.5) * CH, (cj + 0.5) * CH);
+    const fi = Math.floor(X[k] / FCH), fj = Math.floor(Z[k] / FCH);
+    push(far, fi + ',' + fj, 0, 0);
+    const key = Math.floor(X[k] / CELL) + ',' + Math.floor(Z[k] / CELL);
+    let l = cell.get(key); if (!l) { l = []; cell.set(key, l); } l.push(k);
   }
+  // trunk colliders on demand (a static box per tree would cost ~300k objects)
+  const pool = [];
+  world.addProvider((qx, qz, qr, out) => {
+    let used = 0;
+    for (let i = Math.floor((qx - qr) / CELL); i <= Math.floor((qx + qr) / CELL); i++) for (let j = Math.floor((qz - qr) / CELL); j <= Math.floor((qz + qr) / CELL); j++) {
+      const l = cell.get(i + ',' + j); if (!l) continue;
+      for (const k of l) {
+        if (Math.abs(X[k] - qx) > qr + 1 || Math.abs(Z[k] - qz) > qr + 1) continue;
+        const tr = (TYPES[TY[k]].trunkR ?? 0.3) * S[k] + 0.05;
+        let b = pool[used];
+        if (!b) { b = new world.Box(0, 0, 1, 1, 0, 0, 1, 'tree'); pool.push(b); }
+        b.x = X[k]; b.z = Z[k]; b.hw = b.hd = tr; b.rot = 0; b.y0 = Y[k] - 1; b.y1 = Y[k] + 8; b.update();
+        out.push(b); used++;
+      }
+    }
+  });
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
-  // near 3D models, one InstancedMesh per chunk/type/part
+  const setInst = (im, k, j, tint, leafy) => {
+    im.setMatrixAt(j, m4.compose(p.set(X[k], Y[k], Z[k]), q.setFromAxisAngle(up, R[k]), sv.setScalar(S[k])));
+    im.setColorAt(j, leafy ? c.setHex(tint).multiplyScalar(V[k]) : c.setScalar(0.8 + 0.2 * V[k]));
+  };
+  // near 3D models: built lazily the first time a chunk comes close
   const nearMats = new Map();
   const nearMat = (mat) => { if (!nearMats.has(mat)) nearMats.set(mat, withSwitch(mat, nearR, false, 'near')); return nearMats.get(mat); };
-  const nearGroups = [];
-  for (const ch of chunks.values()) {
+  const buildNear = (ch) => {
     const grp = new THREE.Group();
-    grp.userData.c = [ch.cx, ch.cz];
-    ch.lists.forEach((list, ty) => {
+    const byType = TYPES.map(() => []);
+    for (const k of ch.idx) byType[TY[k]].push(k);
+    byType.forEach((list, ty) => {
       if (!list.length) return;
       for (const [g, mat] of models[ty].parts) {
         const leafy = mat !== M.bark;
         const im = new THREE.InstancedMesh(g, nearMat(mat), list.length);
-        list.forEach(([x, y, z, rot, s, v], i) => {
-          im.setMatrixAt(i, m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, rot), sv.setScalar(s)));
-          im.setColorAt(i, leafy ? c.setHex(TYPES[ty].tint ?? 0xffffff).multiplyScalar(v) : c.setScalar(0.8 + 0.2 * v));
-        });
+        list.forEach((k, j) => setInst(im, k, j, TYPES[ty].tint ?? 0xffffff, leafy));
         im.castShadow = true; im.receiveShadow = true;
         im.userData.noAO = true;
         im.computeBoundingSphere();
         grp.add(im);
       }
     });
-    grp.visible = false;
     scene.add(grp);
-    nearGroups.push(grp);
-  }
-  // far impostors: 3 crossed quads per tree, one InstancedMesh per type
-  const farMeshes = [];
-  models.forEach(({ imp }, ty) => {
-    const list = all[ty];
-    if (!list.length) return;
+    return grp;
+  };
+  // far impostors: 3 crossed quads per tree, one InstancedMesh per 1.5 km chunk and type (frustum culled)
+  const impGeo = models.map(({ imp }) => {
     const quads = [];
     for (const a of [0, Math.PI / 3, 2 * Math.PI / 3]) {
       const g = new THREE.PlaneGeometry(imp.halfW * 2, imp.H);
       g.translate(0, imp.H / 2 + imp.y0, 0);
       g.rotateY(a);
-      const n = g.attributes.normal; for (let k = 0; k < n.count; k++) n.setXYZ(k, 0, 1, 0);
+      const nn = g.attributes.normal; for (let k = 0; k < nn.count; k++) nn.setXYZ(k, 0, 1, 0);
       quads.push(g);
     }
-    const g = mergeGeometries(quads);
-    const mat = withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), nearR, true, 'far');
-    const im = new THREE.InstancedMesh(g, mat, list.length);
-    list.forEach(([x, y, z, rot, s, v], i) => {
-      im.setMatrixAt(i, m4.compose(p.set(x, y, z), q.setFromAxisAngle(up, rot), sv.setScalar(s)));
-      im.setColorAt(i, c.setScalar(v));
-    });
-    im.frustumCulled = false;
-    im.castShadow = false; im.receiveShadow = true;
-    im.userData.noAO = true;
-    scene.add(im);
-    farMeshes.push(im);
+    return mergeGeometries(quads);
   });
-  let count = 0; for (const l of all) count += l.length;
+  const impMat = models.map(({ imp }) => withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), nearR, true, 'far'));
+  for (const ch of far.values()) {
+    const byType = TYPES.map(() => []);
+    for (const k of ch.idx) byType[TY[k]].push(k);
+    byType.forEach((list, ty) => {
+      if (!list.length) return;
+      const im = new THREE.InstancedMesh(impGeo[ty], impMat[ty], list.length);
+      list.forEach((k, j) => {
+        im.setMatrixAt(j, m4.compose(p.set(X[k], Y[k], Z[k]), q.setFromAxisAngle(up, R[k]), sv.setScalar(S[k])));
+        im.setColorAt(j, c.setScalar(V[k]));
+      });
+      im.computeBoundingSphere();
+      im.castShadow = false; im.receiveShadow = true;
+      im.userData.noAO = true;
+      scene.add(im);
+    });
+  }
+  const nearList = [...near.values()];
   return {
     count,
     update(camPos) {
-      for (const g of nearGroups) {
-        const [x, z] = g.userData.c;
-        g.visible = Math.hypot(x - camPos.x, z - camPos.z) < nearR + CH * 0.75;
+      const reach = nearR + CH * 0.75;
+      for (const ch of nearList) {
+        const inside = Math.hypot(ch.cx - camPos.x, ch.cz - camPos.z) < reach;
+        if (inside && !ch.grp) ch.grp = buildNear(ch);
+        if (ch.grp) ch.grp.visible = inside;
       }
     },
   };
