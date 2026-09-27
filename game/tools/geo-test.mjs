@@ -45,6 +45,8 @@ const cams = [
   ['hills', { x: 1500, y: 420, z: -1500, yaw: 0.6, pitch: -0.22 }],
   ['backyard', { x: 27, y: 2.2, z: 14, yaw: 0.9, pitch: -0.05 }],
   ['cliff', { x: 0.2, y: 1.6, z: 140, yaw: Math.PI, pitch: 0.06 }],
+  ['breaza', { x: 5200, y: 420, z: 300, yaw: -2.154, pitch: -0.25 }],
+  ['world', { x: -1500, y: 900, z: -9500, yaw: Math.PI - 0.15, pitch: -0.2 }],
 ];
 for (const [name, c] of cams) {
   if (only && !only.includes(name)) continue;

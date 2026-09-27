@@ -3,8 +3,8 @@
 
 Open data sources (downloaded into geo/raw by fetch_raw.sh):
   * OpenStreetMap (c) OpenStreetMap contributors, ODbL - buildings, roads, railway, river, landuse, power lines
-  * Terrain Tiles on AWS (terrarium, z15; EU-DEM / SRTM based)   - near terrain (+-1.5 km)
-  * Copernicus GLO-30 DSM (c) ESA / DLR / Airbus                  - far terrain ring (+-8 km)
+  * Terrain Tiles on AWS (terrarium, z15; EU-DEM / SRTM based)   - terrain of the playable map (+-8 km)
+  * Copernicus GLO-30 DSM (c) ESA / DLR / Airbus                  - far terrain ring (+-20 km)
   * Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0, modified Copernicus Sentinel data 2023) - ground colour
 
 Game frame: metres, y up, +z along Strada Gării towards NE (bearing 42.02 deg), +x towards NW.
@@ -27,9 +27,13 @@ KX = 111320 * math.cos(math.radians(LAT0))
 KY = 111132.954 - 559.822 * math.cos(2 * math.radians(LAT0))
 S_, C_ = math.sin(THETA), math.cos(THETA)
 
-EXT, STEP = 3000.0, 5.0                     # near grid: +-3 km, 5 m cells
+EXT, STEP = 3000.0, 5.0                     # near grid: +-3 km, 5 m cells (around the photographed street)
 N = int(2 * EXT / STEP) + 1
-FAR_EXT, FAR_N = 12000.0, 385               # far ring grid (62.5 m cells), radius 12 km
+WEXT, WSTEP = 8000.0, 10.0                  # world grid: the whole playable map, +-8 km, 10 m cells
+WN = int(2 * WEXT / WSTEP) + 1
+WSCALE = 50                                 # world heights stored in 2 cm steps (int16 covers +-655 m)
+FAR_EXT, FAR_N = 20000.0, 401               # far ring grid (100 m cells), radius 20 km
+TREE_SCALE = 4                              # tree positions stored in 25 cm steps (int16 covers +-8.19 km)
 HERO_ID = '264516816'
 GARII_ID = '16947629'                        # straight part of Strada Gării (built by hand in the game)
 
@@ -151,9 +155,12 @@ def terrarium_sampler():
     return sample
 
 
-def cop_sampler():
-    C = np.load(os.path.join(RAW, 'cop30.npy')).astype(np.float32)
-    t = eval(open(os.path.join(RAW, 'cop30_transform.txt')).read())   # (a, b, c, d, e, f) affine
+def cop_sampler(name='cop30'):
+    C = np.load(os.path.join(RAW, name + '.npy')).astype(np.float32)
+    C[C < -1000] = np.nan
+    if np.isnan(C).any():
+        C = np.where(np.isnan(C), np.nanmin(C), C)
+    t = eval(open(os.path.join(RAW, name + '_transform.txt')).read())   # (a, b, c, d, e, f) affine
     a, _, c, _, e, f = t
 
     def sample(lat, lon):
@@ -183,8 +190,8 @@ def to_px(p, n, ext):
     return np.stack([(p[:, 0] + ext) * s, (p[:, 1] + ext) * s], 1)
 
 
-def fill_areas(n, ext, areas, value=1.0):
-    m = np.zeros((n, n), np.float32)
+def fill_areas(n, ext, areas, value=1.0, dtype=np.float32):
+    m = np.zeros((n, n), dtype)
     for outers, inners, *_ in areas:
         for r in outers:
             cv2.fillPoly(m, [np.round(to_px(r, n, ext) * 8).astype(np.int32)], value, cv2.LINE_8, 3)
@@ -225,12 +232,12 @@ def smooth1d(v, d, radius):
 
 
 class Grid:
-    """sampling helpers on the near N x N grid (index [j, i] = [z, x])"""
-    def __init__(self, H):
-        self.H = H
+    """sampling helpers on a square grid (index [j, i] = [z, x]); default: the near grid"""
+    def __init__(self, H, ext=EXT, step=STEP):
+        self.H, self.ext, self.step = H, ext, step
 
     def at(self, x, z):
-        return cv2.remap(self.H, ((np.asarray(x, np.float32) + EXT) / STEP), ((np.asarray(z, np.float32) + EXT) / STEP), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        return cv2.remap(self.H, ((np.asarray(x, np.float32) + self.ext) / self.step), ((np.asarray(z, np.float32) + self.ext) / self.step), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
 
 def polyline_field(p, X, Z):
@@ -301,20 +308,22 @@ def smoothstep(a, b, x):
     return t * t * (3 - 2 * t)
 
 
-def window(p, R):
+def window(p, R, ext=EXT, step=STEP):
+    n = int(round(2 * ext / step)) + 1
     x0, z0 = p.min(0) - R; x1, z1 = p.max(0) + R
-    i0 = max(0, int((x0 + EXT) // STEP)); i1 = min(N - 1, int(math.ceil((x1 + EXT) / STEP)))
-    j0 = max(0, int((z0 + EXT) // STEP)); j1 = min(N - 1, int(math.ceil((z1 + EXT) / STEP)))
+    i0 = max(0, int((x0 + ext) // step)); i1 = min(n - 1, int(math.ceil((x1 + ext) / step)))
+    j0 = max(0, int((z0 + ext) // step)); j1 = min(n - 1, int(math.ceil((z1 + ext) / step)))
     if i1 < i0 or j1 < j0: return None
     return slice(j0, j1 + 1), slice(i0, i1 + 1)
 
 
-def flatten_line(H, X, Z, p, half, smooth_r, blend=7.0, offset=0.0):
+def flatten_line(H, X, Z, p, half, smooth_r, blend=7.0, offset=0.0, ext=EXT, step=STEP):
     """cut & fill the terrain along a road/rail: flat cross-section, smoothed long profile"""
     if len(p) < 2: return None
-    w = window(p, half + blend)
+    blend = max(blend, 1.4 * step)
+    w = window(p, half + blend, ext, step)
     if w is None: return None
-    G = Grid(H)
+    G = Grid(H, ext, step)
     rp, rd = resample(p, 2.5)
     prof = smooth1d(G.at(rp[:, 0], rp[:, 1]).ravel(), rd, smooth_r) + offset
     d, st = polyline_field(p, X[w], Z[w])
@@ -405,8 +414,6 @@ def decompose(p):
 
 
 # ------------------------------------------------------------------ main pipeline
-PRAHOVA = ['17504937', '17504973', '17505025', '17505075', '17505230']
-RIVER_REL = '1308475'
 LOTS = (-35.0, 35.0, -60.0, 45.0)            # hand-built photographed lots (x0, x1, z0, z1)
 STREET_Z = (-118.0, 143.0)                    # hand-built part of Strada Gării
 ZONE_FLAT = (-38.0, 34.0)                     # the photographed stretch is level (as on the photos)
@@ -430,34 +437,51 @@ HERO_SPLIT = 15.4, 10.1        # parts of footprint 123 not covered by the hand-
 
 def main():
     import time
+    from scipy.spatial import cKDTree
     t0 = time.time()
     log = lambda *a: print(f'[{time.time() - t0:5.1f}s]', *a, flush=True)
     osm = OSM(); log('osm', len(osm.nodes), len(osm.ways), len(osm.rels))
     os.makedirs(OUT, exist_ok=True)
-    X, Z = grid_xz(N, EXT)
+    X, Z = grid_xz(N, EXT)                      # near grid, 5 m (photographed street and +-3 km)
+    Xw, Zw = grid_xz(WN, WEXT)                  # world grid, 10 m (the whole map, +-8 km)
     lat, lon = game_to_ll(X, Z)
-    terr, cop = terrarium_sampler(), cop_sampler()
+    latw, lonw = game_to_ll(Xw, Zw)
+    terr, copf = terrarium_sampler(), cop_sampler('cop30_far')
     H = ndimage.gaussian_filter(terr(lat, lon), 0.7).astype(np.float32)
-    raw_dem = H.copy()
+    Hw = ndimage.gaussian_filter(terr(latw, lonw), 0.4).astype(np.float32)
 
-    # ---- land cover (near grid + 1024 splat)
+    # ---- land cover
     is_forest = lambda t: t.get('landuse') == 'forest' or t.get('natural') in ('wood',)
     forest_a = osm.areas(is_forest)
     farm_a = osm.areas(lambda t: t.get('landuse') in ('farmland', 'allotments'))
     orchard_a = osm.areas(lambda t: t.get('landuse') in ('orchard', 'vineyard'))
     resid_a = osm.areas(lambda t: t.get('landuse') in ('residential',))
     indus_a = osm.areas(lambda t: t.get('landuse') in ('industrial', 'railway', 'construction', 'military') or t.get('amenity') == 'parking')
-    grass_a = osm.areas(lambda t: t.get('landuse') in ('grass', 'meadow', 'recreation_ground', 'cemetery', 'village_green') or t.get('natural') in ('grassland', 'scrub') or t.get('leisure') in ('park', 'pitch', 'stadium', 'playground'))
-    water_a = osm.areas(lambda t: t.get('natural') == 'water' and t.get('water') not in ('river',))
-    river_r = osm.rings(RIVER_REL)
-    forest = fill_areas(N, EXT, forest_a)
-    H -= 4.0 * ndimage.gaussian_filter(forest, 2.0)          # DSM canopy bias -> approx. bare ground
+    water_a = osm.areas(lambda t: t.get('natural') == 'water' and t.get('water') not in ('river', 'stream', 'canal'))
+    rivers_a = osm.areas(lambda t: (t.get('natural') == 'water' and t.get('water') in ('river', 'stream', 'canal')) or t.get('waterway') == 'riverbank')
+    H -= 4.0 * ndimage.gaussian_filter(fill_areas(N, EXT, forest_a), 2.0)       # DSM canopy bias -> approx. bare ground
+    Hw -= 4.0 * ndimage.gaussian_filter(fill_areas(WN, WEXT, forest_a), 1.0)
     log('dem + landcover')
 
-    # ---- Prahova: water level along the channel (monotone downstream), riverbed carve
-    rv = chain_ways(osm, PRAHOVA)
+    # ---- Prahova: the whole waterway through the map, water level monotone downstream, riverbed carve
+    def chain_river(name):
+        segs = [list(nd) for nd, tg in osm.ways.values() if tg.get('waterway') == 'river' and tg.get('name') == name]
+        chains = []
+        while segs:
+            c = segs.pop(0); changed = True
+            while changed:
+                changed = False
+                for k, sg in enumerate(segs):
+                    if sg[0] == c[-1]: c = c + sg[1:]
+                    elif sg[-1] == c[0]: c = sg[:-1] + c
+                    else: continue
+                    segs.pop(k); changed = True; break
+            q = np.array([osm.xz[n] for n in c if n in osm.xz])
+            if len(q) > 1: chains.append(q)
+        return max(chains, key=lambda q: float(np.hypot(*np.diff(q, axis=0).T).sum()))
+    rv = chain_river('Prahova')
     rp, rd = resample(rv, 10)
-    inside = (np.abs(rp[:, 0]) < EXT + 400) & (np.abs(rp[:, 1]) < EXT + 400)
+    inside = (np.abs(rp[:, 0]) < WEXT + 400) & (np.abs(rp[:, 1]) < WEXT + 400)
     k0, k1 = np.argmax(inside), len(inside) - np.argmax(inside[::-1])
     rp, rd = rp[max(0, k0 - 5):k1 + 5], rd[max(0, k0 - 5):k1 + 5]
     tang = np.gradient(rp, axis=0); tang /= np.linalg.norm(tang, axis=1, keepdims=True)
@@ -472,44 +496,64 @@ def main():
     lev = smooth1d(lev, rd, 250)
     lev = np.minimum.accumulate(lev) - 0.3
     log('river level', lev[0].round(1), '->', lev[-1].round(1), 'over', round(rd[-1] - rd[0]), 'm')
-    rb = fill_areas(N, EXT, [(river_r['outer'], river_r['inner'])])
-    d_r, st_r = polyline_field(rp, X, Z)
-    L_r = np.interp(st_r, rd - rd[0], lev)
-    chan = d_r < 10.0
-    rng = np.random.default_rng(7)
-    noise = ndimage.gaussian_filter(rng.standard_normal((N, N)), 3.0); noise /= noise.std()
-    gravel = L_r + 0.6 + np.clip(0.3 * noise, -0.35, 0.6)
-    wet = L_r - 0.25 - 1.3 * np.clip(1 - (d_r / 10.0) ** 2, 0, 1)
-    T = np.where(chan, np.minimum(wet, gravel), gravel)
-    zone = np.maximum(rb, chan.astype(np.float32))
-    wz = np.clip(ndimage.gaussian_filter(zone, 1.3) * 1.8, 0, 1)
-    H = H * (1 - wz) + np.minimum(T, H * (1 - wz) + T * wz) * wz
-    WL = np.where((zone > 0) | (d_r < 14), L_r, np.nan).astype(np.float32)
-    # small river Câmpinița (4 m) and lakes
+    rq, rqd = resample(rp, 2.0)
+    kd = cKDTree(rq)
+    # river areas belonging to the Prahova (the others, e.g. Doftana, keep their own level)
+    prah_a = [a_ for a_ in rivers_a if np.min(kd.query(a_[0][0][::max(1, len(a_[0][0]) // 40)])[0]) < 80]
+
+    def carve_prahova(Hg, Xg, Zg, ext, step):
+        n = Hg.shape[0]
+        d, k = kd.query(np.stack([Xg.ravel(), Zg.ravel()], 1), workers=-1)
+        d_r = d.reshape(Xg.shape).astype(np.float32)
+        L_r = np.interp(rqd[k].reshape(Xg.shape), rd - rd[0], lev)
+        rb = fill_areas(n, ext, prah_a)
+        chan = d_r < 10.0
+        noise = ndimage.gaussian_filter(np.random.default_rng(7).standard_normal((n, n)), 15.0 / step); noise /= noise.std()
+        gravel = L_r + 0.6 + np.clip(0.3 * noise, -0.35, 0.6)
+        wet = L_r - 0.25 - 1.3 * np.clip(1 - (d_r / 10.0) ** 2, 0, 1)
+        T = np.where(chan, np.minimum(wet, gravel), gravel)
+        zone = np.maximum(rb, chan.astype(np.float32))
+        wz = np.clip(ndimage.gaussian_filter(zone, 6.5 / step) * 1.8, 0, 1)
+        Hg[:] = Hg * (1 - wz) + np.minimum(T, Hg * (1 - wz) + T * wz) * wz
+        return d_r, np.where((zone > 0) | (d_r < 14), L_r, np.nan).astype(np.float32)
+    d_r, WL = carve_prahova(H, X, Z, EXT, STEP)
+    d_rw, WLw = carve_prahova(Hw, Xw, Zw, WEXT, WSTEP)
+
+    # smaller rivers and streams (Câmpinița, Doftana, brooks) and lakes, on both grids
+    streams = []
     for wid, (nd, tg) in osm.ways.items():
         if tg.get('waterway') in ('river', 'stream') and tg.get('name') != 'Prahova':
             p = osm.pts(wid)
-            if len(p): p = p[np.maximum(np.abs(p[:, 0]), np.abs(p[:, 1])) < EXT + 300]   # only the part on the map
-            if len(p) < 2 or window(p, 20) is None: continue
-            w = window(p, 20)
+            if len(p): p = p[np.maximum(np.abs(p[:, 0]), np.abs(p[:, 1])) < WEXT + 300]   # only the part on the map
+            if len(p) < 2: continue
             rp2, rd2 = resample(p, 5)
             la, lo = game_to_ll(rp2[:, 0], rp2[:, 1])
             l2 = np.minimum.accumulate(terr(la.reshape(1, -1), lo.reshape(1, -1)).ravel()) - 0.6
-            d2, s2 = polyline_field(p, X[w], Z[w])
-            half = (num(tg.get('width'), 2.0)) / 2
+            streams.append((p, rd2, l2, num(tg.get('width'), 6.0 if tg.get('waterway') == 'river' else 2.0) / 2))
+
+    def carve_streams(Hg, WLg, Xg, Zg, ext, step):
+        for p, rd2, l2, half in streams:
+            w = window(p, 20, ext, step)
+            if w is None: continue
+            d2, s2 = polyline_field(p, Xg[w], Zg[w])
             L2 = np.interp(s2, rd2, l2)
-            bank = smoothstep(half + 5, half, d2)
-            H[w] = np.minimum(H[w], H[w] * (1 - bank) + (L2 - 0.5 * np.clip(1 - (d2 / half) ** 2, 0, 1)) * bank)
-            m = d2 < half + 1.5
-            WL[w] = np.where(m, np.fmax(WL[w], L2), WL[w])
-    for outers, inners, tg, _ in water_a:
-        m = fill_areas(N, EXT, [(outers, inners)])
-        if m.sum() == 0: continue
-        ring = outers[0]
-        lvl = float(np.percentile(Grid(H).at(ring[:, 0], ring[:, 1]).ravel(), 15)) - 0.3
-        H = np.where(m > 0, np.minimum(H, lvl - 1.2), H)
-        WL = np.where(ndimage.binary_dilation(m > 0, iterations=1), lvl, WL)
-    log('rivers + lakes')
+            bank = smoothstep(half + max(5, step), half, d2)
+            Hg[w] = np.minimum(Hg[w], Hg[w] * (1 - bank) + (L2 - 0.5 * np.clip(1 - (d2 / half) ** 2, 0, 1)) * bank)
+            # on the 10 m grid only real rivers get a water surface (a 2 m brook would become a 10-20 m strip)
+            if step > 6 and half < 3: continue
+            m = d2 < half + max(1.5, step * 0.5)
+            WLg[w] = np.where(m, np.fmax(WLg[w], L2), WLg[w])
+        n = Hg.shape[0]
+        for outers, inners, tg, _ in water_a:
+            m = fill_areas(n, ext, [(outers, inners)])
+            if m.sum() == 0: continue
+            ring = outers[0]
+            lvl = float(np.percentile(Grid(Hg, ext, step).at(ring[:, 0], ring[:, 1]).ravel(), 15)) - 0.3
+            Hg[:] = np.where(m > 0, np.minimum(Hg, lvl - 1.2), Hg)
+            WLg[:] = np.where(ndimage.binary_dilation(m > 0, iterations=1), lvl, WLg)
+    carve_streams(H, WL, X, Z, EXT, STEP)
+    carve_streams(Hw, WLw, Xw, Zw, WEXT, WSTEP)
+    log('rivers + lakes', len(streams))
 
     # ---- roads & railways: cut and fill, minor first
     roads, rails = [], []
@@ -517,22 +561,22 @@ def main():
         h = tg.get('highway')
         if h in ORDER and tg.get('area') != 'yes' and len(nd) > 1:
             p = osm.pts(wid)
-            if len(p) > 1 and window(p, 10) is not None:
+            if len(p) > 1 and window(p, 10, WEXT - 20, WSTEP) is not None:
                 roads.append((ORDER.index(h), wid, p, tg))
         r = tg.get('railway')
         if r in ('rail',) and len(nd) > 1:
             p = osm.pts(wid)
-            if len(p) > 1 and window(p, 10) is not None:
+            if len(p) > 1 and window(p, 10, WEXT - 20, WSTEP) is not None:
                 rails.append((wid, p, tg))
     roads.sort(key=lambda r: r[0])
-    for _, wid, p, tg in roads:
-        if tg.get('bridge') or tg.get('tunnel') or tg['highway'] == 'steps': continue
-        w = road_width(wid, tg)
-        flatten_line(H, X, Z, p, w / 2, SMOOTH.get(tg['highway'], 25 if tg['highway'] in ('residential', 'unclassified') else 35))
-    for wid, p, tg in rails:
-        if tg.get('bridge') or tg.get('tunnel'): continue
-        flatten_line(H, X, Z, p, 2.2, 60, blend=8, offset=0.35)
-    log('roads', len(roads), 'rails', len(rails))
+    for Hg, Xg, Zg, ext, step in ((H, X, Z, EXT, STEP), (Hw, Xw, Zw, WEXT, WSTEP)):
+        for _, wid, p, tg in roads:
+            if tg.get('bridge') or tg.get('tunnel') or tg['highway'] == 'steps': continue
+            flatten_line(Hg, Xg, Zg, p, road_width(wid, tg) / 2, SMOOTH.get(tg['highway'], 25 if tg['highway'] in ('residential', 'unclassified') else 35), ext=ext, step=step)
+        for wid, p, tg in rails:
+            if tg.get('bridge') or tg.get('tunnel'): continue
+            flatten_line(Hg, Xg, Zg, p, 2.2, 60, blend=8, offset=0.35, ext=ext, step=step)
+        log('roads', len(roads), 'rails', len(rails), 'grid', step)
 
     # ---- the hand-built stretch of Strada Gării and the photographed lots
     zc = np.linspace(-EXT, EXT, N)
@@ -555,13 +599,23 @@ def main():
         H[outside, ic + di] = 0.5 * H[outside, ic + di] + 0.5 * (prof2[outside] + off)
     log('street + lots, H0 =', round(H0, 2))
 
-    # ---- blend the near edge into the far DEM
+    # ---- stitch: the near grid's edge follows the world grid; the world grid takes the near grid inside
     edge = np.maximum(np.abs(X), np.abs(Z))
     we = smoothstep(EXT - 200, EXT, edge)
-    H = H * (1 - we) + cop(lat, lon) * we
+    H = H * (1 - we) + Grid(Hw, WEXT, WSTEP).at(X, Z) * we
     WL[we > 0.5] = np.nan
+    kq = int(round((WEXT - EXT) / WSTEP)); rq_ = int(round(2 * EXT / WSTEP)) + 1
+    stride = int(round(WSTEP / STEP))
+    Hw[kq:kq + rq_, kq:kq + rq_] = H[::stride, ::stride]
+    WLw[kq:kq + rq_, kq:kq + rq_] = np.nan
+    # ... and the world grid's edge fades into the far Copernicus DEM
+    edgew = np.maximum(np.abs(Xw), np.abs(Zw))
+    wew = smoothstep(WEXT - 300, WEXT, edgew)
+    Hw = Hw * (1 - wew) + copf(latw, lonw) * wew
+    WLw[wew > 0.5] = np.nan
 
     Y = H - H0
+    Yw = Hw - H0
     gzs, gxs = np.gradient(Y, STEP)
     slope = np.degrees(np.arctan(np.hypot(gxs, gzs)))
     cn = ndimage.gaussian_filter(np.random.default_rng(3).standard_normal((N, N)), 1.6); cn /= cn.std()
@@ -570,28 +624,62 @@ def main():
     CLAY = (slope > 16) & ((np.abs(X - 42 + 8 * cn) < 22 + 7 * cn) | (np.abs(X + 36 + 8 * cn) < 19 + 6 * cn)) & (Z > 395) & (Z < 545) & (cn > -0.9)
     CLAY = ndimage.binary_opening(CLAY, iterations=1)
     write_b64('height.json', np.clip(np.round(Y * 100), -32000, 32000).astype('<i2'))
+    write_b64('height_w.json', np.clip(np.round(Yw * WSCALE), -32000, 32000).astype('<i2'))
     Xf, Zf = grid_xz(FAR_N, FAR_EXT)
     laf, lof = game_to_ll(Xf, Zf)
-    Yf = cop(laf, lof) - H0
-    Yf[np.hypot(Xf, Zf) > FAR_EXT * 1.02] = -3276.8      # outside the DEM window: no data
+    Yf = copf(laf, lof) - H0
+    Yf[np.hypot(Xf, Zf) > FAR_EXT * 1.02] = -3276.8      # corners: no data
     write_b64('far.json', np.clip(np.round(Yf * 10), -32768, 32000).astype('<i2'))
-    log('height range', Y.min().round(1), Y.max().round(1), 'far', Yf.min().round(1), Yf.max().round(1))
+    log('height range', Y.min().round(1), Y.max().round(1), 'world', Yw.min().round(1), Yw.max().round(1), 'far', Yf.min().round(1), Yf.max().round(1))
 
     # water cells (cell (i, j) spans grid nodes i..i+1, j..j+1)
-    W4 = np.stack([WL[:-1, :-1], WL[:-1, 1:], WL[1:, :-1], WL[1:, 1:]])
-    Y4 = np.stack([Y[:-1, :-1], Y[:-1, 1:], Y[1:, :-1], Y[1:, 1:]]) + H0
-    with np.errstate(invalid='ignore'), __import__('warnings').catch_warnings():
-        __import__('warnings').simplefilter('ignore')
-        lvl4 = np.nanmean(W4, 0)
-    sel = ~np.isnan(W4).all(0) & (Y4 < lvl4 + 0.02).any(0)
-    jj_, ii_ = np.nonzero(sel)
-    cells = np.stack([ii_, jj_, np.round((lvl4[sel] - H0) * 100).astype(int)], 1).tolist()
-    log('water cells', len(cells))
+    def water_cells(WLg, Yg):
+        W4 = np.stack([WLg[:-1, :-1], WLg[:-1, 1:], WLg[1:, :-1], WLg[1:, 1:]])
+        Y4 = np.stack([Yg[:-1, :-1], Yg[:-1, 1:], Yg[1:, :-1], Yg[1:, 1:]]) + H0
+        with np.errstate(invalid='ignore'), __import__('warnings').catch_warnings():
+            __import__('warnings').simplefilter('ignore')
+            lvl4 = np.nanmean(W4, 0)
+        sel = ~np.isnan(W4).all(0) & (Y4 < lvl4 + 0.02).any(0)
+        jj_, ii_ = np.nonzero(sel)
+        return np.stack([ii_, jj_, np.round((lvl4[sel] - H0) * 100).astype(int)], 1).tolist()
+    cells = water_cells(WL, Y)
+    cells_w = water_cells(WLw, Yw)
+    log('water cells', len(cells), 'world', len(cells_w))
 
-    # ---- textures: Sentinel-2 ground colour (near + far) and land-cover splat
+    # ---- textures: Sentinel-2 ground colour (near, world, far) and land-cover splats
+    bld_areas = osm.areas(lambda t: 'building' in t)
+
+    def ground_colour(n, ext, zoom, halo_m=2.9, garden=0.45):
+        Xt, Zt = grid_xz(n, ext)
+        col = s2_mosaic_sampler(zoom)(*game_to_ll(Xt, Zt))
+        # roofs are modelled in 3D: paint them out of the ground colour (else they glow as halos)
+        bm = np.zeros((n, n), np.uint8)
+        s = (n - 1) / (2 * ext)
+        for outers, _, tg, _ in bld_areas:
+            for r in outers:
+                cv2.fillPoly(bm, [np.round(to_px(r, n, ext) * 8).astype(np.int32)], 255, cv2.LINE_8, 3)
+        k = max(3, int(round(halo_m * s)) | 1)
+        bm = cv2.dilate(bm, np.ones((k, k), np.uint8))
+        col = cv2.inpaint(col, bm, 4, cv2.INPAINT_TELEA)
+        # 10 m pixels in the village mix roofs, yards and gardens: pull them towards garden green
+        k2 = max(5, int(round(5.3 * s)) | 1)
+        vil = cv2.GaussianBlur(cv2.dilate(bm, np.ones((k2, k2), np.uint8)).astype(np.float32) / 255, (0, 0), max(1.0, 1.75 * s)) * garden
+        return (col * (1 - vil[..., None]) + np.array([52, 92, 70], np.float32) * vil[..., None]).astype(np.uint8)
+
+    def splat_map(n, ext, clay_t=None):
+        sp = lambda a: fill_areas(n, ext, a)
+        rb_t = fill_areas(n, ext, rivers_a)
+        s = (n - 1) / (2 * ext)
+        lines_rail = draw_lines(n, ext, [(p, 5.0) for _, p, _ in rails], 5.0)
+        rd_mask = draw_lines(n, ext, [(p, road_width(w, t)) for _, w, p, t in roads if road_surface(t) in ('gravel', 'dirt')], 3)
+        ct = clay_t if clay_t is not None else 0
+        R_ = np.clip(sp(forest_a), 0, 1) * (1 - ct)
+        G_ = np.clip(np.maximum(sp(farm_a) * 0.9, ct), 0, 1)
+        B_ = np.clip(np.maximum.reduce([rb_t, lines_rail, sp(indus_a) * 0.6, rd_mask * 0.8]), 0, 1)
+        return cv2.GaussianBlur(np.stack([B_, G_, R_], -1), (0, 0), max(0.8, 1.2 * s / 0.34))
+
     TN = 2048
-    Xt, Zt = grid_xz(TN, EXT)
-    s2n = s2_mosaic_sampler(15)(*game_to_ll(Xt, Zt))
+    s2n = ground_colour(TN, EXT, 15)
     clay_t = cv2.GaussianBlur(cv2.resize(CLAY.astype(np.float32), (TN, TN), interpolation=cv2.INTER_LINEAR), (0, 0), 1.2)
     # erosion gullies: vertical streaks (down the slope, i.e. along +z) of darker clay and scrub
     streak = cv2.GaussianBlur(np.random.default_rng(4).random((TN, TN)).astype(np.float32), (0, 0), sigmaX=1.0, sigmaY=6.0)
@@ -599,40 +687,31 @@ def main():
     clay_t = np.clip(clay_t * (0.8 + 0.25 * streak), 0, 1)
     clay_bgr = np.array([118, 138, 156], np.float32)            # grey-ochre clay of the eroded bank (photo 7)
     s2n = (s2n * (1 - clay_t[..., None]) + clay_bgr * clay_t[..., None]).astype(np.uint8)
-    # roofs and asphalt are modelled in 3D: paint them out of the ground colour (else they glow as halos)
-    bm = np.zeros((TN, TN), np.uint8)
-    for outers, _, tg, _ in osm.areas(lambda t: 'building' in t):
-        for r in outers:
-            cv2.fillPoly(bm, [np.round(to_px(r, TN, EXT) * 8).astype(np.int32)], 255, cv2.LINE_8, 3)
-    bm = cv2.dilate(bm, np.ones((5, 5), np.uint8))
-    s2n = cv2.inpaint(s2n, bm, 4, cv2.INPAINT_TELEA)
-    # 10 m pixels in the village mix roofs, yards and gardens: pull them towards garden green
-    vil = cv2.GaussianBlur(cv2.dilate(bm, np.ones((9, 9), np.uint8)).astype(np.float32) / 255, (0, 0), 3) * 0.45
-    s2n = (s2n * (1 - vil[..., None]) + np.array([52, 92, 70], np.float32) * vil[..., None]).astype(np.uint8)
     cv2.imwrite(os.path.join(OUT, 'ortho.jpg'), s2n, [cv2.IMWRITE_JPEG_QUALITY, 88])
-    Xft, Zft = grid_xz(TN, FAR_EXT)
-    cv2.imwrite(os.path.join(OUT, 'ortho_far.jpg'), s2_mosaic_sampler(12)(*game_to_ll(Xft, Zft)), [cv2.IMWRITE_JPEG_QUALITY, 85])
-    sp = lambda a: fill_areas(TN, EXT, a)
-    rb_t = fill_areas(TN, EXT, [(river_r['outer'], river_r['inner'])])
-    lines_rail = draw_lines(TN, EXT, [(p, 5.0) for _, p, _ in rails], 5.0)
-    rd_mask = draw_lines(TN, EXT, [(p, road_width(w, t)) for _, w, p, t in roads if road_surface(t) in ('gravel', 'dirt')], 3)
-    R_ = np.clip(sp(forest_a), 0, 1) * (1 - clay_t)
-    G_ = np.clip(np.maximum(sp(farm_a) * 0.9, clay_t), 0, 1)
-    B_ = np.clip(np.maximum.reduce([rb_t, lines_rail, sp(indus_a) * 0.6, rd_mask * 0.8]), 0, 1)
-    splat = np.stack([B_, G_, R_], -1)                      # BGR for cv2 -> RGB = forest floor, farmland, gravel
-    splat = cv2.GaussianBlur(splat, (0, 0), 1.2)
-    cv2.imwrite(os.path.join(OUT, 'splat.png'), np.round(splat * 255).astype(np.uint8))
+    cv2.imwrite(os.path.join(OUT, 'splat.png'), np.round(splat_map(TN, EXT, clay_t) * 255).astype(np.uint8))
+    TW = 4096
+    # z14 tiles are softer: roofs bleed ~15 m into the yards, so the halo and the garden blend are wider
+    s2w = ground_colour(TW, WEXT, 14, halo_m=16.0, garden=0.62)
+    cv2.imwrite(os.path.join(OUT, 'ortho_w.jpg'), s2w, [cv2.IMWRITE_JPEG_QUALITY, 86])
+    cv2.imwrite(os.path.join(OUT, 'splat_w.png'), np.round(splat_map(TW, WEXT) * 255).astype(np.uint8))
+    Xft, Zft = grid_xz(2048, FAR_EXT)
+    cv2.imwrite(os.path.join(OUT, 'ortho_far.jpg'), s2_mosaic_sampler(11)(*game_to_ll(Xft, Zft)), [cv2.IMWRITE_JPEG_QUALITY, 85])
     log('textures')
 
     # ---- buildings
-    Gy = Grid(Y.astype(np.float32))
+    Gy, Gyw = Grid(Y.astype(np.float32)), Grid(Yw.astype(np.float32), WEXT, WSTEP)
+
+    def ysamp(xs, zs):
+        xs, zs = np.asarray(xs, np.float32).ravel(), np.asarray(zs, np.float32).ravel()
+        inner = (np.abs(xs) < EXT - 1) & (np.abs(zs) < EXT - 1)
+        return np.where(inner, Gy.at(xs, zs).ravel(), Gyw.at(xs, zs).ravel())
     bl = []
     build_src = [(o, tg, wid) for o, _, tg, wid in osm.areas(lambda t: 'building' in t and t.get('building') not in ('roof', 'no'))]
     for outers, tg, wid in build_src:
         p = ring_clean(outers[0])
         if len(p) < 3: continue
         cx, cz = p.mean(0)
-        if max(abs(cx), abs(cz)) > EXT - 30: continue
+        if max(abs(cx), abs(cz)) > WEXT - 30: continue
         area = abs(signed_area(p))
         if area < 6: continue
         if signed_area(p) < 0: p = p[::-1]
@@ -643,7 +722,7 @@ def main():
             else: dx = min(dx, -3.8 - p[:, 0].max())
         p = p + [max(dx, 0) if cx > 0 else min(dx, 0), 0]
         cx = p[:, 0].mean()
-        ys = Gy.at(np.append(p[:, 0], cx), np.append(p[:, 1], cz)).ravel()
+        ys = ysamp(np.append(p[:, 0], cx), np.append(p[:, 1], cz))
         b = tg.get('building')
         lv = num(tg.get('building:levels'))
         ht = num(tg.get('height'))
@@ -691,89 +770,96 @@ def main():
                    main=1 if tg.get('usage') == 'main' and not tg.get('service') else 0)
         if tg.get('bridge'): rec['br'] = 1
         ral.append(rec)
-    plat = [dict(id=wid, p=np.round(o[0], 2).ravel().tolist()) for o, _, tg, wid in osm.areas(lambda t: t.get('railway') == 'platform')]
+    inmap = lambda q: len(q) and np.max(np.abs(q)) < WEXT + 200
+    plat = [dict(id=wid, p=np.round(o[0], 2).ravel().tolist()) for o, _, tg, wid in osm.areas(lambda t: t.get('railway') == 'platform') if inmap(o[0])]
     power = []
     for wid, (nd, tg) in osm.ways.items():
         if tg.get('power') in ('line', 'minor_line'):
             pts = [(osm.xz[n], osm.nodes[n][2].get('power', '')) for n in nd if n in osm.xz]
+            pts = [a for a in pts if max(abs(a[0][0]), abs(a[0][1])) < WEXT + 400]
+            if len(pts) < 2: continue
             power.append(dict(id=wid, k=tg['power'], v=tg.get('voltage', ''), p=[[round(a[0][0], 2), round(a[0][1], 2), 1 if a[1] in ('tower', 'pole') else 0] for a in pts]))
-    trees_osm = [[round(a, 2) for a in osm.xz[n]] for n, (la_, lo_, tg) in osm.nodes.items() if tg.get('natural') == 'tree']
+    trees_osm = [[round(a, 2) for a in osm.xz[n]] for n, (la_, lo_, tg) in osm.nodes.items() if tg.get('natural') == 'tree' and max(abs(osm.xz[n][0]), abs(osm.xz[n][1])) < WEXT - 20]
 
-    # ---- exclusion raster for trees/fences/poles (2048^2, 1.465 m/px)
-    XN = 4096
-    def ex_raster():
-        m = np.zeros((XN, XN), np.uint8)
-        s = (XN - 1) / (2 * EXT)
-        for rec in bl:
-            q = np.array(rec['p']).reshape(-1, 2)
-            cv2.fillPoly(m, [np.round(to_px(q, XN, EXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
-        m = cv2.dilate(m, np.ones((3, 3), np.uint8))
-        for _, wid, p, tg in roads:
-            th = max(1, int(round((road_width(wid, tg) + 2.4) * s)))
-            cv2.polylines(m, [np.round(to_px(p, XN, EXT) * 8).astype(np.int32)], False, 2, th, cv2.LINE_8, 3)
-        for wid, p, tg in rails:
-            cv2.polylines(m, [np.round(to_px(p, XN, EXT) * 8).astype(np.int32)], False, 3, max(1, int(7 * s)), cv2.LINE_8, 3)
-        return m
-    EXR = ex_raster()
-    FN = 10001                                  # 0.6 m raster for fence clearances
+    # ---- exclusion rasters for trees/fences/poles over the whole map (10240^2, 1.56 m/px)
+    XN = 10240
+    s_ = (XN - 1) / (2 * WEXT)
+    EXR = np.zeros((XN, XN), np.uint8)
+    for rec in bl:
+        cv2.fillPoly(EXR, [np.round(to_px(np.array(rec['p']).reshape(-1, 2), XN, WEXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
+    EXR = cv2.dilate(EXR, np.ones((3, 3), np.uint8))
+    for _, wid, p, tg in roads:
+        th = max(1, int(round((road_width(wid, tg) + 2.4) * s_)))
+        cv2.polylines(EXR, [np.round(to_px(p, XN, WEXT) * 8).astype(np.int32)], False, 2, th, cv2.LINE_8, 3)
+    for wid, p, tg in rails:
+        cv2.polylines(EXR, [np.round(to_px(p, XN, WEXT) * 8).astype(np.int32)], False, 3, max(1, int(7 * s_)), cv2.LINE_8, 3)
+    FN = 20001                                  # 0.8 m raster for fence clearances
+    frs = (FN - 1) / (2 * WEXT)
     FR = np.zeros((FN, FN), np.uint8)
     for _, wid, p, tg in roads:
-        cv2.polylines(FR, [np.round(to_px(p, FN, EXT) * 8).astype(np.int32)], False, 1, max(1, int(round((road_width(wid, tg) + 1.0) * (FN - 1) / (2 * EXT)))), cv2.LINE_8, 3)
+        cv2.polylines(FR, [np.round(to_px(p, FN, WEXT) * 8).astype(np.int32)], False, 1, max(1, int(round((road_width(wid, tg) + 0.4) * frs))), cv2.LINE_8, 3)
     for wid, p, tg in rails:
-        cv2.polylines(FR, [np.round(to_px(p, FN, EXT) * 8).astype(np.int32)], False, 1, int(round(6 * (FN - 1) / (2 * EXT))), cv2.LINE_8, 3)
+        cv2.polylines(FR, [np.round(to_px(p, FN, WEXT) * 8).astype(np.int32)], False, 1, int(round(6 * frs)), cv2.LINE_8, 3)
     for rec_ in bl:
-        cv2.fillPoly(FR, [np.round(to_px(np.array(rec_['p']).reshape(-1, 2), FN, EXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
+        cv2.fillPoly(FR, [np.round(to_px(np.array(rec_['p']).reshape(-1, 2), FN, WEXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
     FR = cv2.dilate(FR, np.ones((3, 3), np.uint8))
-    frs = (FN - 1) / (2 * EXT)
-    XX, ZZ = grid_xz(XN, EXT)
-    rb_x = fill_areas(XN, EXT, [(river_r['outer'], river_r['inner'])])
-    dr_x = cv2.resize(d_r, (XN, XN), interpolation=cv2.INTER_LINEAR)
-    s2x = cv2.resize(s2n, (XN, XN), interpolation=cv2.INTER_LINEAR).astype(np.int16)
-    green = s2x[..., 1] - (s2x[..., 0] + s2x[..., 2]) / 2      # BGR
-    bright = s2x.mean(-1)
-    lots = (np.abs(XX) < 1e9) & (XX > SKIP_TREES[0]) & (XX < SKIP_TREES[1]) & (ZZ > SKIP_TREES[2]) & (ZZ < SKIP_TREES[3])
-    clay_x = cv2.resize(CLAY.astype(np.uint8), (XN, XN), interpolation=cv2.INTER_NEAREST) > 0
-    free = (EXR == 0) & ~clay_x & (rb_x < 0.5) & (dr_x > 12) & ~lots & (np.maximum(np.abs(XX), np.abs(ZZ)) < EXT - 20)
-    forest_x = fill_areas(XN, EXT, forest_a) > 0.5
-    orch_x = fill_areas(XN, EXT, orchard_a) > 0.5
-    resid_x = fill_areas(XN, EXT, resid_a) > 0.5
-    farm_x = fill_areas(XN, EXT, farm_a) > 0.5
-    near_b = cv2.dilate((EXR == 1).astype(np.uint8), np.ones((41, 41), np.uint8)) > 0     # within ~30 m of a building
-    # town centre: blocks of flats, shops, industry -> no lot fences along those streets
+    vx = np.linspace(-WEXT, WEXT, XN).astype(np.float32)
+    XX, ZZ = vx[None, :], vx[:, None]                      # broadcast instead of two 10240^2 arrays
+    rb_x = fill_areas(XN, WEXT, rivers_a, dtype=np.uint8) > 0
+    dr_x = cv2.resize(np.clip(d_rw, 0, 255).astype(np.uint8), (XN, XN), interpolation=cv2.INTER_LINEAR)
+    g16 = s2w.astype(np.int16)
+    green = cv2.resize((g16[..., 1] - (g16[..., 0] + g16[..., 2]) // 2).astype(np.float32), (XN, XN), interpolation=cv2.INTER_LINEAR)
+    del g16
+    lots = ((XX > SKIP_TREES[0]) & (XX < SKIP_TREES[1])) & ((ZZ > SKIP_TREES[2]) & (ZZ < SKIP_TREES[3]))
+    clay_x = np.zeros((XN, XN), bool)
+    kc = (XN - 1) / (2 * WEXT)
+    ci0 = int(round((WEXT - EXT) * kc)); ci1 = int(round((WEXT + EXT) * kc)) + 1
+    clay_x[ci0:ci1, ci0:ci1] = cv2.resize(CLAY.astype(np.uint8), (ci1 - ci0, ci1 - ci0), interpolation=cv2.INTER_NEAREST) > 0
+    edge_x = np.maximum(np.abs(XX), np.abs(ZZ))
+    free = (EXR == 0) & ~clay_x & ~rb_x & (dr_x > 12) & ~lots & (edge_x < WEXT - 20)
+    forest_x = fill_areas(XN, WEXT, forest_a, dtype=np.uint8) > 0
+    orch_x = fill_areas(XN, WEXT, orchard_a, dtype=np.uint8) > 0
+    resid_x = fill_areas(XN, WEXT, resid_a, dtype=np.uint8) > 0
+    farm_x = fill_areas(XN, WEXT, farm_a, dtype=np.uint8) > 0
+    near_b = cv2.dilate((EXR == 1).astype(np.uint8), np.ones((39, 39), np.uint8)) > 0     # within ~30 m of a building
+    # town centres: blocks of flats, shops, industry -> no lot fences along those streets
     blk = np.zeros((XN, XN), np.uint8)
     for rec_ in bl:
         if rec_['roof'] == 'flat' or rec_['b'] in ('apartments', 'commercial', 'retail', 'industrial', 'school', 'hospital', 'public', 'office'):
-            cv2.fillPoly(blk, [np.round(to_px(np.array(rec_['p']).reshape(-1, 2), XN, EXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
-    blk = cv2.dilate(blk, np.ones((31, 31), np.uint8)) > 0                                  # ~22 m around them
+            cv2.fillPoly(blk, [np.round(to_px(np.array(rec_['p']).reshape(-1, 2), XN, WEXT) * 8).astype(np.int32)], 1, cv2.LINE_8, 3)
+    blk = cv2.dilate(blk, np.ones((29, 29), np.uint8)) > 0                                  # ~22 m around them
+    log('exclusion rasters')
     trng = np.random.default_rng(11)
 
-    def scatter(spacing, mask, keep=1.0, jitter=0.42, far_keep=1.0):
-        n = int(2 * EXT / spacing)
-        g = (np.arange(n) + 0.5) * spacing - EXT
+    def scatter(spacing, mask, keep=1.0, jitter=0.42, far_keep=1.0, out_keep=0.5):
+        # density falls with distance from the street: full inside 1.6 km, far_keep to 3 km, then far_keep * out_keep
+        n = int(2 * WEXT / spacing)
+        g = (np.arange(n) + 0.5) * spacing - WEXT
         gx, gz = np.meshgrid(g, g)
         px = gx + trng.uniform(-jitter, jitter, gx.shape) * spacing
         pz = gz + trng.uniform(-jitter, jitter, gz.shape) * spacing
-        ii = np.clip(np.round((px + EXT) / (2 * EXT) * (XN - 1)).astype(int), 0, XN - 1)
-        jj = np.clip(np.round((pz + EXT) / (2 * EXT) * (XN - 1)).astype(int), 0, XN - 1)
-        k = np.where(np.maximum(np.abs(px), np.abs(pz)) > 1600, keep * far_keep, keep)
+        ii = np.clip(np.round((px + WEXT) * s_).astype(int), 0, XN - 1)
+        jj = np.clip(np.round((pz + WEXT) * s_).astype(int), 0, XN - 1)
+        r = np.maximum(np.abs(px), np.abs(pz))
+        k = keep * np.where(r > 3000, far_keep * out_keep, np.where(r > 1600, far_keep, 1.0))
         ok = mask[jj, ii] & (trng.random(px.shape) < k)
         return px[ok], pz[ok], jj[ok], ii[ok]
     T_ = []
     # forests: oak / hornbeam / beech with some spruce (CLC: broad-leaved forest)
-    fx_, fz_, _, _ = scatter(6.5, free & forest_x, far_keep=0.55)
+    fx_, fz_, _, _ = scatter(6.5, free & forest_x, far_keep=0.55, out_keep=0.28)
     ty = trng.choice([0, 1, 2], len(fx_), p=[0.5, 0.38, 0.12])
     T_.append((fx_, fz_, ty, trng.uniform(0.8, 1.2, len(fx_))))
     # riverside willows / poplars on the green parts of the river corridor
-    wx_, wz_, jj, ii = scatter(7.0, (EXR == 0) & (rb_x < 0.5) & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~forest_x & ~lots)
+    wx_, wz_, jj, ii = scatter(7.0, (EXR == 0) & ~rb_x & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~forest_x & ~lots, out_keep=0.5)
     T_.append((wx_, wz_, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_))))
     # orchards (plum / apple rows)
-    ox_, oz_, _, _ = scatter(6.0, free & orch_x, keep=0.85, jitter=0.12, far_keep=0.6)
+    ox_, oz_, _, _ = scatter(6.0, free & orch_x, keep=0.85, jitter=0.12, far_keep=0.5, out_keep=0.3)
     T_.append((ox_, oz_, np.full(len(ox_), 3), trng.uniform(0.8, 1.1, len(ox_))))
     # yards: fruit trees, walnuts, spruces where Sentinel-2 shows vegetation
-    yx_, yz_, jj, ii = scatter(10.0, free & (resid_x | near_b) & ~forest_x & ~orch_x & ~farm_x & (green > 4), far_keep=0.75)
+    yx_, yz_, jj, ii = scatter(10.0, free & (resid_x | near_b) & ~forest_x & ~orch_x & ~farm_x & (green > 4), far_keep=0.75, out_keep=0.5)
     T_.append((yx_, yz_, trng.choice([3, 4, 1, 2, 0], len(yx_), p=[0.45, 0.18, 0.17, 0.12, 0.08]), trng.uniform(0.7, 1.15, len(yx_))))
     # scattered field trees
-    sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10), keep=0.35)
+    sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10), keep=0.35, out_keep=1.0)
     T_.append((sx_, sz_, trng.choice([0, 1, 4], len(sx_)), trng.uniform(0.8, 1.2, len(sx_))))
     if trees_osm:
         a = np.array(trees_osm)
@@ -781,7 +867,7 @@ def main():
     tx = np.concatenate([t[0] for t in T_]); tz = np.concatenate([t[1] for t in T_])
     tt = np.concatenate([t[2] for t in T_]); ts = np.concatenate([t[3] for t in T_])
     rec = np.zeros(len(tx), dtype=[('x', '<i2'), ('z', '<i2'), ('t', 'u1'), ('s', 'u1')])
-    rec['x'] = np.round(tx * 10); rec['z'] = np.round(tz * 10); rec['t'] = tt; rec['s'] = np.round(ts * 100)
+    rec['x'] = np.round(tx * TREE_SCALE); rec['z'] = np.round(tz * TREE_SCALE); rec['t'] = tt; rec['s'] = np.round(ts * 100)
     write_b64('trees.json', rec)
     log('trees', len(rec), [len(t[0]) for t in T_])
 
@@ -789,7 +875,6 @@ def main():
     from shapely.geometry import LineString
     fences, poles = [], []
     frng = np.random.default_rng(5)
-    s_ = (XN - 1) / (2 * EXT)
     lotsbox = lambda q: (q[:, 0] > LOTS[0] - 5) & (q[:, 0] < LOTS[1] + 5) & (q[:, 1] > LOTS[2] - 5) & (q[:, 1] < LOTS[3] + 5)
     for _, wid, p, tg in roads:
         h = tg['highway']
@@ -803,9 +888,9 @@ def main():
             if off.is_empty or off.geom_type != 'LineString' or off.length < 6: continue
             nS = int(off.length / 1.5)
             q = np.array([off.interpolate(k * 1.5).coords[0] for k in range(nS + 1)])
-            ii = np.clip(np.round((q[:, 0] + EXT) * s_).astype(int), 0, XN - 1); jj = np.clip(np.round((q[:, 1] + EXT) * s_).astype(int), 0, XN - 1)
-            fi = np.clip(np.round((q[:, 0] + EXT) * frs).astype(int), 0, FN - 1); fj = np.clip(np.round((q[:, 1] + EXT) * frs).astype(int), 0, FN - 1)
-            valid = (FR[fj, fi] == 0) & ~blk[jj, ii] & (rb_x[jj, ii] < 0.5) & ~forest_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < EXT - 40)
+            ii = np.clip(np.round((q[:, 0] + WEXT) * s_).astype(int), 0, XN - 1); jj = np.clip(np.round((q[:, 1] + WEXT) * s_).astype(int), 0, XN - 1)
+            fi = np.clip(np.round((q[:, 0] + WEXT) * frs).astype(int), 0, FN - 1); fj = np.clip(np.round((q[:, 1] + WEXT) * frs).astype(int), 0, FN - 1)
+            valid = (FR[fj, fi] == 0) & ~blk[jj, ii] & ~rb_x[jj, ii] & ~forest_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < WEXT - 40)
             if wid == GARII_ID: valid &= ~((q[:, 1] > LOTS[2] - 8) & (q[:, 1] < LOTS[3] + 8))
             k = 0
             while k < len(q):
@@ -841,8 +926,8 @@ def main():
             seq = []
             for k in range(int(off.length // 38) + 1):
                 c = np.array(off.interpolate(min(off.length, 6 + k * 38)).coords[0])
-                i_, j_ = int(round((c[0] + EXT) * s_)), int(round((c[1] + EXT) * s_))
-                if not (0 <= i_ < XN and 0 <= j_ < XN) or EXR[j_, i_] == 1 or lots[j_, i_] or rb_x[j_, i_] > 0.5:
+                i_, j_ = int(round((c[0] + WEXT) * s_)), int(round((c[1] + WEXT) * s_))
+                if not (0 <= i_ < XN and 0 <= j_ < XN) or EXR[j_, i_] == 1 or lots[j_, i_] or rb_x[j_, i_] or max(abs(c[0]), abs(c[1])) > WEXT - 30:
                     if len(seq) > 1: poles.append(dict(s=side, p=seq))
                     seq = []; continue
                 seq.append([round(float(c[0]), 2), round(float(c[1]), 2)])
@@ -852,12 +937,13 @@ def main():
     zs = zc[rows]
     geo = dict(
         meta=dict(origin=dict(lat=LAT0, lon=LON0, bearing=math.degrees(THETA), zShift=Z_SHIFT, h0=round(H0, 2)),
-                  grid=dict(n=N, ext=EXT, step=STEP), far=dict(n=FAR_N, ext=FAR_EXT),
+                  grid=dict(n=N, ext=EXT, step=STEP), world=dict(n=WN, ext=WEXT, step=WSTEP, scale=WSCALE),
+                  far=dict(n=FAR_N, ext=FAR_EXT), trees=dict(scale=TREE_SCALE),
                   street=dict(z0=STREET_Z[0], z1=STREET_Z[1]), lots=LOTS,
                   sources=['OpenStreetMap contributors (ODbL)', 'Terrain Tiles on AWS (EU-DEM/SRTM, terrarium z15)',
                            'Copernicus GLO-30 DSM', 'Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0)']),
         profile=dict(z0=float(zs[0]), step=STEP, y=np.round(prof2[rows] - H0, 3).tolist()),
-        buildings=bl, roads=rl, rails=ral, platforms=plat, power=power, water=cells,
+        buildings=bl, roads=rl, rails=ral, platforms=plat, power=power, water=cells, water2=cells_w,
         river=dict(p=np.round(rp, 1).ravel().tolist(), lev=np.round(lev - H0, 2).tolist()),
         fences=fences, poles=poles)
     with open(os.path.join(OUT, 'geo.json'), 'w') as f:

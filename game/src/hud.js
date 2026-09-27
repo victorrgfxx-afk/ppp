@@ -16,7 +16,7 @@ export class HUD {
     this.map = document.getElementById('minimap');
     this.ctx = this.map.getContext('2d');
     this.fpsAcc = 0; this.fpsN = 0; this.toastT = 0;
-    if (opts.geo) { this.geoMap(opts.geo, opts.ortho); return; }
+    if (opts.geo) { this.geoMap(opts.geo, opts.ortho, opts.orthoW); return; }
     // pre-render the static map (1 px = 0.5 m)
     const S = 2, X0 = -70, X1 = 70, Z0 = -270, Z1 = 200;
     this.S = S; this.X0 = X0; this.Z0 = Z0;
@@ -40,40 +40,50 @@ export class HUD {
     this.static = c;
     void houses;
   }
-  // GTA-style map of the real area: Sentinel-2 ground, water, OSM roads, rails and buildings
-  geoMap(G, orthoImg) {
-    const ext = G.ext, S = Math.min(0.6, 1200 / ext);   // canvas stays <= 2400 px
+  // GTA-style map of the real area: Sentinel-2 ground, water, OSM roads, rails and buildings.
+  // Two pre-rendered sheets: a sharp one around the street (+-3 km) and one for the whole map (+-8 km).
+  geoMap(G, orthoImg, orthoWImg) {
     this.northRot = Math.PI - G.meta.origin.bearing * Math.PI / 180;   // real north in the game frame
-    this.S = S; this.X0 = -ext; this.Z0 = -ext;
-    const c = document.createElement('canvas');
-    c.width = c.height = Math.round(2 * ext * S);
-    const g = c.getContext('2d');
-    g.filter = 'saturate(0.55) brightness(0.62) contrast(1.1)';
-    if (orthoImg) g.drawImage(orthoImg, 0, 0, c.width, c.height);
-    g.filter = 'none';
-    const X = (x) => (x + ext) * S;
-    g.fillStyle = '#3f7fc4';
-    for (const [i, j] of G.water) g.fillRect(X(-ext + i * G.step) - 0.3, X(-ext + j * G.step) - 0.3, G.step * S + 0.6, G.step * S + 0.6);
-    const line = (flat, w, color, dash = null) => {
-      g.strokeStyle = color; g.lineWidth = Math.max(0.8, w * S); g.setLineDash(dash || []);
-      g.beginPath();
-      for (let i = 0; i < flat.length; i += 2) { const px = X(flat[i]), pz = X(flat[i + 1]); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); }
-      g.stroke();
+    const sheet = (ext, S, img) => {
+      const c = document.createElement('canvas');
+      c.width = c.height = Math.round(2 * ext * S);
+      const g = c.getContext('2d');
+      g.filter = 'saturate(0.55) brightness(0.62) contrast(1.1)';
+      if (img) g.drawImage(img, 0, 0, c.width, c.height);
+      g.filter = 'none';
+      const X = (x) => (x + ext) * S;
+      g.fillStyle = '#3f7fc4';
+      const cells = (list, e, st) => { for (const [i, j] of list) g.fillRect(X(-e + i * st) - 0.3, X(-e + j * st) - 0.3, st * S + 0.6, st * S + 0.6); };
+      if (G.W && G.water2) cells(G.water2, G.W.ext, G.W.step);
+      cells(G.water, G.ext, G.step);
+      const inside = (flat) => { for (let i = 0; i < flat.length; i += 2) if (Math.abs(flat[i]) < ext + 50 && Math.abs(flat[i + 1]) < ext + 50) return true; return false; };
+      const line = (flat, w, color, dash = null) => {
+        if (!inside(flat)) return;
+        g.strokeStyle = color; g.lineWidth = Math.max(0.8, w * S); g.setLineDash(dash || []);
+        g.beginPath();
+        for (let i = 0; i < flat.length; i += 2) { const px = X(flat[i]), pz = X(flat[i + 1]); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); }
+        g.stroke();
+      };
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      for (const r of G.rails) line(r.p, 2.2, '#5a5550', [3, 2]);
+      const major = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary']);
+      for (const r of G.roads) if (!major.has(r.c)) line(r.p, Math.max(2.5, r.w + 1), r.s === 'asphalt' ? '#b9b7b1' : '#a89a7e');
+      for (const r of G.roads) if (major.has(r.c)) line(r.p, r.w + 2, r.c.startsWith('trunk') ? '#e8b04a' : '#f2f0ea');
+      g.setLineDash([]);
+      g.fillStyle = '#d9cdb8'; g.strokeStyle = 'rgba(40,35,30,0.6)'; g.lineWidth = 0.6;
+      for (const b of G.buildings) {
+        if (Math.abs(b.p[0]) > ext + 30 || Math.abs(b.p[1]) > ext + 30) continue;
+        g.beginPath();
+        for (let i = 0; i < b.p.length; i += 2) { const px = X(b.p[i]), pz = X(b.p[i + 1]); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); }
+        g.closePath(); g.fill(); if (S > 0.3) g.stroke();
+      }
+      return { c, S, X0: -ext, Z0: -ext, ext };
     };
-    g.lineCap = 'round'; g.lineJoin = 'round';
-    for (const r of G.rails) line(r.p, 2.2, '#5a5550', [3, 2]);
-    const major = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary']);
-    for (const r of G.roads) if (!major.has(r.c)) line(r.p, Math.max(2.5, r.w + 1), r.s === 'asphalt' ? '#b9b7b1' : '#a89a7e');
-    for (const r of G.roads) if (major.has(r.c)) line(r.p, r.w + 2, r.c.startsWith('trunk') ? '#e8b04a' : '#f2f0ea');
-    g.setLineDash([]);
-    g.fillStyle = '#d9cdb8'; g.strokeStyle = 'rgba(40,35,30,0.6)'; g.lineWidth = 0.6;
-    for (const b of G.buildings) {
-      g.beginPath();
-      for (let i = 0; i < b.p.length; i += 2) { const px = X(b.p[i]), pz = X(b.p[i + 1]); if (i) g.lineTo(px, pz); else g.moveTo(px, pz); }
-      g.closePath(); g.fill(); g.stroke();
-    }
-    this.static = c;
+    this.sheets = [sheet(G.ext, Math.min(0.6, 1200 / G.ext), orthoImg)];
+    if (G.W) this.sheets.push(sheet(G.W.ext, Math.min(0.6, 1600 / G.W.ext), orthoWImg || orthoImg));
+    this.useSheet(this.sheets[0]);
   }
+  useSheet(s) { this.sheet = s; this.static = s.c; this.S = s.S; this.X0 = s.X0; this.Z0 = s.Z0; }
   toast(msg, t = 2.5) { this.el.toast.textContent = msg; this.el.toast.classList.add('on'); this.toastT = t; }
   update(dt, st) {
     // fps
@@ -90,6 +100,11 @@ export class HUD {
     }
     this.el.loc.textContent = st.location;
     // minimap
+    if (this.sheets && this.sheets.length > 1) {
+      const inNear = Math.max(Math.abs(st.x), Math.abs(st.z)) < this.sheets[0].ext - 400;
+      const want = this.sheets[inNear ? 0 : 1];
+      if (want !== this.sheet) this.useSheet(want);
+    }
     const g = this.ctx, w = this.map.width, h = this.map.height, S = this.S;
     const zoom = (st.driving ? 1.1 : 1.8) * (this.S < 1 ? 1.32 / this.S : 1);
     g.save();

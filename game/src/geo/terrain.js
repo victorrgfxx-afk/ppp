@@ -4,7 +4,8 @@ import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
 import { WIND } from '../util.js';
 
-// Near terrain (+-1.5 km, 5 m DEM grid) in LOD chunks, far ring (+-8 km Copernicus DEM), water surfaces.
+// Near terrain (+-3 km, 5 m grid) and world terrain (+-8 km, 10 m grid) in LOD chunks,
+// far ring (+-20 km Copernicus DEM), water surfaces.
 
 function loadTex(url, srgb = true) {
   return new Promise((res, rej) => new THREE.TextureLoader().load(url, (t) => {
@@ -18,18 +19,19 @@ function loadTex(url, srgb = true) {
 }
 
 export async function loadGeoTextures(base) {
-  const [ortho, orthoFar, splat] = await Promise.all([loadTex(base + 'ortho.jpg'), loadTex(base + 'ortho_far.jpg'), loadTex(base + 'splat.png', false)]);
-  return { ortho, orthoFar, splat };
+  const [ortho, orthoFar, splat, orthoW, splatW] = await Promise.all([loadTex(base + 'ortho.jpg'), loadTex(base + 'ortho_far.jpg'), loadTex(base + 'splat.png', false),
+    GEO.W ? loadTex(base + 'ortho_w.jpg') : null, GEO.W ? loadTex(base + 'splat_w.png', false) : null]);
+  return { ortho, orthoFar, splat, orthoW, splatW };
 }
 
-function terrainMaterial(gt) {
+function terrainMaterial(ortho, splat, ext) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, color: 0xffffff });
   const uni = {
-    uOrtho: { value: gt.ortho }, uSplat: { value: gt.splat },
+    uOrtho: { value: ortho }, uSplat: { value: splat },
     uGrass: { value: TEX.grass }, uSoil: { value: TEX.soil }, uGravel: { value: TEX.gravel },
     uGrassN: { value: TEX.grassN },
     uAvgG: { value: avgColor(TEX.grass) }, uAvgS: { value: avgColor(TEX.soil) }, uAvgR: { value: avgColor(TEX.gravel) },
-    uExt: { value: GEO.ext },
+    uExt: { value: ext },
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
@@ -68,14 +70,26 @@ uniform float uExt;`)
 }
 
 export function buildTerrain(scene, gt, quality) {
-  const { n, ext, step, H } = GEO;
-  const CH = 120;                                  // 120 cells = 600 m per chunk
+  const low = quality.label === 'Scăzută';
+  // near grid: 120 cells = 600 m per chunk
+  const near = gridTerrain(scene, GEO, terrainMaterial(gt.ortho, gt.splat, GEO.ext), 120,
+    low ? [[2, 0], [5, 600], [10, 1300], [20, 2600]] : [[1, 0], [2, 480], [5, 1150], [10, 2300]]);
+  if (!GEO.W) return near;
+  // world grid around it: 100 cells = 1 km per chunk, the chunks under the near grid are left out
+  const e = GEO.ext;
+  const world = gridTerrain(scene, GEO.W, terrainMaterial(gt.orthoW, gt.splatW, GEO.W.ext), 100,
+    low ? [[2, 0], [4, 1500], [10, 3500]] : [[1, 0], [2, 1300], [4, 2800], [10, 5000]],
+    (x0, z0, x1, z1) => x0 >= -e - 1 && x1 <= e + 1 && z0 >= -e - 1 && z1 <= e + 1);
+  return { lods: near.lods.concat(world.lods), material: near.material, worldMaterial: world.material };
+}
+
+function gridTerrain(scene, G, mat, CH, levels, skip = null) {
+  const { n, ext, step, H } = G;
   const nc = (n - 1) / CH;
-  const mat = terrainMaterial(gt);
-  const levels = quality.label === 'Scăzută' ? [[2, 0], [5, 600], [10, 1300], [20, 2600]] : [[1, 0], [2, 480], [5, 1150], [10, 2300]];
   const nrm = new THREE.Vector3();
   const lods = [];
   for (let cj = 0; cj < nc; cj++) for (let ci = 0; ci < nc; ci++) {
+    if (skip && skip(-ext + ci * CH * step, -ext + cj * CH * step, -ext + (ci + 1) * CH * step, -ext + (cj + 1) * CH * step)) continue;
     const lod = new THREE.LOD();
     const cx = -ext + (ci + 0.5) * CH * step, cz = -ext + (cj + 0.5) * CH * step;
     lod.position.set(cx, 0, cz);
@@ -85,7 +99,7 @@ export function buildTerrain(scene, gt, quality) {
       for (let b = 0; b < m; b++) for (let a = 0; a < m; a++) {
         const i = ci * CH + a * s, j = cj * CH + b * s;
         pos.push(-ext + i * step - cx, H[j * n + i], -ext + j * step - cz);
-        normalAt(i, j, nrm); nor.push(nrm.x, nrm.y, nrm.z);
+        normalAt(i, j, nrm, G); nor.push(nrm.x, nrm.y, nrm.z);
       }
       for (let b = 0; b < m - 1; b++) for (let a = 0; a < m - 1; a++) {
         const A = b * m + a, B = A + 1, C = A + m, D = C + 1;
@@ -123,9 +137,9 @@ export function buildTerrain(scene, gt, quality) {
   return { lods, material: mat };
 }
 
-// Real surroundings out to 8 km (Copernicus DEM + Sentinel-2): valley sides and ridges on the horizon.
+// Real surroundings out to 20 km (Copernicus DEM + Sentinel-2): valley sides and ridges on the horizon.
 export function buildFarTerrain(scene, gt) {
-  const { farN: n, farExt: ext, F, ext: near } = GEO;
+  const { farN: n, farExt: ext, F, worldExt: near } = GEO;
   const s = 2 * ext / (n - 1);
   const pos = [], uv = [];
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
@@ -156,9 +170,10 @@ export function buildFarTerrain(scene, gt) {
 
 // Water: Prahova (level from the DEM, falling ~0.8 % downstream), Câmpinița, lakes.
 export function buildWater(scene) {
-  const { ext, step, water } = GEO;
   const byChunk = new Map();
-  for (const [i, j, lc] of water) {
+  const cells = GEO.water.map(c => [GEO.ext, GEO.step, c]);
+  if (GEO.W && GEO.water2) for (const c of GEO.water2) cells.push([GEO.W.ext, GEO.W.step, c]);
+  for (const [ext, step, [i, j, lc]] of cells) {
     const x0 = -ext + i * step, z0 = -ext + j * step, y = lc / 100;
     const key = Math.floor(x0 / 500) + ',' + Math.floor(z0 / 500);
     if (!byChunk.has(key)) byChunk.set(key, []);

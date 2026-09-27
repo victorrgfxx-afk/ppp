@@ -8,23 +8,32 @@ export async function loadGeo(base) {
   const get = (f) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
   // binary grids travel as base64 in JSON (static hosts may refuse .bin)
   const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  const [json, h, far, trees] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('far.json').then(bin), get('trees.json').then(bin)]);
+  const [json, h, hw, far, trees] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin)]);
   Object.assign(GEO, json);
   const g = json.meta.grid;
+  // near grid (5 m, +-3 km around the street) and world grid (10 m, the whole playable map)
   GEO.n = g.n; GEO.ext = g.ext; GEO.step = g.step;
   const hi = new Int16Array(h);
   GEO.H = new Float32Array(hi.length);
   for (let i = 0; i < hi.length; i++) GEO.H[i] = hi[i] / 100;
+  const w = json.meta.world;
+  GEO.W = null;
+  if (w && hw) {
+    const a = new Int16Array(hw), H = new Float32Array(a.length);
+    for (let i = 0; i < a.length; i++) H[i] = a[i] / w.scale;
+    GEO.W = { n: w.n, ext: w.ext, step: w.step, H };
+  }
+  GEO.worldExt = GEO.W ? GEO.W.ext : GEO.ext;
   const fi = new Int16Array(far);
   GEO.farN = json.meta.far.n; GEO.farExt = json.meta.far.ext;
   GEO.F = new Float32Array(fi.length);
   for (let i = 0; i < fi.length; i++) GEO.F[i] = fi[i] / 10;
   const dv = new DataView(trees);
-  const nt = trees.byteLength / 6;
+  const nt = trees.byteLength / 6, ts = json.meta.trees?.scale ?? 10;
   GEO.trees = { n: nt, x: new Float32Array(nt), z: new Float32Array(nt), t: new Uint8Array(nt), s: new Float32Array(nt) };
   for (let i = 0; i < nt; i++) {
-    GEO.trees.x[i] = dv.getInt16(i * 6, true) / 10;
-    GEO.trees.z[i] = dv.getInt16(i * 6 + 2, true) / 10;
+    GEO.trees.x[i] = dv.getInt16(i * 6, true) / ts;
+    GEO.trees.z[i] = dv.getInt16(i * 6 + 2, true) / ts;
     GEO.trees.t[i] = dv.getUint8(i * 6 + 4);
     GEO.trees.s[i] = dv.getUint8(i * 6 + 5) / 100;
   }
@@ -33,8 +42,14 @@ export async function loadGeo(base) {
 }
 
 // Height of the terrain mesh at (x, z): same triangulation as the rendered grid (diagonal b-c).
+// The near grid covers +-GEO.ext; beyond it the world grid (its edge values match the near grid's edge).
 export function heightAt(x, z) {
-  const { n, ext, step, H } = GEO;
+  if (GEO.W && (x < -GEO.ext || x > GEO.ext || z < -GEO.ext || z > GEO.ext)) return gridHeight(GEO.W, x, z);
+  return gridHeight(GEO, x, z);
+}
+
+export function gridHeight(G, x, z) {
+  const { n, ext, step, H } = G;
   let fx = (x + ext) / step, fz = (z + ext) / step;
   fx = Math.min(n - 1.0001, Math.max(0, fx)); fz = Math.min(n - 1.0001, Math.max(0, fz));
   const i = Math.floor(fx), j = Math.floor(fz);
@@ -45,8 +60,8 @@ export function heightAt(x, z) {
 }
 
 // Terrain normal from central differences of the full-resolution grid (seamless across chunks/LODs).
-export function normalAt(i, j, out) {
-  const { n, step, H } = GEO;
+export function normalAt(i, j, out, G = GEO) {
+  const { n, step, H } = G;
   const i0 = Math.max(0, i - 1), i1 = Math.min(n - 1, i + 1), j0 = Math.max(0, j - 1), j1 = Math.min(n - 1, j + 1);
   const dx = (H[j * n + i1] - H[j * n + i0]) / ((i1 - i0) * step);
   const dz = (H[j1 * n + i] - H[j0 * n + i]) / ((j1 - j0) * step);
@@ -72,9 +87,13 @@ export function profileAt(z) {
 
 // ---------- fast geometry builder: arrays per (material, chunk) -> merged meshes ----------
 export class GeoBuilder {
-  constructor(chunk = 250) { this.chunk = chunk; this.groups = new Map(); }
-  _grp(material, cx, cz, opts) {
-    const key = material.uuid + '|' + cx + '|' + cz + (opts.noCast ? 'n' : '');
+  // chunk: size of the merged meshes near the street (inside +-inner), farChunk beyond it (fewer draw calls);
+  // cull: distance beyond which a merged mesh is hidden (per material via cullFor, else the default)
+  constructor(chunk = 250, farChunk = chunk, inner = Infinity, cull = 0) {
+    Object.assign(this, { chunk, farChunk, inner, cull }); this.groups = new Map(); this.cullFor = new Map();
+  }
+  _grp(material, cx, cz, opts, size) {
+    const key = material.uuid + '|' + size + '|' + cx + '|' + cz + (opts.noCast ? 'n' : '');
     let g = this.groups.get(key);
     if (!g) { g = { material, opts, p: [], n: [], uv: [], c: [], hasColor: false }; this.groups.set(key, g); }
     return g;
@@ -82,8 +101,9 @@ export class GeoBuilder {
   // add a triangle list: pos [x,y,z,...], nrm [...], uv [...], color [r,g,b] optional for all verts
   tris(material, pos, nrm, uv, color = null, opts = {}) {
     if (!pos.length) return;
-    const cx = Math.floor(pos[0] / this.chunk), cz = Math.floor(pos[2] / this.chunk);
-    const g = this._grp(material, cx, cz, opts);
+    const size = Math.max(Math.abs(pos[0]), Math.abs(pos[2])) < this.inner ? this.chunk : this.farChunk;
+    const cx = Math.floor(pos[0] / size), cz = Math.floor(pos[2] / size);
+    const g = this._grp(material, cx, cz, opts, size);
     for (let i = 0; i < pos.length; i++) g.p.push(pos[i]);
     for (let i = 0; i < nrm.length; i++) g.n.push(nrm[i]);
     for (let i = 0; i < uv.length; i++) g.uv.push(uv[i]);
@@ -123,6 +143,7 @@ export class GeoBuilder {
       m.castShadow = !g.opts.noCast; m.receiveShadow = true;
       m.matrixAutoUpdate = false;
       if (g.opts.noAO) m.userData.noAO = true;
+      m.userData.cull = this.cullFor.get(g.material) ?? this.cull;
       parent.add(m);
       meshes.push(m);
     }

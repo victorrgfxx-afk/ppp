@@ -24,7 +24,8 @@ export function geoGround(x, z) {
 
 export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {}) {
   const t0 = performance.now();
-  const B = new GeoBuilder(750);
+  // 750 m chunks around the street, 2 km beyond; merged meshes farther than 6.8 km are hidden (fog)
+  const B = new GeoBuilder(750, 2000, GEO.ext, 6800);
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
@@ -36,18 +37,31 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const lines = [];
   buildRail(B, lines, rm);
   const pm = makePropMaterials();
+  // small street furniture disappears sooner
+  const small = [pm.pole, pm.lamp, pm.insulator, pm.metal, rm.marking, rm.shoulder];
+  for (const f of pm.fences) for (const m of [f.m, f.base].flat()) if (m) small.push(m);
+  for (const m of small) B.cullFor.set(m, m === rm.shoulder ? 3000 : 1600);
   const nFences = buildFences(B, world, pm);
   const pw = buildPower(B, world, pm, scene);
   for (const v of pw.wires) lines.push(v);
   addWires(scene, lines, pm);
   const meshes = B.build(scene);
+  const culled = meshes.filter(m => m.userData.cull > 0).map(m => ({ m, c: m.geometry.boundingSphere.center, r: m.geometry.boundingSphere.radius, d: m.userData.cull }));
   log('drumuri, garduri, stâlpi', performance.now() - t0);
   const trees = buildTrees(scene, world, renderer, quality);
   log('copaci ' + trees.count, performance.now() - t0);
+  let cullI = 0;
   const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, water: water.length, meshes: meshes.length };
   return {
     fronts, info, terrain,
-    update(camPos) { trees.update(camPos); },
+    update(camPos) {
+      trees.update(camPos);
+      // distance culling of the merged chunks (a few per frame is enough: they change slowly)
+      for (let k = 0; k < 200 && culled.length; k++) {
+        const e = culled[cullI = (cullI + 1) % culled.length];
+        e.m.visible = Math.hypot(e.c.x - camPos.x, e.c.z - camPos.z) - e.r < e.d;
+      }
+    },
   };
 }
 

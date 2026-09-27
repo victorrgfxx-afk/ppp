@@ -226,6 +226,8 @@ export function buildTrees(scene, world, renderer, quality) {
     }
     return mergeGeometries(quads);
   });
+  const farList = [];
+  const farCull = { 'Scăzută': 3200, 'Medie': 4300, 'Înaltă': 5500 }[quality.label] ?? 6500;   // impostor chunks fade into the ground colour
   const impMat = models.map(({ imp }) => withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), nearR, true, 'far'));
   for (const ch of far.values()) {
     const byType = TYPES.map(() => []);
@@ -241,12 +243,14 @@ export function buildTrees(scene, world, renderer, quality) {
       im.castShadow = false; im.receiveShadow = true;
       im.userData.noAO = true;
       scene.add(im);
+      farList.push({ im, c: im.boundingSphere.center, r: im.boundingSphere.radius });
     });
   }
   const nearList = [...near.values()];
   return {
     count,
     update(camPos) {
+      for (const f of farList) f.im.visible = Math.hypot(f.c.x - camPos.x, f.c.z - camPos.z) - f.r < farCull;
       const reach = nearR + CH * 0.75;
       for (const ch of nearList) {
         const inside = Math.hypot(ch.cx - camPos.x, ch.cz - camPos.z) < reach;

@@ -163,7 +163,7 @@ export function buildPower(B, world, mats, scene) {
     let prev = null;
     for (let i = 0; i < pts.length; i++) {
       const [x, z, isSupport] = pts[i];
-      if (!isSupport || Math.max(Math.abs(x), Math.abs(z)) > GEO.ext - 5) { prev = null; continue; }
+      if (!isSupport || Math.max(Math.abs(x), Math.abs(z)) > GEO.worldExt - 5) { prev = null; continue; }
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const ang = -Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2;
       let tips;

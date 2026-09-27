@@ -80,7 +80,7 @@ async function main() {
   const gt = await loadGeoAll('assets/geo/');
   setProfile(profileAt);
   // playable area = the whole mapped square
-  W.X_MIN = W.Z_MIN = -(GEO.ext - 60); W.X_MAX = W.Z_MAX = GEO.ext - 60;
+  W.X_MIN = W.Z_MIN = -(GEO.worldExt - 60); W.X_MAX = W.Z_MAX = GEO.worldExt - 60;
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.56, 0.60, 0.65);
@@ -154,7 +154,7 @@ async function main() {
     const plates = ['plateA', 'plateB', 'plateC'];
     const cand = GEO.roads.filter(r => ['residential', 'living_street', 'tertiary', 'unclassified'].includes(r.c) && r.s === 'asphalt' && !r.br && !r.hand);
     let placed = 0;
-    for (let tries = 0; tries < 600 && placed < 24 && cand.length; tries++) {
+    for (let tries = 0; tries < 2400 && placed < 56 && cand.length; tries++) {
       const r = cand[Math.floor(rr() * cand.length)];
       const k = Math.floor(rr() * (r.p.length / 2 - 1));
       const ax = r.p[2 * k], az = r.p[2 * k + 1], bx = r.p[2 * k + 2], bz = r.p[2 * k + 3];
@@ -162,7 +162,7 @@ async function main() {
       if (L < 9) continue;
       const t = 0.2 + rr() * 0.6, x = ax + (bx - ax) * t, z = az + (bz - az) * t;
       const d0 = Math.hypot(x, z);
-      if (d0 > 650 || (Math.abs(x) < 8 && z > world.streetZ[0] - 10 && z < world.streetZ[1] + 10)) continue;
+      if ((placed < 24 ? d0 > 650 : d0 > GEO.worldExt - 300) || (Math.abs(x) < 8 && z > world.streetZ[0] - 10 && z < world.streetZ[1] + 10)) continue;
       const dx = (bx - ax) / L, dz = (bz - az) / L, off = r.w / 2 - 1.0;
       const px = x + dz * off, pz = z - dx * off, h = Math.atan2(-dx, -dz);
       const probe = new world.Box(px, pz, 1.05, 2.4, h);
@@ -180,7 +180,7 @@ async function main() {
   const player = new Player(camera, world);
   const input = new Input(canvas);
   const audio = new Audio();
-  const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image });
+  const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
   const post = createComposer(renderer, scene, camera, Q);
 
   let mode = 'foot';       // 'foot' | 'car'

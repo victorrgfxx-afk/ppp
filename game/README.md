@@ -1,6 +1,6 @@
 # Strada Gării · Poiana Câmpina — joc open‑world first‑person (versiunea cu harta reală)
 
-Strada, casa și curtea din cele 21 de fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci) — **așezate în zona reală de 6 × 6 km** din jurul punctului 45,13403° N, 25,71109° E, construită din date cartografice deschise.
+Strada, casa și curtea din cele 21 de fotografii, reconstruite 3D și jucabile în browser (stil GTA: mers liber, fugă, sărit, urci în orice mașină parcată și conduci) — **așezate în zona reală de 16 × 16 km** din jurul punctului 45,13403° N, 25,71109° E, construită din date cartografice deschise.
 
 > Branch‑ul `claude/realistic-first-person-gta-game-aq1h6w` rămâne harta inițială (doar din poze). Branch‑ul acesta (`…-geo`) e copia cu harta reală.
 
@@ -8,18 +8,20 @@ Strada, casa și curtea din cele 21 de fotografii, reconstruite 3D și jucabile 
 
 | Ce | Sursă (date deschise) | Cum e folosit |
 |---|---|---|
-| Clădiri (8825), străzi (1459), gară, peroane, poduri, linia CF 300 electrificată, liniile de 110 kV (39 de turnuri), râuri, lacuri, păduri, livezi, terenuri | OpenStreetMap (© contribuitorii OSM, ODbL) | amprentele exacte ale caselor, extrudate cu numărul de niveluri din OSM; drumuri cu lățimea din benzi/clasă și materialul din `surface` |
-| Relief ±3 km (grilă 5 m, 1201 × 1201 puncte) | Terrain Tiles AWS (terrarium z15, EU‑DEM/SRTM) | teren, profilul real al Străzii Gării, săpături/umpluturi sub drumuri și calea ferată |
-| Relief până la 12 km (dealurile și munții de la orizont) | Copernicus GLO‑30 | inelul îndepărtat (cele două DEM‑uri diferă cu 1–3 m în zonă) |
+| Clădiri (23 595: Poiana Câmpina, Câmpina, Breaza și satele din jur), străzi (3662), gări, peroane, poduri, linia CF 300 electrificată, liniile de 110 kV (187 de turnuri), râuri, lacuri, păduri, livezi, terenuri | OpenStreetMap (© contribuitorii OSM, ODbL) | amprentele exacte ale caselor, extrudate cu numărul de niveluri din OSM; drumuri cu lățimea din benzi/clasă și materialul din `surface` |
+| Relief: ±3 km în jurul străzii (grilă 5 m, 1201 × 1201) și toată harta ±8 km (grilă 10 m, 1601 × 1601) | Terrain Tiles AWS (terrarium z15, EU‑DEM/SRTM) | teren, profilul real al Străzii Gării, săpături/umpluturi sub drumuri și calea ferată; cele două grile se îmbină exact la marginea de ±3 km |
+| Relief până la 20 km (dealurile și munții de la orizont) | Copernicus GLO‑30 (4 plăci de 1°, 2″) | inelul îndepărtat, dincolo de harta jucabilă |
 | Culoarea solului | Sentinel‑2 cloudless 2023 by EOX (CC BY‑NC‑SA 4.0) | colorează textura de iarbă/pământ/pietriș; unde e verde în imagine se pun copaci în curți |
-| Râul Prahova | OSM (albia ca poligon, axul cu lățime 20 m) + DEM | nivelul apei scade monoton în aval (≈ 0,86 %: 438,6 → 371,9 m pe 7,8 km), prundiș în albie |
+| Râul Prahova | OSM (albia ca poligon, axul cu lățime 20 m) + DEM | nivelul apei scade monoton în aval (≈ 0,93 %: 496,7 → 353,4 m pe 15,5 km), prundiș în albie |
 | Soarele | calcul astronomic | 26 sept., 11:30: elevație 38,7°, azimut 148° (SSE) |
 
 **Aliniere**: axa Străzii Gării (way 16947629) are azimutul 42,02° și e dreaptă de la intersecția din SV până la capătul spre râu, exact ca în poze. Casa din poze este **Strada Gării nr. 123H**. În OpenStreetMap apare ca nr. **123** (way 264516816; OSM și Nominatim nu au litera H), iar aceasta e exact amprenta pe care e pusă casa (fața la 5,6–6,1 m de ax, ca veranda măsurată pe poze; grădina din sud, gardul vișiniu și vecinii se potrivesc cu pozele 1, 6, 7). Capătul „sud” al străzii din poze e spre NE: malul înalt al Prahovei cu râpa de lut (poza 7) e terasa de ~55 m de peste râu, la 450–600 m.
 
 **Ce e dedus, nu măsurat**: culorile pereților și acoperișurilor caselor care nu apar în poze (OSM nu le are), forma acoperișului (în patru ape din descompunerea amprentei, în două ape la unele case), ferestrele (textură), gardurile de pe celelalte străzi și stâlpii de iluminat (generați de‑a lungul străzilor), pozițiile copacilor (din poligoanele de pădure/livadă și verdele din Sentinel‑2), înălțimea caselor cu tag implicit `height=4` (luată din numărul de niveluri). Vecinii din poze (casa albă, casa din lemn închis, casa cu coș, casele de după zidul gri și gardul vișiniu) au amprenta din OSM și aspectul din poze; două dintre ele sunt mutate 3 m mai departe de stradă, ca în poze.
 
-**Refacerea datelor**: `python3 geo/fetch_raw.py` (descarcă ~40 MB în `geo/raw`) apoi `python3 geo/build_geo.py` → `assets/geo/`. `geo/debug_map.py` desenează o hartă de control; `node tools/geo-test.mjs` face capturi automate.
+**Detaliu pe zone** (ca să rămână jucabil pe 256 km²): relieful are 5 m în jurul străzii și 10 m în rest; copacii sunt compleți până la 1,6 km, apoi tot mai rari (pădurile de dincolo de 3 km păstrează ~15 % din arbori, restul e culoarea reală a pădurii din Sentinel‑2); clădirile, drumurile și gardurile sunt îmbinate în bucăți de 750 m lângă stradă și de 2 km în rest, ascunse după 6,8 km (ceața le acoperă oricum), iar stâlpii, gardurile și marcajele după 1,6 km. Pe 931 000 de copaci, doar cei de lângă tine (150–260 m) sunt modele 3D, restul sunt imagini pre-randate.
+
+**Refacerea datelor**: `python3 geo/fetch_raw.py` și `python3 geo/fetch_world.py` (descarcă ~250 MB în `geo/raw`: OSM pe 64 de bucăți, relief, Sentinel‑2, Copernicus) apoi `python3 geo/build_geo.py` (~2,5 min) → `assets/geo/`. `geo/debug_map.py` desenează o hartă de control; `node tools/geo-test.mjs` face capturi automate.
 
 ## Pornire
 
