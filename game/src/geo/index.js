@@ -7,6 +7,7 @@ import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight } from './roads.
 import { makePropMaterials, buildFences, buildPower, addWires } from './props.js';
 import { buildTrees } from './trees.js';
 import { buildLandmarks } from './landmarks.js';
+import { buildCanopy } from './canopy.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -51,11 +52,12 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const culled = meshes.filter(m => m.userData.cull > 0).map(m => ({ m, c: m.geometry.boundingSphere.center, r: m.geometry.boundingSphere.radius, d: m.userData.cull }));
   log('drumuri, garduri, stâlpi', performance.now() - t0);
   const trees = buildTrees(scene, world, renderer, quality);
-  log('copaci ' + trees.count, performance.now() - t0);
+  const canopy = buildCanopy(scene, gt, trees.forest.Q);
+  log('copaci ' + trees.count + ', pădure ' + trees.forest.count() + ', coronament ' + (canopy ? canopy.meshes.length : 0), performance.now() - t0);
   let cullI = 0;
-  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, water: water.length, meshes: meshes.length };
+  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.length, meshes: meshes.length };
   return {
-    fronts, info, terrain, landmarks,
+    fronts, info, terrain, landmarks, forest: trees.forest,
     update(camPos) {
       trees.update(camPos);
       // distance culling of the merged chunks (a few per frame is enough: they change slowly)

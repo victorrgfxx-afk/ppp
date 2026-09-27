@@ -52,7 +52,10 @@ uniform float uExt;`)
   vec3 cg = texture2D(uGrass, duv).rgb;
   vec3 cs = texture2D(uSoil, duv * 0.8).rgb;
   vec3 cr = texture2D(uGravel, duv * 1.3).rgb;
-  vec3 cf = mix(cs * vec3(0.8, 0.72, 0.6), cg * 0.7, 0.35);
+  // forest floor: last year's beech/oak leaves over dark soil, a little moss
+  float lit = texture2D(uSoil, duv * 0.37 + 0.31).r;
+  vec3 cf = mix(cs * vec3(0.78, 0.6, 0.42), cs * vec3(0.52, 0.4, 0.3), smoothstep(0.35, 0.65, lit));
+  cf = mix(cf, cg * vec3(0.55, 0.65, 0.45), 0.14);
   float wf = sp.r, wa = sp.g, wr = sp.b;
   float wg = max(0.0, 1.0 - wf - wa - wr);
   float ws = wg + wf + wa + wr + 1e-4;
@@ -61,7 +64,7 @@ uniform float uExt;`)
   vec3 tint = clamp(orth / max(avg, vec3(0.01)), 0.35, 2.4);
   float dist = length(vGeoW - cameraPosition);
   float farK = smoothstep(35.0, 420.0, dist);
-  vec3 nearCol = det * mix(vec3(1.0), tint, 0.6);
+  vec3 nearCol = det * mix(vec3(1.0), tint, 0.6 * (1.0 - 0.75 * wf / ws));
   diffuseColor.rgb *= mix(nearCol, orth * 1.08, farK);
 `);
   };

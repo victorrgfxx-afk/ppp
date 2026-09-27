@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { GEO, heightAt } from './data.js';
+import { GEO, heightAt, forestCode } from './data.js';
 import { M, addWind } from '../materials.js';
 import { rng } from '../util.js';
 
@@ -15,7 +15,17 @@ const TYPES = [
   { name: 'fruit', H: 5.2, crown: 2.4, trunkR: 0.13, cards: 80, leaf: 'leavesSmall', tint: 0xd8e0c0 },
   { name: 'walnut', H: 13, crown: 5.4, trunkR: 0.36, cards: 115, leaf: 'leaves', tint: 0xb4c49c },
   { name: 'willow', H: 11, crown: 4.0, trunkR: 0.3, cards: 100, leaf: 'leavesSmall', tint: 0xc8d7a0, droop: true },
+  // forest-grown trees of the mapped stands (generated around the player): tall clear boles, high crowns
+  { name: 'beech', H: 23, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leaves', tint: 0xbccb98, bole: 0.5, bark: 'barkLight' },
+  { name: 'oak (forest)', H: 20, crown: 4.7, trunkR: 0.36, cards: 130, leaf: 'leavesDark', tint: 0xaabd92, bole: 0.44 },
+  { name: 'hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leaves', tint: 0xc6d2a4, bole: 0.4 },
+  { name: 'spruce (forest)', H: 26, crown: 3.3, conifer: true, low: 7 },
+  { name: 'black pine', H: 19, crown: 3.4, pine: true },
+  { name: 'shrub', H: 2.6, crown: 1.5, trunkR: 0.05, cards: 34, leaf: 'leaves', tint: 0xd2dcae, bole: 0.1, noImpostor: true },
+  // stand edges: trees in the light keep their branches down to the ground (a wall of leaves, not a row of poles)
+  { name: 'edge broadleaf', H: 13, crown: 4.4, trunkR: 0.26, cards: 140, leaf: 'leaves', tint: 0xb6c895, bole: 0.13 },
 ];
+const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2;
 
 function cyl(p0, p1, r0, r1, seg) {
   const d = new THREE.Vector3().subVectors(p1, p0), L = d.length();
@@ -30,19 +40,20 @@ const clean = (g) => { for (const k of Object.keys(g.attributes)) if (!['positio
 function broadModel(t, seed) {
   const r = rng(seed);
   const wood = [], cards = [];
-  const top = new THREE.Vector3(0, t.H * 0.4, 0);
+  const bole = t.bole ?? 0.4, vr = t.H * 0.34 * (1 - bole) / 0.6;          // crown base and vertical radius
+  const top = new THREE.Vector3(0, t.H * bole, 0);
   wood.push(cyl(new THREE.Vector3(0, -0.3, 0), top, t.trunkR, t.trunkR * 0.7, 6));
   const ends = [];
   for (let i = 0; i < 4; i++) {
     const a = i / 4 * Math.PI * 2 + r() * 0.6;
-    const e = top.clone().add(new THREE.Vector3(Math.cos(a) * t.crown * 0.55, t.H * 0.25, Math.sin(a) * t.crown * 0.55));
+    const e = top.clone().add(new THREE.Vector3(Math.cos(a) * t.crown * 0.55, vr * 0.74, Math.sin(a) * t.crown * 0.55));
     wood.push(cyl(top, e, t.trunkR * 0.55, t.trunkR * 0.2, 5));
     ends.push(e);
   }
-  const c = new THREE.Vector3(0, t.H * 0.62, 0);
+  const c = new THREE.Vector3(0, t.H * bole + vr * 0.65, 0);
   for (let i = 0; i < t.cards; i++) {
     const u = r() * 2 - 1, th = r() * Math.PI * 2, rr = Math.pow(r(), 0.45);
-    const p = c.clone().add(new THREE.Vector3(Math.sqrt(1 - u * u) * Math.cos(th) * t.crown * rr, u * t.H * 0.34 * rr, Math.sqrt(1 - u * u) * Math.sin(th) * t.crown * rr));
+    const p = c.clone().add(new THREE.Vector3(Math.sqrt(1 - u * u) * Math.cos(th) * t.crown * rr, u * vr * rr, Math.sqrt(1 - u * u) * Math.sin(th) * t.crown * rr));
     if (t.droop) p.y -= (1 - rr) * 0.5 + Math.max(0, rr - 0.6) * 1.2;
     const s = t.crown * 0.7 * (0.75 + r() * 0.5);
     const g = new THREE.PlaneGeometry(s, s * (t.droop ? 1.4 : 1));
@@ -60,14 +71,14 @@ function broadModel(t, seed) {
     cards.push(clean(g));
   }
   // dark, slightly lumpy inner volume so the crown reads as a solid mass from a distance
-  const parts = [[mergeGeometries(wood.map(clean)), 'bark'], [mergeGeometries(cards), 'leaf']];
+  const parts = [[mergeGeometries(wood.map(clean)), t.bark ?? 'bark'], [mergeGeometries(cards), 'leaf']];
   if (t.crown > 3) {
     const core = new THREE.IcosahedronGeometry(1, 1);
     const cp = core.attributes.position, cn = core.attributes.normal;
     for (let k = 0; k < cp.count; k++) {
       const x = cp.getX(k), y = cp.getY(k), z = cp.getZ(k);
       const f = 0.85 + 0.2 * Math.sin(x * 3.1 + seed) * Math.cos(z * 2.7 + y * 1.3);
-      cp.setXYZ(k, x * t.crown * 0.5 * f, y * t.H * 0.22 * f + c.y, z * t.crown * 0.5 * f);
+      cp.setXYZ(k, x * t.crown * 0.5 * f, y * vr * 0.65 * f + c.y, z * t.crown * 0.5 * f);
       const v = new THREE.Vector3(x, y * 0.7 + 0.35, z).normalize();
       cn.setXYZ(k, v.x, v.y, v.z);                       // smooth, sky-facing normals
     }
@@ -79,10 +90,11 @@ function broadModel(t, seed) {
 function spruceModel(t, seed) {
   const r = rng(seed);
   const cards = [];
-  const core = new THREE.ConeGeometry(t.crown * 0.42, t.H - 1.6, 8, 4);
-  core.translate(0, 1.6 + (t.H - 1.6) / 2, 0);
-  for (let y = 1.3; y < t.H - 0.4; y += 0.85) {
-    const k = (y - 1.2) / (t.H - 1.2), R = t.crown * Math.pow(1 - k, 0.9) + 0.35;
+  const low = t.low ?? 1.3;                         // forest spruces shed their lower whorls
+  const core = new THREE.ConeGeometry(t.crown * 0.42, t.H - low - 0.3, 8, 4);
+  core.translate(0, low + 0.3 + (t.H - low - 0.3) / 2, 0);
+  for (let y = low; y < t.H - 0.4; y += 0.85) {
+    const k = (y - low + 0.1) / (t.H - low + 0.1), R = t.crown * Math.pow(1 - k, 0.9) + 0.35;
     const nW = 7 + Math.round(3 * (1 - k));
     for (let i = 0; i < nW; i++) {
       const a = i / nW * Math.PI * 2 + r() * 0.8;
@@ -98,19 +110,57 @@ function spruceModel(t, seed) {
   return [[clean(trunk), 'bark'], [clean(core.toNonIndexed()), 'core'], [mergeGeometries(cards), 'fir']];
 }
 
+// Black pine (Pinus nigra), planted on the eroded hills around Câmpina (photos 17, 23): long straight
+// bole, flat-topped crown of dark needle clumps in the top third.
+function pineModel(t, seed) {
+  const r = rng(seed);
+  const wood = [], cards = [];
+  const base = t.H * 0.6;
+  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.96, 0), 0.27, 0.07, 6));
+  const clumps = [];
+  for (let i = 0; i < 11; i++) {
+    const a = i * 2.4 + r() * 0.8, k = r();
+    const y = base + 0.8 + k * (t.H - base - 1.6);
+    const rad = t.crown * (0.35 + 0.65 * r()) * (1 - 0.45 * k);
+    const p = new THREE.Vector3(Math.cos(a) * rad, y, Math.sin(a) * rad);
+    clumps.push(p);
+    wood.push(cyl(new THREE.Vector3(0, y - 0.9, 0), p, 0.07, 0.03, 4));
+    for (let q = 0; q < 6; q++) {
+      const s = 1.5 + r() * 0.9;
+      const g = new THREE.PlaneGeometry(s * 1.3, s);
+      g.rotateX(-Math.PI / 2 + (r() - 0.5) * 1.1);
+      g.rotateY(r() * Math.PI * 2);
+      g.translate(p.x + (r() - 0.5) * 0.8, p.y + (r() - 0.3) * 0.5, p.z + (r() - 0.5) * 0.8);
+      const nrm = g.attributes.normal, pos = g.attributes.position;
+      for (let m = 0; m < nrm.count; m++) {
+        const v = new THREE.Vector3(pos.getX(m), (pos.getY(m) - (base + t.H) / 2) * 0.6 + 0.8, pos.getZ(m)).normalize();
+        nrm.setXYZ(m, v.x, v.y, v.z);
+      }
+      cards.push(clean(g));
+    }
+  }
+  const core = new THREE.SphereGeometry(1, 8, 5);
+  const cp = core.attributes.position;
+  for (let k = 0; k < cp.count; k++) cp.setXYZ(k, cp.getX(k) * t.crown * 0.62, cp.getY(k) * (t.H - base) * 0.3 + base + (t.H - base) * 0.55, cp.getZ(k) * t.crown * 0.62);
+  return [[mergeGeometries(wood.map(clean)), 'bark'], [clean(core), 'core'], [mergeGeometries(cards), 'fir']];
+}
+
 // ---- distance switch in the vertex shader (per instance) ----
-function withSwitch(material, near, farSide, key) {
+// near side: hidden beyond `near`; far side: hidden inside `near` and (dithered per tree) beyond `far`
+function withSwitch(material, near, farSide, key, far = 0) {
   const m = material.clone();
   const prev = material.onBeforeCompile;
   m.onBeforeCompile = (sh, r) => {
     if (prev) prev.call(m, sh, r);
     sh.uniforms.uSwitch = { value: near };
+    sh.uniforms.uFar = { value: far };
     sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
   { vec3 ip = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
     float dd = distance(ip.xz, cameraPosition.xz);
-    if (${farSide ? 'dd < uSwitch' : 'dd > uSwitch'}) transformed *= 0.0; }
-#endif`).replace('#include <common>', '#include <common>\nuniform float uSwitch;');
+    float hh = fract(sin(dot(floor(ip.xz), vec2(12.9898, 78.233))) * 43758.5453);
+    if (${farSide ? 'dd < uSwitch || (uFar > 0.0 && dd > uFar * (0.78 + 0.22 * hh))' : 'dd > uSwitch'}) transformed *= 0.0; }
+#endif`).replace('#include <common>', '#include <common>\nuniform float uSwitch, uFar;');
   };
   m.customProgramCacheKey = () => key + (material.customProgramCacheKey ? material.customProgramCacheKey() : '');
   return m;
@@ -145,12 +195,16 @@ export function buildTrees(scene, world, renderer, quality) {
   const mats = {
     bark: M.bark, core: M.firCore, fir: M.fir,
     crown: new THREE.MeshStandardMaterial({ color: 0x3a4b2c, roughness: 1 }),
+    barkLight: M.bark.clone(),
   };
+  mats.barkLight.color = new THREE.Color(0xc9c4ba);             // smooth grey beech bark
+  M.bark.userData.bark = mats.barkLight.userData.bark = true;
+  mats.crown.userData.core = true;
   const models = TYPES.map((t, i) => {
-    const parts = t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
+    const parts = t.pine ? pineModel(t, 50 + i) : t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
     const leaf = M[t.leaf] ?? M.leaves;
     const pm = parts.map(([g, k]) => [g, k === 'leaf' ? leaf : mats[k]]);
-    const imp = bakeImpostor(renderer, pm, t);
+    const imp = t.noImpostor ? null : bakeImpostor(renderer, pm, t);
     return { t, parts: pm, imp };
   });
   // compact per-tree arrays + chunk lists (near: 300 m, far impostors: 1500 m)
@@ -202,6 +256,7 @@ export function buildTrees(scene, world, renderer, quality) {
     byType.forEach((list, ty) => {
       if (!list.length) return;
       for (const [g, mat] of models[ty].parts) {
+        if (mat.userData.core) continue;                 // the dark inner volume is only for the impostors
         const leafy = mat !== M.bark;
         const im = new THREE.InstancedMesh(g, nearMat(mat), list.length);
         list.forEach((k, j) => setInst(im, k, j, TYPES[ty].tint ?? 0xffffff, leafy));
@@ -216,6 +271,7 @@ export function buildTrees(scene, world, renderer, quality) {
   };
   // far impostors: 3 crossed quads per tree, one InstancedMesh per 1.5 km chunk and type (frustum culled)
   const impGeo = models.map(({ imp }) => {
+    if (!imp) return null;
     const quads = [];
     for (const a of [0, Math.PI / 3, 2 * Math.PI / 3]) {
       const g = new THREE.PlaneGeometry(imp.halfW * 2, imp.H);
@@ -228,7 +284,7 @@ export function buildTrees(scene, world, renderer, quality) {
   });
   const farList = [];
   const farCull = { 'Scăzută': 3200, 'Medie': 4300, 'Înaltă': 5500 }[quality.label] ?? 6500;   // impostor chunks fade into the ground colour
-  const impMat = models.map(({ imp }) => withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), nearR, true, 'far'));
+  const impMat = models.map(({ imp }) => imp && withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), nearR, true, 'far'));
   for (const ch of far.values()) {
     const byType = TYPES.map(() => []);
     for (const k of ch.idx) byType[TY[k]].push(k);
@@ -247,15 +303,178 @@ export function buildTrees(scene, world, renderer, quality) {
     });
   }
   const nearList = [...near.values()];
+  const forest = buildForest(scene, world, quality, { models, impGeo, withSwitch, setInst });
   return {
     count,
+    forest,
     update(camPos) {
+      forest.update(camPos);
       for (const f of farList) f.im.visible = Math.hypot(f.c.x - camPos.x, f.c.z - camPos.z) - f.r < farCull;
       const reach = nearR + CH * 0.75;
       for (const ch of nearList) {
         const inside = Math.hypot(ch.cx - camPos.x, ch.cz - camPos.z) < reach;
         if (inside && !ch.grp) ch.grp = buildNear(ch);
         if (ch.grp) ch.grp.visible = inside;
+      }
+    },
+  };
+}
+
+// ------------------------------------------------------------------ procedural forest
+// The mapped stands (geo/build_geo.py -> forest.json, 5 m cells: broadleaved / mixed / needleleaved) are filled
+// with trees generated around the player from a hash of their 5.2 m cell, so every forest is dense and the
+// same each time: 3D trees and understory near, impostors to ~1 km, the canopy shell (canopy.js) beyond.
+export const FOREST_Q = { 'Scăzută': { imp: 520, near: 75, shrub: 0 }, 'Medie': { imp: 820, near: 105, shrub: 45 }, 'Înaltă': { imp: 1100, near: 140, shrub: 70 } };
+
+function hash3(i, j, s) {
+  let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(s, 1274126177)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1103515245); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+export function valueNoise2(x, z, cell, s) {
+  const fx = x / cell, fz = z / cell, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+  const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+  const a = hash3(i, j, s), b = hash3(i + 1, j, s), c = hash3(i, j + 1, s), d = hash3(i + 1, j + 1, s);
+  return (a * (1 - su) + b * su) * (1 - sv) + (c * (1 - su) + d * su) * sv;
+}
+
+const SP = 5.2, GT = 280, ST = 70, SSP = 7.5;
+// every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
+function eachForestTree(x0, z0, x1, z1, cb) {
+  for (let j = Math.floor(z0 / SP); j <= Math.floor(z1 / SP); j++) for (let i = Math.floor(x0 / SP); i <= Math.floor(x1 / SP); i++) {
+    if (hash3(i, j, 1) > 0.93) continue;
+    const x = (i + 0.5 + (hash3(i, j, 2) - 0.5) * 0.9) * SP, z = (j + 0.5 + (hash3(i, j, 3) - 0.5) * 0.9) * SP;
+    if (x < x0 || x >= x1 || z < z0 || z >= z1) continue;
+    const code = forestCode(x, z);
+    if (!code) continue;
+    // species in stands of a few hectares; pines dominate the needle stands (planted black pine)
+    const needle = code === 3 ? 0.9 : code === 2 ? 0.45 : 0.04;
+    const edge = !forestCode(x + 8, z) || !forestCode(x - 8, z) || !forestCode(x, z + 8) || !forestCode(x, z - 8);
+    let ty;
+    if (hash3(i, j, 4) < needle * (0.55 + 0.9 * valueNoise2(x, z, 55, 7))) ty = edge ? T_SPRUCE_LOW : hash3(i, j, 5) < 0.62 ? T_PINE : T_SPRUCE;
+    else if (edge) ty = T_EDGE;
+    else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.4 ? T_BEECH : b < 0.7 ? T_HORN : T_OAK; }
+    // age classes: whole stands younger or older
+    const s = (0.68 + 0.45 * valueNoise2(x, z, 110, 9)) * (0.88 + 0.24 * hash3(i, j, 7));
+    cb(x, z, ty, s, hash3(i, j, 8) * Math.PI * 2, 0.82 + 0.3 * hash3(i, j, 9));
+  }
+}
+function eachShrub(x0, z0, x1, z1, cb) {
+  for (let j = Math.floor(z0 / SSP); j <= Math.floor(z1 / SSP); j++) for (let i = Math.floor(x0 / SSP); i <= Math.floor(x1 / SSP); i++) {
+    if (hash3(i, j, 21) > 0.72) continue;
+    const x = (i + hash3(i, j, 22)) * SSP, z = (j + hash3(i, j, 23)) * SSP;
+    const code = x < x0 || x >= x1 || z < z0 || z >= z1 ? 0 : forestCode(x, z);
+    if (!code) continue;
+    // understory: hazel / hawthorn shrubs, and saplings of the stand (young hornbeams, spruces in conifer stands)
+    const k = hash3(i, j, 27);
+    if (k < 0.3) cb(x, z, code === 3 && k < 0.2 ? T_SPRUCE : T_HORN, 0.22 + 0.2 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
+    else cb(x, z, T_SHRUB, 0.6 + 0.8 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
+  }
+}
+
+function buildForest(scene, world, quality, { models, impGeo, withSwitch, setInst }) {
+  if (!GEO.forestBits) return { update() {}, count: () => 0, Q: null };
+  const Q = FOREST_Q[quality.label] ?? { imp: 1500, near: 180, shrub: 95 };
+  const impMat = models.map(({ imp }) => imp && withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), Q.near, true, 'ffar', Q.imp));
+  const nearMats = new Map();
+  const nearMat = (mat, r) => { const k = mat.uuid + r; if (!nearMats.has(k)) nearMats.set(k, withSwitch(mat, r, false, 'fnear')); return nearMats.get(k); };
+  const tiles = new Map();
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
+  let live = 0;
+  const instancedFrom = (list, g, mat, cast, leafy, tint) => {
+    const im = new THREE.InstancedMesh(g, mat, list.length);
+    list.forEach((t, k) => {
+      im.setMatrixAt(k, m4.compose(p.set(t.x, t.y, t.z), q.setFromAxisAngle(up, t.rot), sv.setScalar(t.s)));
+      im.setColorAt(k, leafy ? c.setHex(tint).multiplyScalar(t.v) : c.setScalar(t.v));
+    });
+    im.computeBoundingSphere();
+    im.castShadow = cast; im.receiveShadow = true; im.userData.noAO = true;
+    return im;
+  };
+  const buildTile = (ti, tj) => {
+    const x0 = ti * GT, z0 = tj * GT;
+    const grp = new THREE.Group(), byType = new Map(), subs = new Map();
+    let n = 0;
+    eachForestTree(x0, z0, x0 + GT, z0 + GT, (x, z, ty, s, rot, v) => {
+      const t = { x, y: heightAt(x, z) - 0.12, z, ty, s, rot, v };
+      if (!byType.has(ty)) byType.set(ty, []);
+      byType.get(ty).push(t);
+      const sk = Math.floor(x / ST) + ',' + Math.floor(z / ST);
+      if (!subs.has(sk)) subs.set(sk, { cx: (Math.floor(x / ST) + 0.5) * ST, cz: (Math.floor(z / ST) + 0.5) * ST, trees: [], grp: null });
+      subs.get(sk).trees.push(t);
+      n++;
+    });
+    for (const [ty, list] of byType) grp.add(instancedFrom(list, impGeo[ty], impMat[ty], false, false));
+    scene.add(grp);
+    live += n;
+    return { grp, subs, n, cx: x0 + GT / 2, cz: z0 + GT / 2 };
+  };
+  // near 3D models (and the understory) of a 70 m sub-tile
+  const buildSub = (sub) => {
+    const grp = new THREE.Group();
+    const byType = new Map();
+    for (const t of sub.trees) { if (!byType.has(t.ty)) byType.set(t.ty, []); byType.get(t.ty).push(t); }
+    if (Q.shrub > 0) {
+      const x0 = sub.cx - ST / 2, z0 = sub.cz - ST / 2, sh = [];
+      eachShrub(x0, z0, x0 + ST, z0 + ST, (x, z, ty, s, rot, v) => sh.push({ x, y: heightAt(x, z) - 0.05, z, ty, s, rot, v, under: true }));
+      for (const t of sh) { const key = 'u' + t.ty; if (!byType.has(key)) byType.set(key, []); byType.get(key).push(t); }
+    }
+    for (const [key, list] of byType) {
+      const ty = list[0].ty;
+      const r = list[0].under ? Q.shrub : Q.near;
+      for (const [g, mat] of models[ty].parts) {
+        if (mat.userData.core) continue;
+        const leafy = !mat.userData.bark;
+        grp.add(instancedFrom(list, g, nearMat(mat, r), !list[0].under, leafy, TYPES[ty].tint ?? 0xffffff));
+      }
+    }
+    scene.add(grp);
+    return grp;
+  };
+  const dispose = (grp) => { scene.remove(grp); grp.traverse(o => { if (o.isInstancedMesh) o.dispose(); }); };
+  // trunk colliders on demand, from the same hash (no stored trees)
+  const pool = [];
+  world.addProvider((qx, qz, qr, out) => {
+    let used = 0;
+    eachForestTree(qx - qr - 1, qz - qr - 1, qx + qr + 1, qz + qr + 1, (x, z, ty, s) => {
+      const tr = (TYPES[ty].trunkR ?? 0.28) * s + 0.05;
+      let b = pool[used];
+      if (!b) { b = new world.Box(0, 0, 1, 1, 0, 0, 1, 'tree'); pool.push(b); }
+      const y = heightAt(x, z);
+      b.x = x; b.z = z; b.hw = b.hd = tr; b.rot = 0; b.y0 = y - 1; b.y1 = y + 10; b.update();
+      out.push(b); used++;
+    });
+  });
+  const reach = Q.imp + GT * 0.72;
+  let last = null;
+  return {
+    Q,
+    count: () => live,
+    update(cam) {
+      // a jump (photo views, tests, respawn) builds everything at once; walking/driving spreads the work
+      const jump = !last || Math.hypot(cam.x - last.x, cam.z - last.z) > 150;
+      last = { x: cam.x, z: cam.z };
+      const t0 = performance.now(), budget = jump ? 1e9 : 12;
+      const ci = Math.floor(cam.x / GT), cj = Math.floor(cam.z / GT), R = Math.ceil(reach / GT);
+      for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
+        const ti = ci + di, tj = cj + dj, key = ti + ',' + tj;
+        if (tiles.has(key) || Math.hypot((ti + 0.5) * GT - cam.x, (tj + 0.5) * GT - cam.z) > reach) continue;
+        if (Math.max(Math.abs((ti + 0.5) * GT), Math.abs((tj + 0.5) * GT)) > GEO.worldExt + GT) continue;
+        if (performance.now() - t0 > budget) continue;
+        tiles.set(key, buildTile(ti, tj));
+      }
+      for (const [key, t] of tiles) {
+        const d = Math.hypot(t.cx - cam.x, t.cz - cam.z);
+        if (d > reach + 350) {
+          dispose(t.grp); for (const s of t.subs.values()) if (s.grp) dispose(s.grp);
+          live -= t.n; tiles.delete(key); continue;
+        }
+        if (d > Q.near + GT) { for (const s of t.subs.values()) if (s.grp) { dispose(s.grp); s.grp = null; } continue; }
+        for (const s of t.subs.values()) {
+          const inR = Math.hypot(s.cx - cam.x, s.cz - cam.z) < Q.near + ST * 0.75;
+          if (inR && !s.grp && performance.now() - t0 < budget + 10) s.grp = buildSub(s);
+          if (s.grp) s.grp.visible = inR;
+        }
       }
     },
   };

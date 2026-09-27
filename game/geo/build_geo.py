@@ -438,6 +438,9 @@ LANDMARKS = [
     # lane that OSM maps right next to the pin; arms along bearing ~120 deg (right arm nearer in the photo) (the photo looks north, sun behind the camera)
     dict(type='cross', lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), arms_bearing=120.0, pad=5.5, clear=28.0),
 ]
+# forest stands whose OSM polygon has no leaf_type but the photos show the mix: the hill across the Prahova
+# (photos 7, 17, 23: black pines between the beeches and hornbeams)
+FOREST_MIXED_AT = [(20.0, 560.0), (-120.0, 520.0), (140.0, 520.0)]
 HERO_SPLIT = 15.4, 10.1        # parts of footprint 123 not covered by the hand-built house: x > 15.4 (rear) and z > 9.95 (garden annex)
 
 
@@ -867,10 +870,27 @@ def main():
         ok = mask[jj, ii] & (trng.random(px.shape) < k)
         return px[ok], pz[ok], jj[ok], ii[ok]
     T_ = []
-    # forests: oak / hornbeam / beech with some spruce (CLC: broad-leaved forest)
-    fx_, fz_, _, _ = scatter(6.5, free & forest_x, far_keep=0.55, out_keep=0.28)
-    ty = trng.choice([0, 1, 2], len(fx_), p=[0.5, 0.38, 0.12])
-    T_.append((fx_, fz_, ty, trng.uniform(0.8, 1.2, len(fx_))))
+    # ---- forest stands (the forest trees themselves are generated in the game around the player):
+    # 5 m raster, 2 bits per cell: 0 none, 1 broadleaved (beech / oak / hornbeam), 2 mixed, 3 needleleaved
+    F5 = int(round(2 * WEXT / 5)) + 1
+    LEAF = {'broadleaved': 1, 'mixed': 2, 'needleleaved': 3}
+    fcode = np.zeros((F5, F5), np.uint8)
+    from shapely.geometry import Point, Polygon as SPoly
+    for outers, inners, tg, _ in forest_a:
+        code = LEAF.get(tg.get('leaf_type'), 9)
+        if code == 9 and any(SPoly(outers[0]).contains(Point(*q)) for q in FOREST_MIXED_AT if len(outers[0]) > 2): code = 2
+        for r in outers: cv2.fillPoly(fcode, [np.round(to_px(r, F5, WEXT) * 8).astype(np.int32)], int(code), cv2.LINE_8, 3)
+        for r in inners: cv2.fillPoly(fcode, [np.round(to_px(r, F5, WEXT) * 8).astype(np.int32)], 0, cv2.LINE_8, 3)
+    # untagged stands: mostly broadleaved, with mixed and pine stands in patches of a few hectares
+    nz = ndimage.gaussian_filter(np.random.default_rng(21).standard_normal((F5 // 8 + 1,) * 2), 2.0)
+    nz = cv2.resize((nz / nz.std()).astype(np.float32), (F5, F5), interpolation=cv2.INTER_CUBIC)
+    unk = fcode == 9
+    fcode[unk] = np.where(nz[unk] > 1.5, 3, np.where(nz[unk] > 0.9, 2, 1)).astype(np.uint8)
+    blocked = cv2.resize((~free).astype(np.uint8) * 255, (F5, F5), interpolation=cv2.INTER_AREA) > 110
+    fcode[blocked] = 0
+    flat = np.concatenate([fcode.ravel(), np.zeros((-fcode.size) % 4, np.uint8)]).reshape(-1, 4)
+    write_b64('forest.json', (flat[:, 0] | flat[:, 1] << 2 | flat[:, 2] << 4 | flat[:, 3] << 6).astype(np.uint8))
+    log('forest stands', {k: int((fcode == v).sum() * 25 / 1e4) for k, v in (('broad ha', 1), ('mixed ha', 2), ('needle ha', 3))})
     # riverside willows / poplars on the green parts of the river corridor
     wx_, wz_, jj, ii = scatter(7.0, (EXR == 0) & ~rb_x & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~forest_x & ~lots, out_keep=0.5)
     T_.append((wx_, wz_, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_))))
@@ -968,7 +988,7 @@ def main():
         profile=dict(z0=float(zs[0]), step=STEP, y=np.round(prof2[rows] - H0, 3).tolist()),
         buildings=bl, roads=rl, rails=ral, platforms=plat, power=power, water=cells, water2=cells_w,
         river=dict(p=np.round(rp, 1).ravel().tolist(), lev=np.round(lev - H0, 2).tolist()),
-        fences=fences, poles=poles, landmarks=lm_out)
+        fences=fences, poles=poles, landmarks=lm_out, forest=dict(n=F5, ext=WEXT, step=5.0))
     with open(os.path.join(OUT, 'geo.json'), 'w') as f:
         json.dump(geo, f, separators=(',', ':'), ensure_ascii=False)
     log('geo.json', os.path.getsize(os.path.join(OUT, 'geo.json')) // 1024, 'KB')

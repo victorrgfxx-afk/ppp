@@ -8,7 +8,7 @@ export async function loadGeo(base) {
   const get = (f) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
   // binary grids travel as base64 in JSON (static hosts may refuse .bin)
   const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  const [json, h, hw, far, trees] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin)]);
+  const [json, h, hw, far, trees, forest] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null)]);
   Object.assign(GEO, json);
   const g = json.meta.grid;
   // near grid (5 m, +-3 km around the street) and world grid (10 m, the whole playable map)
@@ -24,6 +24,8 @@ export async function loadGeo(base) {
     GEO.W = { n: w.n, ext: w.ext, step: w.step, H };
   }
   GEO.worldExt = GEO.W ? GEO.W.ext : GEO.ext;
+  // forest stands, 2 bits per 5 m cell (0 none, 1 broadleaved, 2 mixed, 3 needleleaved)
+  GEO.forestBits = forest && json.forest ? new Uint8Array(forest) : null;
   const fi = new Int16Array(far);
   GEO.farN = json.meta.far.n; GEO.farExt = json.meta.far.ext;
   GEO.F = new Float32Array(fi.length);
@@ -75,6 +77,15 @@ export function farAt(x, z) {
   const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
   const a = F[j * n + i], b = F[j * n + i + 1], c = F[(j + 1) * n + i], d = F[(j + 1) * n + i + 1];
   return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+export function forestCode(x, z) {
+  const F = GEO.forest, B = GEO.forestBits;
+  if (!B) return 0;
+  const i = Math.round((x + F.ext) / F.step), j = Math.round((z + F.ext) / F.step);
+  if (i < 0 || j < 0 || i >= F.n || j >= F.n) return 0;
+  const k = j * F.n + i;
+  return (B[k >> 2] >> ((k & 3) << 1)) & 3;
 }
 
 // Street profile of the hand-built part of Strada Gării (used by config.baseHeight).
