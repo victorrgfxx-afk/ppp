@@ -11,10 +11,10 @@ const col = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 const WALLS = [0xefede7, 0xeae2cf, 0xe9dcb0, 0xe6c9a8, 0xd2dcc0, 0xd3d8dc, 0xe6cbc2, 0xc9c6bf, 0xdcc08e, 0xf1efe9, 0xe4e0d4];
 const BLOCKS = [0xd9d2c3, 0xc9c8c2, 0xe0d6bf, 0xd8c8b0, 0xc7ccd0];
 const ROOF_METAL = [0x7a3b30, 0x5a3a2c, 0x52565b, 0x3b3e43, 0x4a5c4c, 0x6d3530, 0x9aa0a6, 0x86503a, 0x5f6368];
-const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a, ochre: 0xd8a94e, gray: 0xb3b2ac, shingle: 0x7c7771 };
-const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36 };
+const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a, ochre: 0xd8a94e, gray: 0xb3b2ac, shingle: 0x7c7771, stampedGray: 0xa9acad, sand: 0xe3d0a0 };
+const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d };
 // facade texture per wall material
-const FKEY = { house: 'facadeHouse', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle' };
+const FKEY = { house: 'facadeHouse', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle', stamped: 'facadeStamped' };
 
 function hashId(id) { let h = 2166136261; for (const ch of String(id)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
 
@@ -38,6 +38,7 @@ export function makeBuildingMaterials() {
     block: facade('facadeBlock'),
     wood: facade('facadeWood'),
     shingle: facade('facadeShingle'),
+    stamped: facade('facadeStamped'),
     // gable ends of shingled houses: the same shingles without windows, mapped in metres
     shinglePlain: facade('facadeShingleP'),
     ind: facade('facadeInd'),
@@ -124,7 +125,7 @@ export function buildBuildings(B, world, mats) {
     const isBlock = kind === 'apartments' || lv >= 4;
     const isInd = ['industrial', 'warehouse', 'manufacture', 'hangar', 'retail', 'supermarket', 'commercial', 'storage_tank', 'sports_hall'].includes(kind);
     const isShed = b.roof === 'shed' || kind === 'garage' || kind === 'garages' || kind === 'shed';
-    const wk = o.wall === 'woodDark' ? 'wood' : o.wall === 'shingle' ? 'shingle' : isBlock ? 'block' : (isInd || isShed) ? 'ind' : 'house';
+    const wk = o.wall === 'woodDark' ? 'wood' : o.wall === 'shingle' ? 'shingle' : o.wall === 'stampedGray' ? 'stamped' : isBlock ? 'block' : (isInd || isShed) ? 'ind' : 'house';
     const wallMat = mats[wk];
     const bayW = TEX[FKEY[wk]].userData.W;
     const floorH = TEX[FKEY[wk]].userData.Hf;

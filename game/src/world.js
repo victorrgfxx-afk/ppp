@@ -5,7 +5,7 @@ import { Batcher, rng, mat, boxGeo, cylGeo, tubeGeo } from './util.js';
 import { buildStreet, buildGround, buildHills } from './terrain.js';
 import { buildHero } from './hero.js';
 import { genericHouse, addWindow, wallGeos, wallMatrix, FACE, hipRoof, gableRoof } from './buildings.js';
-import { ironIvyFence, stoneWallChainFence, picketFence, panelFence, wallFence, fenceGate, plasterWall, boardGate } from './fences.js';
+import { ironIvyFence, stoneWallChainFence, picketFence, panelFence, wallFence, fenceGate, plasterWall, boardGate, pillarFence } from './fences.js';
 import { Forest, spruceArchetype, broadleafArchetype, buildGrass, sumacArchetype, yuccaArchetype, flowerArchetype } from './vegetation.js';
 import { concretePole, wire } from './poles.js';
 import { stopSign } from './signs.js';
@@ -128,7 +128,21 @@ export function buildWorld(scene, world, quality, opts = {}) {
   }
 
   // South neighbour: maroon picket fence, planted strip (photo 5)
-  chunked(picketFence, { x: W.EAST_FENCE, z0: 9.0, z1: 27 });
+  chunked(picketFence, { x: W.EAST_FENCE, z0: 9.0, z1: geo ? 26.0 : 27 });
+  if (geo) {
+    // photo 23: the old wooden garage with red sheet-metal doors facing the yard, then stone-clad
+    // pillars with dark steel panels, box balls and yuccas on the verge
+    const gy = baseHeight(28) + W.CURB_H, x0 = 3.95, x1 = 8.8, z0 = 26.25, z1 = 29.6;
+    const bedY0 = (z) => baseHeight(z) + W.CURB_H + 0.07;
+    batch.add(M.wood, boxGeo(x1 - x0, 2.3, z1 - z0, 1.2), mat((x0 + x1) / 2, gy + 1.05, (z0 + z1) / 2));
+    batch.add(M.roofMetalRed, boxGeo(2.9, 1.95, 0.03, 1), mat((x0 + x1) / 2 - 0.3, gy + 0.98, z0 - 0.02));
+    batch.add(M.woodDark, boxGeo(0.05, 1.95, 0.03), mat((x0 + x1) / 2 - 0.3, gy + 0.98, z0 - 0.04));
+    gableRoof(batch, new THREE.Matrix4(), { x0, x1, z0, z1, eave: gy + 2.2, ridge: gy + 2.95, ov: 0.35, ovEnd: 0.4, mat: M.galv, gableWall: M.wood, gutters: false });
+    world.addAABB(x0, x1, z0, z1, -5, gy + 3.2, 'house');
+    chunked(pillarFence, { x: W.EAST_FENCE, z0: 29.8, z1: 53.2 }, 7.0);
+    for (const [z, s] of [[31.5, 0.7], [36.2, 0.65], [47.5, 0.7]]) forest.add('bush', fx.bush, 3.25, bedY0(z), z, z, s);
+    for (const [z, s] of [[40.6, 1.1], [44.2, 0.9]]) forest.add('yucca', fx.yucca, 3.2, bedY0(z), z, z * 2, s);
+  }
   const bedY = W.CURB_H + 0.07;
   for (let z = 7.4; z < 16.6; z += 0.55) {
     forest.add('lambEar', fx.lambEar, 2.95 + r() * 0.35, bedY, z + r() * 0.3, r() * 6, 0.7 + r() * 0.6);
@@ -184,9 +198,30 @@ export function buildWorld(scene, world, quality, opts = {}) {
     forest.add('broad', fx.broad, geo ? -5.4 : -6.8, geo ? 0.04 : 0.3, geo ? 8.2 : 4.2, 2.1, 0.95);
   }
   // then a grass verge and a maroon corrugated fence with a staghorn sumac (photo 7)
-  chunked(panelFence, { x: -4.6, dir: -1, z0: 12.8, z1: 33.5, m: M.roofMetalRed });
-  forest.add('sumac', fx.sumac, -5.6, 0.3, 21.5, 0.4, 1.0);
-  forest.add('sumac', fx.sumac, -5.2, 0.3, 26.0, 2.0, 0.85);
+  if (!geo) chunked(panelFence, { x: -4.6, dir: -1, z0: 12.8, z1: 33.5, m: M.roofMetalRed });
+  else {
+    // photo 22: house no. 111 behind a brown picket fence on a concrete footing, a double steel gate
+    // and a wicket (numbers 111 and the old 12 on the gate), purple-flowering shrubs and a cherry tree
+    const fy = (z) => baseHeight(z) + 0.04;
+    chunked(picketFence, { x: -4.6, dir: -1, z0: 12.8, z1: 13.45, h: 1.45, bw: 0.085, gap: 0.03 });
+    fenceGate(batch, world, { x: -4.6, dir: -1, z0: 13.5, z1: 14.95, groundY: fy(14.2), style: 'steel' });
+    fenceGate(batch, world, { x: -4.6, dir: -1, z0: 14.95, z1: 16.4, groundY: fy(15.7), style: 'steel' });
+    fenceGate(batch, world, { x: -4.6, dir: -1, z0: 16.5, z1: 17.5, groundY: fy(17), style: 'steel' });
+    for (const z of [13.47, 16.45, 17.55]) batch.add(M.roofMetalBrown, boxGeo(0.07, 1.75, 0.07), mat(-4.66, fy(z) + 0.87, z));
+    for (const [k, z] of [['houseNo12', 16.25], ['houseNo111', 16.05]]) batch.add(M[k], new THREE.PlaneGeometry(0.16, 0.12), mat(-4.6 + 0.01, fy(z) + 1.45, z, 0, Math.PI / 2, 0));
+    chunked(picketFence, { x: -4.6, dir: -1, z0: 17.6, z1: 22.0, h: 1.45, bw: 0.085, gap: 0.03 });
+    chunked(panelFence, { x: -4.6, dir: -1, z0: 22.4, z1: 33.5, m: M.roofMetalRed });
+    for (const [x, z, s] of [[-5.4, 17.9, 1.5], [-5.3, 19.8, 1.35], [-4.2, 20.9, 1.05], [-5.5, 12.9, 1.2]]) forest.add('bush', fx.bush, x, 0.04, z, z, s);
+    for (let i = 0; i < 14; i++) forest.add('flowers', fx.flowers, -4.0 - (i % 3) * 0.35, 0.95 + (i % 4) * 0.25, 17.8 + i * 0.22, i, 1.4);
+    forest.add('fruitTree', fx.fruitTree, -8.4, 0.04, 14.4, 0.8, 1.55);
+  }
+  // staghorn sumacs: in the geo map they stand after house 111 (photos 22-23), with shrubs around the stems
+  if (!geo) {
+    forest.add('sumac', fx.sumac, -5.6, 0.3, 21.5, 0.4, 1.0);
+    forest.add('sumac', fx.sumac, -5.2, 0.3, 26.0, 2.0, 0.85);
+  } else {
+    for (const [z, s] of [[23.7, 0.95], [27.8, 0.8]]) { forest.add('sumac', fx.sumac, -5.4, 0.04, z, z, s); forest.add('bush', fx.bush, -5.2, 0.04, z + 0.4, z, 1.35); }
+  }
   forest.add('bush', fx.bush, -3.9, 0.04, 14.2, 1.3, 1.1);
   forest.add('bush', fx.bush, -4.1, 0.04, 30.5, 0.2, 0.9);
   if (!geo) {

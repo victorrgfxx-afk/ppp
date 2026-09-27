@@ -37,7 +37,7 @@ const PHOTO_VIEWS = [
   { x: 1.25, z: 1.9, yaw: -1.3, pitch: 0.12, label: 'Poza 3 — casa și tufa' },
   { x: 2.35, z: 3.0, yaw: -Math.PI / 2, pitch: 0.1, label: 'Poza 4 — fațada' },
   { x: 2.2, z: 3.9, yaw: -2.05, pitch: 0.06, label: 'Poza 5 — poarta' },
-  { x: 2.35, z: 4.2, yaw: -2.8, pitch: 0.04, label: 'Poza 6 — straturile și Peugeot-ul' },
+  { x: 2.35, z: 4.2, yaw: -2.8, pitch: 0.04, label: 'Poza 6 — straturile de flori' },
   { x: 0.3, z: 2.0, yaw: Math.PI, pitch: 0.02, label: 'Poza 7 — strada spre sud' },
   { x: 0.2, z: 2.6, yaw: 2.62, pitch: 0.03, label: 'Poza 8 — zidul gri de vizavi' },
   { x: -1.4, z: 1.2, yaw: -Math.PI / 2, pitch: 0.12, label: 'Poza 9 — toată fațada' },
@@ -54,6 +54,8 @@ const PHOTO_VIEWS = [
   { x: -1.0, z: -2.0, yaw: 0.0, pitch: 0.03, fov: 40, label: 'Poza 19 — spre intersecția cu STOP' },
   { x: -0.6, z: 2.6, yaw: 0.03, pitch: 0.05, label: 'Poza 20 — strada spre casa cu șindrilă' },
   { x: -2.0, z: 14.5, yaw: 0.3, pitch: 0.04, label: 'Poza 21 — poarta nr. 10' },
+  { x: 2.3, z: 16.9, yaw: Math.PI / 2, pitch: 0.06, label: 'Poza 22 — casa nr. 111' },
+  { x: 0.1, z: 11.2, yaw: Math.PI + 0.03, pitch: 0.05, label: 'Poza 23 — spre deal, garajul roșu' },
 ];
 
 async function main() {
@@ -116,11 +118,15 @@ async function main() {
     const car = buildCar(model, paint, plate);
     scene.add(car.group);
     const v = new Vehicle(car, world, x, z, h, opts);
+    if (opts?.name) v.name = opts.name;   // the photographed make when the body is a stand-in
     vehicles.push(v);
     return v;
   };
   park('bmw', paintMaterial(0x040405, { metallic: 0.0, rough: 0.25, dusty: 0.55 }), 'plateBMW', 2.32, -2.96, 0, { power: 1.25, vmax: 62 });
-  park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', 1.58, 13.7, Math.PI, { power: 1.1, vmax: 58 });
+  // photos 17 and 23 (newer than 6-7): the Peugeot parked across the street by the maroon sheet fence,
+  // and a silver hatchback with its door open where it used to stand
+  park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', -1.9, 41.5, Math.PI, { power: 1.1, vmax: 58 });
+  park('hatch', paintMaterial(0xc4c7cb, { metallic: 0.85, rough: 0.28, dusty: 0.1 }), 'plateC', 1.6, 13.4, 0, { name: 'Mercedes argintiu' });
   park('corsa', paintMaterial(0xa9adb1, { metallic: 0.85, rough: 0.35, dusty: 0.3 }), 'plateOpel', 1.55, -11.75, Math.PI, { power: 0.85, vmax: 48 });
   // photos 19-20 (newer than photo 1): the BMW 1 Series stands a few metres behind the Corsa, a silver sedan further on
   park('sedan', paintMaterial(0xbfc2c5, { metallic: 0.85, rough: 0.33 }), 'plateA', 1.75, -50, 0, {});
@@ -130,15 +136,15 @@ async function main() {
   // from the newer photos 17-19: Ford Focus + a dark hatch on the west side, BMW 1 Series facing north,
   // a dark-blue VW Golf IV by the brown board fence and a white Ford Kuga past the T junction
   // west side: parked half on the gravel shoulder, one behind the other (photos 18-20)
-  park('hatch', paintMaterial(0xe6e7e6, { metallic: 0.25, rough: 0.3, dusty: 0.2 }), 'plateFocus', -2.15, -31.9, Math.PI, {});
+  park('hatch', paintMaterial(0xe6e7e6, { metallic: 0.25, rough: 0.3, dusty: 0.2 }), 'plateFocus', -2.15, -31.9, Math.PI, { name: 'Ford Focus' });
   park('hatch', paintMaterial(0x34373c, { metallic: 0.6, rough: 0.3 }), 'plateC', -2.15, -37.2, Math.PI, {});
   park('sedan', paintMaterial(0xdadcdd, { metallic: 0.3, rough: 0.3 }), 'plateB', -2.1, -42.6, Math.PI, {});
-  park('hatch', paintMaterial(0x2a2d31, { metallic: 0.7, rough: 0.28, dusty: 0.15 }), 'plateBMW1', 1.72, -24.1, Math.PI, { power: 1.15, vmax: 58 });
+  park('hatch', paintMaterial(0x2a2d31, { metallic: 0.7, rough: 0.28, dusty: 0.15 }), 'plateBMW1', 1.72, -24.1, Math.PI, { power: 1.15, vmax: 58, name: 'BMW Seria 1' });
   park('hatch', paintMaterial(0x8e1c1f, { metallic: 0.5, rough: 0.3 }), 'plateA', 2.05, -109.5, Math.PI, {});   // red car by the STOP (photo 19)
-  park('hatch', paintMaterial(0x16213d, { metallic: 0.55, rough: 0.3, dusty: 0.2 }), 'plateB', -1.45, 45.5, Math.PI, {});
+  park('hatch', paintMaterial(0x16213d, { metallic: 0.55, rough: 0.3, dusty: 0.2 }), 'plateB', -1.6, 48.4, Math.PI, { name: 'VW Golf IV' });
   {
     const probe = new world.Box(0.9, -129.8, 1.05, 2.4, 0);
-    if (!world.query(0.9, -129.8, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) park('suv', paintMaterial(0xf1f1ef, { metallic: 0.3, rough: 0.3 }), 'plateA', 0.9, -129.8, 0, {});
+    if (!world.query(0.9, -129.8, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) park('suv', paintMaterial(0xf1f1ef, { metallic: 0.3, rough: 0.3 }), 'plateA', 0.9, -129.8, 0, { name: 'Ford Kuga' });
   }
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {

@@ -76,6 +76,8 @@ export function buildMaterials() {
   std('wallPlaster', { map: TEX.wall_plaster, normalMap: TEX.wall_plasterN, normalScale: n(0, 1.2), roughness: 0.97, color: 0xf4f2ef });
   std('gateBoards', { map: TEX.picket, normalMap: TEX.picketN, roughness: 0.6, color: 0xf0e4e4 });
   std('houseNo10', { map: TEX.houseNo10, roughness: 0.4 });
+  std('houseNo111', { map: TEX.houseNo111, roughness: 0.4 });
+  std('houseNo12', { map: TEX.houseNo12, roughness: 0.4 });
   std('doorMat', { map: TEX.doorMat, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   std('horezu', { map: TEX.horezu, roughness: 0.25, color: 0xffffff });
   std('lattice', { map: TEX.lattice, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 });

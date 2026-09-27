@@ -36,6 +36,15 @@ function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, w
       const seam = plank < 0.008 ? 0.55 : 1;
       const g = 0.82 + 0.25 * fbm(x / 2, y / 40, 3, 1e9, 9) + 0.05 * valueNoise(Math.floor(x / (0.14 * ppm)) * 7.1, 0, 1e9, 3);
       col = [215 * g * seam, 205 * g * seam, 195 * g * seam]; hgt = seam < 1 ? 0.3 : 0.5 + 0.1 * g;
+    } else if (wall === 'stamped') {
+      // grey decorative render with a stamped dot-and-diamond relief (photo 22); 30 px cells tile exactly
+      const cell = 30, row = Math.floor(y / cell);
+      const cx = ((x + (row % 2) * cell / 2) % cell) - cell / 2, cy = (y % cell) - cell / 2;
+      const dot = Math.hypot(cx, cy) < 3.2;
+      const line = Math.min(Math.abs(Math.abs(cx) + Math.abs(cy) - cell / 2)) < 1.1;
+      const g = 0.9 + 0.08 * fbm(x / 5, y / 5, 3, 1e9, seed) - 0.06 * fbm(x / 50, y / 40, 3, 1e9, seed + 3);
+      const sh = dot ? 0.5 : line ? 0.82 : 1;
+      col = [232 * g * sh, 232 * g * sh, 228 * g * sh]; hgt = dot ? 0.25 : line ? 0.42 : 0.55 + 0.05 * g;
     } else if (wall === 'shingle') {
       // weathered wooden shingles (photos 19, 20): staggered courses with rounded butts
       const rowH = h / 24, sw = w / 30;                           // whole courses per tile: seamless
@@ -167,6 +176,7 @@ export function genGeoTextures() {
   facade('facadeBlock', { W: 3.0, Hf: 2.75, win: [1.5, 1.4, 0.85], band: true, shutter: false, seed: 5 });
   facade('facadeWood', { wall: 'wood', seed: 7 });
   facade('facadeShingle', { wall: 'shingle', shutter: false, seed: 9 });
+  facade('facadeStamped', { wall: 'stamped', shutter: false, seed: 4 });
   facade('facadeShingleP', { wall: 'shingle', windows: false, seed: 9 });
   industrial();
   track();

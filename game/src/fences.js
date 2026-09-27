@@ -151,6 +151,30 @@ export function picketFence(batch, world, { x, z0, z1, groundY, dir = 1, h = 1.6
   }
 }
 
+// Stone-clad pillars with dark decorative steel panels on a stone footing (photo 23)
+export function pillarFence(batch, world, { x, z0, z1, groundY, dir = 1, h = 1.75, bay = 2.3 }) {
+  const L = z1 - z0, n = Math.max(1, Math.round(L / bay)), bw = L / n;
+  const cx = x + dir * 0.22, zc = (z0 + z1) / 2;
+  batch.add(M.stoneCladding, boxGeo(0.3, 0.38, L, 1.2), mat(cx, groundY + 0.19, zc));
+  for (let i = 0; i <= n; i++) {
+    const z = z0 + i * bw;
+    batch.add(M.stoneCladding, boxGeo(0.42, h, 0.42, 1.2), mat(cx, groundY + h / 2, z));
+    batch.add(M.concrete, boxGeo(0.48, 0.05, 0.48), mat(cx, groundY + h + 0.025, z));
+  }
+  for (let i = 0; i < n; i++) {
+    const za = z0 + i * bw + 0.21, zb = z0 + (i + 1) * bw - 0.21, pl = zb - za, pc = (za + zb) / 2;
+    const y0 = groundY + 0.42, y1 = groundY + h - 0.14;
+    for (const yy of [y0, y1]) batch.add(M.blackMetal, boxGeo(0.03, 0.04, pl), mat(cx, yy, pc));
+    // leaning 'branch' bars
+    const k = Math.max(4, Math.round(pl / 0.17));
+    for (let j = 0; j < k; j++) {
+      const lean = Math.sin(j * 1.7 + i * 2.3) * 0.28;
+      batch.add(M.blackMetal, boxGeo(0.02, (y1 - y0) / Math.cos(lean), 0.025), mat(cx, (y0 + y1) / 2, za + (j + 0.5) * pl / k, lean, 0, 0));
+    }
+  }
+  world.addAABB(cx - 0.21, cx + 0.21, z0 - 0.21, z1 + 0.21, -5, 2.5, 'fence');
+}
+
 // Light teal corrugated-metal panel fence (far left in photo 1)
 export function panelFence(batch, world, { x, z0, z1, groundY, dir = 1, h = 1.5, m = M.tealPanel }) {
   const L = z1 - z0;
@@ -204,7 +228,7 @@ export function fenceGate(batch, world, { x, z0, z1, groundY, dir = 1, open = 0,
   const hinge = z1;
   const cx = x + dir * 0.12;
   const m = (lx, ly, lz) => new THREE.Matrix4().multiplyMatrices(mat(cx, groundY, hinge, 0, -dir * open, 0), mat(lx, ly, lz));
-  const frame = style === 'black' ? M.blackMetal : style === 'mesh' ? M.tealMetal : M.picket;
+  const frame = style === 'black' ? M.blackMetal : style === 'mesh' ? M.tealMetal : style === 'steel' ? M.roofMetalBrown : M.picket;
   batch.add(frame, boxGeo(0.04, 0.04, w), m(0, 0.12, -w / 2));
   batch.add(frame, boxGeo(0.04, 0.04, w), m(0, 1.55, -w / 2));
   batch.add(frame, boxGeo(0.04, 1.45, 0.04), m(0, 0.84, -w + 0.02));
@@ -219,6 +243,10 @@ export function fenceGate(batch, world, { x, z0, z1, groundY, dir = 1, open = 0,
       fleurDeLis(batch, wp.x, wp.y, wp.z, 0.6);
     }
     for (let k = 0; k < Math.floor(w / 0.08); k++) batch.add(M.blackMetal, boxGeo(0.01, 0.2, 0.01), m(0, 0.24, -0.04 - k * 0.08).multiply(mat(0, 0, 0, 0.6, 0, 0)));
+  } else if (style === 'steel') {
+    // brown steel frame: pickets above a pressed lower panel (photo 22)
+    batch.add(M.roofMetalBrown, boxGeo(0.02, 0.55, w - 0.06), m(0.01, 0.42, -w / 2));
+    for (let k = 0; k < Math.floor(w / 0.11); k++) batch.add(M.picket, boxGeo(0.018, 0.9, 0.08), m(0.02, 1.13, -0.06 - k * 0.11));
   } else if (style === 'mesh') {
     // teal frame with chain-link infill (photos 18, 20)
     batch.add(M.chain, quadGeo(w - 0.06, 1.38, 0, 0, (w - 0.06) / 0.25, 1.38 / 0.25), m(0, 0.84, -w / 2).multiply(mat(0, 0, 0, 0, Math.PI / 2, 0)));

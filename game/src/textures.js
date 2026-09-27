@@ -720,6 +720,8 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   genPlate('PH 71 GRK', 'plateBMW1');    // photo 19
   genDoorMat(); genHorezu(); genLattice(); genFlowers();
   genHouseNo('10', 'houseNo10');
+  genHouseNo('111', 'houseNo111');   // photo 22 (old number 12 next to it)
+  genHouseNo('12', 'houseNo12');
   genPlate('B 162 DDC', 'plateSUV');
   genPlate('PH 22 VIC', 'plateA');
   genPlate('PH 05 RMN', 'plateB');

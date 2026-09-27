@@ -420,7 +420,8 @@ OVERRIDES = {
     '264515491': dict(wall='stuccoWhite', roof='roofMetalLight', roofType='gable', levels=2, chimney=True, ridge='x', dx=-3.0, note='casa albă cu coș de cărămidă, fronton spre stradă (pozele 1, 18, 20)'),
     '264515456': dict(wall='gray', roof='roofMetalLight', roofType='gable', ridge='x', ridgeAll=True, pitch=17, note='clădirea joasă cu tablă zincată din spatele gardului mentă (poza 18)'),
     '264515508': dict(wall='ochre', roof='metalTileBrown', roofMat='metalTile', roofType='gable', ridge='z', note='casa ocru cu țiglă metalică maro de după zidul gri, poarta nr. 10 (pozele 8, 21)'),
-    '264515510': dict(wall='stuccoPeach', roof='roofMetalBrown', roofType='gable', dx=-2.9, note='casa de după gardul vișiniu (poza 7): în spatele scumpiei'),
+    '264515510': dict(wall='stampedGray', roof='roofMetalRust', roofType='hip', levels=1, pitch=24, dx=-2.9, note='casa nr. 111 (poza 22): tencuială gri decorativă, acoperiș în patru ape din tablă veche ruginie'),
+    '264516642': dict(wall='sand', roof='metalTileBrown', roofMat='metalTile', note='casa nr. 122 de după gardul cu stâlpi de piatră (poza 23)'),
     '304010713': dict(dx=-0.8, note='șopronul de lemn din spatele gardului maro (poza 17)'),
     '222896491': dict(wall='stuccoPeach', roof='metalTileBrown', roofMat='metalTile', roofType='gable', levels=2, ridge='x', note='casa piersicie cu 2 etaje și țiglă metalică maro, la capătul străzii (poza 17)'),
 }
@@ -564,8 +565,9 @@ def main():
     gzs, gxs = np.gradient(Y, STEP)
     slope = np.degrees(np.arctan(np.hypot(gxs, gzs)))
     cn = ndimage.gaussian_filter(np.random.default_rng(3).standard_normal((N, N)), 1.6); cn /= cn.std()
-    # position from photos 7 and 17: left of the street axis, i.e. towards +x (NW), ~80 m wide
-    CLAY = (slope > 16) & (np.abs(X - 45 + 12 * cn) < 42 + 10 * cn) & (Z > 395) & (Z < 545) & (cn > -0.9)
+    # photos 7, 17, 23: two bare scars, one each side of the street axis (~40 m left, ~35 m right),
+    # with forest between them
+    CLAY = (slope > 16) & ((np.abs(X - 42 + 8 * cn) < 22 + 7 * cn) | (np.abs(X + 36 + 8 * cn) < 19 + 6 * cn)) & (Z > 395) & (Z < 545) & (cn > -0.9)
     CLAY = ndimage.binary_opening(CLAY, iterations=1)
     write_b64('height.json', np.clip(np.round(Y * 100), -32000, 32000).astype('<i2'))
     Xf, Zf = grid_xz(FAR_N, FAR_EXT)
