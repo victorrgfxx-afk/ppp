@@ -9,7 +9,10 @@ const GEARS = [3.6, 2.2, 1.5, 1.12, 0.9];
 const tmp = [];
 // 'hyper' tune (the user's Peugeot 508): 1400 W/kg with a 1.43 g traction limit, drag for a natural 580 km/h,
 // electronic limiter at 500 km/h -> 0-100 km/h 2.0 s, 0-300 6.4 s, 0-500 14 s (tools/../README); 8-speed box
-const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, lat: 17, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505] };
+const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505],
+  // cornering: 3.2 g of mechanical grip plus aero downforce growing with v^2 (+1.6 g at 500 km/h);
+  // progressive steering: full lock in 0.16 s (50 km/h) to 0.35 s (300+ km/h), back to centre in 0.15 s; tyre scrub 4 %
+  lat: 3.2 * 9.81, latAero: 1.6 * 9.81, steerIn: 0.35, steerOut: 0.15, scrub: 0.04 };
 HYPER.cd = (HYPER.P / HYPER.top - 0.15) / (HYPER.top * HYPER.top);
 
 export class Vehicle {
@@ -116,12 +119,23 @@ export class Vehicle {
 
     // steering (less lock at speed)
     let maxSteer = 0.58 / (1 + (vF * vF) / 220);
-    // with the hyper tune, cap the steering so lateral acceleration stays within the tyres (+ downforce)
-    if (this.hyper && Math.abs(vF) > 20) maxSteer = Math.min(maxSteer, Math.atan(this.hyper.lat * this.wheelbase / (vF * vF)));
-    this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
+    const Hs = this.hyper;
+    if (Hs && Math.abs(vF) > 12) {
+      // steering angle for the grip available at this speed (tyres + downforce), so full lock = the limit
+      const q = Math.min(1, (vF * vF) / (Hs.limit * Hs.limit));
+      maxSteer = Math.atan((Hs.lat + Hs.latAero * q) * this.wheelbase / (vF * vF));
+      // progressive, rate-limited steering: a tap gives a small correction, holding builds to the limit
+      const target = steerIn * maxSteer;
+      const building = Math.abs(target) > Math.abs(this.steer) && (this.steer === 0 || Math.sign(target) === Math.sign(this.steer));
+      const tIn = Hs.steerIn * (0.45 + 0.55 * Math.min(1, Math.abs(vF) / 83));   // quicker at town speeds, calmer at 300+
+      const rate = maxSteer / (building ? tIn : Hs.steerOut);
+      this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
+    } else this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
     const yawRate = -vF * Math.tan(this.steer) / this.wheelbase;
     const slip = hand && Math.abs(vF) > 4 ? 1.55 : 1;
     this.h += yawRate * dt * slip;
+    // tyre scrub: cornering hard costs a little speed
+    if (Hs) vF -= Math.sign(vF) * Math.abs(vF * yawRate) * Hs.scrub * dt;
 
     // lateral grip (handbrake lets the rear slide)
     const grip = hand && Math.abs(vF) > 3 ? 1.4 : 11;
@@ -137,7 +151,7 @@ export class Vehicle {
     // body dynamics (springy pitch/roll)
     const longA = accel - (hand ? vF * 1.2 : 0);
     const latA = vF * yawRate;
-    const tp = clamp(longA * 0.006, -0.05, 0.05), tr = clamp(-latA * 0.0065, -0.06, 0.06);
+    const tp = clamp(longA * 0.006, -0.05, 0.05), tr = clamp(-latA * (Hs ? 0.0016 : 0.0065), -0.06, 0.06);   // stiff, low hyper car
     this.pitchV += ((tp - this.pitch) * 60 - this.pitchV * 9) * dt; this.pitch += this.pitchV * dt;
     this.rollV += ((tr - this.roll) * 50 - this.rollV * 8) * dt; this.roll += this.rollV * dt;
     this.spin -= (vF / this.m.r) * dt;
