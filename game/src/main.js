@@ -407,12 +407,20 @@ async function main() {
     let prompt = '';
     if (!paused) {
       if (input.hit('KeyP')) screenshot();
+      // N: noclip, free flight to look around the map quickly (from a car too: you step out first)
+      if (input.hit('KeyN')) {
+        if (mode === 'car') exitCar(true);
+        if (mode === 'foot') {
+          player.setNoclip(!player.noclip);
+          hud.toast(player.noclip ? 'Noclip pornit — zbori liber: Space sus, C jos, Shift rapid (N oprește)' : 'Noclip oprit');
+        }
+      }
       if (mode === 'foot') {
         for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) gotoView(i);
         player.update(dt, input, audio, sens());
-        // a dog right next to you wins over a car parked beyond the fence
-        const dog = dogs.nearest(player.pos.x, player.pos.z);
-        const near = dog ? null : nearestCar();
+        // a dog right next to you wins over a car parked beyond the fence (nothing to use while flying)
+        const dog = player.noclip ? null : dogs.nearest(player.pos.x, player.pos.z);
+        const near = dog || player.noclip ? null : nearestCar();
         if (dog) {
           prompt = 'E — mângâie câinele';
           if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); hud.toast('Câinele dă fericit din coadă'); }

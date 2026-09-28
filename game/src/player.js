@@ -19,6 +19,7 @@ export class Player {
     this.fovKick = 0;
     this.pos.y = world.groundHeight(this.pos.x, this.pos.z);
     this.landShake = 0;
+    this.noclip = false;
   }
   setPose(x, z, yaw, pitch = 0) {
     this.pos.set(x, this.world.groundHeight(x, z), z);
@@ -34,7 +35,45 @@ export class Player {
     if (x > 14.3) return 'grass';
     return 'tiles';
   }
+  // noclip (N): fly through everything; when switched off the player falls to the ground below
+  setNoclip(on) {
+    this.noclip = on;
+    this.vel.set(0, 0, 0);
+    if (!on) {
+      const gh = this.world.groundHeight(this.pos.x, this.pos.z, this.pos.y + 1);
+      if (this.pos.y < gh) this.pos.y = gh;
+      this.onGround = false;
+    }
+  }
+  fly(dt, input, sens) {
+    const m = input.consumeMouse();
+    this.yaw -= m.x * sens;
+    this.pitch = clamp(this.pitch - m.y * sens, -1.55, 1.55);
+    const ax = input.axis();
+    const fast = input.down('ShiftLeft') || input.down('ShiftRight') || input.touchRun;
+    const speed = fast ? 60 : 14;
+    const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
+    const fwd = new THREE.Vector3(-Math.sin(this.yaw) * cp, sp, -Math.cos(this.yaw) * cp);
+    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const up = (input.down('Space') ? 1 : 0) - (input.down('KeyC') || input.down('ControlLeft') ? 1 : 0);
+    const want = new THREE.Vector3().addScaledVector(fwd, -ax.y).addScaledVector(right, ax.x);
+    want.y += up;
+    if (want.lengthSq() > 1) want.normalize();
+    want.multiplyScalar(speed);
+    this.vel.x = damp(this.vel.x, want.x, 8, dt);
+    this.vel.y = damp(this.vel.y, want.y, 8, dt);
+    this.vel.z = damp(this.vel.z, want.z, 8, dt);
+    this.pos.addScaledVector(this.vel, dt);
+    this.pos.x = clamp(this.pos.x, W.X_MIN, W.X_MAX);
+    this.pos.z = clamp(this.pos.z, W.Z_MIN, W.Z_MAX);
+    this.pos.y = clamp(this.pos.y, -300, 3000);
+    this.bobAmt = 0; this.landShake = 0; this.eyeCur = this.eye;
+    this.fovKick = damp(this.fovKick, 0, 4, dt);
+    this.camera.position.set(this.pos.x, this.pos.y + this.eye, this.pos.z);
+    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
   update(dt, input, audio, sens) {
+    if (this.noclip) return this.fly(dt, input, sens);
     const m = input.consumeMouse();
     this.yaw -= m.x * sens;
     this.pitch = clamp(this.pitch - m.y * sens, -1.45, 1.45);
