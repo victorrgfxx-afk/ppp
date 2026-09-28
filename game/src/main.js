@@ -150,6 +150,12 @@ async function main() {
   // photo 33: the silver hatchback parked along the white wall of the sports ground on Strada Nicolae Grigorescu
   const grLm = geoWorld.landmarks?.find(l => l.type === 'grigorescu');
   if (grLm && grLm.car) park('hatch', paintMaterial(0xb9bcc0, { metallic: 0.85, rough: 0.32, dusty: 0.25 }), 'plateB', grLm.car.x, grLm.car.z, grLm.car.h, {});
+  // photos 43-44 (Strada Măgurii): the two cars by the east kerb and the silver SUV on the gravel yard
+  const magLm = geoWorld.landmarks?.find(l => l.type === 'magurii');
+  if (magLm) {
+    for (const c of magLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.6, rough: 0.35, dusty: 0.2 }), 'plateA', c.x, c.z, c.h, {});
+    if (magLm.suv) park('suv', paintMaterial(0xb7babd, { metallic: 0.85, rough: 0.3, dusty: 0.3 }), 'plateC', magLm.suv.x, magLm.suv.z, magLm.suv.h, {});
+  }
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
     const rr = rng(77);
@@ -322,6 +328,17 @@ async function main() {
     // at the photos' coordinate (GPS, +-5 m), on the concrete by the lane's mouth: ditch, mesh fence and the old house
     // on the left (photo 41)
     view(pitLm.W(pitLm.pinS, Math.min(pitLm.pinO, 1.4)), pitLm.W(-60, 6.5), 0.06, 50, 'Poza 41 — Strada Pițigaia: șanțul, gardul de plasă și casa veche');
+  }
+  // photos 42-45: the wayside shrine at Aleea Croitorului, Strada Măgurii at the mouth of Strada Tulburii
+  if (magLm && !PHOTO_VIEWS.some(v => v.mag)) {
+    const view = (from, to, pitch, fov, label) => PHOTO_VIEWS.push({ mag: true, x: from[0], z: from[1], yaw: Math.atan2(-(to[0] - from[0]), -(to[1] - from[1])), pitch, fov, label });
+    if (magLm.camA) view(magLm.camA.from, magLm.camA.to, -0.03, 55, 'Poza 42 — DJ100E la Aleea Croitorului: troița, oglinda');
+    if (magLm.W) {
+      // the Street View car on the west half going south-west (43, 44) and on the east half going north-east (45)
+      view(magLm.W(-80, 1.2), magLm.W(-30, 0.6), -0.03, 55, 'Poza 43 — Strada Măgurii: canalul și mașinile parcate');
+      view(magLm.W(-40, 1.2), magLm.W(3, -1.5), -0.03, 55, 'Poza 44 — Strada Măgurii spre Strada Tulburii');
+      view(magLm.W(49, -1.2), magLm.W(8, 0), -0.05, 55, 'Poza 45 — Strada Măgurii la vale, gardul maro');
+    }
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

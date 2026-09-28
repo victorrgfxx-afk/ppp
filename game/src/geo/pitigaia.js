@@ -48,14 +48,14 @@ const STYLE = {
 };
 
 const UP = [0, 1, 0];
-const pairs = (f) => { const o = []; for (let i = 0; i < f.length; i += 2) o.push([f[i], f[i + 1]]); return o; };
-const road = (id) => (GEO.roads || []).find(r => r.id === id);
-const merged = (list) => mergeGeometries(list.map(g => g.index ? g.toNonIndexed() : g));
-const hash = (a, b = 0) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
+export const pairs = (f) => { const o = []; for (let i = 0; i < f.length; i += 2) o.push([f[i], f[i + 1]]); return o; };
+export const road = (id) => (GEO.roads || []).find(r => r.id === id);
+export const merged = (list) => mergeGeometries(list.map(g => g.index ? g.toNonIndexed() : g));
+export const hash = (a, b = 0) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
+export const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
 // ------------------------------------------------------------------ polyline frame
-function frame(P) {
+export function frame(P) {
   const S = [0];
   for (let i = 1; i < P.length; i++) S.push(S[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
   const at = (s) => {
@@ -138,11 +138,12 @@ export function preparePitigaia() {
   {
     const Wm = (s, o) => { const q = FMs.at(s + sJm), [ux, uz] = FMs.dir(s + sJm); return [q.x - uz * o, q.z + ux * o]; };
     let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (let s = DITCH.s0 - 4; s <= DITCH.s1 + 4; s += 2) for (const o of [HW - 1, DITCH.o + DITCH.hw + 4]) { const [x, z] = Wm(s, o); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
-    const i0m = Math.max(0, FMs.S.findIndex(v => v > sJm + DITCH.s0 - 8) - 1), i1m = Math.min(Mp.length - 1, FMs.S.findIndex(v => v > sJm + DITCH.s1 + 8) + 1);
+    for (let s = DITCH.s0 - 8; s <= DITCH.s1 + 8; s += 2) for (const o of [HW - 5, DITCH.o + DITCH.hw + 8]) { const [x, z] = Wm(s, o); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    const i0m = Math.max(0, FMs.S.findIndex(v => v > sJm + DITCH.s0 - 12) - 1), i1m = Math.min(Mp.length - 1, FMs.S.findIndex(v => v > sJm + DITCH.s1 + 12) + 1);
     const lz = (x, z) => { const l = FMs.local(x, z, i0m, i1m); return l ? { s: l.s - sJm, o: l.o } : null; };
     addFineZone({ x0, x1, z0, z1,
-      test: (x, z) => { const l = lz(x, z); return !!l && l.s > DITCH.s0 - 3 && l.s < DITCH.s1 + 3 && l.o > HW - 1 && l.o < DITCH.o + DITCH.hw + 4; },
+      // (every 5 m terrain cell touching the ditch must be rebuilt: the zone reaches ~6 m past it)
+      test: (x, z) => { const l = lz(x, z); return !!l && l.s > DITCH.s0 - 6 && l.s < DITCH.s1 + 6 && l.o > HW - 4 && l.o < DITCH.o + DITCH.hw + 6; },
       h: (x, z) => { const l = lz(x, z), g0 = gridHeight(GEO, x, z); return l ? g0 - ditchDepth(l.s, l.o) : g0; } });
   }
   return true;
@@ -156,18 +157,18 @@ function ditchDepth(s, o) {
 }
 
 // ------------------------------------------------------------------ textures and materials
-function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
-function tex(c, { repeat = false, srgb = true } = {}) {
+export function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+export function tex(c, { repeat = false, srgb = true } = {}) {
   const t = new THREE.CanvasTexture(c); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = 8;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
-function grain(g, w, h, amp, R) {
+export function grain(g, w, h, amp, R) {
   const d = g.getImageData(0, 0, w, h), a = d.data;
   for (let i = 0; i < a.length; i += 4) { const n = (R() - 0.5) * amp; a[i] += n; a[i + 1] += n; a[i + 2] += n * 0.95; }
   g.putImageData(d, 0, 0);
 }
-function blobs(g, x0, y0, w, h, n, rMin, rMax, cols, R) {
+export function blobs(g, x0, y0, w, h, n, rMin, rMax, cols, R) {
   for (let i = 0; i < n; i++) {
     const r = rMin + R() * (rMax - rMin), x = x0 + R() * w, y = y0 + R() * h;
     const gr = g.createRadialGradient(x, y, 0, x, y, r); const c = cols[Math.floor(R() * cols.length)];
@@ -191,7 +192,7 @@ function crack(g, hg, x, y, ang, len, R, bounds) {
   // a branch now and then
   if (pts.length > 6 && R() < 0.6) { const p = pts[Math.floor(pts.length * (0.3 + R() * 0.4))]; crackSmall(g, hg, p[0], p[1], ang + (R() < 0.5 ? 1 : -1) * (0.6 + R() * 0.5), 25 + R() * 60, R, bounds); }
 }
-function crackSmall(g, hg, x, y, ang, len, R, bounds) {
+export function crackSmall(g, hg, x, y, ang, len, R, bounds) {
   const pts = [[x, y]];
   for (let l = 0; l < len; l += 6) { ang += (R() - 0.5) * 0.8; x += Math.cos(ang) * 6; y += Math.sin(ang) * 6; if (x < bounds[0] || x > bounds[2] || y < bounds[1] || y > bounds[3]) break; pts.push([x, y]); }
   const path = (c) => { c.beginPath(); c.moveTo(...pts[0]); for (const p of pts) c.lineTo(...p); c.stroke(); };
@@ -318,15 +319,15 @@ function mats() {
 }
 
 // ------------------------------------------------------------------ geometry helpers
-function boxAt(list, cx, cy, cz, sx, sy, sz, rotY = 0) { const g = new THREE.BoxGeometry(sx, sy, sz); g.rotateY(rotY); g.translate(cx, cy, cz); list.push(g); }
-function cyl(list, x, y0, z, h, r0, r1 = r0, seg = 8) { const g = new THREE.CylinderGeometry(r1, r0, h, seg); g.translate(x, y0 + h / 2, z); list.push(g); }
-function tube(list, p, q, r, seg = 6) {
+export function boxAt(list, cx, cy, cz, sx, sy, sz, rotY = 0) { const g = new THREE.BoxGeometry(sx, sy, sz); g.rotateY(rotY); g.translate(cx, cy, cz); list.push(g); }
+export function cyl(list, x, y0, z, h, r0, r1 = r0, seg = 8) { const g = new THREE.CylinderGeometry(r1, r0, h, seg); g.translate(x, y0 + h / 2, z); list.push(g); }
+export function tube(list, p, q, r, seg = 6) {
   const d = new THREE.Vector3(q[0] - p[0], q[1] - p[1], q[2] - p[2]), L = d.length();
   const g = new THREE.CylinderGeometry(r, r, L, seg, 1, true);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
   g.translate((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2); list.push(g);
 }
-function catenary(out, p, q, sag, n = 8) {
+export function catenary(out, p, q, sag, n = 8) {
   let prev = p;
   for (let k = 1; k <= n; k++) {
     const t = k / n, c = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t - sag * 4 * t * (1 - t), p[2] + (q[2] - p[2]) * t];
@@ -334,7 +335,7 @@ function catenary(out, p, q, sag, n = 8) {
   }
 }
 // draped polygon (triangulated, split to < maxEdge), world-space UVs
-function drape(acc, P, lift, maxEdge = 2, tile = 3) {
+export function drape(acc, P, lift, maxEdge = 2, tile = 3) {
   const faces = THREE.ShapeUtils.triangulateShape(P.map(([x, z]) => new THREE.Vector2(x, z)), []);
   const emit = (a, b, c) => {
     const l = Math.max(Math.hypot(a[0] - b[0], a[1] - b[1]), Math.hypot(b[0] - c[0], b[1] - c[1]), Math.hypot(c[0] - a[0], c[1] - a[1]));
@@ -348,7 +349,7 @@ function drape(acc, P, lift, maxEdge = 2, tile = 3) {
   for (const [i, j, k] of faces) emit(P[i], P[j], P[k]);
 }
 // crossed billboard quads (weeds)
-function tuft(acc, x, y, z, w, h, a) {
+export function tuft(acc, x, y, z, w, h, a) {
   for (const d of [0, Math.PI / 2]) {
     const cx = Math.cos(a + d) * w / 2, cz = Math.sin(a + d) * w / 2;
     acc.quad([x - cx, y - 0.05, z - cz], [x + cx, y - 0.05, z + cz], [x + cx, y + h, z + cz], [x - cx, y + h, z - cz], [-Math.sin(a + d), 0, Math.cos(a + d)], [0, 0, 1, 0, 1, 1, 0, 1]);
