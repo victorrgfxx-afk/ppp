@@ -87,12 +87,15 @@ export function makeRoadMaterials() {
 const TILE = { asphalt: 1.3, concrete: 2.2, paving: 1.0, cobble: 0.8, gravel: 1.2, dirt: 1.6 };
 
 export function buildRoads(B, world, mats) {
-  // junction points = vertices shared by several ways
-  const count = new Map();
+  // junction points = vertices shared by several ways (two ways joined end to end are one road, not a junction)
+  const count = new Map(), inner = new Set();
   const key = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
-  for (const r of GEO.roads) for (let i = 0; i < r.p.length; i += 2) { const k = key(r.p[i], r.p[i + 1]); count.set(k, (count.get(k) || 0) + 1); }
+  for (const r of GEO.roads) for (let i = 0; i < r.p.length; i += 2) {
+    const k = key(r.p[i], r.p[i + 1]); count.set(k, (count.get(k) || 0) + 1);
+    if (i > 0 && i < r.p.length - 2) inner.add(k);
+  }
   const junctions = [];
-  for (const [k, c] of count) if (c > 1) { const [x, z] = k.split(',').map(Number); junctions.push([x / 10, z / 10]); }
+  for (const [k, c] of count) if (c > 2 || (c === 2 && inner.has(k))) { const [x, z] = k.split(',').map(Number); junctions.push([x / 10, z / 10]); }
   const nearJunction = (x, z, d) => junctions.some(j => Math.abs(j[0] - x) < d && Math.abs(j[1] - z) < d && Math.hypot(j[0] - x, j[1] - z) < d);
   const bridges = [];
   const names = [];

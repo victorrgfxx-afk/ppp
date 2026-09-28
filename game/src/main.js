@@ -297,6 +297,22 @@ async function main() {
     view(coLm.lane(s36, 1.9), coLm.lane(s36 + 90, 0.6), -0.02, 'Poza 36 — DN1 spre sensul giratoriu de la Cornu');
     view(coLm.lane(s37, 1.9), [coLm.ring.x + 4, coLm.ring.z - 3], -0.03, 'Poza 37 — intrarea în sensul giratoriu, benzinăria Rompetrol');
   }
+  // photos 38-39 (Street View, November 2023, plus code 4MXW+GH3 Cornu de Jos): the Etu Oil & Gas station on DN1
+  const etuLm = geoWorld.landmarks?.find(l => l.type === 'etu');
+  if (etuLm && !PHOTO_VIEWS.some(v => v.etu)) {
+    const view = (from, to, pitch, label) => PHOTO_VIEWS.push({ etu: true, x: from[0], z: from[1], yaw: Math.atan2(-(to[0] - from[0]), -(to[1] - from[1])), pitch, fov: 58, label });
+    // on the northbound carriageway, right lane, where the entry lane leaves it (photo 38: the totem ~20 m ahead)
+    const d = etuLm.dn, e0 = etuLm.entry[0];
+    let bi = 0, bd = Infinity; for (let i = 0; i < d.length; i++) { const dd = Math.hypot(d[i][0] - e0[0], d[i][1] - e0[1]); if (dd < bd) { bd = dd; bi = i; } }
+    const a = d[Math.max(0, bi - 1)], b = d[bi], ul = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / ul, uz = (b[1] - a[1]) / ul;
+    const side = ((etuLm.totem.x - e0[0]) * -uz + (etuLm.totem.z - e0[1]) * ux) > 0 ? 1 : -1;
+    const cam = [e0[0] - ux * 2 - uz * side * 1.9, e0[1] - uz * 2 + ux * side * 1.9];
+    view(cam, [cam[0] + ux * 80 - uz * side * 0.5, cam[1] + uz * 80 + ux * side * 0.5], -0.12, 'Poza 38 — DN1 la benzinăria Etu (Cornu de Jos)');
+    // on the deceleration lane south of the island's nose: totem on the left, canopy on the right (photo 39)
+    const lat = 7.6 / 2 + 1.6, c39 = [e0[0] - ux * 12 - uz * side * lat, e0[1] - uz * 12 + ux * side * lat];
+    const st = etuLm.station || { x: etuLm.entry[etuLm.entry.length - 1][0], z: etuLm.entry[etuLm.entry.length - 1][1] };
+    view(c39, [(etuLm.totem.x + st.x) / 2, (etuLm.totem.z + st.z) / 2], -0.06, 'Poza 39 — benzinăria Etu: insula cu totemul și copertina');
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;
