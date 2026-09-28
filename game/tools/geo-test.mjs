@@ -26,7 +26,7 @@ const frames = async (n) => { for (let i = 0; i < n; i++) await page.evaluate(()
 const only = process.argv[4] ? process.argv[4].split(',') : null;
 const shots = [
   ['view1', 0], ['view7', 6], ['view9', 8], ['view2', 1],
-  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28], ['view30', 29], ['view31', 30], ['view32', 31], ['view33', 32], ['view34', 33], ['view35', 34], ['view36', 35], ['view37', 36], ['view38', 37], ['view39', 38],
+  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28], ['view30', 29], ['view31', 30], ['view32', 31], ['view33', 32], ['view34', 33], ['view35', 34], ['view36', 35], ['view37', 36], ['view38', 37], ['view39', 38], ['view40', 39], ['view41', 40],
 ];
 for (const [name, k] of shots) {
   if (only && !only.includes(name)) continue;
@@ -51,6 +51,7 @@ const cams = [
   ['sport', { x: -905, y: 45, z: 95, yaw: 2.0, pitch: -0.5 }],
   ['cornu', { x: 470, y: 40, z: 360, yaw: -2.2, pitch: -0.5 }],
   ['etu', { x: 1985, y: 45, z: 395, yaw: 2.31, pitch: -0.55 }],
+  ['pitigaia', { x: -1120, y: 45, z: -735, yaw: -2.47, pitch: -0.75 }],
 ];
 for (const [name, c] of cams) {
   if (only && !only.includes(name)) continue;

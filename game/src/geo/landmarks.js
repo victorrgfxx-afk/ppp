@@ -6,6 +6,7 @@ import { buildPrahovaBridge } from './bridge.js';
 import { buildGrigorescu } from './grigorescu.js';
 import { buildCornu } from './cornu.js';
 import { buildEtu } from './etu.js';
+import { buildPitigaia } from './pitigaia.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -88,6 +89,8 @@ export function buildLandmarks(B, world) {
   if (co) out.push(co);
   const etu = buildEtu(B, world);
   if (etu) out.push(etu);
+  const pit = buildPitigaia(B, world);
+  if (pit) out.push(pit);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

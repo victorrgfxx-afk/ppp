@@ -313,6 +313,16 @@ async function main() {
     const st = etuLm.station || { x: etuLm.entry[etuLm.entry.length - 1][0], z: etuLm.entry[etuLm.entry.length - 1][1] };
     view(c39, [(etuLm.totem.x + st.x) / 2, (etuLm.totem.z + st.z) / 2], -0.06, 'Poza 39 — benzinăria Etu: insula cu totemul și copertina');
   }
+  // photos 40-41 (45.1229934 N, 25.7157007 E): Strada Pițigaia at the lane's mouth, both looking up the street
+  const pitLm = geoWorld.landmarks?.find(l => l.type === 'pitigaia');
+  if (pitLm && !PHOTO_VIEWS.some(v => v.pit)) {
+    const view = (from, to, pitch, fov, label) => PHOTO_VIEWS.push({ pit: true, x: from[0], z: from[1], yaw: Math.atan2(-(to[0] - from[0]), -(to[1] - from[1])), pitch, fov, label });
+    // in the middle of the concrete, the iron fence of no. 857 on the right (photo 40)
+    view(pitLm.W(-1, -0.4), pitLm.W(-75, -0.2), 0.12, 42, 'Poza 40 — Strada Pițigaia: spre deal, gardul de fier de la nr. 857');
+    // at the photos' coordinate (GPS, +-5 m), on the concrete by the lane's mouth: ditch, mesh fence and the old house
+    // on the left (photo 41)
+    view(pitLm.W(pitLm.pinS, Math.min(pitLm.pinO, 1.4)), pitLm.W(-60, 6.5), 0.06, 50, 'Poza 41 — Strada Pițigaia: șanțul, gardul de plasă și casa veche');
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

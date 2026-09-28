@@ -11,6 +11,7 @@ import { buildCanopy } from './canopy.js';
 import { prepareGrigorescu } from './grigorescu.js';
 import { prepareCornu } from './cornu.js';
 import { prepareEtu } from './etu.js';
+import { preparePitigaia } from './pitigaia.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -36,6 +37,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareGrigorescu();                                  // levels the sports ground's courts before the terrain is meshed
   prepareCornu();                                       // DN1 at the Cornu roundabout: carriageways to the measured cross-section
   prepareEtu();                                         // DN1 at the Etu station: 2 lanes per carriageway, canopy instead of a house
+  preparePitigaia();                                    // Str. Pițigaia: the concrete stretch moved onto the aerial, its ditch
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
