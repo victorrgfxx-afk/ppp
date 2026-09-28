@@ -24,6 +24,10 @@ const TYPES = [
   { name: 'shrub', H: 2.6, crown: 1.5, trunkR: 0.05, cards: 34, leaf: 'leaves', tint: 0xd2dcae, bole: 0.1, noImpostor: true },
   // stand edges: trees in the light keep their branches down to the ground (a wall of leaves, not a row of poles)
   { name: 'edge broadleaf', H: 13, crown: 4.4, trunkR: 0.26, cards: 140, leaf: 'leaves', tint: 0xb6c895, bole: 0.13 },
+  // Strada Gării (photos 46-48): Lombardy poplars (narrow columns), a black poplar (tall oval), young planted pines
+  { name: 'lombardy poplar', H: 26, crown: 2.5, trunkR: 0.34, cards: 180, leaf: 'leaves', tint: 0xb2c294, bole: 0.14 },
+  { name: 'poplar', H: 25, crown: 4.2, trunkR: 0.42, cards: 170, leaf: 'leaves', tint: 0xb6c698, bole: 0.2 },
+  { name: 'young pine', H: 8.5, crown: 2.3, conifer: true, low: 1.9 },
 ];
 const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2;
 

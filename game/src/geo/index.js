@@ -13,6 +13,7 @@ import { prepareCornu } from './cornu.js';
 import { prepareEtu } from './etu.js';
 import { preparePitigaia } from './pitigaia.js';
 import { prepareMagurii } from './magurii.js';
+import { prepareGara } from './gara.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -40,6 +41,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareEtu();                                         // DN1 at the Etu station: 2 lanes per carriageway, canopy instead of a house
   preparePitigaia();                                    // Str. Pițigaia: the concrete stretch moved onto the aerial, its ditch
   prepareMagurii();                                     // Str. Măgurii at Str. Tulburii: moved onto the aerial, channel and ditch
+  prepareGara();                                        // Strada Gării under the railway: the retaining wall's vertical step
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

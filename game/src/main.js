@@ -156,6 +156,10 @@ async function main() {
     for (const c of magLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.6, rough: 0.35, dusty: 0.2 }), 'plateA', c.x, c.z, c.h, {});
     if (magLm.suv) park('suv', paintMaterial(0xb7babd, { metallic: 0.85, rough: 0.3, dusty: 0.3 }), 'plateC', magLm.suv.x, magLm.suv.z, magLm.suv.h, {});
   }
+  // the cars round the station square and along the side street (photos 49-50)
+  const garaLm = geoWorld.landmarks?.find(l => l.type === 'gara');
+  if (garaLm) for (const [k, c] of (garaLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: 0.6, rough: 0.35, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
+
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
     const rr = rng(77);
@@ -338,6 +342,27 @@ async function main() {
       view(magLm.W(-80, 1.2), magLm.W(-30, 0.6), -0.03, 55, 'Poza 43 — Strada Măgurii: canalul și mașinile parcate');
       view(magLm.W(-40, 1.2), magLm.W(3, -1.5), -0.03, 55, 'Poza 44 — Strada Măgurii spre Strada Tulburii');
       view(magLm.W(49, -1.2), magLm.W(8, 0), -0.05, 55, 'Poza 45 — Strada Măgurii la vale, gardul maro');
+    }
+  }
+  // photos 46-50: Strada Gării by Parcul Triumf and the stadium gate, under the railway, the station square
+  if (garaLm && !PHOTO_VIEWS.some(v => v.gara)) {
+    const view = (from, to, pitch, fov, label) => PHOTO_VIEWS.push({ gara: true, x: from[0], z: from[1], yaw: Math.atan2(-(to[0] - from[0]), -(to[1] - from[1])), pitch, fov, label });
+    const { A, B, C } = garaLm;
+    // the five photos are taken with the phone's ultra-wide lens (~90 deg across, fov 59 on a 16:9 screen); the
+    // camera positions come from the distances and bearings of known objects in the frames
+    // heading north-west in the right lane (the park's side)
+    if (A) {
+      // 27 m before the park's sign; at the photos' coordinate, turning right into the stadium's paved mouth
+      view(A.W(A.corner + 26, A.pk * 1.9), A.W(A.corner - 30, A.pk * 1.2), 0.02, 59, 'Poza 46 — Strada Gării: Parcul Triumf, locul de joacă');
+      view(A.W(A.sg + 10, A.pk * 1.9), A.W(A.sg - 30, A.pk * 19.5), 0.0, 59, 'Poza 47 — Strada Gării: poarta Stadionului Fortuna');
+    }
+    // at the photo's coordinate, in the right lane
+    if (B) view(B.W(414, -B.rs * 1.9), B.W(330, -B.rs * 1.9), 0.03, 59, 'Poza 48 — Strada Gării sub calea ferată: zidul și locomotiva');
+    if (C) {
+      // ~10 m before the junction with the loop, towards the island's big spruce
+      view(C.W(77, C.ne * 1.2), [-157, -106.5], 0.03, 59, 'Poza 49 — Gara Câmpina: scuarul cu brazi');
+      // at the photos' coordinate: beside the island, cars parked on both sides
+      view(C.W(46, C.ne * 0.4), C.W(8, 0), 0.03, 59, 'Poza 50 — Gara Câmpina: pe lângă insula cu brazi, mașini parcate');
     }
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
