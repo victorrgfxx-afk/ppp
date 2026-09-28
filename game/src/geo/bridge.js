@@ -76,7 +76,7 @@ export function prahovaBridge() {
 }
 
 // triangle accumulator; quads are wound to face the hint normal, their shading normal is the true face normal
-class Acc {
+export class Acc {
   constructor() { this.p = []; this.n = []; this.uv = []; }
   quad(a, b, c, d, hint, uv = [0, 0, 1, 0, 1, 1, 0, 1], vn = null) {
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
@@ -439,7 +439,7 @@ function buildCanal(B, world, Mt) {
   // the meadow west of the canal between the weir and the trees by the bridge (aerial imagery, photo 32)
   for (let i = 0; i < n - 1 && Math.hypot(pts[i][0] - src[0][0], pts[i][1] - src[0][1]) < 135; i += 3) {
     const j = Math.min(n - 1, i + 3), off = HW + 1 + 21;
-    addHole([(pts[i][0] + pts[j][0]) / 2 + nrm[i][0] * off, (pts[i][1] + pts[j][1]) / 2 + nrm[i][1] * off], Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1]) / 2 + 1, 21, tan[i][0], tan[i][1]);
+    addHole([(pts[i][0] + pts[j][0]) / 2 + nrm[i][0] * off, (pts[i][1] + pts[j][1]) / 2 + nrm[i][1] * off], Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1]) / 2 + 1, 21, tan[i][0], tan[i][1], { lawn: true });
   }
   return { pts, T };
 }

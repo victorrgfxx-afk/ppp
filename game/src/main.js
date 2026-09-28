@@ -147,6 +147,9 @@ async function main() {
     const probe = new world.Box(0.9, -129.8, 1.05, 2.4, 0);
     if (!world.query(0.9, -129.8, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) park('suv', paintMaterial(0xf1f1ef, { metallic: 0.3, rough: 0.3 }), 'plateA', 0.9, -129.8, 0, { name: 'Ford Kuga' });
   }
+  // photo 33: the silver hatchback parked along the white wall of the sports ground on Strada Nicolae Grigorescu
+  const grLm = geoWorld.landmarks?.find(l => l.type === 'grigorescu');
+  if (grLm && grLm.car) park('hatch', paintMaterial(0xb9bcc0, { metallic: 0.85, rough: 0.32, dusty: 0.25 }), 'plateB', grLm.car.x, grLm.car.z, grLm.car.h, {});
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
     const rr = rng(77);
@@ -276,6 +279,15 @@ async function main() {
     view(67, -1.9, 'east', -0.07, 'Poza 30 — podul peste Prahova, spre Câmpina');
     view(67, -1.9, 'west', -0.07, 'Poza 31 — podul peste Prahova, spre Poiana Câmpina');
     view(61, -5.3, [0.89, 0.46], -0.2, 'Poza 32 — Prahova în amonte de pod: canalul și pragul');
+  }
+  // photos 33-35 (Street View at 45.1293068 N 25.7207781 E): Strada Nicolae Grigorescu after the bridge
+  if (grLm && !PHOTO_VIEWS.some(v => v.gr)) {
+    // the screenshots are zoomed in: ~55 deg vertical field of view
+    const view = (from, to, pitch, label) => PHOTO_VIEWS.push({ gr: true, x: from[0], z: from[1], yaw: Math.atan2(-(to[0] - from[0]), -(to[1] - from[1])), pitch, fov: 55, label });
+    const bh = grLm.backhoe;
+    view(grLm.W(12, 1.9), bh ? [bh.x, bh.z] : [-955, 118], 0.02, 'Poza 33 — intersecția cu Strada Plevnei și baza sportivă');
+    view(grLm.W(grLm.gateS - 13, 1.9), grLm.W(grLm.gateS + 24, 2.5), -0.02, 'Poza 34 — poarta Seva Parc');
+    view(grLm.W(grLm.S[19] + 6, 1.9), grLm.W(grLm.S[19] + 75, 2.5), -0.03, 'Poza 35 — Parcul Curiacul');
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

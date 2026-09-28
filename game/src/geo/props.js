@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, heightAt } from './data.js';
+import { GEO, heightAt, holeFlag } from './data.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
 
@@ -41,6 +41,7 @@ export function buildFences(B, world, mats) {
     const style = mats.fences[f[0]];
     const P = [];
     for (let i = 1; i < f.length; i += 2) P.push([f[i], f[i + 1]]);
+    if (holeFlag(f[1], f[2], 'noFences')) continue;
     const pick = (arr) => Array.isArray(arr) ? arr[Math.abs(Math.round(P[0][0] * 7 + P[0][1] * 3)) % arr.length] : arr;
     const mat = pick(style.m);
     let acc = 0;
@@ -146,6 +147,7 @@ export function buildPower(B, world, mats, scene) {
     let prev = null;
     for (let i = 0; i < run.length; i++) {
       const [x, z] = run[i];
+      if (holeFlag(x, z, 'noFences')) { prev = null; continue; }     // rebuilt by hand there (grigorescu.js)
       const nb = run[Math.min(run.length - 1, i + 1)], pb = run[Math.max(0, i - 1)];
       const dir = [nb[0] - pb[0], nb[1] - pb[1]];
       const L = Math.hypot(...dir) || 1;

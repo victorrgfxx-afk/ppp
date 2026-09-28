@@ -53,10 +53,18 @@ export async function loadGeo(base) {
 // The near grid covers +-GEO.ext; beyond it the world grid (its edge values match the near grid's edge).
 export function heightAt(x, z) {
   if (GEO.ups.length) { const u = underpassAt(x, z); if (u) return upHeight(u, x, z, true); }
+  if (GEO.fine) { const f = fineAt(x, z); if (f) return f.h(x, z); }
   if (GEO.W && (x < -GEO.ext || x > GEO.ext || z < -GEO.ext || z > GEO.ext)) return gridHeight(GEO.W, x, z);
   return gridHeight(GEO, x, z);
 }
 
+// zones whose terrain is rebuilt at 1 m with their own height function (the terraces of the sports ground on
+// Strada Nicolae Grigorescu): { x0, x1, z0, z1, test(x, z), h(x, z) }; h must not call heightAt
+export function addFineZone(f) { (GEO.fine ??= []).push(f); }
+export function fineAt(x, z) {
+  for (const f of GEO.fine) if (x >= f.x0 && x <= f.x1 && z >= f.z0 && z <= f.z1 && f.test(x, z)) return f;
+  return null;
+}
 // the underpass box containing (x, z), or null
 export function underpassAt(x, z) {
   for (const U of GEO.ups) {
@@ -133,28 +141,87 @@ export function forestCode(x, z) {
   return (B[k >> 2] >> ((k & 3) << 1)) & 3;
 }
 
-// Areas kept free of trees (bridge decks, the canal by the Prahova bridge): oriented rectangles centred on c,
-// half-length hl along (ux, uz), half-width hw across. The forest raster is cleared under them.
-export function addHole(c, hl, hw, ux, uz) {
-  const h = { x: c[0], z: c[1], hl, hw, ux, uz, r: Math.hypot(hl, hw) };
+// Areas kept free of trees (bridge decks, the canal, the sports ground and the parks on Strada Nicolae Grigorescu):
+// oriented rectangles (centre c, half-length hl along (ux, uz), half-width hw across) or polygons. The forest raster
+// is cleared under them; opt.scatter === false keeps the scattered single trees (park trees), opt.lawn paints the
+// ground as grass (paintLawns).
+export function addHole(c, hl, hw, ux, uz, opt = {}) {
+  const r = Math.hypot(hl, hw);
+  const test = (x, z, m = 0) => {
+    const dx = x - c[0], dz = z - c[1];
+    return Math.abs(dx * ux + dz * uz) <= hl + m && Math.abs(dz * ux - dx * uz) <= hw + m;
+  };
+  registerHole({ x0: c[0] - r, x1: c[0] + r, z0: c[1] - r, z1: c[1] + r, test, ...opt });
+}
+export function addHolePoly(P, opt = {}) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, z] of P) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  const test = (x, z, m = 0) => inPoly(P, x, z) || (m > 0 && polyDist(P, x, z) <= m);
+  registerHole({ x0: x0 - 2, x1: x1 + 2, z0: z0 - 2, z1: z1 + 2, test, ...opt });
+}
+export function inPoly(P, x, z) {
+  let c = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [xi, zi] = P[i], [xj, zj] = P[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
+export function polyDist(P, x, z) {
+  let d = Infinity;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const [ax, az] = P[j], [bx, bz] = P[i], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    d = Math.min(d, Math.hypot(x - ax - t * dx, z - az - t * dz));
+  }
+  return d;
+}
+function registerHole(h) {
   (GEO.holes ??= []).push(h);
   const F = GEO.forest, B = GEO.forestBits;
   if (!B) return;
-  const i0 = Math.max(0, Math.floor((h.x - h.r + F.ext) / F.step)), i1 = Math.min(F.n - 1, Math.ceil((h.x + h.r + F.ext) / F.step));
-  const j0 = Math.max(0, Math.floor((h.z - h.r + F.ext) / F.step)), j1 = Math.min(F.n - 1, Math.ceil((h.z + h.r + F.ext) / F.step));
+  const i0 = Math.max(0, Math.floor((h.x0 + F.ext) / F.step)), i1 = Math.min(F.n - 1, Math.ceil((h.x1 + F.ext) / F.step));
+  const j0 = Math.max(0, Math.floor((h.z0 + F.ext) / F.step)), j1 = Math.min(F.n - 1, Math.ceil((h.z1 + F.ext) / F.step));
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-    if (!inHoleOf(h, -F.ext + i * F.step, -F.ext + j * F.step, 2)) continue;
+    if (!h.test(-F.ext + i * F.step, -F.ext + j * F.step, 2)) continue;
     const k = j * F.n + i;
     B[k >> 2] &= ~(3 << ((k & 3) << 1));
   }
 }
-function inHoleOf(h, x, z, m = 0) {
-  const dx = x - h.x, dz = z - h.z;
-  return Math.abs(dx * h.ux + dz * h.uz) <= h.hl + m && Math.abs(dz * h.ux - dx * h.uz) <= h.hw + m;
-}
+// scattered single trees inside a hole are dropped (unless it keeps them)
 export function inHole(x, z) {
-  for (const h of GEO.holes || []) if (Math.abs(x - h.x) <= h.r && Math.abs(z - h.z) <= h.r && inHoleOf(h, x, z)) return true;
+  for (const h of GEO.holes || []) if (h.scatter !== false && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
   return false;
+}
+// a flag of the holes at (x, z) (e.g. noFences: no generated lot fences / village poles there)
+export function holeFlag(x, z, key) {
+  for (const h of GEO.holes || []) if (h[key] && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
+  return false;
+}
+// lawns: the terrain splat (forest floor / farmland / gravel weights) is cleared to plain grass under them
+export function paintLawns(splat) {
+  const L = (GEO.holes || []).filter(h => h.lawn);
+  const img = splat && splat.image;
+  if (!L.length || !img || !img.width) return 0;
+  const W = img.width, H = img.height, E = GEO.ext;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  let n = 0;
+  for (const h of L) {
+    const i0 = Math.max(0, Math.floor((h.x0 + E) / (2 * E) * W)), i1 = Math.min(W - 1, Math.ceil((h.x1 + E) / (2 * E) * W));
+    const j0 = Math.max(0, Math.floor((h.z0 + E) / (2 * E) * H)), j1 = Math.min(H - 1, Math.ceil((h.z1 + E) / (2 * E) * H));
+    if (i1 < i0 || j1 < j0) continue;
+    const d = g.getImageData(i0, j0, i1 - i0 + 1, j1 - j0 + 1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      if (!h.test(-E + (i + 0.5) * 2 * E / W, -E + (j + 0.5) * 2 * E / H)) continue;
+      const k = ((j - j0) * (i1 - i0 + 1) + (i - i0)) * 4;
+      d.data[k] = d.data[k + 1] = d.data[k + 2] = 0; n++;
+    }
+    g.putImageData(d, i0, j0);
+  }
+  splat.image = c; splat.needsUpdate = true;
+  return n;
 }
 
 // Street profile of the hand-built part of Strada Gării (used by config.baseHeight).

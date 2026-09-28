@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, loadGeo, heightAt, GeoBuilder, profileAt } from './data.js';
+import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns } from './data.js';
 import { genGeoTextures } from './geotex.js';
 import { loadGeoTextures, buildTerrain, buildFarTerrain, buildWater } from './terrain.js';
 import { makeBuildingMaterials, buildBuildings, footprintIndex } from './buildings.js';
@@ -8,6 +8,7 @@ import { makePropMaterials, buildFences, buildPower, addWires } from './props.js
 import { buildTrees } from './trees.js';
 import { buildLandmarks } from './landmarks.js';
 import { buildCanopy } from './canopy.js';
+import { prepareGrigorescu } from './grigorescu.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -30,6 +31,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const t0 = performance.now();
   // 750 m chunks around the street, 2 km beyond; merged meshes farther than 6.8 km are hidden (fog)
   const B = new GeoBuilder(750, 2000, GEO.ext, 6800);
+  prepareGrigorescu();                                  // levels the sports ground's courts before the terrain is meshed
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
@@ -37,8 +39,11 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
   const landmarks = buildLandmarks(B, world);
   log('clădiri ' + stats.n, performance.now() - t0);
+  paintLawns(gt.splat);
   const rm = makeRoadMaterials();
   buildRoads(B, world, rm);
+  // walkable surfaces of the landmarks (courts, raised sidewalks) take part in the ground height like bridge decks
+  for (const l of landmarks) if (l && l.surface && l.bbox) GEO.bridges.push({ fn: l.surface, ...l.bbox, P: [], y: [], w: 0 });
   const lines = [];
   for (const l of landmarks) if (l && l.wires) for (const v of l.wires) lines.push(v);
   buildRail(B, lines, rm);

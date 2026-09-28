@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, normalAt, heightAt, underpassAt } from './data.js';
+import { GEO, normalAt, heightAt, underpassAt, fineAt } from './data.js';
 import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
 import { WIND } from '../util.js';
@@ -135,9 +135,10 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
         pos.push(-ext + i * step - cx, H[j * n + i], -ext + j * step - cz);
         normalAt(i, j, nrm, G); nor.push(nrm.x, nrm.y, nrm.z);
       }
-      // underpass boxes: at full resolution their cells are cut out and rebuilt at 1 m (vertical abutments, level road)
-      const holes = s === 1 && G === GEO && GEO.ups?.length ? new Set() : null;
-      const inHole = (a, b) => !!underpassAt(-ext + (ci * CH + a + 0.5) * step, -ext + (cj * CH + b + 0.5) * step);
+      // underpass boxes and fine zones: at full resolution their cells are cut out and rebuilt at 1 m (vertical abutments,
+      // level road, terrace edges)
+      const holes = s === 1 && G === GEO && (GEO.ups?.length || GEO.fine?.length) ? new Set() : null;
+      const inHole = (a, b) => { const x = -ext + (ci * CH + a + 0.5) * step, z = -ext + (cj * CH + b + 0.5) * step; return !!(underpassAt(x, z) || (GEO.fine && fineAt(x, z))); };
       for (let b = 0; b < m - 1; b++) for (let a = 0; a < m - 1; a++) {
         const A = b * m + a, B = A + 1, C = A + m, D = C + 1;
         if (holes && inHole(a, b)) { holes.add(a + ',' + b); continue; }
