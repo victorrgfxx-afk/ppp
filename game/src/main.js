@@ -289,6 +289,14 @@ async function main() {
     view(grLm.W(grLm.gateS - 13, 1.9), grLm.W(grLm.gateS + 24, 2.5), -0.02, 'Poza 34 — poarta Seva Parc');
     view(grLm.W(grLm.S[19] + 6, 1.9), grLm.W(grLm.S[19] + 75, 2.5), -0.03, 'Poza 35 — Parcul Curiacul');
   }
+  // photos 36-37 (Street View at 45.1398295 N 25.7098525 E): DN1 (E60) at the Cornu roundabout
+  const coLm = geoWorld.landmarks?.find(l => l.type === 'cornu');
+  if (coLm && !PHOTO_VIEWS.some(v => v.co)) {
+    const view = (from, to, pitch, label) => PHOTO_VIEWS.push({ co: true, x: from[0], z: from[1], yaw: Math.atan2(-(to[0] - from[0]), -(to[1] - from[1])), pitch, fov: 58, label });
+    const s36 = coLm.sAtX(368), s37 = coLm.sAtX(497);
+    view(coLm.lane(s36, 1.9), coLm.lane(s36 + 90, 0.6), -0.02, 'Poza 36 — DN1 spre sensul giratoriu de la Cornu');
+    view(coLm.lane(s37, 1.9), [coLm.ring.x + 4, coLm.ring.z - 3], -0.03, 'Poza 37 — intrarea în sensul giratoriu, benzinăria Rompetrol');
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

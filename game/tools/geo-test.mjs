@@ -26,7 +26,7 @@ const frames = async (n) => { for (let i = 0; i < n; i++) await page.evaluate(()
 const only = process.argv[4] ? process.argv[4].split(',') : null;
 const shots = [
   ['view1', 0], ['view7', 6], ['view9', 8], ['view2', 1],
-  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28], ['view30', 29], ['view31', 30], ['view32', 31], ['view33', 32], ['view34', 33], ['view35', 34],
+  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28], ['view30', 29], ['view31', 30], ['view32', 31], ['view33', 32], ['view34', 33], ['view35', 34], ['view36', 35], ['view37', 36],
 ];
 for (const [name, k] of shots) {
   if (only && !only.includes(name)) continue;
@@ -49,6 +49,7 @@ const cams = [
   ['world', { x: -1500, y: 900, z: -9500, yaw: Math.PI - 0.15, pitch: -0.2 }],
   ['bridge', { x: -775, y: 22, z: 70, yaw: 2.2, pitch: -0.28 }],
   ['sport', { x: -905, y: 45, z: 95, yaw: 2.0, pitch: -0.5 }],
+  ['cornu', { x: 470, y: 40, z: 360, yaw: -2.2, pitch: -0.5 }],
 ];
 for (const [name, c] of cams) {
   if (only && !only.includes(name)) continue;

@@ -4,6 +4,7 @@ import { GEO, heightAt, upRoad, upHeight } from './data.js';
 import { M } from '../materials.js';
 import { buildPrahovaBridge } from './bridge.js';
 import { buildGrigorescu } from './grigorescu.js';
+import { buildCornu } from './cornu.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -82,6 +83,8 @@ export function buildLandmarks(B, world) {
   if (br) out.push(br);
   const gr = buildGrigorescu(B, world);
   if (gr) out.push(gr);
+  const co = buildCornu(B, world);
+  if (co) out.push(co);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

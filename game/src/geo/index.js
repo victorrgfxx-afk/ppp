@@ -9,6 +9,7 @@ import { buildTrees } from './trees.js';
 import { buildLandmarks } from './landmarks.js';
 import { buildCanopy } from './canopy.js';
 import { prepareGrigorescu } from './grigorescu.js';
+import { prepareCornu } from './cornu.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -32,6 +33,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   // 750 m chunks around the street, 2 km beyond; merged meshes farther than 6.8 km are hidden (fog)
   const B = new GeoBuilder(750, 2000, GEO.ext, 6800);
   prepareGrigorescu();                                  // levels the sports ground's courts before the terrain is meshed
+  prepareCornu();                                       // DN1 at the Cornu roundabout: carriageways to the measured cross-section
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
