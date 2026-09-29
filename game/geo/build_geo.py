@@ -436,8 +436,9 @@ OVERRIDES = {
 # landmarks from the user's photos: position from the coordinates they sent, orientation and size from the photo
 LANDMARKS = [
     # photo 24: white lattice steel cross on the hill above Strada Măgurii (45.1184046 N, 25.7037585 E); nudged 5 m off the
-    # lane that OSM maps right next to the pin; arms along bearing ~120 deg (right arm nearer in the photo) (the photo looks north, sun behind the camera)
-    dict(type='cross', lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), arms_bearing=120.0, pad=5.5, clear=28.0),
+    # lane that OSM maps right next to the pin; arms along bearing 98.2 deg: photo 60 sees it exactly edge-on from ~103 m
+    # east (camera resected on the skyline of the wooded hill, src/geo/drapel.js); photo 24 looks NNW, ~20 deg off the arms' normal
+    dict(type='cross', lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), arms_bearing=98.2, pad=5.5, clear=28.0),
 ]
 # forest stands whose OSM polygon has no leaf_type but the photos show the mix: the hill across the Prahova
 # (photos 7, 17, 23: black pines between the beeches and hornbeams)
@@ -992,6 +993,7 @@ def main():
     for outers, inners, tg, _ in forest_a:
         code = LEAF.get(tg.get('leaf_type'), 9)
         if code == 9 and any(SPoly(outers[0]).contains(Point(*q)) for q in FOREST_MIXED_AT if len(outers[0]) > 2): code = 2
+        elif code == 9 and tg.get('leaf_cycle') == 'deciduous': code = 1     # no leaf_type but deciduous: broadleaved (photo 60)
         for r in outers: cv2.fillPoly(fcode, [np.round(to_px(r, F5, WEXT) * 8).astype(np.int32)], int(code), cv2.LINE_8, 3)
         for r in inners: cv2.fillPoly(fcode, [np.round(to_px(r, F5, WEXT) * 8).astype(np.int32)], 0, cv2.LINE_8, 3)
     # untagged stands: mostly broadleaved, with mixed and pine stands in patches of a few hectares

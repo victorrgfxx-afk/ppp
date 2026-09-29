@@ -19,6 +19,7 @@ import { prepareMonument } from './monument.js';
 import { prepareCantacuzino } from './cantacuzino.js';
 import { prepareHala } from './hala.js';
 import { prepareTriaj } from './triaj.js';
+import { prepareDrapel } from './drapel.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -52,6 +53,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareCantacuzino();                                 // Str. Toma Cantacuzino's slope: continuous centre line, no lot fences
   prepareHala();                                        // the old yard below it: the hall's platform levelled into the slope
   prepareTriaj();                                       // its bottom and Strada Gării by the yard: the old building's style, no lot fences
+  prepareDrapel();                                      // the hill of the cross: forests and scrub traced from the aerial, the dirt track
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

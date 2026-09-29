@@ -14,6 +14,7 @@ import { buildMonument } from './monument.js';
 import { buildCantacuzino } from './cantacuzino.js';
 import { buildHala } from './hala.js';
 import { buildTriaj } from './triaj.js';
+import { buildDrapel } from './drapel.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -112,6 +113,8 @@ export function buildLandmarks(B, world) {
   if (ha) out.push(ha);
   const tr = buildTriaj(B, world);
   if (tr) out.push(tr);
+  const dr = buildDrapel(B, world);
+  if (dr) out.push(dr);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

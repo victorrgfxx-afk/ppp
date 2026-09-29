@@ -165,6 +165,9 @@ async function main() {
   // the car parked by the monument's junction (photo 54)
   const monLm = geoWorld.landmarks?.find(l => l.type === 'monument');
   if (monLm) for (const c of monLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.5, rough: 0.35, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
+  // the user's grey-green SUV parked by the flag on the hill (photo 60)
+  const drLm = geoWorld.landmarks?.find(l => l.type === 'drapel');
+  if (drLm) for (const c of drLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.7, rough: 0.3, dusty: 0.2 }), 'plateC', c.x, c.z, c.h, {});
 
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
@@ -261,10 +264,11 @@ async function main() {
     if (!document.pointerLockElement && started && !paused && !matchMedia('(pointer: coarse)').matches && !input.mouse.dragging) pause();
   });
   addEventListener('keydown', (e) => { if (e.code === 'Escape' && started && !paused) pause(); });
-  // photo 24: the cross on the hill, seen from ~11 m south-south-west, looking north (sun behind the camera)
+  // photo 24: the cross on the hill, seen from ~11 m south-south-east, looking north-north-west (sun behind the camera),
+  // ~20 deg off the arms' normal (the right arm looks 21% longer)
   const crossLm = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossLm && !PHOTO_VIEWS.some(v => v.cross)) {
-    const fx = Math.cos((10 + 47.98) * Math.PI / 180), fz = Math.cos((10 - 42.02) * Math.PI / 180);
+    const fx = Math.cos((-11.8 + 47.98) * Math.PI / 180), fz = Math.cos((-11.8 - 42.02) * Math.PI / 180);
     PHOTO_VIEWS.push({ cross: true, x: crossLm.x - fx * 11, z: crossLm.z - fz * 11, yaw: Math.atan2(-fx, -fz), pitch: 0.3, label: 'Poza 24 — crucea de pe deal' });
   }
   // photos 25-29 (the user's Street View screenshots): the railway underpass of DJ100E by Strada Gării
@@ -403,6 +407,11 @@ async function main() {
     const view = (v, pitch, label) => PHOTO_VIEWS.push({ triaj: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch, fov: 32, label });
     view(trLm.views.a, 0.02, 'Poza 58 — Strada Toma Cantacuzino: cotul spre calea ferată');
     view(trLm.views.b, 0.0, 'Poza 59 — Strada Gării: de-a lungul triajului');
+  }
+  // photo 60: the flag by the cross, the cross edge-on beyond it (pose resected on the hill's skyline: 15.3 deg up, 49 deg fov)
+  if (drLm?.view && !PHOTO_VIEWS.some(v => v.drapel)) {
+    const v = drLm.view;
+    PHOTO_VIEWS.push({ drapel: true, x: v.from[0], z: v.from[1], yaw: v.yaw, pitch: v.pitch, fov: v.fov, label: 'Poza 60 — drapelul de lângă crucea de pe deal' });
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
