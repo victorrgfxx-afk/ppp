@@ -22,6 +22,7 @@ import { prepareTriaj } from './triaj.js';
 import { prepareDrapel } from './drapel.js';
 import { buildHillwood } from './hillwood.js';
 import { prepareVad } from './vad.js';
+import { prepareBreaza } from './breaza.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -57,6 +58,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareTriaj();                                       // its bottom and Strada Gării by the yard: the old building's style, no lot fences
   prepareDrapel();                                      // the hill of the cross: forests and scrub traced from the aerial, the dirt track
   prepareVad();                                         // the DJ101R bridge: Strada Gării onto the aerial, the deck, the embankment
+  prepareBreaza();                                      // its fork onto DN1 at Breaza: the incoming branch onto the aerial, open ground
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

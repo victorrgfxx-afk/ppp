@@ -139,12 +139,12 @@ function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
     bridgeStructure(B, mats, P, N, w, yfn);
     bridges.push({ P, w: w / 2 + 0.5, y: P.map((_, k) => yfn(k)) });
   } else {
-    const dy = 0.035;
-    yfn = (k) => heightAt(P[k][0], P[k][1]) + dy;
+    const dy = r.dy ?? (() => 0.035);                     // r.dy(x, z): a ribbon kept under a neighbour's asphalt (breaza.js)
+    yfn = (k) => heightAt(P[k][0], P[k][1]) + dy(P[k][0], P[k][1]);
   }
   ribbon(B, mat, P, N, -w / 2, w / 2, yfn, TILE[surf] ?? 1.3);
   const major = ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary'].includes(r.c);
-  if (surf === 'asphalt' && !r.br && ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential'].includes(r.c)) {
+  if (surf === 'asphalt' && !r.br && !r.noShoulder && ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential'].includes(r.c)) {
     const sw = major ? 0.9 : 0.45;
     ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + sw, (k) => yfn(k) - 0.02, 1.2);
     ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k) => yfn(k) - 0.02, 1.2);

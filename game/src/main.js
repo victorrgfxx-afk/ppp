@@ -425,6 +425,12 @@ async function main() {
     view(vdLm.views.a, -0.13, 69.6, 'Poza 61 — pe Podul Vadului (DJ101R), spre Prahova');
     if (vdLm.views.b) view(vdLm.views.b, -0.13, 72.8, 'Poza 62 — Strada Gării pe sub Podul Vadului');
   }
+  // photo 63 (phone photo from a car, 45.1435469 N 25.6988803 E): the fork off Podul Vadului onto DN1 at Breaza
+  const bzLm = geoWorld.landmarks?.find(l => l.type === 'breaza');
+  if (bzLm?.view && !PHOTO_VIEWS.some(v => v.breaza)) {
+    const v = bzLm.view;
+    PHOTO_VIEWS.push({ breaza: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: -0.02, fov: 67.3, label: 'Poza 63 — ieșirea de pe Podul Vadului în DN1, la Breaza' });
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

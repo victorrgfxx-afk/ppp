@@ -17,6 +17,7 @@ import { buildTriaj } from './triaj.js';
 import { buildDrapel } from './drapel.js';
 import { buildHillwoodStatic } from './hillwood.js';
 import { buildVad } from './vad.js';
+import { buildBreaza } from './breaza.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -121,6 +122,8 @@ export function buildLandmarks(B, world) {
   if (hw) out.push(hw);
   const vd = buildVad(B, world);                       // photos 61-62: the DJ101R bridge over Strada Gării, the railway and the Prahova
   if (vd) out.push(vd);
+  const bz = buildBreaza(B, world);                   // photo 63: the fork onto DN1 at the Breaza town limit
+  if (bz) out.push(bz);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),
