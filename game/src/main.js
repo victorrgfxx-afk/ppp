@@ -167,6 +167,8 @@ async function main() {
   if (monLm) for (const c of monLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.5, rough: 0.35, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
   // the user's grey-green SUV parked by the flag on the hill (photo 60)
   const drLm = geoWorld.landmarks?.find(l => l.type === 'drapel');
+  const hillEgg = geoWorld.landmarks?.find(l => l.type === 'hillwood')?.egg ?? null;
+  let hillEggFound = false;
   if (drLm) for (const c of drLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.7, rough: 0.3, dusty: 0.2 }), 'plateC', c.x, c.z, c.h, {});
 
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
@@ -570,6 +572,9 @@ async function main() {
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
       geoWorld.update(camera.position);
       roadName = roadNameAt(pos0().x, pos0().z);
+      // the easter egg in the wood of the hill of the cross
+      const egg = hillEgg && !hillEggFound ? hillEgg : null;
+      if (egg && Math.hypot(pos0().x - egg.x, pos0().z - egg.z) < egg.r) { hillEggFound = true; hud.toast('Easter egg: ai găsit scheletul din pădurea de pe dealul crucii!', 6); }
       for (const v of vehicles) v.car.group.visible = v === active || Math.hypot(v.x - camera.position.x, v.z - camera.position.z) < 320;
     }
 

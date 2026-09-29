@@ -45,6 +45,7 @@ export function prepareDrapel() {
   TR = L ? tracks(L) : [];
   const bits = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
   const fo = bits(HILL.forest), op = bits(HILL.open), on = (u, k) => (u[k >> 3] >> (k & 7)) & 1;
+  OPEN = op;
   for (let j = 0; j < HILL.nj; j++) for (let i = 0; i < HILL.ni; i++) {
     const k = j * HILL.ni + i;
     if (!on(fo, k)) continue;
@@ -100,7 +101,35 @@ const FLAG_TRACK = [[-6, -0.6], [0, -0.9], [9.5, -1.5], [13.6, -2.0], [45, -6.3]
 //   on into the wood; [distance, azimuth deg right of the axis]
 const FOREST_TRACK = [[120.6, -1.3], [150, -1.25], [200, -1.15], [250, -1.05], [285, -0.8], [305, -0.1], [318, 0.8], [328, 1.6], [340, 2.3], [360, 3.1], [385, 3.8], [410, 4.3]];
 const TW = 2.6;                                              // track width, m
-let TR = [];
+let TR = [], OPEN = null;
+
+// for the hill's ground cover (hillwood.js): the open meadow (the traced mask, 0..1 between its 5 m nodes, a node's
+// neighbours counted so the scrub clumps' gaps are meadow too), the tracks, the photo spot
+export function hillOpen(x, z) {
+  if (!OPEN) return 0;
+  const fx = (x - HILL.x0) / 5, fz = (z - HILL.z0) / 5, i = Math.floor(fx), j = Math.floor(fz);
+  if (i < 1 || j < 1 || i >= HILL.ni - 2 || j >= HILL.nj - 2) return 0;
+  const at = (a, b) => { for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const k = (b + dj) * HILL.ni + a + di; if ((OPEN[k >> 3] >> (k & 7)) & 1) return 1; } return 0; };
+  const u = fx - i, v = fz - j;
+  return (at(i, j) * (1 - u) + at(i + 1, j) * u) * (1 - v) + (at(i, j + 1) * (1 - u) + at(i + 1, j + 1) * u) * v;
+}
+export const HILL_BOX = { x0: HILL.x0, x1: HILL.x0 + 5 * (HILL.ni - 1), z0: HILL.z0, z1: HILL.z0 + 5 * (HILL.nj - 1) };
+// the nearest track at (x, z): { o, d, s, id } or null (beyond ~5 m)
+export function trackAt(x, z) {
+  let best = null;
+  for (const T of TR) { const q = local(T, x, z); if (q && (!best || q.d < best.d)) best = { ...q, id: T.id, L: T.L }; }
+  return best;
+}
+export function trackPoint(id, s) {
+  const T = TR.find(t => t.id === id); if (!T) return null;
+  let k = 0; while (k < T.S.length - 1 && T.S[k + 1] < s) k++;
+  return { p: T.pts[k], t: T.tan[k] };
+}
+export function drapelSpots() {
+  const L = layout(); if (!L) return null;
+  const { cam, pole, hx, hz, rx, rz, cross } = L;
+  return { cam, pole, cross, car: [cam[0] + hx * 6.75 + rx * 0.82, cam[1] + hz * 6.75 + rz * 0.82], h: [hx, hz] };
+}
 
 // Catmull-Rom through the control points, sampled every ~0.6 m, with tangents, arc length and a 5 m grid index
 function tracks(L) {

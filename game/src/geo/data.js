@@ -256,6 +256,7 @@ export class GeoBuilder {
     for (let i = 0; i < uv.length; i++) g.uv.push(uv[i]);
     const nv = pos.length / 3;
     if (color) { g.hasColor = true; }
+    if (color && color.length === pos.length) { for (let i = 0; i < color.length; i++) g.c.push(color[i]); return; }   // per vertex
     const c = color || [1, 1, 1];
     for (let i = 0; i < nv; i++) g.c.push(c[0], c[1], c[2]);
   }
@@ -265,7 +266,9 @@ export class GeoBuilder {
     if (matrix) { g = g === geometry ? g.clone() : g; g.applyMatrix4(matrix); }
     if (!g.attributes.normal) g.computeVertexNormals();
     const uv = g.attributes.uv ? g.attributes.uv.array : new Float32Array(g.attributes.position.count * 2);
-    this.tris(material, g.attributes.position.array, g.attributes.normal.array, uv, color, opts);
+    // opts.vcol: keep the geometry's own vertex colours (rgb)
+    const col = color ?? (opts.vcol && g.attributes.color?.itemSize === 3 ? g.attributes.color.array : null);
+    this.tris(material, g.attributes.position.array, g.attributes.normal.array, uv, col, opts);
   }
   // vertical quad a->b (xz), from y0a..y1a at a and y0b..y1b at b; normal to the right of a->b
   quad(material, ax, az, bx, bz, y0a, y1a, y0b, y1b, u0, u1, v0a, v1a, v0b, v1b, color = null, opts = {}) {

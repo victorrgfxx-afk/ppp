@@ -15,6 +15,7 @@ import { buildCantacuzino } from './cantacuzino.js';
 import { buildHala } from './hala.js';
 import { buildTriaj } from './triaj.js';
 import { buildDrapel } from './drapel.js';
+import { buildHillwoodStatic } from './hillwood.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -115,6 +116,8 @@ export function buildLandmarks(B, world) {
   if (tr) out.push(tr);
   const dr = buildDrapel(B, world);
   if (dr) out.push(dr);
+  const hw = buildHillwoodStatic(B, world);           // the hill of the cross: fallen trunks, boulders, the easter egg
+  if (hw) out.push(hw);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

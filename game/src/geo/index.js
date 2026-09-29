@@ -20,6 +20,7 @@ import { prepareCantacuzino } from './cantacuzino.js';
 import { prepareHala } from './hala.js';
 import { prepareTriaj } from './triaj.js';
 import { prepareDrapel } from './drapel.js';
+import { buildHillwood } from './hillwood.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -83,15 +84,19 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   log('drumuri, garduri, stâlpi', performance.now() - t0);
   const trees = buildTrees(scene, world, renderer, quality);
   const canopy = buildCanopy(scene, gt, trees.forest.Q);
+  const hill = buildHillwood(scene, world, quality);        // the hill of the cross up close: grass, litter, ferns, brambles
   log('copaci ' + trees.count + ', pădure ' + trees.forest.count() + ', coronament ' + (canopy ? canopy.meshes.length : 0), performance.now() - t0);
-  let cullI = 0;
+  let cullI = 0, lastCull = null;
   const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.length, meshes: meshes.length };
   return {
     fronts, info, terrain, landmarks, forest: trees.forest,
     update(camPos) {
       trees.update(camPos);
-      // distance culling of the merged chunks (a few per frame is enough: they change slowly)
-      for (let k = 0; k < 200 && culled.length; k++) {
+      hill.update(camPos);
+      // distance culling of the merged chunks (a few per frame is enough: they change slowly; all at once after a jump)
+      const jumped = !lastCull || Math.hypot(camPos.x - lastCull.x, camPos.z - lastCull.z) > 150;
+      lastCull = { x: camPos.x, z: camPos.z };
+      for (let k = 0, n = jumped ? culled.length : 200; k < n && culled.length; k++) {
         const e = culled[cullI = (cullI + 1) % culled.length];
         e.m.visible = Math.hypot(e.c.x - camPos.x, e.c.z - camPos.z) - e.r < e.d;
       }
