@@ -397,6 +397,13 @@ async function main() {
     view(haLm.views.a, 0.04, 'Poza 56 — Strada Toma Cantacuzino: poarta curții și hala dezafectată');
     view(haLm.views.b, 0.0, 'Poza 57 — Strada Toma Cantacuzino: bifurcația de lângă rezervor');
   }
+  // photos 58-59: the bend into Strada Gării, then along the railway yard (main lens, fov 32)
+  const trLm = geoWorld.landmarks?.find(l => l.type === 'triaj');
+  if (trLm?.views && !PHOTO_VIEWS.some(v => v.triaj)) {
+    const view = (v, pitch, label) => PHOTO_VIEWS.push({ triaj: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch, fov: 32, label });
+    view(trLm.views.a, 0.02, 'Poza 58 — Strada Toma Cantacuzino: cotul spre calea ferată');
+    view(trLm.views.b, 0.0, 'Poza 59 — Strada Gării: de-a lungul triajului');
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

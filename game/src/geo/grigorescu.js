@@ -197,6 +197,7 @@ export function prepareGrigorescu() {
 
 // ------------------------------------------------------------------ materials and textures
 let MT = null;
+export const grigorescuMats = () => mats();        // shared with triaj.js (thujas, floodlight mast)
 function mats() {
   if (MT) return MT;
   const courtTex = (kind) => ctex(512, 512, (g, w, h) => {
@@ -354,7 +355,7 @@ function drape(acc, P, lift, maxEdge = 3, tile = 3) {
   for (const [i, j, k] of faces) emit(P[i], P[j], P[k]);
 }
 // columnar thuja ('Smaragd'): widest at ~40 % of the height, narrowing to a pointed top, bumpy outline
-function thuja(list, x, y, z, H, R, seed) {
+export function thuja(list, x, y, z, H, R, seed) {
   const pts = [], NV = 16;
   for (let k = 0; k <= NV; k++) {
     const t = k / NV, r = R * (0.78 + 0.22 * Math.sin(Math.PI * Math.min(1, t * 1.25))) * Math.pow(Math.max(0, 1 - Math.pow(t, 2.2)), 0.8);
@@ -372,7 +373,7 @@ function thuja(list, x, y, z, H, R, seed) {
   g.translate(x, y - 0.1, z); list.push(g);
 }
 // lattice floodlight mast: triangular section, zigzag lacing, two floodlights aimed at (ax, az)
-function mast(list, heads, x, y, z, H, ax, az) {
+export function mast(list, heads, x, y, z, H, ax, az) {
   const r = 0.32, P = (k, h) => [x + r * Math.cos(k * 2.094), y + h, z + r * Math.sin(k * 2.094)];
   for (let k = 0; k < 3; k++) tube(list, P(k, 0), P(k, H), 0.035, 5);
   for (let h = 0, s = 0; h < H - 0.1; h += 0.7, s++) for (let k = 0; k < 3; k++) tube(list, P(k, h), P((k + 1) % 3, h + 0.7), 0.014, 4);

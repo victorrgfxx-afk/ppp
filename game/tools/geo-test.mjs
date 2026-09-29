@@ -26,7 +26,7 @@ const frames = async (n) => { for (let i = 0; i < n; i++) await page.evaluate(()
 const only = process.argv[4] ? process.argv[4].split(',') : null;
 const shots = [
   ['view1', 0], ['view7', 6], ['view9', 8], ['view2', 1],
-  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28], ['view30', 29], ['view31', 30], ['view32', 31], ['view33', 32], ['view34', 33], ['view35', 34], ['view36', 35], ['view37', 36], ['view38', 37], ['view39', 38], ['view40', 39], ['view41', 40], ['view42', 41], ['view43', 42], ['view44', 43], ['view45', 44], ['view46', 45], ['view47', 46], ['view48', 47], ['view49', 48], ['view50', 49], ['view51', 50], ['view52', 51], ['view53', 52], ['view54', 53], ['view55', 54], ['view56', 55], ['view57', 56],
+  ['view17', 16], ['view18', 17], ['view19', 18], ['view20', 19], ['view21', 20], ['view22', 21], ['view23', 22], ['view24', 23], ['view25', 24], ['view26', 25], ['view27', 26], ['view28', 27], ['view29', 28], ['view30', 29], ['view31', 30], ['view32', 31], ['view33', 32], ['view34', 33], ['view35', 34], ['view36', 35], ['view37', 36], ['view38', 37], ['view39', 38], ['view40', 39], ['view41', 40], ['view42', 41], ['view43', 42], ['view44', 43], ['view45', 44], ['view46', 45], ['view47', 46], ['view48', 47], ['view49', 48], ['view50', 49], ['view51', 50], ['view52', 51], ['view53', 52], ['view54', 53], ['view55', 54], ['view56', 55], ['view57', 56], ['view58', 57], ['view59', 58],
 ];
 for (const [name, k] of shots) {
   if (only && !only.includes(name)) continue;
@@ -58,6 +58,7 @@ const cams = [
   ['monument', { x: -545, y: 30, z: -345, yaw: -0.91, pitch: -0.7 }],
   ['cantacuzino', { x: 200, y: 80, z: -345, yaw: -2.57, pitch: -0.95 }],
   ['hala', { x: 345, y: 55, z: -250, yaw: -0.83, pitch: -0.62 }],
+  ['triaj', { x: 405, y: 50, z: -250, yaw: -2.43, pitch: -0.62 }],
 ];
 for (const [name, c] of cams) {
   if (only && !only.includes(name)) continue;
