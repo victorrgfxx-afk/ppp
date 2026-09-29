@@ -15,6 +15,7 @@ import { preparePitigaia } from './pitigaia.js';
 import { prepareMagurii } from './magurii.js';
 import { prepareGara } from './gara.js';
 import { prepareCastel } from './castel.js';
+import { prepareMonument } from './monument.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -44,6 +45,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareMagurii();                                     // Str. Măgurii at Str. Tulburii: moved onto the aerial, channel and ditch
   prepareGara();                                        // Strada Gării under the railway: the retaining wall's vertical step
   prepareCastel();                                      // Strada Gării by the water tower: no generated lot fences there
+  prepareMonument();                                    // DJ100E at the monument: the carriageway clears the round island
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

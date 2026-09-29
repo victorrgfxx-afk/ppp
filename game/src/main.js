@@ -162,6 +162,9 @@ async function main() {
   // the cars along Strada Gării by the water tower and in its yard (photos 51-53)
   const castelLm = geoWorld.landmarks?.find(l => l.type === 'castel');
   if (castelLm) for (const [k, c] of (castelLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: 0.55, rough: 0.38, dusty: 0.25 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
+  // the car parked by the monument's junction (photo 54)
+  const monLm = geoWorld.landmarks?.find(l => l.type === 'monument');
+  if (monLm) for (const c of monLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.5, rough: 0.35, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
 
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
@@ -375,6 +378,11 @@ async function main() {
     view(castelLm.views.a, 0.06, 'Poza 51 — Strada Gării: castelul de apă al gării');
     view(castelLm.views.b, 0.08, 'Poza 52 — Strada Gării: postul de transformare și castelul de apă');
     view(castelLm.views.c, 0.05, 'Poza 53 — Strada Gării: curtea și clădirea în dungi');
+  }
+  // photo 54: the monument at the DJ100E junction, from the east arm of Strada Centru (ultra-wide lens, fov 59)
+  if (monLm?.view && !PHOTO_VIEWS.some(v => v.mon)) {
+    const v = monLm.view;
+    PHOTO_VIEWS.push({ mon: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: 0.06, fov: 59, label: 'Poza 54 — Strada Centru: monumentul de la intersecție' });
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
