@@ -159,6 +159,9 @@ async function main() {
   // the cars round the station square and along the side street (photos 49-50)
   const garaLm = geoWorld.landmarks?.find(l => l.type === 'gara');
   if (garaLm) for (const [k, c] of (garaLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: 0.6, rough: 0.35, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
+  // the cars along Strada Gării by the water tower and in its yard (photos 51-53)
+  const castelLm = geoWorld.landmarks?.find(l => l.type === 'castel');
+  if (castelLm) for (const [k, c] of (castelLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: 0.55, rough: 0.38, dusty: 0.25 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
 
   // more parked cars on the real streets around (right-hand side, never inside fences/buildings)
   {
@@ -364,6 +367,14 @@ async function main() {
       // at the photos' coordinate: beside the island, cars parked on both sides
       view(C.W(46, C.ne * 0.4), C.W(8, 0), 0.03, 59, 'Poza 50 — Gara Câmpina: pe lângă insula cu brazi, mașini parcate');
     }
+  }
+  // photos 51-53: Strada Gării by the station's water tower (ultra-wide lens, fov 59): along the street, then turning
+  // left into the yard
+  if (castelLm?.views && !PHOTO_VIEWS.some(v => v.castel)) {
+    const view = (v, pitch, label) => PHOTO_VIEWS.push({ castel: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch, fov: 59, label });
+    view(castelLm.views.a, 0.06, 'Poza 51 — Strada Gării: castelul de apă al gării');
+    view(castelLm.views.b, 0.08, 'Poza 52 — Strada Gării: postul de transformare și castelul de apă');
+    view(castelLm.views.c, 0.05, 'Poza 53 — Strada Gării: curtea și clădirea în dungi');
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

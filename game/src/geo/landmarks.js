@@ -9,6 +9,7 @@ import { buildEtu } from './etu.js';
 import { buildPitigaia } from './pitigaia.js';
 import { buildMagurii } from './magurii.js';
 import { buildGara } from './gara.js';
+import { buildCastel } from './castel.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -97,6 +98,8 @@ export function buildLandmarks(B, world) {
   if (mag) out.push(mag);
   const ga = buildGara(B, world);
   if (ga) out.push(ga);
+  const ca = buildCastel(B, world);
+  if (ca) out.push(ca);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),
