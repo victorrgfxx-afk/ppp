@@ -390,6 +390,13 @@ async function main() {
     const v = tcLm.view;
     PHOTO_VIEWS.push({ tc: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: -0.07, fov: 59, label: 'Poza 55 — Strada Toma Cantacuzino: coborârea cu parapete' });
   }
+  // photos 56-57: the old yard with the stripped hall, then the fork with the concrete tank (main lens, fov 32)
+  const haLm = geoWorld.landmarks?.find(l => l.type === 'hala');
+  if (haLm?.views && !PHOTO_VIEWS.some(v => v.hala)) {
+    const view = (v, pitch, label) => PHOTO_VIEWS.push({ hala: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch, fov: 32, label });
+    view(haLm.views.a, 0.04, 'Poza 56 — Strada Toma Cantacuzino: poarta curții și hala dezafectată');
+    view(haLm.views.b, 0.0, 'Poza 57 — Strada Toma Cantacuzino: bifurcația de lângă rezervor');
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;
@@ -580,7 +587,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, sun: sunInfo, post, dogs, walkers, player, vehicles, camera, renderer, scene, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, sun: sunInfo, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

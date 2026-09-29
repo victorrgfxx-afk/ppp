@@ -17,6 +17,7 @@ import { prepareGara } from './gara.js';
 import { prepareCastel } from './castel.js';
 import { prepareMonument } from './monument.js';
 import { prepareCantacuzino } from './cantacuzino.js';
+import { prepareHala } from './hala.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -48,6 +49,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareCastel();                                      // Strada Gării by the water tower: no generated lot fences there
   prepareMonument();                                    // DJ100E at the monument: the carriageway clears the round island
   prepareCantacuzino();                                 // Str. Toma Cantacuzino's slope: continuous centre line, no lot fences
+  prepareHala();                                        // the old yard below it: the hall's platform levelled into the slope
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
