@@ -21,6 +21,7 @@ import { prepareHala } from './hala.js';
 import { prepareTriaj } from './triaj.js';
 import { prepareDrapel } from './drapel.js';
 import { buildHillwood } from './hillwood.js';
+import { prepareVad } from './vad.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -55,6 +56,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareHala();                                        // the old yard below it: the hall's platform levelled into the slope
   prepareTriaj();                                       // its bottom and Strada Gării by the yard: the old building's style, no lot fences
   prepareDrapel();                                      // the hill of the cross: forests and scrub traced from the aerial, the dirt track
+  prepareVad();                                         // the DJ101R bridge: Strada Gării onto the aerial, the deck, the embankment
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

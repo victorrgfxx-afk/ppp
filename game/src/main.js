@@ -167,6 +167,9 @@ async function main() {
   if (monLm) for (const c of monLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.5, rough: 0.35, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
   // the user's grey-green SUV parked by the flag on the hill (photo 60)
   const drLm = geoWorld.landmarks?.find(l => l.type === 'drapel');
+  // the grey Opel Astra parked at the foot of the bridge's abutment on Strada Gării (photo 62)
+  const vdLm = geoWorld.landmarks?.find(l => l.type === 'vad');
+  if (vdLm) for (const c of vdLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.6, rough: 0.35, dusty: 0.3 }), 'plateC', c.x, c.z, c.h, {});
   const hillEgg = geoWorld.landmarks?.find(l => l.type === 'hillwood')?.egg ?? null;
   let hillEggFound = false;
   if (drLm) for (const c of drLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.7, rough: 0.3, dusty: 0.2 }), 'plateC', c.x, c.z, c.h, {});
@@ -414,6 +417,13 @@ async function main() {
   if (drLm?.view && !PHOTO_VIEWS.some(v => v.drapel)) {
     const v = drLm.view;
     PHOTO_VIEWS.push({ drapel: true, x: v.from[0], z: v.from[1], yaw: v.yaw, pitch: v.pitch, fov: v.fov, label: 'Poza 60 — drapelul de lângă crucea de pe deal' });
+  }
+  // photos 61-62 (Street View at 45.1425988 N 25.6948875 E): the DJ101R bridge, on its approach and from Strada Gării
+  // under it (photo 62 resected on the abutment; photo 61 matched on where the railings start; ~7° down both)
+  if (vdLm?.views && !PHOTO_VIEWS.some(v => v.vad)) {
+    const view = (v, pitch, fov, label) => PHOTO_VIEWS.push({ vad: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch, fov, label });
+    view(vdLm.views.a, -0.13, 69.6, 'Poza 61 — pe Podul Vadului (DJ101R), spre Prahova');
+    if (vdLm.views.b) view(vdLm.views.b, -0.13, 72.8, 'Poza 62 — Strada Gării pe sub Podul Vadului');
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

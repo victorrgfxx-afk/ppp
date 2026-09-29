@@ -52,11 +52,12 @@ export function prepareCantacuzino() {
 
 // a W-beam guardrail along a road frame from s0 to s1 at offset o, facing the road: beam 0.45-0.76 m on posts every
 // 2 m, the ends bent down to the ground over 4 m, 'rail' colliders
-export function guardrail(acc, posts, world, F, W, s0, s1, o, grow = () => {}) {
-  const side = Math.sign(o), step = 2;
-  const hAt = (s) => { const d = Math.min(s - s0, s1 - s); return d >= 4 ? 1 : Math.max(0, d / 4); };   // terminals
+// opt.h(x, z, s): the ground under it (else the terrain); opt.open1: no terminal at s1 (it runs into a railing there)
+export function guardrail(acc, posts, world, F, W, s0, s1, o, grow = () => {}, opt = {}) {
+  const side = Math.sign(o), step = 2, hy = opt.h || ((x, z) => heightAt(x, z));
+  const hAt = (s) => { const d = Math.min(s - s0, opt.open1 ? Infinity : s1 - s); return d >= 4 ? 1 : Math.max(0, d / 4); };   // terminals
   for (let s = s0; s < s1 - 1e-6; s += step) {
-    const t = Math.min(s1, s + step), a = W(s, o), b = W(t, o), ya = heightAt(...a), yb = heightAt(...b), ka = hAt(s), kb = hAt(t);
+    const t = Math.min(s1, s + step), a = W(s, o), b = W(t, o), ya = hy(a[0], a[1], s), yb = hy(b[0], b[1], t), ka = hAt(s), kb = hAt(t);
     const a0 = ya + 0.45 * ka, a1 = ya + 0.45 * ka + 0.31, b0 = yb + 0.45 * kb, b1 = yb + 0.45 * kb + 0.31;
     const [ux, uz] = F.dir(s + 1), nx = -uz * -side, nz = ux * -side;                         // faces the road
     acc.quad([a[0], a0, a[1]], [b[0], b0, b[1]], [b[0], b1, b[1]], [a[0], a1, a[1]], [nx, 0, nz], [s / 4, 0, t / 4, 0, t / 4, 1, s / 4, 1]);

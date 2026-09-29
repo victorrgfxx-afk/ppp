@@ -83,6 +83,28 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Lemnul mort** e pus unde e firesc: 516 trunchiuri căzute, mai dese în arboretele bătrâne și pe pante. Cad mai ales la vale, cum le doboară vântul, iar unele au turta de rădăcini smulsă din pământ. Au mușchi pe partea de sus și cioturi de ramuri.
   * **Bolovanii** sunt unde terenul e abrupt, pentru că gresia de fliș a dealurilor subcarpatice iese la suprafață pe pante: 863 de bolovani, unii grupați în aflorimente, cu mușchi și licheni, câțiva și pe malurile cele mai abrupte ale pajiștii. Arborii generați nu cresc prin trunchiuri sau bolovani. Trunchiurile și bolovanii mari au coliziune.
   * **Easter egg:** în pădure, lângă capătul drumului care urcă de la cruce, e un schelet întins lângă un fag căzut, iar pe un bolovan sunt aliniate cranii. Când ajungi la el, apare un mesaj.
+* **Podul Vadului – DJ101R (pozele 61–62, capturile tale de Street View de la 45,1425988° N, 25,6948875° E)** (`src/geo/vad.js`). Podul are 330 m (OSM way 17505067). Trece peste Strada Gării, cele două linii CF 300, un drum de pietriș, un drum de câmp și Prahova, până la DN1.
+  * **Strada Gării e mutată pe asfaltul real.** În OSM e desenată cu 3–5 m prea la vest pe tot tronsonul de sub pod (măsurat pe ortofoto Bing, folosit doar pentru măsurători; casele din OSM se potrivesc cu ortofoto). Tronsonul e mutat cu 4,6 m spre est, de la ~70 m nord de pod până la ~100 m sud de intersecție, cu trecere lină la capete. Intersecția rămâne un singur punct, iar ulița spre vest o urmează. Gardurile și stâlpii de pe margine se mută cu drumul, iar patul drumului e refăcut sub asfalt.
+  * **Camera din poza 62 e găsită prin rezecție** pe 5 colțuri ale culeei (eroare medie 2,8 px). Stă pe Strada Gării, la ~10 m după intersecție, pe marginea de vest, privește spre 334,6°, e înclinată ~7° în jos și are un câmp vertical de ~73°. Tot din rezecție reies două lucruri. Fața culeei e înclinată: jos e cu ~2,5 m mai spre stradă decât sus. Zidurile întoarse încep cu ~8,6 m înainte de piciorul culeei.
+  * **Culeea de vest**: fața înclinată stă la ~0,8 m de marginea Străzii Gării. Zidurile laterale sunt la marginea tablierului, cu cornișa albă deasupra. În fața fiecăruia e un sfert de con pavat cu beton (1:1), cu vârful unde încep parapetele. Taluzul e pavat la fel și cu 8 m înainte. Scara coboară în diagonală pe taluzul de sud, cu mâna curentă neagră pe ambele părți: în poza 62 e banda de pe muchia pavajului, iar în poza 61 mâna curentă coboară spre cameră.
+  * **Stâlpul cu drapelul** e prins de zidul de sud, la ~1 m de fața culeei, de la nivelul intradosului până la ~5,4 m peste tablier.
+  * **Tablierul**: 7,5 m de asfalt cu linie continuă, trotuare înălțate după borduri, cornișe albe și grinzi exterioare albe, intradosul închis la culoare. Pe tablier coliziunea e de pod: mașina merge pe el, iar pe Strada Gării trece pe dedesubt.
+  * **Parapetele** (2025–26, poza 62) au bare albastre și rame alternativ albastre și albe, cu plăci galbene peste trotuare unde încep. Pe rampă sunt parapete din tablă ondulată pe ambele părți. Cel de nord intră în parapetul podului. Cel de sud se oprește la scară.
+  * **Profilul**: 26,85 m la capătul rampei, 26,95 m pe creastă (tablierul e la ~7 m peste Strada Gării și ~6,5 m peste calea ferată). De la ~85 m coboară ~6,7 % odată cu valea, până la intersecția cu DN1 (12,2 m). Pilele sunt cadre cu doi stâlpi, la ~20 m, puse în afara drumurilor, a liniilor și a râului.
+  * **Pe Strada Gării**:
+    * indicatorul de 30 km/h e la bordură, la ~4,5 m după intersecție, cu fața spre cei care vin din sud;
+    * teiul e în spatele lui, pe singurul loc de pe raza din poză care nu e pe asfalt și nici în casă;
+    * gardul de șipci vechi e în fața curții;
+    * casa are pereți ocru deschis și acoperiș de tablă gri (poza 61);
+    * locul fără garduri de lângă con e acolo unde e parcat Astra gri;
+    * colțul de vest al intersecției e asfaltat.
+  * **Aproximat**:
+    * înălțimea tablierului e scoasă din proporțiile pozei 62;
+    * panta rampei și a podului spre Prahova e din umbra tablierului pe ortofoto;
+    * pilele (niciuna nu se vede);
+    * rampa rămâne pe linia OSM (pe ortofoto pare cu 1–3 m mai la nord, dar un tablier înalt e deplasat pe ortofoto de perspectivă);
+    * poziția exactă a scării și a teiului;
+    * poza 61 e din 2023, cu parapete galben‑negru; am păstrat culorile din 2026.
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 
