@@ -156,7 +156,9 @@ function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
 function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
   const lw = 0.15, off = w / 2 - 0.35;
   const ok = P.map(p => !nearJunction(p[0], p[1], 9));
-  // continuous edge lines
+  // continuous edge lines (none on the r.noEdgeAt = [s0, s1] stretch)
+  const S = [0]; for (let k = 1; k < P.length; k++) S.push(S[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]));
+  const okEdge = r.noEdgeAt ? ok.map((v, k) => v && (S[k] < r.noEdgeAt[0] || S[k] > r.noEdgeAt[1])) : ok;
   for (const side of opt.edges === false ? [] : [-1, 1]) {
     let run = [];
     const flush = () => {
@@ -166,7 +168,7 @@ function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
       }
       run = [];
     };
-    for (let k = 0; k < P.length; k++) { if (ok[k]) run.push(k); else flush(); }
+    for (let k = 0; k < P.length; k++) { if (okEdge[k]) run.push(k); else flush(); }
     flush();
   }
   // centre line: dashed 3 m / 6 m (solid on the trunk road)
@@ -176,7 +178,7 @@ function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
   let acc = 0;
   for (let k = 0; k < P.length - 1; k++) {
     const L = Math.hypot(P[k + 1][0] - P[k][0], P[k + 1][1] - P[k][1]);
-    const on = solid || (acc % 9) < 3;
+    const on = solid || (r.solidAt && acc >= r.solidAt[0] && acc <= r.solidAt[1]) || (acc % 9) < 3;   // solidAt: a no-overtaking stretch [s0, s1]
     if (on && ok[k] && ok[k + 1]) ribbon(B, mats.marking, [P[k], P[k + 1]], [N[k], N[k + 1]], -lw / 2, lw / 2, (i) => yfn(k + i) + 0.004, 4, { along: true });
     acc += L;
   }

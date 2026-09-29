@@ -384,6 +384,12 @@ async function main() {
     const v = monLm.view;
     PHOTO_VIEWS.push({ mon: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: 0.06, fov: 59, label: 'Poza 54 — Strada Centru: monumentul de la intersecție' });
   }
+  // photo 55: down Strada Toma Cantacuzino between the guardrails (ultra-wide lens, fov 59)
+  const tcLm = geoWorld.landmarks?.find(l => l.type === 'cantacuzino');
+  if (tcLm?.view && !PHOTO_VIEWS.some(v => v.tc)) {
+    const v = tcLm.view;
+    PHOTO_VIEWS.push({ tc: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: -0.07, fov: 59, label: 'Poza 55 — Strada Toma Cantacuzino: coborârea cu parapete' });
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;
