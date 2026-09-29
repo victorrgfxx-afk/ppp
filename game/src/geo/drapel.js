@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { GEO, heightAt } from './data.js';
+import { GEO, heightAt, gridHeight, addFineZone, addHole } from './data.js';
 import { Acc } from './bridge.js';
-import { canvas, tex, grain } from './pitigaia.js';
+import { canvas, tex, grain, blobs, clamp01 } from './pitigaia.js';
+import { valueNoise2 } from './trees.js';
 import { HILL, CLUMPS } from './drapel_mask.js';
 
 // The flag by the cross on the hill above Strada Măgurii, from the user's photo 60 (45.1184398 N 25.7042024 E, by
@@ -40,6 +41,8 @@ function layout() {
 export function prepareDrapel() {
   const B = GEO.forestBits, F = GEO.forest;
   if (!B || !F) return false;
+  const L = layout();
+  TR = L ? tracks(L) : [];
   const bits = (b64) => { const s = atob(b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
   const fo = bits(HILL.forest), op = bits(HILL.open), on = (u, k) => (u[k >> 3] >> (k & 7)) & 1;
   for (let j = 0; j < HILL.nj; j++) for (let i = 0; i < HILL.ni; i++) {
@@ -58,39 +61,104 @@ export function prepareDrapel() {
       const i = Math.round((T.x[t] - HILL.x0) / 5), j = Math.round((T.z[t] - HILL.z0) / 5);
       if (!(i >= 0 && j >= 0 && i < HILL.ni && j < HILL.nj && on(op, j * HILL.ni + i))) keep.push(t);
     }
-    // and the scrub clumps the aerial shows there, in their place (off the dirt track)
+    // and the scrub clumps the aerial shows there, in their place (off the dirt tracks)
     const u = bits(CLUMPS.b64), dv = new DataView(u.buffer), n = keep.length + CLUMPS.n;
     const out = { n, x: new Float32Array(n), z: new Float32Array(n), t: new Uint8Array(n), s: new Float32Array(n) };
     keep.forEach((t, k) => { out.x[k] = T.x[t]; out.z[k] = T.z[t]; out.t[k] = T.t[t]; out.s[k] = T.s[t]; });
     let k = keep.length;
     for (let c = 0; c < CLUMPS.n; c++) {
       const x = CLUMPS.x0 + dv.getInt16(6 * c, true) / 10, z = CLUMPS.z0 + dv.getInt16(6 * c + 2, true) / 10;
-      if (trackDist(x, z) < 3) continue;
+      if (TR.some(T => { const q = local(T, x, z); return q && q.d < 2.6; })) continue;
       out.x[k] = x; out.z[k] = z; out.t[k] = u[6 * c + 4]; out.s[k] = u[6 * c + 5] / 100; k++;
     }
     GEO.trees = { n: k, x: out.x.subarray(0, k), z: out.z.subarray(0, k), t: out.t.subarray(0, k), s: out.s.subarray(0, k) };
   }
-  if (GEO.roads && !GEO.roads.some(r => r.id === 'drapel-track')) GEO.roads.push({ id: 'drapel-track', c: 'track', w: 2.6, s: 'dirt', p: TRACK.flat() });
+  // the two dirt tracks: rutted and bumpy in the ground itself (the car rides the ruts), no trees on them
+  TR.forEach((T, k) => {
+    addFineZone({ x0: T.x0, x1: T.x1, z0: T.z0, z1: T.z1,
+      test: (x, z) => { const q = local(T, x, z); return !!q && q.d < 5; },
+      h: (x, z) => { const q = local(T, x, z), g = gridHeight(GEO, x, z); return q ? g + rough(T, q.s, q.o) : g; } });
+    for (let i = 0; i < T.pts.length - 1; i += 8) {
+      const [ax, az] = T.pts[i], [bx, bz] = T.pts[Math.min(T.pts.length - 1, i + 8)], l = Math.hypot(bx - ax, bz - az) || 1;
+      addHole([(ax + bx) / 2, (az + bz) / 2], l / 2 + 0.5, TW / 2 + 0.4, (bx - ax) / l, (bz - az) / l);
+    }
+    if (GEO.roads && !GEO.roads.some(r => r.id === T.id)) GEO.roads.push({ id: T.id, c: 'track', w: TW, s: 'dirt', own: true, p: T.ctrl.flat() });
+  });
   // no village poles on the open hilltop (photos 24 and 60: the lane past the cross has none; the generated runs end here)
   const cross = (GEO.landmarks || []).find(l => l.type === 'cross');
   if (cross) for (const run of GEO.poles || []) run.p = run.p.filter(p => Math.hypot(p[0] - cross.x, p[1] - cross.z) > 210);
   return true;
 }
 
-// the dirt track from the lane by the cross up across the meadow to the woods (the aerial's bare wheel track, ~2.5 m;
-// OSM has only the lane): in the photo it runs up the meadow right of the cross, 100-350 m out, among the scrub
-const TRACK = [[-732.5, -1671.3], [-725, -1671.3], [-702.5, -1671.3], [-682.5, -1678.8], [-665, -1690], [-650, -1698.8], [-632.5, -1705],
-  [-617.5, -1711.3], [-600, -1718.8], [-580, -1723.8], [-565, -1730], [-550, -1740], [-535, -1752.5], [-522.5, -1756.3], [-500, -1755],
-  [-475, -1751.3], [-452.5, -1745], [-432.5, -1735], [-415, -1725], [-400, -1718.8]];
+// The two dirt tracks of photo 60 (neither is in OSM, the aerial predates them), in the view's frame:
+// - the one the user drove up, very rough (ruts, bare soil, grass on the hump), from the lane just south of the cross to
+//   the flagpole: the photo's lower left, ray-cast from its pixels onto the ground (9.6 m / -9 deg, 13.7 m / -8.5 deg,
+//   75 m, 90 m, 106 m, joining the lane at its centre line 133 m out); [metres ahead, metres right]
+const FLAG_TRACK = [[-6, -0.6], [0, -0.9], [9.5, -1.5], [13.6, -2.0], [45, -6.3], [74.4, -10.4], [88.9, -10.9], [105.4, -10.9], [120, -11.6], [132.6, -12.75]];
+// - the one past the cross that leads to the wood: from the lane (120 m out) straight up the knoll just left of the
+//   cross, bending right at the tree line (the photo: -1.1 deg at the cross's side, +2.3 deg where it meets the trees),
+//   on into the wood; [distance, azimuth deg right of the axis]
+const FOREST_TRACK = [[120.6, -1.3], [150, -1.25], [200, -1.15], [250, -1.05], [285, -0.8], [305, -0.1], [318, 0.8], [328, 1.6], [340, 2.3], [360, 3.1], [385, 3.8], [410, 4.3]];
+const TW = 2.6;                                              // track width, m
+let TR = [];
 
-function trackDist(x, z) {
-  let d = Infinity;
-  for (let i = 1; i < TRACK.length; i++) {
-    const [ax, az] = TRACK[i - 1], [bx, bz] = TRACK[i], ex = bx - ax, ez = bz - az;
-    const t = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / (ex * ex + ez * ez)));
-    d = Math.min(d, Math.hypot(x - ax - ex * t, z - az - ez * t));
+// Catmull-Rom through the control points, sampled every ~0.6 m, with tangents, arc length and a 5 m grid index
+function tracks(L) {
+  const vy = Math.atan2(-L.hx, -L.hz) + VIEW.yawOff, vx = -Math.sin(vy), vz = -Math.cos(vy), wx = -vz, wz = vx;
+  const at = (f, l) => [L.cam[0] + vx * f + wx * l, L.cam[1] + vz * f + wz * l];
+  const flag = FLAG_TRACK.map(([f, l]) => at(f, l));
+  const forest = FOREST_TRACK.map(([d, a]) => { const r = a * Math.PI / 180; return at(d * Math.cos(r), d * Math.sin(r)); });
+  return [[flag, 'drapel-flag-track', 11, 17], [forest, 'drapel-forest-track', 23, 0]].map(([C, id, seed, flat0]) => {
+    const pts = [];
+    for (let i = 0; i < C.length - 1; i++) {
+      const p0 = C[Math.max(0, i - 1)], p1 = C[i], p2 = C[i + 1], p3 = C[Math.min(C.length - 1, i + 2)];
+      const n = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 0.6));
+      for (let k = 0; k < n; k++) {
+        const t = k / n, t2 = t * t, t3 = t2 * t;
+        const cr = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+        pts.push([cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])]);
+      }
+    }
+    pts.push(C[C.length - 1]);
+    const S = [0], tan = [];
+    for (let i = 1; i < pts.length; i++) S.push(S[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      tan.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]);
+    }
+    const grid = new Map(), key = (i, j) => i * 100003 + j;
+    pts.forEach(([x, z], k) => { const g = key(Math.floor(x / 5), Math.floor(z / 5)); if (!grid.has(g)) grid.set(g, []); grid.get(g).push(k); });
+    const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
+    return { id, seed, flat0, ctrl: C, pts, tan, S, L: S[S.length - 1], grid, key,
+      x0: Math.min(...xs) - 6, x1: Math.max(...xs) + 6, z0: Math.min(...zs) - 6, z1: Math.max(...zs) + 6 };
+  });
+}
+// (x, z) in the track's frame: s along it, o across (+ to the left of its direction), d the distance; null beyond ~5 m
+function local(T, x, z) {
+  if (x < T.x0 || x > T.x1 || z < T.z0 || z > T.z1) return null;
+  const ci = Math.floor(x / 5), cj = Math.floor(z / 5);
+  let best = -1, bd = Infinity;
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+    const l = T.grid.get(T.key(ci + di, cj + dj)); if (!l) continue;
+    for (const k of l) { const d = (T.pts[k][0] - x) ** 2 + (T.pts[k][1] - z) ** 2; if (d < bd) { bd = d; best = k; } }
   }
-  return d;
+  if (best < 0) return null;
+  const [px, pz] = T.pts[best], [ux, uz] = T.tan[best], dx = x - px, dz = z - pz;
+  const a = Math.max(-0.4, Math.min(0.4, dx * ux + dz * uz)), o = -dx * uz + dz * ux;
+  return { s: Math.max(0, Math.min(T.L, T.S[best] + a)), o, d: Math.max(Math.abs(o), Math.sqrt(bd) - 0.35) };
+}
+// the ground of a rough dirt track: two wheel ruts ~0.1 m deep 1.56 m apart (a car's track), the grassy hump between
+// them, uneven waves of 2-7 m (different under each wheel: the car pitches and rolls), potholes; faded out over 5 m at
+// the lane and ~0.8 m beyond the edges; the flag's track is level for its first 17 m, the trodden parking spot by the
+// pole (the photo: the car stands level, its roof at eye height), and rough from 6 m further on
+function rough(T, s, o) {
+  const k = clamp01((TW / 2 + 0.8 - Math.abs(o)) / 0.8) * clamp01(Math.min((s - T.flat0) / 6, (T.L - s) / 5));
+  if (k <= 0) return 0;
+  const rut = -0.1 * Math.exp(-(((Math.abs(o) - 0.78) / 0.3) ** 2)), hump = 0.03 * Math.exp(-((o / 0.35) ** 2));
+  const wave = (ph) => 0.06 * Math.sin(s * 0.85 + ph) + 0.045 * Math.sin(s * 1.9 + ph * 2.3) + 0.03 * Math.sin(s * 2.7 + ph * 0.7);
+  const wl = clamp01((o + 0.5) / 1.0), w = wave(T.seed) * (1 - wl) + wave(T.seed + 2.1) * wl;
+  const pot = -0.13 * clamp01((valueNoise2(s, o + 5, 1.7, T.seed) - 0.72) / 0.16);
+  return k * (rut + hump + w + pot);
 }
 
 let MT = null;
@@ -105,7 +173,31 @@ function mats() {
   const pole = canvas(32, 256), pg = pole.getContext('2d');
   pg.fillStyle = '#c4553a'; pg.fillRect(0, 0, 32, 256);
   for (let i = 0; i < 90; i++) { pg.fillStyle = `rgba(${150 + Math.random() * 60 | 0},${90 + Math.random() * 40 | 0},70,${0.3 + Math.random() * 0.3})`; pg.fillRect(Math.random() * 32, Math.random() * 256, 2 + Math.random() * 5, 2 + Math.random() * 10); }
+  // the rough dirt track (across: 3.4 m, the outer 0.4 m each side fading into the grass; along: 8 m): two dark wheel
+  // ruts with tyre streaks, bare dry soil, grass tufts on the hump and creeping in from the verges, stones
+  const R = (() => { let a = 60; return () => ((a = Math.imul(a ^ (a >>> 15), 2246822519) + 0x9e3779b9 | 0) >>> 0) / 4294967296; })();
+  const tw = 128, th = 512, tc = canvas(tw, th), tg = tc.getContext('2d', { willReadFrequently: true }), px = tw / 3.4, mid = tw / 2;
+  tg.fillStyle = '#7b6c56'; tg.fillRect(0, 0, tw, th);
+  blobs(tg, 0, 0, tw, th, 70, 6, 22, ['rgba(110,96,76,0.5)', 'rgba(138,124,100,0.4)', 'rgba(96,84,66,0.45)'], R);
+  for (const sgn of [-1, 1]) {                                                      // the ruts, 0.78 m off the centre
+    const x = mid + sgn * 0.78 * px;
+    const gr = tg.createLinearGradient(x - 0.3 * px, 0, x + 0.3 * px, 0);
+    gr.addColorStop(0, 'rgba(92,78,60,0)'); gr.addColorStop(0.5, 'rgba(84,70,54,0.85)'); gr.addColorStop(1, 'rgba(92,78,60,0)');
+    tg.fillStyle = gr; tg.fillRect(x - 0.3 * px, 0, 0.6 * px, th);
+    for (let i = 0; i < 26; i++) { tg.fillStyle = `rgba(60,50,38,${0.25 + R() * 0.3})`; tg.fillRect(x - 0.2 * px + R() * 0.4 * px, R() * th, 1 + R() * 1.5, 20 + R() * 90); }
+  }
+  blobs(tg, mid - 0.32 * px, 0, 0.64 * px, th, 140, 2, 7, ['rgba(104,118,62,0.9)', 'rgba(128,132,72,0.85)', 'rgba(90,104,52,0.9)'], R);   // the hump's grass
+  for (const x0 of [0, tw - 0.62 * px]) blobs(tg, x0, 0, 0.62 * px, th, 160, 2, 8, ['rgba(84,98,50,0.9)', 'rgba(118,120,66,0.8)', 'rgba(74,88,44,0.9)'], R);
+  for (let i = 0; i < 90; i++) { tg.fillStyle = `rgba(${170 + R() * 50 | 0},${160 + R() * 45 | 0},${140 + R() * 40 | 0},0.8)`; tg.fillRect(R() * tw, R() * th, 1 + R() * 2, 1 + R() * 2); }
+  grain(tg, tw, th, 16, R);
+  const id = tg.getImageData(0, 0, tw, th), ad = id.data;                          // alpha: fade into the grass at the sides
+  for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) {
+    const e = Math.min(x, tw - 1 - x) / px, a = Math.min(1, Math.max(0, (e - 0.08 + 0.1 * Math.sin(y * 0.07) * Math.sin(y * 0.031 + (x < mid ? 0 : 2))) / 0.4));
+    ad[(y * tw + x) * 4 + 3] = a * 255;
+  }
+  tg.putImageData(id, 0, 0);
   MT = {
+    track: std({ map: tex(tc, { repeat: true }), transparent: true, depthWrite: false, roughness: 0.97, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }),
     flag: std({ map: tex(flag), side: THREE.DoubleSide, roughness: 0.85 }),
     pole: std({ map: tex(pole), roughness: 0.6, metalness: 0.4 }),
     base: std({ color: 0x9f9c94, roughness: 0.95 }),
@@ -138,6 +230,20 @@ export function buildDrapel(B, world) {
     };
     for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) acc.quad(P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1), [-az, 0, ax], [i / NU, 1 - j / NV, (i + 1) / NU, 1 - j / NV, (i + 1) / NU, 1 - (j + 1) / NV, i / NU, 1 - (j + 1) / NV]);
     acc.flush(B, Mt.flag, null, {});
+  }
+  // the dirt tracks' surface, laid on the rough ground every 0.6 m (13 strips across, finer over the ruts)
+  const cols = [-1.7, -1.3, -1.02, -0.78, -0.52, -0.25, 0, 0.25, 0.52, 0.78, 1.02, 1.3, 1.7];
+  for (const T of TR) {
+    const acc = new Acc();
+    // never under the terrain's 1 m mesh of the rough ground (it cannot follow the ruts and potholes): its bilinear height
+    const mesh = (x, z) => { const i = Math.floor(x), j = Math.floor(z), u = x - i, v = z - j;
+      return (heightAt(i, j) * (1 - u) + heightAt(i + 1, j) * u) * (1 - v) + (heightAt(i, j + 1) * (1 - u) + heightAt(i + 1, j + 1) * u) * v; };
+    const P = (k, o) => { const [x, z] = T.pts[k], [ux, uz] = T.tan[k], X = x - uz * o, Z = z + ux * o; return [X, Math.max(heightAt(X, Z), mesh(X, Z)) + 0.035, Z]; };
+    for (let i = 0; i < T.pts.length - 1; i++) for (let c = 0; c < cols.length - 1; c++) {
+      const u0 = (cols[c] + 1.7) / 3.4, u1 = (cols[c + 1] + 1.7) / 3.4, v0 = T.S[i] / 8, v1 = T.S[i + 1] / 8;
+      acc.quad(P(i, cols[c]), P(i, cols[c + 1]), P(i + 1, cols[c + 1]), P(i + 1, cols[c]), [0, 1, 0], [u0, v0, u1, v0, u1, v1, u0, v1]);
+    }
+    acc.flush(B, Mt.track, null, { noCast: true });
   }
   // the user's car parked just in front of the camera, facing the cross (photo 60): its rear spans half the frame's width
   // (1.8 m over 660 px: the tail ~4.5 m ahead), its roof sits at eye level, the body's centre line 10 deg right of the axis
