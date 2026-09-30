@@ -70,6 +70,7 @@ uniform float uExt;`)
 `);
   };
   m.customProgramCacheKey = () => 'geoTerrain';
+  m.userData.ue = { kind: 'terrain', ortho, splat, ext };        // (the Unreal export rebuilds this shader)
   return m;
 }
 
@@ -171,6 +172,7 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
       lod.addLevel(mesh, dist);
     }
     lod.matrixAutoUpdate = false; lod.updateMatrix();
+    lod.userData.ue = { kind: 'terrainLod' };
     scene.add(lod);
     lods.push(lod);
   }
@@ -203,6 +205,7 @@ export function buildFarTerrain(scene, gt) {
   const m = new THREE.MeshStandardMaterial({ map: gt.orthoFar, roughness: 1, metalness: 0, color: 0xd8dccf });
   const mesh = new THREE.Mesh(g, m);
   mesh.userData.noAO = true;
+  mesh.userData.ue = { kind: 'far' };
   mesh.matrixAutoUpdate = false;
   scene.add(mesh);
   return mesh;
@@ -231,6 +234,7 @@ export function buildWater(scene) {
       .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_NORMALMAP\nvNormalMapUv = position.xz / 9.0 + vec2(uTime * 0.018, uTime * 0.05);\n#endif');
   };
   mat.customProgramCacheKey = () => 'geoWater';
+  mat.userData.ue = { kind: 'water' };
   const meshes = [];
   for (const arr of byChunk.values()) {
     const g = new THREE.BufferGeometry();

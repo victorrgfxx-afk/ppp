@@ -106,7 +106,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   let cullI = 0, lastCull = null;
   const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.length, meshes: meshes.length };
   return {
-    fronts, info, terrain, landmarks, forest: trees.forest,
+    fronts, info, terrain, landmarks, forest: trees.forest, trees,
     update(camPos) {
       trees.update(camPos);
       hill.update(camPos);

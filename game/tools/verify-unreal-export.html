@@ -1,0 +1,102 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Verificare export Unreal</title>
+<style>html,body{margin:0;background:#8fa0b0;overflow:hidden}canvas{display:block}</style>
+<script type="importmap">{ "imports": { "three": "../vendor/three/build/three.module.js", "three/addons/": "../node_modules/three/examples/jsm/" } }</script>
+</head><body>
+<script type="module">
+// Rebuilds a view only from the Unreal export (tiles, materials.json, textures, tree instances, cars) to check that the
+// export is complete and correct in the game's own frame. ?dir=<export url>&cam=<photo number>&radius=<m>
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const Q = new URLSearchParams(location.search), dir = Q.get('dir') || '/export', camN = +(Q.get('cam') || 1), R = +(Q.get('radius') || 1500);
+const get = async (p, t = 'json') => { const r = await fetch(dir + '/' + p); if (!r.ok) throw new Error(p + ' ' + r.status); return t === 'json' ? r.json() : r.arrayBuffer(); };
+const man = await get('manifest.json'), mj = await get(man.materials);
+const cam0 = man.cameras.find(c => c.n === camN) ?? man.cameras[0];
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(W, H); document.body.appendChild(renderer.domElement);
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0.56, 0.6, 0.65); scene.fog = new THREE.FogExp2(scene.background, 1 / 4000);
+const camera = new THREE.PerspectiveCamera(cam0.vfov, W / H, 0.1, 20000);
+const eye = [cam0.position[0], cam0.position[1] + cam0.eye, cam0.position[2]];
+camera.position.set(...eye); camera.lookAt(eye[0] + cam0.forward[0], eye[1] + cam0.forward[1], eye[2] + cam0.forward[2]);
+scene.add(new THREE.HemisphereLight(0xdfe8f5, 0x5a5448, 1.2));
+const sun = new THREE.DirectionalLight(0xfff4e6, 2.6); sun.position.set(...man.sun.toSun.map(v => v * 1000)).add(camera.position); sun.target.position.copy(camera.position);
+sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); Object.assign(sun.shadow.camera, { left: -80, right: 80, top: 80, bottom: -80, near: 1, far: 3000 }); scene.add(sun, sun.target);
+// textures and materials from materials.json (the PNGs are already flipped: flipY false)
+const tl = new THREE.TextureLoader(), texCache = new Map();
+const texOf = (ref) => { if (!ref) return null; const key = ref.file + '|' + ref.repeat + '|' + ref.offset + '|' + ref.wrap; if (texCache.has(key)) return texCache.get(key);
+  const t = tl.load(dir + '/' + ref.file); t.flipY = false; t.colorSpace = ref.srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  const wr = (w) => w === 'clamp' ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping; t.wrapS = wr(ref.wrap[0]); t.wrapT = wr(ref.wrap[1]); t.repeat.set(...ref.repeat); t.offset.set(...ref.offset); t.anisotropy = 8; texCache.set(key, t); return t; };
+const mats = new Map();
+for (const r of mj.materials) {
+  let m;
+  if (r.kind === 'terrain') {
+    const ortho = texOf({ ...r.maps.ortho, repeat: [1, 1], offset: [0, 0] });
+    m = new THREE.MeshStandardMaterial({ roughness: 0.97 });
+    m.onBeforeCompile = (sh) => { sh.uniforms.uOrtho = { value: ortho }; sh.uniforms.uExt = { value: r.ext };
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vW;').replace('#include <fog_vertex>', '#include <fog_vertex>\nvW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vW; uniform sampler2D uOrtho; uniform float uExt;').replace('#include <map_fragment>', 'diffuseColor.rgb *= texture2D(uOrtho, (vW.xz + uExt) / (2.0 * uExt)).rgb * 1.08;'); };
+  } else if (r.kind === 'water') m = new THREE.MeshStandardMaterial({ color: new THREE.Color().setRGB(...r.color), roughness: 0.1, transparent: true, opacity: r.opacity });
+  else {
+    const Cls = r.kind === 'unlit' ? THREE.MeshBasicMaterial : THREE.MeshStandardMaterial;
+    m = new Cls({ color: new THREE.Color().setRGB(...r.color), vertexColors: !!r.vertexColors, side: r.twoSided ? THREE.DoubleSide : THREE.FrontSide,
+      transparent: r.blend === 'translucent', opacity: r.opacity, alphaTest: r.blend === 'masked' ? r.alphaCutoff : 0 });
+    if (r.maps.base) m.map = texOf(r.maps.base);
+    if (Cls !== THREE.MeshBasicMaterial) {
+      m.roughness = r.roughness; m.metalness = r.metalness;
+      if (r.maps.normal) { m.normalMap = texOf(r.maps.normal); m.normalScale.set(r.normalScale, r.normalScale); }
+      if (r.maps.rough) m.roughnessMap = texOf(r.maps.rough);
+      if (r.maps.metal) m.metalnessMap = texOf(r.maps.metal);
+      m.emissive = new THREE.Color().setRGB(...r.emissive);
+    }
+    if (r.maps.alpha) m.alphaMap = texOf(r.maps.alpha);
+  }
+  mats.set(r.name, m);
+}
+const loader = new GLTFLoader();
+const loadGltf = (file) => new Promise((res, rej) => loader.load(dir + '/' + file, res, undefined, rej));
+const useMats = (root, shadows = true) => root.traverse(o => { if (o.isMesh) { const m = mats.get(o.material.name); if (m) o.material = m; else console.warn('no material ' + o.material.name); o.castShadow = shadows; o.receiveShadow = true; } });
+const near = (x, z, r = R) => Math.hypot(x - eye[0], z - eye[2]) < r;
+let nTiles = 0;
+for (const t of man.tiles) {
+  const cx = (t.i + 0.5) * man.tile, cz = (t.j + 0.5) * man.tile;
+  if (!near(cx, cz, R + man.tile)) continue;
+  const g = await loadGltf(t.file); useMats(g.scene); scene.add(g.scene); nTiles++;
+}
+if (man.farTerrain) { const g = await loadGltf(man.farTerrain.file); useMats(g.scene, false); scene.add(g.scene); }
+// trees in range
+let nTrees = 0;
+const tileCentre = (name) => { const [a, b] = name.slice(2).split('_'); return [(parseInt(a.slice(1)) * (a[0] === 'm' ? -1 : 1) + 0.5) * man.tile, (parseInt(b.slice(1)) * (b[0] === 'm' ? -1 : 1) + 0.5) * man.tile]; };
+const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), s = new THREE.Vector3();
+for (const ty of man.trees?.types ?? []) {
+  const lists = [];
+  for (const [set, info] of Object.entries(ty.sets)) {
+    const tiles = info.tiles.filter(([tile]) => { const [x, z] = tileCentre(tile); return near(x, z, Math.min(R, 900) + man.tile); });
+    if (!tiles.length) continue;
+    const buf = new Float32Array(await get(info.file, 'bin'));
+    for (const [, start, count] of tiles) for (let i = start; i < start + count; i++) if (near(buf[i * 5], buf[i * 5 + 2], Math.min(R, 900))) lists.push(buf.subarray(i * 5, i * 5 + 5));
+  }
+  if (!lists.length) continue;
+  const g = await loadGltf(ty.file);
+  g.scene.traverse(o => {
+    if (!o.isMesh) return;
+    const im = new THREE.InstancedMesh(o.geometry, mats.get(o.material.name) ?? o.material, lists.length);
+    lists.forEach((d, k) => im.setMatrixAt(k, m4.compose(p.set(d[0], d[1], d[2]), q.setFromAxisAngle(up, d[3]), s.setScalar(d[4]))));
+    im.castShadow = true; im.receiveShadow = true; scene.add(im);
+  });
+  nTrees += lists.length;
+}
+for (const e of man.instances ?? []) {
+  const buf = new Float32Array(await get(e.transforms, 'bin')), idx = [];
+  for (let i = 0; i < e.count; i++) if (near(buf[i * 10], buf[i * 10 + 2], 600)) idx.push(i);
+  if (!idx.length) continue;
+  const g = await loadGltf(e.file);
+  g.scene.traverse(o => { if (!o.isMesh) return; const im = new THREE.InstancedMesh(o.geometry, mats.get(o.material.name) ?? o.material, idx.length);
+    idx.forEach((i, k) => { const d = buf.subarray(i * 10, i * 10 + 10); im.setMatrixAt(k, m4.compose(p.set(d[0], d[1], d[2]), q.set(d[3], d[4], d[5], d[6]), s.set(d[7], d[8], d[9]))); }); scene.add(im); });
+}
+for (const c of man.cars ?? []) if (near(c.x, c.z, 800)) { const g = await loadGltf(c.file); useMats(g.scene); scene.add(g.scene); }
+await new Promise(r => setTimeout(r, 1500));                       // textures
+renderer.render(scene, camera);
+window.__done = { tiles: nTiles, trees: nTrees, label: cam0.label };
+</script></body></html>

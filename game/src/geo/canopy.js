@@ -104,6 +104,7 @@ export function buildCanopy(scene, gt, Q) {
     const m = new THREE.Mesh(g, mat);
     m.castShadow = false; m.receiveShadow = false;
     m.userData.noAO = true;
+    m.userData.ueSkip = 'canopy';                // (the Unreal export places the real trees instead)
     m.matrixAutoUpdate = false;
     scene.add(m);
     meshes.push(m);

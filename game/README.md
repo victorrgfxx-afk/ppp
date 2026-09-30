@@ -197,6 +197,19 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * vegetația e generică;
     * profilul în lung al străzii vine din relieful de 30 m, netezit;
     * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
+* **Unreal Engine 5** (`unreal/README.md`): exportul întregii lumi pentru UE 5.5+ și importul automat.
+  * `tools/export-unreal.bat` (Windows, cu Node.js și Edge) sau `node tools/export-unreal.mjs`: construiește jocul la calitate Ultra și scrie ~800 MB în `unreal-export/`:
+    * 329 de tile-uri glTF de 1 km, cu terenul exact și lumea statică (14,3 milioane de triunghiuri);
+    * 653 de materiale PBR și 285 de texturi;
+    * 4,1 milioane de copaci (plus 1,4 milioane de arbuști), mașinile parcate;
+    * camerele celor 83 de poze, soarele și originea geografică.
+  * Toate fișierele glTF trec validatorul Khronos fără erori. `tools/verify-unreal-export.html` refacă vederile pozelor doar din export.
+  * `unreal/import_poiana.py` rulează în Unreal Editor și face:
+    * calibrarea importului glTF;
+    * texturile și materialele master construite nod cu nod: PBR, frunziș cu vânt, sticlă, vopsea clear coat, shaderul terenului în HLSL, apa;
+    * tile-urile Nanite cu coliziune exactă, copacii ca HISM, mașinile;
+    * CineCamera pentru fiecare poză;
+    * soarele real, atmosfera, norii volumetrici și Lumen.
 * **Biserica pictată „Adormirea Maicii Domnului”, cimitirul și curtea școlii „Inv. Ion Mateescu” (pozele 73–76, capturile tale Street View din iunie 2022, cu 45,1313834° N, 25,7076591° E)** (`src/geo/biserica.js`).
   * **Camerele** sunt calculate din direcțiile spre repere cunoscute (clopotnița porții, turnul bisericii, colțul școlii, stâlpii portocalii ai aleii), cu distanța focală a capturilor (~870 px) și camerele 74–75 legate de drumurile de lângă cimitir.
   * **Incinta** (măsurată pe ortofoto, doar pentru măsurători): patrulater de ~47 × 70 m cu zid de piatră de 2,8 m și copertină. Are o ușiță în zidul de vest și clădirea lungă a parohiei, cu acoperiș de tablă și perete de lemn, lipită de zidul de vest.

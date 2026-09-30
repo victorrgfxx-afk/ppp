@@ -361,6 +361,7 @@ export function buildHillwood(scene, world, quality) {
       im.receiveShadow = true; im.castShadow = key === 'branch'; im.userData.noAO = true;
       grp.add(im); n += list.length;
     }
+    grp.userData.ueSkip = 'hillwood';            // streamed around the player: not part of the Unreal export
     scene.add(grp);
     live += n;
     return { grp, lv, n, cx: x0 + TS / 2, cz: z0 + TS / 2 };

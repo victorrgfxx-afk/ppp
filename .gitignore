@@ -1,0 +1,3 @@
+# the Unreal export (tools/export-unreal.mjs writes ~800 MB here by default)
+unreal-export/
+__pycache__/

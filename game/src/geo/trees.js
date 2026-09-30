@@ -271,6 +271,7 @@ export function buildTrees(scene, world, renderer, quality) {
         grp.add(im);
       }
     });
+    grp.userData.ueSkip = 'trees';
     scene.add(grp);
     return grp;
   };
@@ -303,6 +304,7 @@ export function buildTrees(scene, world, renderer, quality) {
       im.computeBoundingSphere();
       im.castShadow = false; im.receiveShadow = true;
       im.userData.noAO = true;
+      im.userData.ueSkip = 'trees';
       scene.add(im);
       farList.push({ im, c: im.boundingSphere.center, r: im.boundingSphere.radius });
     });
@@ -312,6 +314,8 @@ export function buildTrees(scene, world, renderer, quality) {
   return {
     count,
     forest,
+    // everything the Unreal export needs (tools/export-unreal.mjs): the models and every mapped tree as placed here
+    exportData: { TYPES, models, count, X, Y, Z, R, S, V, TY },
     update(camPos) {
       forest.update(camPos);
       for (const f of farList) f.im.visible = Math.hypot(f.c.x - camPos.x, f.c.z - camPos.z) - f.r < farCull;
@@ -410,6 +414,7 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
       n++;
     });
     for (const [ty, list] of byType) grp.add(instancedFrom(list, impGeo[ty], impMat[ty], false, false));
+    grp.userData.ueSkip = 'forest';
     scene.add(grp);
     live += n;
     return { grp, subs, n, cx: x0 + GT / 2, cz: z0 + GT / 2 };
@@ -433,6 +438,7 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
         grp.add(instancedFrom(list, g, nearMat(mat, r), !list[0].under, leafy, TYPES[ty].tint ?? 0xffffff));
       }
     }
+    grp.userData.ueSkip = 'forest';
     scene.add(grp);
     return grp;
   };
@@ -484,4 +490,4 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
     },
   };
 }
-export { addWind };
+export { addWind, eachForestTree, eachShrub, TYPES as TREE_TYPES };
