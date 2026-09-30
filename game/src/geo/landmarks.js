@@ -21,6 +21,7 @@ import { buildBreaza } from './breaza.js';
 import { buildPastravaria } from './pastravaria.js';
 import { buildPopas } from './popas.js';
 import { buildPasarela } from './pasarela.js';
+import { buildViteazul } from './viteazul.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -133,6 +134,8 @@ export function buildLandmarks(B, world) {
   if (pp) out.push(pp);
   const pa = buildPasarela(B, world);                 // photo 67: DN1 at the red footbridge by the Breaza exit
   if (pa) out.push(pa);
+  const mv = buildViteazul(B, world);                 // photos 68-71: Strada Mihai Viteazul up from the exit to the gated house
+  if (mv) out.push(mv);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

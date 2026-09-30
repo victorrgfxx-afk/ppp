@@ -100,7 +100,7 @@ export function buildRoads(B, world, mats) {
   const bridges = [];
   const names = [];
   for (const r of GEO.roads) {
-    if (r.tu || r.own) continue;                               // tunnels; stretches rebuilt by a landmark (pitigaia.js)
+    if (r.tu || r.own) { if (r.own && r.n) names.push({ n: r.n, P: pairs(r.p) }); continue; }   // tunnels; stretches rebuilt by a landmark (their names kept)
     let P = pairs(r.p);
     if (r.hand) {
       // the photographed stretch of Strada Gării is modelled by hand; keep only the ends

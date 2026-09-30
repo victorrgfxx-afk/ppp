@@ -455,6 +455,14 @@ async function main() {
     const v = paView;
     PHOTO_VIEWS.push({ pasarela: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: 'Poza 67 — DN1 la pasarela de la ieșirea spre Breaza' });
   }
+  // photos 68-71 (Street View, September 2022): Strada Mihai Viteazul, from the gated house down to the junction by the footbridge
+  const mvLm = geoWorld.landmarks?.find(l => l.type === 'viteazul');
+  if (mvLm?.views && !PHOTO_VIEWS.some(v => v.viteazul)) {
+    for (const v of mvLm.views) PHOTO_VIEWS.push({ viteazul: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
+  }
+  // photo 72 (Street View, June 2022): the exit's last metres before the junction, the footbridge's east flight
+  const v72 = geoWorld.landmarks?.find(l => l.type === 'pasarela')?.view72;
+  if (v72 && !PHOTO_VIEWS.some(v => v.pasarela72)) PHOTO_VIEWS.push({ pasarela72: true, x: v72.from[0], z: v72.from[1], yaw: Math.atan2(-(v72.to[0] - v72.from[0]), -(v72.to[1] - v72.from[1])), pitch: v72.pitch, fov: v72.fov, label: 'Poza 72 — ieșirea spre Breaza, scara pasarelei' });
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

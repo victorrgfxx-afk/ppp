@@ -294,7 +294,7 @@ export function buildTrees(scene, world, renderer, quality) {
     const byType = TYPES.map(() => []);
     for (const k of ch.idx) byType[TY[k]].push(k);
     byType.forEach((list, ty) => {
-      if (!list.length) return;
+      if (!list.length || !impGeo[ty]) return;                   // (shrubs have no impostor: none far away)
       const im = new THREE.InstancedMesh(impGeo[ty], impMat[ty], list.length);
       list.forEach((k, j) => {
         im.setMatrixAt(j, m4.compose(p.set(X[k], Y[k], Z[k]), q.setFromAxisAngle(up, R[k]), sv.setScalar(S[k])));

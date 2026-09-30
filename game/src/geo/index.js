@@ -26,6 +26,7 @@ import { prepareBreaza } from './breaza.js';
 import { preparePastravaria } from './pastravaria.js';
 import { preparePopas } from './popas.js';
 import { preparePasarela } from './pasarela.js';
+import { prepareViteazul } from './viteazul.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -65,6 +66,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   preparePastravaria();                                 // DN1 north of the Etu station: 2 lanes a side, shoulders, open verges
   preparePopas();                                       // DN1 at the roadside restaurant: the long profile, the lot, no old houses
   preparePasarela();                                    // DN1 at the Breaza exit: the exit on its ledge, the ground by it, the marl scarps
+  prepareViteazul();                                    // Str. Mihai Viteazul up from the exit: onto the aerial, its 1 m ground, no forest on the lots
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
@@ -73,6 +75,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const landmarks = buildLandmarks(B, world);
   log('clădiri ' + stats.n, performance.now() - t0);
   paintLawns(gt.splat);
+  if (GEO.W && gt.splatW) paintLawns(gt.splatW, GEO.W.ext);        // the lots in the world grid too (Strada Mihai Viteazul)
   const rm = makeRoadMaterials();
   buildRoads(B, world, rm);
   // walkable surfaces of the landmarks (courts, raised sidewalks) take part in the ground height like bridge decks

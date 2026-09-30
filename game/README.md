@@ -179,6 +179,24 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * vegetația e verde, nu de toamnă, iar cerul e cel din joc;
     * mașina roșie din trafic nu e în joc;
     * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
+* **Strada Mihai Viteazul, de la intersecția de lângă pasarelă până la casa cu poarta aurie (pozele 68–72, capturile tale Street View din iunie și septembrie 2022, cu 45,1726527° N, 25,6893172° E)** (`src/geo/viteazul.js`, scara de est în `src/geo/pasarela.js`). Drumul urcă de pe ieșirea din poza 67 spre Breaza.
+  * **Camerele**: pozele 69–71 sunt de pe mașina Google care cobora spre DN1, cu privirea întoarsă în sus pe stradă. Poza 68 e privirea spre poartă, iar poza 72 e de pe ieșire, chiar înainte de intersecție. Distanța focală a capturilor (~870 px) reiese din poartă, din bordură și din panta drumului. Coordonata ta e poziția din poza 69, dar cade cu ~4 m la nord de carosabil (GPS-ul sub copaci), așa că acolo camera e pusă pe banda de nord.
+  * **Drumul**: după ortofoto (doar pentru măsurători), în dreptul caselor are liniile de margine la 6,2 m una de alta, iar linia din mijloc e cu 0,95 m la sud de linia din hartă. Mai jos, spre intersecție, se îngustează la 4,1 m între linii (măsurat din poze, cu camera la 2,5 m). Linia din mijloc e continuă, iar în curbele de lângă intersecție e dublă.
+    * La nord e o rigolă de beton cu podețe la intrările în curți și o balustradă neagră.
+    * La sud: bordură, peluză, apoi un taluz abrupt cu iederă și salcâmi, care la intersecție se termină cu un zid jos de piatră.
+    * Terenul de aici e refăcut la 1 m, pentru că grila de 10 m nu poate ține o rigolă, o bordură sau un taluz. Zonele fine de teren merg acum și în grila mare.
+  * **Poarta (poza 68)**: stâlpi placați cu piatră, la 3,6 m unul de altul și înalți de 1,9 m, cu capace de beton. Între ei: poarta dublă și portița aurii, cu bare și volute, și cutia poștală neagră.
+    * Aleea coboară spre casa principală (două niveluri, acoperiș de țiglă) între ziduri albe; pe zidul de est stau rame ruginite.
+    * În stânga: peluza cu căminul, gardul închis la culoare din șipci și trandafirul de lângă stâlp.
+    * Mai departe: casa veche din lemn cu acoperiș ruginit, dovlecii în câmp, copacul uscat, stâlpii de curent și firele.
+  * **Scara de est a pasarelei (poza 72)**: coboară spre sud de la un podest din fața incintei maro, pe treaptă, lângă ieșire. Are balustrade galbene și vanguri brun-roșcate; se poate urca.
+    * Lângă ea: parapetul spre intersecție, stâlpul de iluminat cu indicatorul rotund de interzicere, placa albă și plăcuța albastră a străzii, plopii din dreapta.
+  * **Aproximat**:
+    * textul de pe plăcuța albă nu se citește;
+    * forma exactă a caselor vine din hartă (culorile din poze și din ortofoto);
+    * vegetația e generică;
+    * profilul în lung al străzii vine din relieful de 30 m, netezit;
+    * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 

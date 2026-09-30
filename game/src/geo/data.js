@@ -199,11 +199,11 @@ export function holeFlag(x, z, key) {
   return false;
 }
 // lawns: the terrain splat (forest floor / farmland / gravel weights) is cleared to plain grass under them
-export function paintLawns(splat) {
-  const L = (GEO.holes || []).filter(h => h.lawn);
+export function paintLawns(splat, E = GEO.ext) {
+  const L = (GEO.holes || []).filter(h => h.lawn && h.x1 > -E && h.x0 < E && h.z1 > -E && h.z0 < E);
   const img = splat && splat.image;
   if (!L.length || !img || !img.width) return 0;
-  const W = img.width, H = img.height, E = GEO.ext;
+  const W = img.width, H = img.height;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d', { willReadFrequently: true });
   g.drawImage(img, 0, 0);

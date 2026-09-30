@@ -136,8 +136,8 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
         normalAt(i, j, nrm, G); nor.push(nrm.x, nrm.y, nrm.z);
       }
       // underpass boxes and fine zones: at full resolution their cells are cut out and rebuilt at 1 m (vertical abutments,
-      // level road, terrace edges)
-      const holes = s === 1 && G === GEO && (GEO.ups?.length || GEO.fine?.length) ? new Set() : null;
+      // level road, terrace edges); fine zones in the world grid too (its 10 m cells rebuilt the same way)
+      const holes = s === 1 && (G === GEO ? GEO.ups?.length || GEO.fine?.length : G === GEO.W && GEO.fine?.length) ? new Set() : null;
       const inHole = (a, b) => { const x = -ext + (ci * CH + a + 0.5) * step, z = -ext + (cj * CH + b + 0.5) * step; return !!(underpassAt(x, z) || (GEO.fine && fineAt(x, z))); };
       for (let b = 0; b < m - 1; b++) for (let a = 0; a < m - 1; a++) {
         const A = b * m + a, B = A + 1, C = A + m, D = C + 1;
