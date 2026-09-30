@@ -29,7 +29,8 @@ import { thuja, grigorescuMats } from './grigorescu.js';
 //  * lettering that can't be read on the screenshot (the menu board's lines) is generic
 const NB = '1107424498';
 const CAM = { s: 1307.5, o: 1.4, yaw: 13.2, pitch: -0.05, fov: 54.1 };
-const LEVEL = { s0: 1000, end: 25 };                 // chain metres (from the way by the sign): photo 65's stretch ends at 998
+const LEVEL = { s0: 1000, s1: 2740 };                // chain metres (from the way by the sign): photo 65's stretch ends at 998
+const FOOTBRIDGE = '161450658', EXIT = '27851110';   // photo 67 (pasarela.js): the footbridge over DN1, the Breaza exit
 const PIN = [1280, 1445];                            // the level stretch past the lot (along our way)
 const LOT = [[1292, 4.05], [1300, 12.5], [1314, 27.3], [1331, 21.6], [1343.8, 17.8], [1350.8, 24], [1392, 24], [1400, 27], [1430, 26], [1438, 4.05]];
 const FLAT = [[1284, 4.5], [1296, 16], [1310, 33], [1395, 33], [1405, 30], [1434, 29], [1446, 4.5]];
@@ -63,14 +64,26 @@ export function preparePopas() {
   if (!nb || !GEO.W) return false;
   const F = frame(pairs(nb.p));
   // ---- DN1's long profile in the world grid: lower convex hull of the axis heights (moving average +-30 m)
-  const FC = frame(chainNB()), s0 = LEVEL.s0, s1 = FC.L - LEVEL.end;
+  const FC = frame(chainNB()), s0 = LEVEL.s0, s1 = Math.min(FC.L - 25, LEVEL.s1);
   const pts = [];
   for (let s = s0; ; s += 10) { const ss = Math.min(s, s1), q = FC.at(ss); pts.push([ss, heightAt(q.x, q.z)]); if (ss >= s1) break; }
   // the hull is pinned level through the lot at the model's height there (open ground: no canopy in it; the
   // screenshot has the road level up to the restaurant), so it can't cut the valley floor to one straight line
   const q0 = F.at(MAIN.s0), h0 = heightAt(q0.x, q0.z), pa = F.at(PIN[0]), pb = F.at(PIN[1]);
   const pins = [[FC.local(pa.x, pa.z).s, h0], [FC.local(pb.x, pb.z).s, h0]], hull = [];
-  for (const p of [...pts.filter(p => p[0] < pins[0][0]), ...pins, ...pts.filter(p => p[0] > pins[1][0])]) {
+  // photo 67: by the footbridge the model's DN1 climbs its canopy ramp (9 m in 100 m) while the Breaza exit beside it
+  // stands 2.4 m above DN1 (the retaining wall between them): DN1 is pinned there 2.4 m under the exit, straight from
+  // the restaurant's level (1.3 %)
+  let sBridge = null;
+  {
+    const fb = road(FOOTBRIDGE), ex = road(EXIT);
+    if (fb) { const P = pairs(fb.p); sBridge = FC.local((P[0][0] + P[P.length - 1][0]) / 2, (P[0][1] + P[P.length - 1][1]) / 2).s; }
+    if (sBridge && ex && sBridge < s1 - 100) {
+      let best = null; for (const [x, z] of pairs(ex.p)) { const q = FC.local(x, z), d = Math.abs(q.s - (sBridge - 14)); if (!best || d < best[0]) best = [d, x, z]; }
+      pins.push([sBridge, heightAt(best[1], best[2]) - 2.4]);
+    } else sBridge = null;
+  }
+  for (const p of [...pts.filter(p => p[0] < pins[0][0]), ...pins, ...pts.filter(p => p[0] > pins[pins.length - 1][0])]) {
     while (hull.length >= 2 && !pins.includes(hull[hull.length - 1])) { const [o, a] = [hull[hull.length - 2], hull[hull.length - 1]]; if ((a[0] - o[0]) * (p[1] - o[1]) - (a[1] - o[1]) * (p[0] - o[0]) <= 0) hull.pop(); else break; }
     hull.push(p);
   }
@@ -88,7 +101,8 @@ export function preparePopas() {
       const o = q.o, p = avg(hull, q.s), g = H0[j * n + i];
       // flat across both carriageways and the median (a 10 m cell touching their verges reaches 10 m beyond them)
       const wCore = o >= 0 ? 1 - smooth(14, 22, o) : 1 - smooth(22, 28, -o);
-      const wMove = o >= 0 ? 1 - smooth(40, 75, o) : 1 - smooth(22, 32, -o);  // the ground beside moves with the road
+      // the ground beside moves with the road (east of it not by the footbridge: the exit and the hill are real there)
+      const wMove = o >= 0 ? (1 - smooth(40, 75, o)) * (sBridge ? 1 - smooth(sBridge - 180, sBridge - 130, q.s) : 1) : 1 - smooth(22, 32, -o);
       const moved = g + (p - avg(pts, q.s)) * wMove, tgt = moved + (p - moved) * wCore;
       const wS = smooth(s0, s0 + 60, q.s) * (1 - smooth(s1 - 60, s1, q.s));
       H[j * n + i] = g + (tgt - g) * wS;

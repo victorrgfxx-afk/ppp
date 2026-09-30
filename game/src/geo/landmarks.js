@@ -20,6 +20,7 @@ import { buildVad } from './vad.js';
 import { buildBreaza } from './breaza.js';
 import { buildPastravaria } from './pastravaria.js';
 import { buildPopas } from './popas.js';
+import { buildPasarela } from './pasarela.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -130,6 +131,8 @@ export function buildLandmarks(B, world) {
   if (ps) out.push(ps);
   const pp = buildPopas(B, world);                    // photo 66: DN1 at the roadside restaurant
   if (pp) out.push(pp);
+  const pa = buildPasarela(B, world);                 // photo 67: DN1 at the red footbridge by the Breaza exit
+  if (pa) out.push(pa);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

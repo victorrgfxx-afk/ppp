@@ -449,6 +449,12 @@ async function main() {
     const v = ppView;
     PHOTO_VIEWS.push({ popas: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: 'Poza 66 — DN1 la restaurantul de lângă drum' });
   }
+  // photo 67 (Street View, 2021, zoomed in): DN1 northbound at the red footbridge by the exit to Breaza
+  const paView = geoWorld.landmarks?.find(l => l.type === 'pasarela')?.view;
+  if (paView && !PHOTO_VIEWS.some(v => v.pasarela)) {
+    const v = paView;
+    PHOTO_VIEWS.push({ pasarela: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: 'Poza 67 — DN1 la pasarela de la ieșirea spre Breaza' });
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;

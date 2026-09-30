@@ -28,14 +28,21 @@ import { canvas, tex, grain, boxAt, cyl, tube, merged, frame, pairs, road, drape
 //    heights along the axis (eased), from 130 m into our way to 1000 m (700 m into the long way); the ground across the
 //    road follows it, the wood's side rising 1.5 m within 45 m, and blends back into the model
 //  * scrub along both verges, a white kilometre-type post on the right ~50 m ahead
-// the carriageways' ways from the sign north (photos 64-66); the last pair runs on past the roadside restaurant (popas.js)
-const IDS = { nb: ['1086246689', '1107424499', '1107424498', '1107424497'], sb: ['855404753', '1107424501', '1086246690', '319009063'], near: ['1086246689', '1107424501'], outer: ['1107424499', '1086246690', '1107424498', '319009063', '1107424497', '855404753'] };
+// the carriageways' ways from the sign north (photos 64-67): past the roadside restaurant (popas.js) and the footbridge
+// at the Breaza exit (pasarela.js) up to the next junction
+const IDS = { nb: ['1086246689', '1107424499', '1107424498', '1107424497', '555628049', '1107424495'], sb: ['555626664', '1107424496', '855404753', '1107424501', '1086246690', '319009063'], near: ['1086246689', '1107424501'],
+  outer: ['1107424499', '1086246690', '1107424498', '319009063', '1107424497', '855404753', '555628049', '1107424496', '1107424495', '555626664'] };
+// narrower from the restaurant on (photo 67: 6.6 m between the edge lines, the barrier 3.85 m from the lane divider)
+const NARROW = { ids: ['1107424497', '555628049', '1107424495', '855404753', '1107424496', '555626664'], w: 7.3, from: 1790, to: 1850, off: 3.85 };
 const LEVEL = { s0: 130, s1: 998 };      // along our carriageway from the start of its way near the sign (m)
 const CAM65 = { s: 418, o: 1.3, yaw: -1.4, pitch: -0.056, fov: 51.5 };  // 120 m into the long way; 0.55 m left of the lane's centre
 const POST = { s: 468, o: 6.4 };
 // the barrier's offset from our mapped line on Esri's aerial (chain metres, every 50 m past the wood; 1475: a truck)
 const BARRIER = [[1025, -4.0], [1075, -3.75], [1125, -3.5], [1175, -3.0], [1225, -3.0], [1275, -3.75], [1325, -4.25], [1375, -4.25], [1425, -4.75], [1475, -5.25], [1525, -5.0], [1575, -4.5],
-  [1625, -4.5], [1675, -4.5], [1725, -4.75], [1775, -5.25], [1825, -4.75], [1875, -4.75], [1925, -5.0], [1975, -5.0], [2025, -4.5], [2075, -4.75], [2125, -4.5], [2175, -4.25], [2225, -4.0], [2275, -4.25], [2325, -4.5]];
+  [1625, -4.5], [1675, -4.5], [1725, -4.75], [1775, -5.25], [1825, -4.75], [1875, -4.75], [1925, -5.0], [1975, -5.0], [2025, -4.5], [2075, -4.75], [2125, -4.5], [2175, -4.25], [2225, -4.0], [2275, -4.25], [2325, -4.5],
+  [2375, -4.4], [2425, -4.4], [2475, -4.5], [2525, -4.25], [2575, -4.0], [2625, -3.75], [2675, -4.0], [2725, -5.0], [2775, -5.5], [2825, -5.5], [2875, -5.0], [2925, -5.0], [2975, -5.5], [3025, -5.5],
+  [3075, -5.0], [3125, -5.0], [3175, -5.75], [3225, -6.0], [3275, -5.75], [3325, -6.0], [3375, -6.25], [3425, -6.0], [3475, -5.0], [3525, -5.25], [3575, -5.25], [3625, -5.25], [3675, -5.25], [3725, -5.0],
+  [3775, -4.75], [3825, -4.25]];   // 2375-2475: the footbridge's shadow; from the frames either side and photo 67
 const BAR_FROM = 1018;                                 // chain metres: photo 65's stretch (both lines 0.85 m out) ends here
 const lin = (A, x) => { if (x <= A[0][0]) return A[0][1]; for (let i = 0; i < A.length - 1; i++) if (x <= A[i + 1][0]) return A[i][1] + (A[i + 1][1] - A[i][1]) * (x - A[i][0]) / (A[i + 1][0] - A[i][0]); return A[A.length - 1][1]; };
 const NB = '1086246689', SB = '1107424501';
@@ -56,7 +63,7 @@ export function preparePastravaria() {
   const nb = road(NB), sb = road(SB);
   if (!nb || !sb) return false;
   const FC0 = frame(chainNB());                        // our mapped line before anything moves
-  for (const id of [...IDS.nb, ...IDS.sb]) { const r = road(id); if (r) r.w = W; }
+  for (const id of [...IDS.nb, ...IDS.sb]) { const r = road(id); if (r) r.w = NARROW.ids.includes(id) ? NARROW.w : W; }
   for (const id of IDS.near) { const r = road(id); if (r) r.noShoulder = true; }   // the paved shoulders are drawn here
   for (const id of IDS.outer) { const r = road(id); if (r) r.outerShoulder = true; }  // gravel on the outside only (roads.js)
   // each carriageway moved out (to its right, away from the other) by k(s), s along its way
@@ -73,21 +80,23 @@ export function preparePastravaria() {
   if (r2) shiftRight(r2, (s, L) => 0.85 * ease(0, L, s));
   if (r3) shiftRight(r3, () => 0.85);
   if (r4) shiftRight(r4, () => 0.85);
-  // north of photo 65's stretch (the aerial there is Esri's, where photo 66 has both carriageways on it): each axis
-  // 4.5 m from the barrier as measured every 50 m (the mapped lines are 7-7.9 m apart, the barrier 3-5.2 m left of
-  // our line), easing in after the wood and back onto the mapped lines at the end of the next ways
+  // north of photo 65's stretch (the aerial there is Esri's, where photos 66-67 have both carriageways on it): each
+  // axis 4.5 m from the barrier as measured every 50 m (3.85 m where the carriageways narrow; the mapped lines are
+  // 6-7.9 m apart, the barrier 3-6.3 m left of our line), easing in after the wood and back onto the mapped lines at
+  // the end of the ways
+  const offAt = (cs) => 4.5 + (NARROW.off - 4.5) * smooth(NARROW.from, NARROW.to, cs);
   const bAt = (cs) => { let a = 0, k = 0; for (let d = -75; d <= 75; d += 5) { a += lin(BARRIER, cs + d); k++; } return a / k; };
   const onto = (r, side) => {
     shiftRight(r, () => 0);                                                                 // resampled every 4 m
     r.p = pairs(r.p).map(([x, z]) => {
       const q = FC0.local(x, z);
       if (!q || q.s < BAR_FROM) return [x, z];
-      const w = smooth(BAR_FROM, BAR_FROM + 60, q.s) * (1 - smooth(FC0.L - 60, FC0.L, q.s)), d = (bAt(q.s) + side * 4.5 - q.o) * w, [ux, uz] = FC0.dir(q.s);
+      const w = smooth(BAR_FROM, BAR_FROM + 60, q.s) * (1 - smooth(FC0.L - 60, FC0.L, q.s)), d = (bAt(q.s) + side * offAt(q.s) - q.o) * w, [ux, uz] = FC0.dir(q.s);
       return [x - uz * d, z + ux * d];
     }).flat();
   };
-  for (const id of ['1107424498', '1107424497']) { const r = road(id); if (r) onto(r, 1); }
-  for (const id of ['319009063', '855404753']) { const r = road(id); if (r) onto(r, -1); }
+  for (const id of ['1107424498', '1107424497', '555628049', '1107424495']) { const r = road(id); if (r) onto(r, 1); }
+  for (const id of ['319009063', '855404753', '1107424496', '555626664']) { const r = road(id); if (r) onto(r, -1); }
   // no forest on the verges (grass up to the scrub on the left; the verge, the sign and the field on the right)
   const FN = frame(pairs(nb.p)), E = [], Wv = [];
   for (let s = 18; s <= FN.L; s += 5) E.push(Wf(FN, s, 8.2));
