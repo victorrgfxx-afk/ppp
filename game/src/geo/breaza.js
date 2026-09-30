@@ -7,24 +7,25 @@ import { canvas, tex, grain, blobs, boxAt, cyl, tube, catenary, merged, frame, p
 // Photo 63 (the user's phone photo from a car, 45.1435469 N 25.6988803 E): the DJ101R coming off Podul Vadului splits onto
 // DN1 at the Breaza town limit. The bridge's road ends at a fork (the end of OSM way 1545446280): the branch to DN1
 // (148233510, one way, STOP at DN1) keeps right, the one from DN1 (148506882) comes in on its left, with painted
-// hatching between them up to a narrow kerbed island carrying a small monument - a stone pillar and a rockery, a green
-// steel A-frame with a green board and three flags (EU, Romania and a pale one); pines stand behind it by DN1. The ramp
+// hatching between them up to a kerbed island (black and white kerbs) carrying the town's monument - "BREAZA" in big
+// letters on a green steel A-frame over a stone plinth, a green triangle on top and three flags (EU, Romania and a pale
+// one; its form from the Street View shots the user sent, April 2022); pines stand behind it by DN1. The ramp
 // down from DN1 (14189846) passes on the far left by the grass triangle with the Lac Verde golf billboard; on the right,
 // the grass between our branch and the link to DN1 south (16077393) has the rusty lamp post with the "BREAZA" town sign
 // and a notice; at the STOP, the "Ploiești / Brașov" plates on a double lamp post and the "no animal-drawn carts" sign.
 //   camera: 2 m before the fork in the right lane (the bridge's railings are behind it, none in the frame), 1.25 m up,
 //   heading 63.6°, level; bearings from the photo (a 26 mm-equivalent phone lens: 53° across its 1932 px width): the
-//   monument 1.2° right of the centre, the STOP 7.6° right (at its OSM node), the billboard 14.2° left, BREAZA 18.4°
-//   right; sizes put the billboard at ~34 m (2.4 m wide), BREAZA at ~31 m (a 1.3 m plate), the monument at ~35 m (its
-//   frame ~3 m over the island, the flags ~0.75 x 0.5 m), at the end of ~30 m of hatching.
+//   monument 1.0° right of the centre, the STOP 7.6° right (at its OSM node), the billboard 14.2° left, BREAZA 18.4°
+//   right; sizes put the billboard at ~34 m (2.4 m wide), BREAZA at ~31 m (a 1.3 m plate); the monument stands ~34 m
+//   out (the dark patch on the aerial), just past the nose of the island at the end of ~30 m of hatching, 3.0 m tall.
 //   the incoming branch: the aerial has it ~2 m north-west of its OSM line in the middle; bowed there, the monument
 //   falls on the island's axis, as in the photo.
-const IDS = { stub: '1545446280', IN: '148506882', OUT: '148233510', RAMP: '14189846', LINK: '16077393', GRAVEL: '303232125' };
+const IDS = { stub: '1545446280', IN: '148506882', OUT: '148233510', RAMP: '14189846', LINK: '16077393', GRAVEL: '303232125', DN1: '1138000005' };
 const HW = 2.25;                                          // the branches' half width (4.5 m in OSM)
 const IN_BOW = 2.2;
 const CAM = { back: 2, o: 1.6, bearing: 63.6, eye: 1.25 };
 const TIP_S = 29.5;                                       // the island's nose along our branch (the hatching runs ~30 m, photo 63)
-const RAYS = { billboard: [-14.2, 34], breaza: [18.4, 31], stop: [7.6] };   // degrees from the heading, metres
+const RAYS = { billboard: [-14.2, 34], breaza: [18.4, 31], stop: [7.6], monument: [1.0, 33.7] };   // degrees from the heading, metres
 const UP = [0, 1, 0];
 
 // game direction of a compass bearing (+x = 312°, +z = 42°)
@@ -50,10 +51,9 @@ function layout() {
   }
   const iTip = rows.findIndex(r => r.s >= TIP_S && r.g >= 2), iEnd = iTip < 0 ? -1 : rows.length - 1 - [...rows].reverse().findIndex(r => r.g >= 2);
   const mid = (r) => [(r.eo[0] + r.ei[0]) / 2, (r.eo[1] + r.ei[1]) / 2];
-  const iMon = Math.min(iEnd, iTip + 4);
   // the STOP at its OSM node (on our branch's axis): the sign at the right edge
   const qs = FO.local(1405.39, 147.18), sStop = qs ? qs.s : FO.L - 7;
-  LAY = { FO, FI, FR, FL, FS, cam: [cx, cz], ray, rows, iTip, iEnd, mid, mon: mid(rows[iMon]), sStop, stub };
+  LAY = { FO, FI, FR, FL, FS, cam: [cx, cz], ray, rows, iTip, iEnd, mid, sStop, stub };
   return LAY;
 }
 
@@ -71,6 +71,8 @@ export function prepareBreaza() {
   }
   // the two branches have kerbs and the hatching at their sides, no gravel shoulders (roads.js)
   inn.noShoulder = true; road(IDS.OUT).noShoulder = true;
+  // nor has DN1 by the triangle (a kerb at its edge in Street View; the median on its other side)
+  if (road(IDS.DN1)) road(IDS.DN1).noShoulder = true;
   const Y = layout();
   if (!Y) return false;
   const { FR, FL, FI, FO } = Y;
@@ -137,20 +139,19 @@ export function prepareBreaza() {
     addFineZone({ ...Z, test: (x, z) => { const i = Math.round(x - Z.x0), j = Math.round(z - Z.z0); return i >= 0 && j >= 0 && i < mw && j < mh && mask[j * mw + i] === 1; }, h: level });
   }
   // no trees, generated lot fences or village poles on the islands, the grass either side and the field by the link
-  // (open ground in the photo); the wood west of the ramp stays, and so does the triangle's corner by DN1 with the pines
-  const H = [], sc = FI.L - 18;
-  for (let s = 0; s <= 44; s += 4) H.push(Wf(FR, s, 2.6));
-  H.push(Wf(FI, sc, -HW - 12));
-  for (let s = sc; s < FI.L; s += 3) H.push(Wf(FI, s, -HW - 0.3));
-  H.push([1406, 152], [1384, 151]);
+  // (open ground in the photo; the billboard's triangle is grass right up to DN1 in Street View); the wood west of the
+  // ramp stays
+  const H = [];
+  for (let s = 0; s < FR.L - 2; s += 4) H.push(Wf(FR, s, 2.6));
+  H.push([1470, 164.5], [1435, 157], [1414, 155], [1406, 152], [1384, 151]);   // back along DN1's axis
   for (let s = 55; s >= 0; s -= 5) H.push(Wf(FL, s, 14));
   H.push([1433, 105]);
   addHolePoly(H, { noFences: true });
-  // pines: a clump in the triangle's corner by DN1 (the dark patch on the aerial, left of the monument in the photo) and
-  // the big ones behind the monument, across DN1 (bearings 61-69 degrees in the photo; ~12 m tall, so 70-90 m away)
+  // pines: the big ones behind the monument, across DN1 (bearings 54-70 degrees in the photo; ~11-12 m tall, so 70-90 m
+  // away; the dark crowns there on the aerial). None in the triangle's corner by DN1: Street View has grass there
   const T = GEO.trees, ray = Y.ray;
   if (T) {
-    const add = [[...Wf(FI, FI.L - 7, -HW - 3.2), 15, 1.25], [...Wf(FI, FI.L - 11, -HW - 5.5), 15, 1.4], [...Wf(FI, FI.L - 4, -HW - 7.5), 15, 1.15], [...Wf(FI, FI.L - 14, -HW - 2.8), 15, 1.05],
+    const add = [[...ray(-9.5, 72), 15, 1.35], [...ray(-7.0, 80), 15, 1.45], [...ray(-5.0, 74), 15, 1.3], [...ray(-3.8, 86), 15, 1.5], [...ray(6.5, 80), 15, 1.4],
       [...ray(-2.2, 76), 15, 1.5], [...ray(0.4, 82), 15, 1.6], [...ray(2.8, 74), 15, 1.45], [...ray(4.6, 88), 15, 1.55], [...ray(-0.8, 92), 15, 1.4]];
     const n = T.n + add.length, x = new Float32Array(n), z = new Float32Array(n), t = new Uint8Array(n), sc = new Float32Array(n);
     x.set(T.x); z.set(T.z); t.set(T.t); sc.set(T.s);
@@ -190,20 +191,36 @@ function mats() {
   grain(bg, 256, 470, 10, R);
   // stones of the pillar and the rockery
   const st = canvas(128, 128), sg = st.getContext('2d');
-  sg.fillStyle = '#6f6a62'; sg.fillRect(0, 0, 128, 128);
-  for (let y = 0; y < 128; y += 14) for (let x = -(y % 28) / 2; x < 128; x += 20 + R() * 10) { const c = 120 + R() * 60 | 0; sg.fillStyle = `rgb(${c},${c - 6},${c - 14})`; sg.fillRect(x + 1, y + 1, 16 + R() * 8, 11 + R() * 2); }
+  sg.fillStyle = '#4c4842'; sg.fillRect(0, 0, 128, 128);
+  for (let y = 0; y < 128;) { const h = 5 + R() * 7 | 0; for (let x = -R() * 20; x < 128;) { const w = 14 + R() * 30, c = 118 + R() * 70 | 0, t = R() * 14 | 0; sg.fillStyle = `rgb(${c + t},${c - 4},${c - 12 - t})`; sg.fillRect(x + 1, y + 1, w - 2, h - 1); x += w; } y += h; }
   grain(sg, 128, 128, 18, R);
-  // the board on the A-frame: green, a pale inner field (the inscription can't be read)
-  const bo = canvas(64, 48), bog = bo.getContext('2d');
-  bog.fillStyle = '#2f7a3c'; bog.fillRect(0, 0, 64, 48); bog.fillStyle = '#4a9656'; bog.fillRect(5, 5, 54, 38);
-  bog.fillStyle = 'rgba(230,240,225,0.45)'; for (let k = 0; k < 5; k++) bog.fillRect(10, 11 + k * 6, 44 - (k % 2) * 10, 2);
+  // the monument's letters (Street View, 2022): "BREAZA" in white block capitals towards our branch, a taller green set
+  // on the far side; and its green corrugated triangle
+  const letters = (col) => {
+    const c = canvas(1024, 256), g = c.getContext('2d');
+    g.clearRect(0, 0, 1024, 256); g.fillStyle = col; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.font = 'bold 240px "Arial Black", Arial, Helvetica, sans-serif';
+    const m = g.measureText('BREAZA'), bw = m.actualBoundingBoxLeft + m.actualBoundingBoxRight, bh = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    const sx = 1016 / bw, sy = 250 / bh;                       // the glyphs fill the canvas: the quad is the letters' box
+    g.setTransform(sx, 0, 0, sy, 4 + sx * m.actualBoundingBoxLeft, 3 + sy * m.actualBoundingBoxAscent); g.fillText('BREAZA', 0, 0);
+    return c;
+  };
+  const cor = canvas(64, 64), cg0 = cor.getContext('2d');
+  for (let x = 0; x < 64; x++) { const t = 0.5 + 0.5 * Math.sin(x / 64 * Math.PI * 2 * 8); cg0.fillStyle = `rgb(${38 + t * 22 | 0},${112 + t * 36 | 0},${52 + t * 20 | 0})`; cg0.fillRect(x, 0, 1, 64); }
+  grain(cg0, 64, 64, 10, R);
+  // kerbs painted black and white, 1 m each (the islands and the billboard's triangle, photos and Street View)
+  const kp = canvas(64, 16), kg = kp.getContext('2d');
+  kg.fillStyle = '#dedbd2'; kg.fillRect(0, 0, 32, 16); kg.fillStyle = '#2e2e2c'; kg.fillRect(32, 0, 32, 16);
+  for (let k = 0; k < 40; k++) { kg.fillStyle = k % 2 ? 'rgba(150,146,136,0.5)' : 'rgba(120,118,110,0.45)'; kg.fillRect(R() * 64, R() * 16, 1 + R() * 3, 1 + R() * 2); }
+  grain(kg, 64, 16, 14, R);
+  const kerbTex = tex(kp, { repeat: true }); kerbTex.repeat.set(0.5, 1);
   const flagEU = canvas(96, 64), fe = flagEU.getContext('2d');
   fe.fillStyle = '#1f3f99'; fe.fillRect(0, 0, 96, 64); fe.fillStyle = '#f5cd2f';
   for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; fe.beginPath(); fe.arc(48 + Math.cos(a) * 20, 32 + Math.sin(a) * 20, 2.6, 0, 7); fe.fill(); }
   const flagRO = canvas(96, 64), fr = flagRO.getContext('2d');
   [['#1f3f8f', 0], ['#f2cf1c', 32], ['#cf2a2a', 64]].forEach(([c, x]) => { fr.fillStyle = c; fr.fillRect(x, 0, 32, 64); });
   const flagP = canvas(96, 64), fp = flagP.getContext('2d');
-  fp.fillStyle = '#e4e3dc'; fp.fillRect(0, 0, 96, 64); fp.fillStyle = 'rgba(90,96,110,0.45)'; fp.fillRect(38, 18, 20, 28);
+  fp.fillStyle = '#c9c8c0'; fp.fillRect(0, 0, 96, 64); fp.fillStyle = 'rgba(70,74,86,0.6)'; fp.fillRect(34, 14, 28, 36); fp.fillStyle = 'rgba(160,60,56,0.5)'; fp.fillRect(40, 20, 16, 24);
   // signs
   const stop = canvas(128, 128), sp = stop.getContext('2d');
   const oct = (g, r, c) => { g.fillStyle = c; g.beginPath(); for (let k = 0; k < 8; k++) { const a = (k + 0.5) / 8 * Math.PI * 2; g.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); } g.fill(); };
@@ -216,7 +233,7 @@ function mats() {
     return c;
   };
   const town = canvas(192, 64), tg = town.getContext('2d');
-  tg.fillStyle = '#f1efe8'; tg.fillRect(0, 0, 192, 64); tg.strokeStyle = '#1b1b1b'; tg.lineWidth = 5; tg.strokeRect(4, 4, 184, 56);
+  tg.fillStyle = '#f1efe8'; tg.fillRect(0, 0, 192, 64); tg.strokeStyle = '#7a2a24'; tg.lineWidth = 5; tg.strokeRect(4, 4, 184, 56);   // a thin red border (photo 63)
   tg.fillStyle = '#1b1b1b'; tg.font = 'bold 40px Arial, Helvetica, sans-serif'; tg.textAlign = 'center'; tg.textBaseline = 'middle'; tg.fillText('BREAZA', 96, 34);
   const note = canvas(64, 80), ng = note.getContext('2d');
   ng.fillStyle = '#e9e4da'; ng.fillRect(0, 0, 64, 80); ng.strokeStyle = '#8e7a6c'; ng.lineWidth = 2; ng.strokeRect(2, 2, 60, 76);
@@ -234,10 +251,13 @@ function mats() {
   MT = {
     fill: Object.assign(M.asphalt.clone(), { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }),
     mark: Object.assign(M.marking.clone(), { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
-    kerb: M.curb ?? M.concrete, top: dryGrass,
+    kerb: M.curb ?? M.concrete, kerbP: std({ map: kerbTex, roughness: 0.85 }), top: dryGrass,
     billboard: face(bb), frame: std({ color: 0x4a4640, roughness: 0.7, metalness: 0.3 }),
     stone: std({ map: tex(st, { repeat: true }), roughness: 0.95 }),
-    green: std({ color: 0x2c7a3a, roughness: 0.55, metalness: 0.35 }), board: face(bo),
+    green: std({ color: 0x2c7a3a, roughness: 0.55, metalness: 0.35 }),
+    lettersW: std({ map: tex(letters('#f2f1ec')), alphaTest: 0.5, roughness: 0.6 }),
+    lettersG: std({ map: tex(letters('#2f8a3e')), alphaTest: 0.5, roughness: 0.55, metalness: 0.2, side: THREE.DoubleSide }),
+    tri: std({ map: tex(cor), roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide }),
     flagEU: face(flagEU, { double: true }), flagRO: face(flagRO, { double: true }), flagP: face(flagP, { double: true }),
     stop: face(stop, { alpha: true }), ploiesti: face(plate('Ploiești', true), { alpha: true }), brasov: face(plate('Brașov', false), { alpha: true }),
     town: face(town), note: face(note), cart: face(cart, { alpha: true }), cplate: face(cplate),
@@ -252,8 +272,8 @@ export function buildBreaza(B, world) {
   const Y = layout();
   if (!Y) return null;
   const Mt = mats();
-  const { FO, FI, FR, FL, rows, iTip, iEnd, mid, mon, sStop, ray, cam } = Y;
-  const A = { fill: new Acc(), mark: new Acc(), kerb: new Acc(), top: new Acc(), billboard: new Acc(), board: new Acc(), flagEU: new Acc(), flagRO: new Acc(), flagP: new Acc(), stop: new Acc(), ploiesti: new Acc(), brasov: new Acc(), town: new Acc(), note: new Acc(), cart: new Acc(), cplate: new Acc() };
+  const { FO, FI, FR, FL, rows, iTip, iEnd, mid, sStop, ray, cam } = Y;
+  const A = { fill: new Acc(), mark: new Acc(), kerb: new Acc(), kerbP: new Acc(), top: new Acc(), billboard: new Acc(), stone: new Acc(), lettersW: new Acc(), lettersG: new Acc(), tri: new Acc(), flagEU: new Acc(), flagRO: new Acc(), flagP: new Acc(), stop: new Acc(), ploiesti: new Acc(), brasov: new Acc(), town: new Acc(), note: new Acc(), cart: new Acc(), cplate: new Acc() };
   const G = { stone: [], green: [], frame: [], back: [], galv: [], rust: [], lamp: [] };
   const Yat = (x, z) => heightAt(x, z);
   const box = (x, z, hx, hz, rot, y0, y1, tag) => world.addStatic(new world.Box(x, z, hx, hz, rot, y0, y1, tag));
@@ -294,40 +314,68 @@ export function buildBreaza(B, world) {
     const inset = (p, q) => { const cx = q[0], cz = q[1], dx = cx - p[0], dz = cz - p[1], l = Math.hypot(dx, dz) || 1; return [p[0] + dx / l * 0.15, p[1] + dz / l * 0.15]; };
     const c = mid(I[Math.floor(I.length / 2)]);
     drape(A.top, ring.map(p => inset(p, c)), 0.15, 1, 2);
-    kerbRing(A.kerb, ring, c);
+    kerbRing(A.kerbP, ring, c);
   }
 
-  // ---- kerbs of the grass either side: the billboard's triangle (ramp / incoming branch) and BREAZA's (ours / link)
-  kerbBetween(A.kerb, FI, -HW, FR, 2.0, 1.0, 45);
+  // ---- kerbs of the grass either side: the billboard's triangle (ramp / incoming branch; painted like the island's) and
+  //      BREAZA's (ours / link)
+  kerbBetween(A.kerbP, FI, -HW, FR, 2.0, 1.0, 45);
+  //      and the triangle's side along DN1 (its 15 m carriageway's south-west edge), where it is clear of the two branches
+  {
+    const dn = road(IDS.DN1);
+    if (dn) {
+      // the longest run of edge points inside the triangle: right of the ramp, left of the incoming branch, clear of both
+      const FD = frame(pairs(dn.p));
+      let run = [], best = [];
+      for (let s = 0; s <= FD.L + 1; s += 1) {
+        const p = s <= FD.L ? Wf(FD, s, dn.w / 2) : null, qr = p && FR.local(p[0], p[1]), qi = p && FI.local(p[0], p[1]);
+        if (p && qr.o > 2.0 + 1.0 && qi.o < -HW - 1.0) { run.push(s); continue; }
+        if (run.length > best.length) best = run;
+        run = [];
+      }
+      if (best.length > 1) kerbRun(A.kerbP, best.map(s => Wf(FD, s, dn.w / 2)), best.map(s => Wf(FD, s, dn.w / 2 + 1)));
+    }
+  }
   kerbBetween(A.kerb, FO, HW, FL, -2.0, 1.0, FO.L - 1);
 
-  // ---- the monument: a stone pillar at the island's tip, a rockery, a green A-frame with a board and three flags
+  // ---- the monument (photo 63; its form from Street View, 2022): "BREAZA" on a green steel A-frame over a stone plinth,
+  //      just past the island's nose. The plinth is a wedge of stone slabs, 0.71 m at the back sloping to 0.15 m at the
+  //      front; the frame's plane runs at 50° with the white letters towards our branch and a taller green set towards the
+  //      incoming one (photo 63 sees the green side ~15° off edge-on), the legs meeting at the top over a green corrugated
+  //      triangle, three flags leaning out of it. Sizes from photo 63 (1° = 0.59 m there): the plinth 0.71 m high and
+  //      ~1 m deep, the top 2.9 m, the legs ~2 m apart; the rest in Street View's proportions to those (the white letters
+  //      0.84-1.58 m and 2.5 m wide, the triangle from 1.96 m)
   {
-    const r0 = rows[Math.max(iTip, 0)], r1 = rows[Math.min(iEnd, iTip + 8)];
-    const [ax, az] = mon, ux = (mid(r1)[0] - mid(r0)[0]), uz = (mid(r1)[1] - mid(r0)[1]), ul = Math.hypot(ux, uz) || 1, fx = ux / ul, fz = uz / ul;   // along the island
-    const rot = -Math.atan2(fz, fx), y = Yat(ax, az) + 0.15;
-    // pillar at the front, the rockery behind it
-    const px = ax - fx * 0.9, pz = az - fz * 0.9;
-    boxAt(G.stone, px, y + 0.55, pz, 0.62, 1.1, 0.62, rot);
-    for (let k = 0; k < 4; k++) boxAt(G.stone, ax + fx * (k * 0.35), y + 0.28 - k * 0.05, az + fz * (k * 0.35), 1.2 - k * 0.2, 0.56 - k * 0.1, 1.1 - k * 0.15, rot + k * 0.2);
-    box(px, pz, 0.35, 0.35, 0, y - 0.2, y + 1.1, 'monument');
-    // the A-frame across the island, its legs 1.3 m apart, 3 m high
-    const FH = 3.0, nx = -fz, nz = fx, top = [ax + fx * 0.2, y + FH, az + fz * 0.2];
-    const leg = (sd) => [ax + fx * 0.2 + nx * 0.65 * sd, y, az + fz * 0.2 + nz * 0.65 * sd];
-    tube(G.green, leg(-1), top, 0.05); tube(G.green, leg(1), top, 0.05);
-    const cb = (t) => [leg(-1)[0] + (top[0] - leg(-1)[0]) * t, y + FH * t, leg(-1)[2] + (top[2] - leg(-1)[2]) * t], cr = (t) => [leg(1)[0] + (top[0] - leg(1)[0]) * t, y + FH * t, leg(1)[2] + (top[2] - leg(1)[2]) * t];
-    tube(G.green, cb(0.45), cr(0.45), 0.03);
-    // the board hanging under the cross bar, facing the fork
-    const bw = 0.8, bh = 0.65, by = y + 1.1, bx = ax + fx * 0.14, bz = az + fz * 0.14;
-    A.board.quad([bx - nx * bw / 2, by, bz - nz * bw / 2], [bx + nx * bw / 2, by, bz + nz * bw / 2], [bx + nx * bw / 2, by + bh, bz + nz * bw / 2], [bx - nx * bw / 2, by + bh, bz - nz * bw / 2], [-fx, 0, -fz], [0, 0, 1, 0, 1, 1, 0, 1]);
-    boxAt(G.green, bx + fx * 0.02, by + bh / 2, bz + fz * 0.02, 0.02, bh, bw, rot);
-    box(ax, az, 0.35, 0.8, rot, y - 0.2, y + FH, 'monument');
-    // three flag poles bound to the frame near its top: the pale flag, the EU flag, the tricolour; hanging a little out
-    [[-0.45, 'flagP', 2.75], [0.05, 'flagEU', 3.1], [0.3, 'flagRO', 2.85]].forEach(([o, key, h]) => {
-      const x0 = ax + fx * 0.25 + nx * o, z0 = az + fz * 0.25 + nz * o;
-      tube(G.galv, [x0, y + 1.6, z0], [x0 - fx * 0.2, y + h + 0.2, z0 - fz * 0.2], 0.018, 5);
-      const hx = x0 - fx * 0.2, hz = z0 - fz * 0.2, wx = nx * 0.3 - fx * 0.85, wz = nz * 0.3 - fz * 0.85, wl = Math.hypot(wx, wz), ex = wx / wl * 0.75, ez = wz / wl * 0.75;
-      A[key].quad([hx, y + h - 0.5, hz], [hx + ex, y + h - 0.56, hz + ez], [hx + ex, y + h - 0.04, hz + ez], [hx, y + h, hz], [ez, 0, -ex], [0, 0, 1, 0, 1, 1, 0, 1]);
+    const [mx, mz] = ray(RAYS.monument[0], RAYS.monument[1]), [ax, az] = dirOf(50), [nx, nz] = dirOf(140);   // along the frame, its front
+    const rot = -Math.atan2(az, ax), L = 1.2, D = 0.5, hB = 0.71, hF = 0.15, T = 0.8, H = 2.9;               // stone tiles 0.8 m
+    const P = (u, w) => [mx + ax * u + nx * w, mz + az * u + nz * w];
+    const hs = [[-L, -D], [L, -D], [L, D], [-L, D]].map(([u, w]) => Yat(...P(u, w)));
+    const y = Math.max(...hs) + 0.15, yb = Math.min(...hs) - 0.05;
+    const V = (u, w, h) => { const [x, z] = P(u, w); return [x, h, z]; };
+    const F = (u, h, w = 0) => V(u, w, y + h);
+    // the plinth: sloping top, front, back and the two trapezoid ends
+    A.stone.quad(F(-L, hB, -D), F(L, hB, -D), F(L, hF, D), F(-L, hF, D), UP, [0, 0, 2 * L / T, 0, 2 * L / T, 1.2 / T, 0, 1.2 / T]);
+    A.stone.quad(V(-L, D, yb), V(L, D, yb), F(L, hF, D), F(-L, hF, D), [nx, 0, nz], [0, 0, 2 * L / T, 0, 2 * L / T, (y + hF - yb) / T, 0, (y + hF - yb) / T]);
+    A.stone.quad(V(-L, -D, yb), V(L, -D, yb), F(L, hB, -D), F(-L, hB, -D), [-nx, 0, -nz], [0, 0, 2 * L / T, 0, 2 * L / T, (y + hB - yb) / T, 0, (y + hB - yb) / T]);
+    for (const sd of [-1, 1]) A.stone.quad(V(sd * L, -D, yb), V(sd * L, D, yb), F(sd * L, hF, D), F(sd * L, hB, -D), [ax * sd, 0, az * sd], [0, 0, 2 * D / T, 0, 2 * D / T, (y + hF - yb) / T, 0, (y + hB - yb) / T]);
+    box(mx, mz, L, D, rot, yb - 0.2, y + H, 'monument');
+    // the A-frame on the plinth, its legs 2 m apart meeting at the top, the triangle between them over 1.96 m; the
+    // letters' bars either side
+    const hm = (hB + hF) / 2 - 0.05, h3 = 1.96, tb = 1.0 * (H - h3) / (H - hm);
+    for (const sd of [-1, 1]) tube(G.green, F(1.0 * sd, hm), F(0, H), 0.045);
+    for (const [w, h0, h1] of [[0.12, 0.84, 1.58], [-0.12, 0.88, 1.75]]) for (const h of [h0, h1]) tube(G.green, F(-1.5, h, w), F(1.5, h, w), 0.022, 5);
+    A.tri.quad(F(-tb, h3), F(tb, h3), F(0, H), F(0, H), [nx, 0, nz], [0, 0, 1, 0, 0.5, 1, 0.5, 1]);
+    // the letters: s = 1 reads from the front, -1 from the back
+    const letters = (acc, w, W, H, h0, sgn) => acc.quad(F(-W / 2 * sgn, h0, w), F(W / 2 * sgn, h0, w), F(W / 2 * sgn, h0 + H, w), F(-W / 2 * sgn, h0 + H, w), [nx * sgn, 0, nz * sgn], [0, 0, 1, 0, 1, 1, 0, 1]);
+    letters(A.lettersW, 0.13, 2.5, 0.74, 0.84, 1);
+    letters(A.lettersG, -0.13, 2.8, 0.87, 0.88, -1);
+    // three flags on poles tied to the frame's top: the EU flag highest and the tricolour lean east (right in photo 63, over
+    // the island's far end in Street View), the pale one north-west
+    const E = [0.766, 0.643], NW = [0.26, -0.97];
+    [['flagEU', [0.15, 1.9], E, 0.35, 2.88, 100], ['flagRO', [0.2, 1.8], E, 0.45, 2.47, 110], ['flagP', [-0.15, 1.8], NW, 0.35, 2.62, 300]].forEach(([key, [u0, h0], [du, dw], k, h, bearing]) => {
+      const top = F(u0 + du * k, h, dw * k), [dx, dz] = dirOf(bearing), fw = key === 'flagP' ? 0.55 : 0.7, fh = key === 'flagP' ? 0.6 : 0.46;
+      tube(G.galv, F(u0, h0), [top[0], top[1] + 0.12, top[2]], 0.018, 5);
+      A[key].quad([top[0], top[1] - fh, top[2]], [top[0] + dx * fw, top[1] - fh - 0.06, top[2] + dz * fw], [top[0] + dx * fw, top[1] - 0.04, top[2] + dz * fw], top, [dz, 0, -dx], [0, 0, 1, 0, 1, 1, 0, 1]);
     });
   }
 
@@ -386,7 +434,7 @@ export function buildBreaza(B, world) {
 
   // ---- flush
   const flat = { noCast: true };
-  for (const [k, o] of [['fill', flat], ['mark', flat], ['kerb', {}], ['top', flat], ['billboard', {}], ['board', {}], ['flagEU', {}], ['flagRO', {}], ['flagP', {}], ['stop', {}], ['ploiesti', {}], ['brasov', {}], ['town', {}], ['note', {}], ['cart', {}], ['cplate', {}]]) A[k].flush(B, Mt[k], null, o);
+  for (const [k, o] of [['fill', flat], ['mark', flat], ['kerb', {}], ['kerbP', {}], ['top', flat], ['billboard', {}], ['stone', {}], ['lettersW', {}], ['lettersG', {}], ['tri', {}], ['flagEU', {}], ['flagRO', {}], ['flagP', {}], ['stop', {}], ['ploiesti', {}], ['brasov', {}], ['town', {}], ['note', {}], ['cart', {}], ['cplate', {}]]) A[k].flush(B, Mt[k], null, o);
   for (const k of Object.keys(G)) if (G[k].length) B.geo(Mt[k], merged(G[k]));
 
   // photo 63's view
@@ -410,13 +458,15 @@ function drapeFn(acc, P, yFn, maxEdge = 1, tile = 3) {
 }
 // kerb along a closed ring (faces outwards from c), 0.15 m high
 function kerbRing(acc, ring, c) {
+  let u = 0;                                                     // along the kerb, m (the paint's 1 m blocks run on)
   for (let k = 0; k < ring.length; k++) {
     const a = ring[k], b = ring[(k + 1) % ring.length], ya = heightAt(a[0], a[1]), yb = heightAt(b[0], b[1]);
     const mx = (a[0] + b[0]) / 2 - c[0], mz = (a[1] + b[1]) / 2 - c[1], dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
     let nx = dz / l, nz = -dx / l; if (nx * mx + nz * mz < 0) { nx = -nx; nz = -nz; }
-    acc.quad([a[0], ya, a[1]], [b[0], yb, b[1]], [b[0], yb + 0.15, b[1]], [a[0], ya + 0.15, a[1]], [nx, 0, nz], [0, 0, l, 0, l, 0.15, 0, 0.15]);
+    const uv = [u, 0, u + l, 0, u + l, 0.15, u, 0.15]; u += l;
+    acc.quad([a[0], ya, a[1]], [b[0], yb, b[1]], [b[0], yb + 0.15, b[1]], [a[0], ya + 0.15, a[1]], [nx, 0, nz], uv);
     const ia = [a[0] - nx * 0.15, a[1] - nz * 0.15], ib = [b[0] - nx * 0.15, b[1] - nz * 0.15];
-    acc.quad([a[0], ya + 0.15, a[1]], [b[0], yb + 0.15, b[1]], [ib[0], yb + 0.15, ib[1]], [ia[0], ya + 0.15, ia[1]], UP, [0, 0, l, 0, l, 0.15, 0, 0.15]);
+    acc.quad([a[0], ya + 0.15, a[1]], [b[0], yb + 0.15, b[1]], [ib[0], yb + 0.15, ib[1]], [ia[0], ya + 0.15, ia[1]], UP, uv);
   }
 }
 // kerbs on both sides of the grass between two roads (edge oA of FA, edge oB of FB), where they are > gmin apart
@@ -428,15 +478,18 @@ function kerbBetween(acc, FA, oA, FB, oB, gmin, sMax) {
     ea.push(p); eb.push(Wf(FB, q.s, oB));
   }
   if (ea.length < 2) return;
-  const run = (P, sgnRef) => {
-    for (let k = 0; k < P.length - 1; k++) {
-      const a = P[k], b = P[k + 1], ya = heightAt(a[0], a[1]), yb = heightAt(b[0], b[1]), dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
-      let nx = dz / l, nz = -dx / l; const r = sgnRef[k]; if (nx * (a[0] - r[0]) + nz * (a[1] - r[1]) < 0) { nx = -nx; nz = -nz; }   // faces the road
-      acc.quad([a[0], ya, a[1]], [b[0], yb, b[1]], [b[0], yb + 0.15, b[1]], [a[0], ya + 0.15, a[1]], [nx, 0, nz], [0, 0, l, 0, l, 0.15, 0, 0.15]);
-      const ia = [a[0] - nx * 0.15, a[1] - nz * 0.15], ib = [b[0] - nx * 0.15, b[1] - nz * 0.15];
-      acc.quad([a[0], ya + 0.15, a[1]], [b[0], yb + 0.15, b[1]], [ib[0], yb + 0.15, ib[1]], [ia[0], ya + 0.15, ia[1]], UP, [0, 0, l, 0, l, 0.15, 0, 0.15]);
-    }
-  };
   // each kerb faces away from the grass (towards its own road): reference points on the other kerb are on the grass side
-  run(ea, eb); run(eb, ea);
+  kerbRun(acc, ea, eb); kerbRun(acc, eb, ea);
+}
+// a kerb along P facing away from the reference points (on the grass side)
+function kerbRun(acc, P, sgnRef) {
+  let u = 0;
+  for (let k = 0; k < P.length - 1; k++) {
+    const a = P[k], b = P[k + 1], ya = heightAt(a[0], a[1]), yb = heightAt(b[0], b[1]), dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+    let nx = dz / l, nz = -dx / l; const r = sgnRef[k]; if (nx * (a[0] - r[0]) + nz * (a[1] - r[1]) < 0) { nx = -nx; nz = -nz; }   // faces the road
+    const uv = [u, 0, u + l, 0, u + l, 0.15, u, 0.15]; u += l;
+    acc.quad([a[0], ya, a[1]], [b[0], yb, b[1]], [b[0], yb + 0.15, b[1]], [a[0], ya + 0.15, a[1]], [nx, 0, nz], uv);
+    const ia = [a[0] - nx * 0.15, a[1] - nz * 0.15], ib = [b[0] - nx * 0.15, b[1] - nz * 0.15];
+    acc.quad([a[0], ya + 0.15, a[1]], [b[0], yb + 0.15, b[1]], [ib[0], yb + 0.15, ib[1]], [ia[0], ya + 0.15, ia[1]], UP, uv);
+  }
 }
