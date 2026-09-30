@@ -436,6 +436,9 @@ async function main() {
   if (psLm?.view && !PHOTO_VIEWS.some(v => v.pastravaria)) {
     const v = psLm.view;
     PHOTO_VIEWS.push({ pastravaria: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: 'Poza 64 — DN1 la Păstrăvăria Cornu' });
+    // photo 65 (Street View, November 2023): further on towards Cornu de Sus, through the wood
+    const w = psLm.view65;
+    if (w) PHOTO_VIEWS.push({ x: w.from[0], z: w.from[1], yaw: Math.atan2(-(w.to[0] - w.from[0]), -(w.to[1] - w.from[1])), pitch: w.pitch, fov: w.fov, label: 'Poza 65 — DN1 prin pădure, spre Cornu de Sus' });
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

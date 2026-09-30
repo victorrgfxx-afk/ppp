@@ -147,7 +147,7 @@ function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
   if (surf === 'asphalt' && !r.br && !r.noShoulder && ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential'].includes(r.c)) {
     const sw = major ? 0.9 : 0.45;
     ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + sw, (k) => yfn(k) - 0.02, 1.2);
-    ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k) => yfn(k) - 0.02, 1.2);
+    if (!r.outerShoulder) ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k) => yfn(k) - 0.02, 1.2);   // outerShoulder: a median on the left
   }
   if (major && surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, yfn, r, nearJunction, custom ? { solid: true, edges: false } : {});
   if (r.n) names.push({ n: r.n, P: P0 });

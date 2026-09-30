@@ -134,6 +134,16 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * vegetația e verde, nu de toamnă;
     * rândurile mici de pe panou (urarea în alte limbi) și pozele de pe panoul mic nu se citesc, deci sunt generice;
     * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
+* **DN1 mai departe, prin pădure, spre Cornu de Sus (poza 65, captura ta Street View din noiembrie 2023, „continuarea” pozei 64)** (tot în `src/geo/pastravaria.js`). Captura n-are coordonate, așa că locul e ales după ortofoto: porțiunea unde pădurea coboară până la drum pe dreapta începe la ~300 m după panou. Camera e pusă la 120 m în ea; locul exact de-a lungul celor ~700 m de pădure nu se știe.
+  * **Același profil transversal** ca în poza 64:
+    * 7,3 m între liniile de margine;
+    * parapetul la ~0,5 m de linia din stânga;
+    * în dreapta o fâșie îngustă de asfalt, apoi pietriș, apoi tufăriș.
+
+    Pe ortofoto, parapetul e aici la mijloc între axele OSM, care sunt la 7,3 m una de alta. De aceea fiecare sens e mutat cu 0,85 m spre exterior, cu racord față de porțiunea pozei 64. Parapetul continuă ~1,1 km de la panou.
+  * **Profilul în lung**: modelul de relief urmărește aici coroanele pădurii, iar DN1 urca și cobora cu 4–9 m în 100–200 m. În captură drumul urcă lin și uniform pe fundul văii. Profilul e acum anvelopa convexă de jos a înălțimilor de pe axă, netezită, pe ~870 m. Terenul de lângă drum îl urmează (partea pădurii urcă 1,5 m în 45 m) și se racordează apoi la modelul de relief.
+  * **Pe margini**: iarbă uscată și tufăriș des, cu câțiva copaci mai înalți printre tufe. În dreapta, la ~50 m în față, e o bornă albă cu capac roșu.
+  * **Aproximat**: locul exact de-a lungul pădurii, vegetația (verde, nu de toamnă) și forma bornei (în captură are doar câțiva pixeli). Mașinile din captură (Skoda argintie, camionul de pe sensul opus) erau în trafic, deci nu apar în joc.
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 
