@@ -18,6 +18,7 @@ import { buildDrapel } from './drapel.js';
 import { buildHillwoodStatic } from './hillwood.js';
 import { buildVad } from './vad.js';
 import { buildBreaza } from './breaza.js';
+import { buildPastravaria } from './pastravaria.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -124,6 +125,8 @@ export function buildLandmarks(B, world) {
   if (vd) out.push(vd);
   const bz = buildBreaza(B, world);                   // photo 63: the fork onto DN1 at the Breaza town limit
   if (bz) out.push(bz);
+  const ps = buildPastravaria(B, world);             // photo 64: DN1 at the Păstrăvăria Cornu welcome sign
+  if (ps) out.push(ps);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),
