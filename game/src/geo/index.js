@@ -24,6 +24,7 @@ import { buildHillwood } from './hillwood.js';
 import { prepareVad } from './vad.js';
 import { prepareBreaza } from './breaza.js';
 import { preparePastravaria } from './pastravaria.js';
+import { preparePopas } from './popas.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -61,6 +62,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareVad();                                         // the DJ101R bridge: Strada Gării onto the aerial, the deck, the embankment
   prepareBreaza();                                      // its fork onto DN1 at Breaza: the incoming branch onto the aerial, open ground
   preparePastravaria();                                 // DN1 north of the Etu station: 2 lanes a side, shoulders, open verges
+  preparePopas();                                       // DN1 at the roadside restaurant: the long profile, the lot, no old houses
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);

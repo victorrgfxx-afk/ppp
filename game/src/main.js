@@ -170,6 +170,9 @@ async function main() {
   // the grey Opel Astra parked at the foot of the bridge's abutment on Strada Gării (photo 62)
   const vdLm = geoWorld.landmarks?.find(l => l.type === 'vad');
   if (vdLm) for (const c of vdLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.6, rough: 0.35, dusty: 0.3 }), 'plateC', c.x, c.z, c.h, {});
+  // the dark blue saloon on the restaurant's lot by DN1 (photo 66)
+  const ppLm = geoWorld.landmarks?.find(l => l.type === 'popas');
+  if (ppLm) for (const c of ppLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.65, rough: 0.3, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
   const hillEgg = geoWorld.landmarks?.find(l => l.type === 'hillwood')?.egg ?? null;
   let hillEggFound = false;
   if (drLm) for (const c of drLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.7, rough: 0.3, dusty: 0.2 }), 'plateC', c.x, c.z, c.h, {});
@@ -439,6 +442,12 @@ async function main() {
     // photo 65 (Street View, November 2023): further on towards Cornu de Sus, through the wood
     const w = psLm.view65;
     if (w) PHOTO_VIEWS.push({ x: w.from[0], z: w.from[1], yaw: Math.atan2(-(w.to[0] - w.from[0]), -(w.to[1] - w.from[1])), pitch: w.pitch, fov: w.fov, label: 'Poza 65 — DN1 prin pădure, spre Cornu de Sus' });
+  }
+  // photo 66 (Street View, November 2023): DN1 northbound at the roadside restaurant, ~1.3 km past the sign
+  const ppView = geoWorld.landmarks?.find(l => l.type === 'popas')?.view;
+  if (ppView && !PHOTO_VIEWS.some(v => v.popas)) {
+    const v = ppView;
+    PHOTO_VIEWS.push({ popas: true, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: 'Poza 66 — DN1 la restaurantul de lângă drum' });
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

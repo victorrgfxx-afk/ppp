@@ -28,10 +28,16 @@ import { canvas, tex, grain, boxAt, cyl, tube, merged, frame, pairs, road, drape
 //    heights along the axis (eased), from 130 m into our way to 1000 m (700 m into the long way); the ground across the
 //    road follows it, the wood's side rising 1.5 m within 45 m, and blends back into the model
 //  * scrub along both verges, a white kilometre-type post on the right ~50 m ahead
-const IDS = { nb: ['1086246689', '1107424499', '1107424498'], sb: ['1107424501', '1086246690', '319009063'], near: ['1086246689', '1107424501'], outer: ['1107424499', '1086246690', '1107424498', '319009063'] };
+// the carriageways' ways from the sign north (photos 64-66); the last pair runs on past the roadside restaurant (popas.js)
+const IDS = { nb: ['1086246689', '1107424499', '1107424498', '1107424497'], sb: ['855404753', '1107424501', '1086246690', '319009063'], near: ['1086246689', '1107424501'], outer: ['1107424499', '1086246690', '1107424498', '319009063', '1107424497', '855404753'] };
 const LEVEL = { s0: 130, s1: 998 };      // along our carriageway from the start of its way near the sign (m)
 const CAM65 = { s: 418, o: 1.3, yaw: -1.4, pitch: -0.056, fov: 51.5 };  // 120 m into the long way; 0.55 m left of the lane's centre
 const POST = { s: 468, o: 6.4 };
+// the barrier's offset from our mapped line on Esri's aerial (chain metres, every 50 m past the wood; 1475: a truck)
+const BARRIER = [[1025, -4.0], [1075, -3.75], [1125, -3.5], [1175, -3.0], [1225, -3.0], [1275, -3.75], [1325, -4.25], [1375, -4.25], [1425, -4.75], [1475, -5.25], [1525, -5.0], [1575, -4.5],
+  [1625, -4.5], [1675, -4.5], [1725, -4.75], [1775, -5.25], [1825, -4.75], [1875, -4.75], [1925, -5.0], [1975, -5.0], [2025, -4.5], [2075, -4.75], [2125, -4.5], [2175, -4.25], [2225, -4.0], [2275, -4.25], [2325, -4.5]];
+const BAR_FROM = 1018;                                 // chain metres: photo 65's stretch (both lines 0.85 m out) ends here
+const lin = (A, x) => { if (x <= A[0][0]) return A[0][1]; for (let i = 0; i < A.length - 1; i++) if (x <= A[i + 1][0]) return A[i][1] + (A[i + 1][1] - A[i][1]) * (x - A[i][0]) / (A[i + 1][0] - A[i][0]); return A[A.length - 1][1]; };
 const NB = '1086246689', SB = '1107424501';
 const W = 8.1;                           // edge lines 0.35 m in (roads.js): 7.4 m between them, as on the photo
 const BAR = -4.5, SB_SHIFT = 1.0;        // the barrier's offset from our mapped line; the southbound moved 1 m out
@@ -43,12 +49,13 @@ const UP = [0, 1, 0];
 const Wf = (F, s, o) => { const q = F.at(s), [ux, uz] = F.dir(s); return [q.x - uz * o, q.z + ux * o]; };
 const smooth = (a, b, t) => { const u = Math.max(0, Math.min(1, (t - a) / (b - a))); return u * u * (3 - 2 * u); };
 // our carriageway's ways joined into one line (s from the start of the way by the sign)
-const chainNB = () => { const C = []; for (const id of IDS.nb) { const r = road(id); if (r) for (const p of pairs(r.p)) { const q = C[C.length - 1]; if (!q || Math.hypot(q[0] - p[0], q[1] - p[1]) > 0.01) C.push(p); } } return C; };
+export const chainNB = () => { const C = []; for (const id of IDS.nb) { const r = road(id); if (r) for (const p of pairs(r.p)) { const q = C[C.length - 1]; if (!q || Math.hypot(q[0] - p[0], q[1] - p[1]) > 0.01) C.push(p); } } return C; };
 
 // ------------------------------------------------------------------ before the roads and the terrain's trees
 export function preparePastravaria() {
   const nb = road(NB), sb = road(SB);
   if (!nb || !sb) return false;
+  const FC0 = frame(chainNB());                        // our mapped line before anything moves
   for (const id of [...IDS.nb, ...IDS.sb]) { const r = road(id); if (r) r.w = W; }
   for (const id of IDS.near) { const r = road(id); if (r) r.noShoulder = true; }   // the paved shoulders are drawn here
   for (const id of IDS.outer) { const r = road(id); if (r) r.outerShoulder = true; }  // gravel on the outside only (roads.js)
@@ -64,8 +71,23 @@ export function preparePastravaria() {
   const r1 = road('1086246690'), r2 = road('1107424499'), r3 = road('1107424498'), r4 = road('319009063');
   if (r1) shiftRight(r1, (s, L) => 0.85 + 0.15 * s / L);                                  // north end first: 0.85 -> 1.0 at the sign's stretch
   if (r2) shiftRight(r2, (s, L) => 0.85 * ease(0, L, s));
-  if (r3) shiftRight(r3, (s, L) => 0.85 * (1 - ease(LEVEL.s1 - 298 + 20, LEVEL.s1 - 298 + 80, s)));
-  if (r4) shiftRight(r4, (s, L) => 0.85 * ease(L - (LEVEL.s1 - 298 + 80), L - (LEVEL.s1 - 298 + 20), s));
+  if (r3) shiftRight(r3, () => 0.85);
+  if (r4) shiftRight(r4, () => 0.85);
+  // north of photo 65's stretch (the aerial there is Esri's, where photo 66 has both carriageways on it): each axis
+  // 4.5 m from the barrier as measured every 50 m (the mapped lines are 7-7.9 m apart, the barrier 3-5.2 m left of
+  // our line), easing in after the wood and back onto the mapped lines at the end of the next ways
+  const bAt = (cs) => { let a = 0, k = 0; for (let d = -75; d <= 75; d += 5) { a += lin(BARRIER, cs + d); k++; } return a / k; };
+  const onto = (r, side) => {
+    shiftRight(r, () => 0);                                                                 // resampled every 4 m
+    r.p = pairs(r.p).map(([x, z]) => {
+      const q = FC0.local(x, z);
+      if (!q || q.s < BAR_FROM) return [x, z];
+      const w = smooth(BAR_FROM, BAR_FROM + 60, q.s) * (1 - smooth(FC0.L - 60, FC0.L, q.s)), d = (bAt(q.s) + side * 4.5 - q.o) * w, [ux, uz] = FC0.dir(q.s);
+      return [x - uz * d, z + ux * d];
+    }).flat();
+  };
+  for (const id of ['1107424498', '1107424497']) { const r = road(id); if (r) onto(r, 1); }
+  for (const id of ['319009063', '855404753']) { const r = road(id); if (r) onto(r, -1); }
   // no forest on the verges (grass up to the scrub on the left; the verge, the sign and the field on the right)
   const FN = frame(pairs(nb.p)), E = [], Wv = [];
   for (let s = 18; s <= FN.L; s += 5) E.push(Wf(FN, s, 8.2));
@@ -239,7 +261,8 @@ export function buildPastravaria(B, world) {
   shoulder(FN, W / 2, W / 2 + SH.nb, 0, FN.L);
   shoulder(FS, W / 2, W / 2 + SH.sb, 0, FS.L);   // the southbound runs south: its right is the west
 
-  // ---- the New Jersey barrier with red reflectors, midway between the carriageways' lines, 1080 m from our way's start
+  // ---- the New Jersey barrier with red reflectors, midway between the carriageways' lines, all along them (the aerial
+  //      has the median unbroken up to the end of the ways; photo 66 has the barrier running on past the restaurant)
   {
     const nP = [], sP = [];
     for (const id of IDS.nb) { const r = road(id); if (r) for (const p of pairs(r.p)) { const q = nP[nP.length - 1]; if (!q || Math.hypot(q[0] - p[0], q[1] - p[1]) > 0.01) nP.push(p); } }
@@ -247,9 +270,10 @@ export function buildPastravaria(B, world) {
     const segs = []; { let prev = null; for (const p of sP) { if (p && prev) segs.push([prev, p]); prev = p; } }
     const mid = [];
     let acc0 = 0;
-    for (let i = 0; i < nP.length - 1 && acc0 < 1080; i++) {
+    let Ln = 0; for (let i = 0; i < nP.length - 1; i++) Ln += Math.hypot(nP[i + 1][0] - nP[i][0], nP[i + 1][1] - nP[i][1]);
+    for (let i = 0; i < nP.length - 1 && acc0 < Ln - 60; i++) {         // it ends where the lines ease back together
       const [ax, az] = nP[i], [bx, bz] = nP[i + 1], l = Math.hypot(bx - ax, bz - az), k = Math.ceil(l / 3);
-      for (let j = 0; j < k && acc0 < 1080; j++, acc0 += l / k) {
+      for (let j = 0; j < k && acc0 < Ln - 60; j++, acc0 += l / k) {
         const q = [ax + (bx - ax) * j / k, az + (bz - az) * j / k];
         let best = null;
         for (const [[px, pz], [qx, qz]] of segs) { const dx = qx - px, dz = qz - pz, t = Math.max(0, Math.min(1, ((q[0] - px) * dx + (q[1] - pz) * dz) / (dx * dx + dz * dz))), x = px + dx * t, z = pz + dz * t, d = Math.hypot(q[0] - x, q[1] - z); if (!best || d < best[2]) best = [x, z, d]; }

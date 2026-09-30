@@ -158,9 +158,10 @@ function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
   // no markings near junctions nor on the r.noMarkAt = [s0, s1] stretch (worn asphalt in the photos)
   const S = [0]; for (let k = 1; k < P.length; k++) S.push(S[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]));
   const ok = P.map((p, k) => !nearJunction(p[0], p[1], 9) && !(r.noMarkAt && S[k] >= r.noMarkAt[0] && S[k] <= r.noMarkAt[1]));
-  // continuous edge lines (none on the r.noEdgeAt = [s0, s1] stretch)
-  const okEdge = r.noEdgeAt ? ok.map((v, k) => v && (S[k] < r.noEdgeAt[0] || S[k] > r.noEdgeAt[1])) : ok;
+  // continuous edge lines (none on the r.noEdgeAt = [s0, s1] stretch; only on the r.noEdgeSide one if given: 1 = right)
+  const cut = r.noEdgeAt ? ok.map((v, k) => v && (S[k] < r.noEdgeAt[0] || S[k] > r.noEdgeAt[1])) : ok;
   for (const side of opt.edges === false ? [] : [-1, 1]) {
+    const okEdge = r.noEdgeSide && r.noEdgeSide !== side ? ok : cut;
     let run = [];
     const flush = () => {
       if (run.length > 1) {
