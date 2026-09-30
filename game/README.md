@@ -197,6 +197,50 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * vegetația e generică;
     * profilul în lung al străzii vine din relieful de 30 m, netezit;
     * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
+* **Biserica pictată „Adormirea Maicii Domnului”, cimitirul și curtea școlii „Inv. Ion Mateescu” (pozele 73–76, capturile tale Street View din iunie 2022, cu 45,1313834° N, 25,7076591° E)** (`src/geo/biserica.js`).
+  * **Camerele** sunt calculate din direcțiile spre repere cunoscute (clopotnița porții, turnul bisericii, colțul școlii, stâlpii portocalii ai aleii), cu distanța focală a capturilor (~870 px) și camerele 74–75 legate de drumurile de lângă cimitir.
+  * **Incinta** (măsurată pe ortofoto, doar pentru măsurători): patrulater de ~47 × 70 m cu zid de piatră de 2,8 m și copertină. Are o ușiță în zidul de vest și clădirea lungă a parohiei, cu acoperiș de tablă și perete de lemn, lipită de zidul de vest.
+  * **Clopotnița de la poartă** (poza 76):
+    * corp alb cu arcadă prin care se poate trece;
+    * icoana Maicii Domnului pictată deasupra;
+    * streașina de șindrilă;
+    * clopotnița deschisă, cu stâlpi albi;
+    * acoperișul înalt de șindrilă, piramidal, cu cruce.
+  * **Biserica**: pereții pictați (sfinți în chenare arcuite pe fond albastru, pe două registre) pe soclu. Are absidele laterale și absida altarului, acoperișurile mari de șindrilă și turnul alb peste naos, cu ferestre, acoperiș piramidal și cruce. Conturul din OSM (decalat cu ~8 m) e înlocuit.
+  * **Cimitirul** între incintă și cele două drumuri: ~1070 de morminte în rânduri (rame de beton, cruci de marmură albă, plăci de granit negru, cruci și grilaje de fier), cu alei, gard de plasă pe soclu spre drum și cei doi brazi triangulați din pozele 74 și 76.
+  * **Curtea școlii** (pozele 73, 76): gardul de plasă pe soclu cu indicatorul albastru „P PARCARE”, stâlpii portocalii ai aleii, asfaltul cu locurile de parcare marcate, casa albă cu frontonul de lemn de lângă alee. Școala primește culorile din poze (tencuială ca piatra, acoperiș maro, două niveluri).
+  * **Aproximat**:
+    * frescele sunt o compoziție generică, nu copia picturii reale;
+    * mormintele sunt așezate procedural pe rândurile din ortofoto, nu fiecare în parte, și nu au coliziune;
+    * interiorul bisericii nu e modelat;
+    * cerul e cel din joc.
+* **Str. Uzinei (în OSM „Strada Dimitrie Gusti”), de la Primărie până la intersecția cu STOP, și Strada Bisericii (pozele 77–83, capturile tale Street View din octombrie 2024 și iunie 2022, „4PH6+MJX Poiana Câmpina”)** (`src/geo/uzinei.js`).
+  * **Camerele**: fiecare hartă din capturi a fost suprapusă pe ortofoto Google (~300 de puncte comune pe hartă). Centrul discului albastru dă poziția, săgeata dă direcția.
+    * Pozițiile din hărți ies decalate sistematic cu 1,5–3,5 m spre sud-vest; camerele sunt puse pe banda pe care o arată poza (bordura, mașinile parcate, zidul).
+    * Poza 77 (fără hartă) e mai jos de Primărie, la ~s 380, privind în sus spre uzină: se recunosc insula vopsită din stânga, gardul pe soclu de piatră și magazinul cu etajul vitrat din dreapta. Codul plus dat cade la ~65 m de acolo, în dreptul Primăriei.
+  * **Drumul** (măsurat pe ortofoto, doar pentru măsurători): linia din hartă e cu 2–3 m pe lângă asfalt.
+    * Carosabilul are 7,2 m sub intersecție și ~9 m în dreptul halelor.
+    * Pe partea uzinei e o bordură vopsită alb-negru, cu goluri la porțile curții, și un trotuar de beton.
+    * Pe partea caselor: zidul de sprijin (2,6 m, cu treaptă de beton la bază) sub clădirea cu turn, gardurile de scânduri și de bare, gardul zincat pe soclu de piatră al parcării.
+    * Sub Primărie: insula mediană vopsită, banda de acces și gardul pe soclu.
+    * Terenul e refăcut la 1 m: trotuarele, treapta, pământul de deasupra zidurilor. Profilul în lung vine din relieful de 30 m netezit (pantă de până la ~13% între s 60 și s 150).
+  * **Clădirile PetroUtilaj** (măsurate pe ortofoto, înlocuiesc conturul OSM):
+    * hala lungă cu ferestre pătrate cu gratii și acoperiș într-o apă cu luminator (poza 81);
+    * hala dinaintea ei, în trepte;
+    * biroul cu trei niveluri, cu benzi de ferestre verzi și sigla pe fațadă, cu coșul metalic la colț și iedera roșie pe gard (poza 78);
+    * anexa cu copertină și clădirea cu ferestre în bandă (poza 78);
+    * hala lungă cu acoperiș ruginit din spatele parcării, cu banda de ferestre verzi (poza 79).
+  * **Clădirea cu turn de deasupra zidului** (pozele 80–81): corp cu două niveluri, acoperiș roșu cu lucarne, turn pătrat cu fereastră rotundă și acoperiș piramidal.
+  * **Intersecția (poza 83)**: indicatorul STOP, stâlpul de iluminat, stâlpul cu postul de transformare, Kangoo-ul roșu.
+  * **Strada Bisericii (poza 82)**, refăcută pe ortofoto: bordura vopsită, zebra, zidul de sprijin cu spalierul de viță, trotuarul și gardul alb din șipci, linia de margine întreruptă.
+  * **Mașinile**, ca în poze: BMW-ul negru și hatchback-ul roșu la bordură, mașinile din parcarea uzinei și din parcarea din spatele gardului, Peugeot-ul argintiu, Transporterul alb, Kangoo-ul roșu (modele noi: Renault Kangoo și VW Transporter).
+  * **Aproximat**:
+    * forma caselor de pe partea de sud-vest vine din hartă;
+    * acoperișurile halelor sunt deduse din ortofoto și din pozele din stradă;
+    * vegetația e generică (fără culorile de toamnă);
+    * cerul e cel din joc;
+    * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
+  * Mașinile generate la întâmplare nu mai apar la mai puțin de 60 m de camerele pozelor (în poze sunt doar mașinile reale).
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 

@@ -12,7 +12,7 @@ const WALLS = [0xefede7, 0xeae2cf, 0xe9dcb0, 0xe6c9a8, 0xd2dcc0, 0xd3d8dc, 0xe6c
 const BLOCKS = [0xd9d2c3, 0xc9c8c2, 0xe0d6bf, 0xd8c8b0, 0xc7ccd0];
 const ROOF_METAL = [0x7a3b30, 0x5a3a2c, 0x52565b, 0x3b3e43, 0x4a5c4c, 0x6d3530, 0x9aa0a6, 0x86503a, 0x5f6368];
 const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a, ochre: 0xd8a94e, gray: 0xb3b2ac, shingle: 0x7c7771, stampedGray: 0xa9acad, sand: 0xe3d0a0, brickRed: 0x9b5f47 };
-const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d, roofMetalDark: 0x45484d, tileRed: 0xffffff };
+const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d, roofMetalDark: 0x45484d, roofMetalTeal: 0x5c9a92, tileRed: 0xffffff };
 // facade texture per wall material
 const FKEY = { house: 'facadeHouse', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle', stamped: 'facadeStamped' };
 

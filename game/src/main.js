@@ -173,6 +173,9 @@ async function main() {
   // the dark blue saloon on the restaurant's lot by DN1 (photo 66)
   const ppLm = geoWorld.landmarks?.find(l => l.type === 'popas');
   if (ppLm) for (const c of ppLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.65, rough: 0.3, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
+  // the cars along Str. Uzinei, in the works' parking area and the lot behind the fence, the red Kangoo (photos 78-83)
+  const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
+  if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
   const hillEgg = geoWorld.landmarks?.find(l => l.type === 'hillwood')?.egg ?? null;
   let hillEggFound = false;
   if (drLm) for (const c of drLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.7, rough: 0.3, dusty: 0.2 }), 'plateC', c.x, c.z, c.h, {});
@@ -183,7 +186,11 @@ async function main() {
     const models = ['corsa', 'sedan', 'hatch', 'suv', 'p508', 'hatch', 'sedan'];
     const paints = [0xbfc2c5, 0x1d2024, 0xe9e9e7, 0x6e1f1f, 0x2f4f7a, 0x8a8f94, 0x3b4b3a, 0xd9d4c8];
     const plates = ['plateA', 'plateB', 'plateC'];
-    const cand = GEO.roads.filter(r => ['residential', 'living_street', 'tertiary', 'unclassified'].includes(r.c) && r.s === 'asphalt' && !r.br && !r.hand);
+    const cand = GEO.roads.filter(r => ['residential', 'living_street', 'tertiary', 'unclassified'].includes(r.c) && r.s === 'asphalt' && !r.br && !r.hand && !r.own);
+    // none within 60 m of a photo's camera (the photos show their own cars)
+    const camPts = PHOTO_VIEWS.map(v => [v.x, v.z]);
+    for (const l of geoWorld.landmarks || []) for (const val of Object.values(l)) for (const v of (Array.isArray(val) ? val : [val])) if (v && Array.isArray(v.from)) camPts.push(v.from);
+    const nearView = (x, z) => camPts.some(([cx, cz]) => Math.hypot(x - cx, z - cz) < 60);
     let placed = 0;
     for (let tries = 0; tries < 2400 && placed < 56 && cand.length; tries++) {
       const r = cand[Math.floor(rr() * cand.length)];
@@ -196,7 +203,7 @@ async function main() {
       if ((placed < 24 ? d0 > 650 : d0 > GEO.worldExt - 300) || (Math.abs(x) < 8 && z > world.streetZ[0] - 10 && z < world.streetZ[1] + 10)) continue;
       const dx = (bx - ax) / L, dz = (bz - az) / L, off = r.w / 2 - 1.0;
       const px = x + dz * off, pz = z - dx * off, h = Math.atan2(-dx, -dz);
-      if (bridgeHeight(px, pz) !== null) continue;                 // not on or under a bridge
+      if (bridgeHeight(px, pz) !== null || nearView(px, pz)) continue;   // not on or under a bridge, not in a photo
       const probe = new world.Box(px, pz, 1.05, 2.4, h), gy = world.groundHeight(px, pz);
       if (world.query(px, pz, 4, []).some(b => b.y1 > gy + 0.45 && b.y0 < gy + 2.2 && boxBox(probe, b))) continue;
       const v = park(models[placed % models.length], paintMaterial(paints[Math.floor(rr() * paints.length)], { metallic: rr() * 0.8, rough: 0.3, dusty: rr() * 0.4 }), plates[placed % 3], px, pz, h, {});
@@ -463,6 +470,16 @@ async function main() {
   // photo 72 (Street View, June 2022): the exit's last metres before the junction, the footbridge's east flight
   const v72 = geoWorld.landmarks?.find(l => l.type === 'pasarela')?.view72;
   if (v72 && !PHOTO_VIEWS.some(v => v.pasarela72)) PHOTO_VIEWS.push({ pasarela72: true, x: v72.from[0], z: v72.from[1], yaw: Math.atan2(-(v72.to[0] - v72.from[0]), -(v72.to[1] - v72.from[1])), pitch: v72.pitch, fov: v72.fov, label: 'Poza 72 — ieșirea spre Breaza, scara pasarelei' });
+  // photos 73-76 (Street View, June 2022): the painted church by the cemetery, its gate tower, the school yard
+  const biLm = geoWorld.landmarks?.find(l => l.type === 'biserica');
+  if (biLm?.views && !PHOTO_VIEWS.some(v => v.biserica)) {
+    for (const v of biLm.views) PHOTO_VIEWS.push({ biserica: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
+  }
+  // photos 78-83 (Street View, October 2024 / June 2022): Str. Uzinei from the Primăria up to the STOP junction, Strada Bisericii
+  const uzLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
+  if (uzLm?.views && !PHOTO_VIEWS.some(v => v.uzinei)) {
+    for (const v of uzLm.views) PHOTO_VIEWS.push({ uzinei: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;
