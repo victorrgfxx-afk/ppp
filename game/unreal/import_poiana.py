@@ -4,9 +4,10 @@ Poiana Campina -> Unreal Engine 5.5+ : imports the world exported by `tools/expo
 
 In the Unreal Editor (a level open, ideally made from the "Empty Open World" template):
     Tools > Execute Python Script...  ->  this file
-or in the Output Log (Cmd):  py "C:/path/to/import_poiana.py"
+or in the Output Log (Cmd):  py "D:/PoianaCampina/game/unreal/import_poiana.py"
 
-Set EXPORT_DIR below to the export folder (the one with manifest.json). Every step logs "[Poiana]" lines in the
+The export folder (the one with manifest.json) is found by itself: next to the game folder (where the exporter writes
+it), else X:/PoianaCampina/unreal-export on any drive X; set EXPORT_DIR below only for another place. Every step logs "[Poiana]" lines in the
 Output Log; if something fails, the step is skipped with the reason and the others go on. Steps can be switched off
 in STEPS and the script re-run (it replaces what it made before).
 """
@@ -20,7 +21,7 @@ import traceback
 import unreal
 
 # ------------------------------------------------------------------ settings
-EXPORT_DIR = r"C:\PoianaCampina\unreal-export"      # <- the folder with manifest.json
+EXPORT_DIR = r""      # <- the folder with manifest.json; empty = found by itself (see find_export_dir)
 CONTENT = "/Game/PoianaCampina"                       # where the assets go
 STEPS = {
     "textures": True,        # PNG -> Texture2D (sRGB / linear / normal maps set per use)
@@ -58,6 +59,25 @@ def warn(msg):
 
 def path_join(*a):
     return os.path.join(EXPORT_DIR, *a)
+
+
+def find_export_dir():
+    """EXPORT_DIR if set, else the unreal-export folder next to the game folder (this file is game/unreal/...), else
+    <drive>:\\PoianaCampina\\unreal-export on any drive. Returns (folder or None, the places looked at)."""
+    tried = []
+    if EXPORT_DIR:
+        tried.append(EXPORT_DIR)
+    if os.environ.get("POIANA_EXPORT"):
+        tried.append(os.environ["POIANA_EXPORT"])
+    here = globals().get("__file__")
+    if here:
+        tried.append(os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(here)), "..", "..", "unreal-export")))
+    if os.name == "nt":
+        tried += ["%s:\\PoianaCampina\\unreal-export" % d for d in "CDEFGHIJ"]
+    for d in tried:
+        if os.path.isfile(os.path.join(d, "manifest.json")):
+            return d, tried
+    return None, tried
 
 
 def asset_name(p):
@@ -974,11 +994,16 @@ def clear_previous():
 
 # ------------------------------------------------------------------ main
 def run():
+    global EXPORT_DIR
     t0 = time.time()
-    man_path = path_join("manifest.json")
-    if not os.path.exists(man_path):
-        unreal.log_error("[Poiana] manifest.json not found in EXPORT_DIR = " + EXPORT_DIR)
+    found, tried = find_export_dir()
+    if not found:
+        unreal.log_error("[Poiana] manifest.json not found; looked in: " + " | ".join(tried) +
+                         ". Run tools/export-unreal.bat first, or set EXPORT_DIR at the top of this script.")
         return
+    EXPORT_DIR = found
+    log("export folder: " + EXPORT_DIR)
+    man_path = path_join("manifest.json")
     with open(man_path, "r", encoding="utf-8") as f:
         man = json.load(f)
     with open(path_join(man.get("materials", "materials.json")), "r", encoding="utf-8") as f:

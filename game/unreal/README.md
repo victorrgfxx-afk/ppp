@@ -6,9 +6,9 @@ Lumea din joc (16 × 16 km în jurul Poienii Câmpina, cu relieful până la 20 
 
 Ai nevoie de [Node.js LTS](https://nodejs.org) și de Microsoft Edge (există deja pe Windows).
 
-1. Copiază folderul `game` de pe ramura `claude/realistic-first-person-gta-game-aq1h6w-geo` (de exemplu în `C:\PoianaCampina\game`).
+1. Copiază folderul `game` de pe ramura `claude/realistic-first-person-gta-game-aq1h6w-geo` (de exemplu în `D:\PoianaCampina\game`; merge pe orice disc).
 2. Dublu-click pe `game\tools\export-unreal.bat`.
-   - Se deschide Edge, jocul se construiește la calitate Ultra și exportul se scrie în `C:\PoianaCampina\unreal-export`.
+   - Se deschide Edge, jocul se construiește la calitate Ultra și exportul se scrie lângă folderul `game`, de exemplu în `D:\PoianaCampina\unreal-export`.
    - Din linia de comandă: `node tools/export-unreal.mjs <folder> [--quality ultra|high] [--headless]`.
 
 Ce conține exportul:
@@ -36,8 +36,8 @@ Coordonatele rămân cele din joc (metri, +Y în sus, glTF standard). Validarea:
 
 ## 3. Importul
 
-1. Deschide `game/unreal/import_poiana.py` și schimbă `EXPORT_DIR` pe folderul exportului.
-2. În editor: **Tools → Execute Python Script…** → `import_poiana.py` (sau în Output Log, modul *Cmd*: `py "C:/PoianaCampina/game/unreal/import_poiana.py"`).
+1. Scriptul găsește singur exportul: folderul `unreal-export` de lângă `game` (unde îl scrie exportul) sau `X:\PoianaCampina\unreal-export` pe orice disc. Doar dacă l-ai mutat în altă parte, setează `EXPORT_DIR` sus în `import_poiana.py`.
+2. În editor: **Tools → Execute Python Script…** → `import_poiana.py` (sau în Output Log, modul *Cmd*: `py "D:/PoianaCampina/game/unreal/import_poiana.py"`).
 3. Durează (zeci de minute: Nanite se construiește pentru fiecare tile). Progresul apare în fereastra de progres și în Output Log, pe liniile `[Poiana]`.
 
 Ce face scriptul:
