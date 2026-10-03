@@ -48,12 +48,25 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | L / H | – | faruri / claxon |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
-| T / O | vremea (senin, parțial noros, înnorat) / ora din zi (8:00 – 18:30) | la fel |
+| T / O | vremea (senin, parțial noros, înnorat, ploaie torențială) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
+| L | lanterna (noaptea se aprinde singură) | faruri |
 
 ## Lumina: vremea, ora și umbrele
 
 * **Vremea** (tasta **T** sau meniul): *senin*, ca în capturile Street View: cer albastru adânc cu cumulus luminați din partea soarelui, soare puternic și umbre clare. *Parțial noros*: mai mulți nori, umbre puțin mai moi. *Înnorat*: plafonul gri de sfârșit de septembrie din pozele tale 1–23, identic cu lumina de până acum. Fiecare vreme schimbă împreună cerul, soarele, lumina cerului, reflexiile, ceața și expunerea. La soare, umbra primește și lumina reflectată de solul, zidurile și frunzele luminate din jur (nu doar albastrul cerului), ca să nu iasă albastră și neagră.
 * **Ora** (tasta **O** sau meniul): soarele e pus din poziția reală pentru 26 septembrie la Poiana Câmpina (formulele NOAA), de la 8:00 (8° deasupra orizontului) la 18:30 (6°). Pozele sunt făcute pe la 11:30 (39°). Culoarea și puterea soarelui vin din drumul luminii prin atmosferă (masa de aer Kasten–Young, împrăștiere Rayleigh și aerosoli): la amiază e alb-gălbui, spre apus portocaliu. Cerul, norii și ceața se încălzesc și se întunecă odată cu el.
+* **Ploaie torențială** (a patra vreme din **T**): plafon jos și întunecat, ceață (vizibilitate ~1,5 km), suprafețe ude și zgomot de ploaie.
+  * **Picăturile** cad în două straturi în jurul tău (aproape și „perdeaua” de mai departe), cu vânt în rafale, și rămân pe loc în lume când te miști.
+  * **Nu plouă prin copaci, acoperișuri sau mașini**: o hartă de înălțimi văzută de sus, pe ±48 m în jurul tău, dă pentru fiecare punct prima suprafață pe care cade ploaia (coroana, acoperișul, capota, tablierul podului sau solul). Picăturile se opresc acolo, stropii sar de pe ea, iar ce e cu peste ~0,5 m dedesubt rămâne adăpostit: sub coroane și sub streșini solul e doar umed, fără bălți, fără inele și fără apă care curge. Harta se reface când te muți 6 m (și la fiecare ~0,5 s, pentru mașini).
+  * **Pe asfalt și pe pavele**: unde drumul e aproape plan (sub ~2%) se adună bălți, care reflectă cerul. Unde panta trece de ~3%, apa curge la vale ca o peliculă, cu valuri mici trase pe direcția pantei și cu atât mai repede cu cât drumul e mai înclinat. Panta e luată din geometria reală a drumului.
+  * **Picăturile se văd pe asfalt**: inele care se lărgesc la fiecare picătură (până la ~25 m de tine) și mici coroane de apă care sar de pe sol, de pe acoperișuri și de pe mașini.
+  * Totul se udă: solul, tencuiala și asfaltul se închid la culoare, iar suprafețele devin lucioase. Ploaia începe în ~2 s, suprafețele se udă în ~10 s și se usucă în ~1 min după ce se oprește.
+* **Noaptea, cu lună plină** (orele 22:00 și 23:30; la 20:00 e amurg): noaptea de 26 septembrie 2026 chiar are lună plină (16:49 UTC). Luna e pusă exact unde e pe cer (32° deasupra orizontului spre est-sud-est la 22:00, 44° spre sud-est la 23:30), verificat cu PyEphem la 0,1°. Cerul are stele, discul lunii are mări și halo, felinarele sunt aprinse, iar lanterna (**L**) aruncă umbre.
+  * **Lumina aparte a lunii cade doar pe dealul crucii** (deasupra Străzii Măgurii): o rază rece, argintie, pe ~110 m în jurul crucii, din direcția reală a lunii. Crucea și copacii aruncă umbre lungi în ea. Când e înnorat sau plouă, norii se deschid exact în dreptul lunii și raza coboară ca o coloană de lumină prin ploaie, cu picăturile strălucind în ea. În rest, noaptea e întunecată.
+* **Noaptea pe furtună (ploaie torențială + 22:00 sau 23:30): modul horror.** Fulgere la 6–22 s, cu tunet care vine după cât a parcurs sunetul; un fond sonor jos și neliniștitor; cadru mai întunecat și cu mai mult grăunte; fără păsări.
+  * **Pe dealul crucii umblă un urs brun** de Carpați, de ~2 m, sculptat cu blană adevărată (ca și câinii), cu cocoașa de umeri, gheare și colți. Se plimbă și adulmecă prin pădure în jurul crucii. Te observă de la ~30 m (de la ~44 m dacă ai lanterna aprinsă), se oprește, rage și atacă în galop.
+  * Dacă te prinde pe jos, te doboară și apoi se retrage. Într-o mașină nu te poate atinge: stă în fața ei și mârâie.
+  * Ursul apare doar în combinația noapte + ploaie.
 * **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.

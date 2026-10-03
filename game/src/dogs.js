@@ -431,3 +431,6 @@ export function buildDogs(scene, world) {
     },
   };
 }
+
+// shared with the bear (bear.js)
+export { v3, E, C, Flat, sdfOf, furryPart, glossy, contactShadow };

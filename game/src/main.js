@@ -4,6 +4,9 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel } from './lighting.js';
+import { RAIN, wetScene, RainOcclusion, RainFX } from './rain.js';
+import { MoonBeam, Flashlight, Lightning } from './night.js';
+import { Bear } from './bear.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
@@ -17,7 +20,7 @@ import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
-import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, profileAt, bridgeHeight } from './geo/index.js';
+import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight } from './geo/index.js';
 
 // Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
@@ -108,19 +111,50 @@ async function main() {
   // weather and hour: sky, sun, sky light, reflections, haze and exposure together (T / O or the menu switch them)
   let weatherKey = WEATHER[store.get('weather', 'senin')] ? store.get('weather', 'senin') : 'senin';
   const mul = (a, b) => a.map((v, i) => v * b[i]);
+  let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
+  let moonBeam = null, flashlight = null, bear = null, gradeU = null;         // (made once the map is built)
+  const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
+  // night palettes: a clear moonlit sky, or the low deck of a night storm
+  const NIGHT = {
+    clear: { zenith: [0.004, 0.007, 0.018], horizon: [0.014, 0.02, 0.034], cloudLit: [0.05, 0.056, 0.07], cloudDark: [0.012, 0.013, 0.017], fog: [0.012, 0.015, 0.024] },
+    deck: { zenith: [0.007, 0.008, 0.011], horizon: [0.011, 0.012, 0.016], cloudLit: [0.03, 0.032, 0.039], cloudDark: [0.01, 0.011, 0.013], fog: [0.013, 0.014, 0.018] },
+  };
   const applyWeather = (key, h = hour) => {
     weatherKey = key; hour = h;
-    sunInfo = sunDirection(sunTime(hour));
-    sunDir.copy(sunInfo.dir);
+    const date = sunTime(hour);
+    sunInfo = sunDirection(date); moonInfo = moonDirection(date);
     const w = WEATHER[key], L = sunlightAt(sunInfo.el), d = L.day, warm = L.color.map(c => THREE.MathUtils.lerp(c, 1, d));
-    setSkyWeather(sky, { ...w, sunColor: mul(w.sunColor, L.color), horizon: mul(w.horizon, warm), cloudLit: mul(w.cloudLit, warm), bright: w.bright * (0.3 + 0.7 * d) });
-    sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; sun.shadow.intensity = w.shadow;
-    hemi.color.fromArray(w.hemiSky); hemi.groundColor.fromArray(w.hemiGround); hemi.intensity = w.hemi * (0.35 + 0.65 * d);
-    fogColor.fromArray(mul(w.fog, warm)).multiplyScalar(0.45 + 0.55 * d); scene.fog.color.copy(fogColor); scene.fog.density = w.fogDensity;   // (FogExp2 keeps its own copy)
-    renderer.toneMappingExposure = w.exposure * (1 + 0.7 * (1 - d));   // like a camera: it opens up when the sun is low
+    night = 1 - THREE.MathUtils.smoothstep(sunInfo.el, -12, -3);           // 0 by day, 1 after nautical dusk
+    const moonUp = THREE.MathUtils.smoothstep(moonInfo.el, -1, 5) * moonInfo.illum, overcast = w.cover > 0.6;
+    rainTarget = w.rain ?? 0;
+    horror = night > 0.5 && rainTarget > 0 ? 1 : 0;                         // a night storm: the bear is out
+    rainLight = (0.3 + 0.7 * d) * (1 - 0.75 * night);
+    // the light (and its cascaded shadows) comes from the moon at night
+    sunDir.copy(night > 0.5 ? moonInfo.dir : sunInfo.dir);
+    const N = overcast ? NIGHT.deck : NIGHT.clear, sunVis = THREE.MathUtils.smoothstep(sunInfo.el, -3, 1);
+    setSkyWeather(sky, { ...w, sunColor: mul(w.sunColor, L.color).map(v => v * sunVis),
+      zenith: mixA(w.zenith, N.zenith, night), horizon: mixA(mul(w.horizon, warm), N.horizon, night),
+      cloudLit: mixA(mul(w.cloudLit, warm), N.cloudLit, night), cloudDark: mixA(w.cloudDark, N.cloudDark, night),
+      bright: THREE.MathUtils.lerp(w.bright * (0.3 + 0.7 * d), 1, night) });
+    const su = sky.material.uniforms;
+    su.uNight.value = night; su.uMoonDir.value.copy(moonInfo.dir); su.uMoonCol.value.set(0.9, 0.93, 1).multiplyScalar(moonUp);
+    su.uHole.value = night * (overcast ? 1 : 0);                              // the moon looks through a gap above the hill
+    if (night > 0.5) { sun.color.setRGB(0.6, 0.7, 1); sun.intensity = 0.05 * moonUp * (overcast ? 0.4 : 1); }   // moonlight elsewhere: barely
+    else { sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; }
+    sun.shadow.intensity = w.shadow;
+    hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night));
+    hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), 0.25, night);
+    fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
+    scene.fog.density = w.fogDensity * (horror ? 1.3 : 1);
+    renderer.toneMappingExposure = THREE.MathUtils.lerp(w.exposure * (1 + 0.7 * (1 - d)), 2.6, night);   // like a camera: it opens up when the light is low
     scene.environment?.dispose();
     scene.environment = buildEnvironment(renderer, sky);
-    scene.environmentIntensity = w.env * (0.35 + 0.65 * d);
+    scene.environmentIntensity = baseEnv = w.env * (0.35 + 0.65 * d);
+    // street lamps on at night; the moon's shaft on the hill of the cross; the bear's eyes catch the light
+    M.lampGlass.emissive.setRGB(1, 0.78, 0.5); M.lampGlass.emissiveIntensity = 4 * (1 - THREE.MathUtils.smoothstep(sunInfo.el, -6, 1));
+    moonBeam?.set(night > 0.5 && moonUp > 0.1, moonInfo.dir, 0.45 * moonUp, rainTarget > 0 ? 1 : overcast ? 0.6 : 0.3, scene.fog.density);
+    if (bear) bear.eyeMat.emissiveIntensity = 3 * night;                     // eyeshine in the dark
+    if (gradeU) { gradeU.uVig.value = horror ? 0.5 : 0.28; gradeU.uGrain.value = horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
   };
   applyWeather(weatherKey);
 
@@ -244,6 +278,27 @@ async function main() {
   const audio = new Audio();
   const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
   const post = createComposer(renderer, scene, camera, Q);
+  gradeU = post.grade.uniforms;
+  // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
+  const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
+  if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
+  flashlight = new Flashlight(scene);
+  const lightning = new Lightning((delay, km) => audio.thunder(delay, km));
+  const hurt = document.createElement('div');
+  hurt.style.cssText = 'position:fixed;inset:0;pointer-events:none;opacity:0;z-index:5;background:radial-gradient(ellipse at center, rgba(110,0,0,0) 25%, rgba(150,0,0,0.88) 100%)';
+  document.body.appendChild(hurt);
+  const hurtFlash = () => { hurt.style.transition = 'none'; hurt.style.opacity = '1'; requestAnimationFrame(() => requestAnimationFrame(() => { hurt.style.transition = 'opacity 1.8s'; hurt.style.opacity = '0'; })); };
+  if (crossAt) bear = new Bear(scene, world, crossAt, {
+    roar: (d) => { audio.bear(true, d); if (d < 45) hud.toast('Un urs! Fugi — sau urcă într-o mașină!', 3); },
+    growl: (d) => audio.bear(false, d),
+    attack: (ux, uz) => {
+      if (mode !== 'foot') return;
+      player.pos.x += ux * 3.2; player.pos.z += uz * 3.2;               // thrown back
+      shake = 0.7; hurtFlash(); audio.hit();
+      hud.toast('Ursul te-a doborât! Ridică-te și fugi!', 3.5);
+    },
+  });
+  applyWeather(weatherKey);
 
   let mode = 'foot';       // 'foot' | 'car'
   let active = null;       // vehicle being driven
@@ -267,14 +322,22 @@ async function main() {
   progress(0.97, 'Compilez shaderele…');
   await new Promise(r => setTimeout(r, 20));
   player.update(0, input, null, 0);
+  // rain: every lit material learns to get wet (before compiling, so switching to rain recompiles nothing)
+  wetScene(scene);
+  const rainFX = new RainFX(scene), rainOcc = new RainOcclusion();
   renderer.compile(scene, camera);
   post.composer.render(0);
   $('loader').classList.add('done');
   $('start').classList.add('on');
   $('quality').value = qKey;
   $('sens').value = store.get('sens', 1);
-  const setWeather = (key) => { applyWeather(key); store.set('weather', key); $('weather').value = key; $('weather2').value = key; };
-  const setHour = (h) => { applyWeather(weatherKey, h); store.set('hour', h); $('hour').value = h; $('hour2').value = h; };
+  const torchForNight = () => {
+    if (night > 0.5 && !flashlight.on && mode === 'foot') { flashlight.set(true); hud.toast('E noapte: lanterna e aprinsă (L o stinge)', 3); }
+    if (night < 0.5 && flashlight.on) flashlight.set(false);
+  };
+  const setWeather = (key) => { applyWeather(key); store.set('weather', key); $('weather').value = key; $('weather2').value = key; torchForNight(); };
+  const setHour = (h) => { applyWeather(weatherKey, h); store.set('hour', h); $('hour').value = h; $('hour2').value = h; torchForNight(); };
+  torchForNight();                                              // (a game started at night)
   for (const id of ['weather', 'weather2']) {
     $(id).innerHTML = WEATHER_ORDER.map(k => `<option value="${k}">${WEATHER[k].label}</option>`).join('');
     $(id).value = weatherKey;
@@ -583,7 +646,10 @@ async function main() {
     if (!paused) {
       if (input.hit('KeyP')) screenshot();
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
-      if (input.hit('KeyO')) { setHour(HOURS[(HOURS.indexOf(hour) + 1) % HOURS.length]); hud.toast(`Ora ${hourLabel(hour)} · soarele la ${Math.round(sunInfo.el)}° deasupra orizontului`); }
+      if (input.hit('KeyO')) {
+        setHour(HOURS[(HOURS.indexOf(hour) + 1) % HOURS.length]);
+        hud.toast(night > 0.5 ? `Ora ${hourLabel(hour)} · noapte, lună plină la ${Math.round(moonInfo.el)}°${horror ? ' · furtună: ursul a ieșit pe dealul crucii' : ''}` : `Ora ${hourLabel(hour)} · soarele la ${Math.round(sunInfo.el)}° deasupra orizontului`, 3.5);
+      }
       // N: noclip, free flight to look around the map quickly (from a car too: you step out first)
       if (input.hit('KeyN')) {
         if (mode === 'car') exitCar(true);
@@ -594,6 +660,7 @@ async function main() {
       }
       if (mode === 'foot') {
         for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) gotoView(i);
+        if (input.hit('KeyL')) { flashlight.set(!flashlight.on); hud.toast(flashlight.on ? 'Lanterna aprinsă' : 'Lanterna stinsă'); }
         player.update(dt, input, audio, sens());
         // a dog right next to you wins over a car parked beyond the fence (nothing to use while flying)
         const dog = player.noclip ? null : dogs.nearest(player.pos.x, player.pos.z);
@@ -665,6 +732,7 @@ async function main() {
 
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
+    if ((frameNo & 127) === 0) wetScene(scene);            // materials streamed in since
     if ((frameNo++ & 7) === 0) {
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
       geoWorld.update(camera.position);
@@ -685,12 +753,31 @@ async function main() {
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`),
     });
-    audio.update(dt, { driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    audio.update(dt, { rain: RAIN.uRain.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
     if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
     // the sun's shadow cascades follow the view, ahead of the camera, texel-snapped
-    cascades.update(camera, world.groundHeight(camera.position.x, camera.position.z));
+    const camGround = world.groundHeight(camera.position.x, camera.position.z);
+    cascades.update(camera, camGround);
+    // rain: it starts / stops in ~2 s, the surfaces soak in ~10 s and dry in ~1 min; where it lands comes from the
+    // height map seen from above (crowns, roofs, car roofs), refreshed as you move
+    RAIN.uRain.value = damp(RAIN.uRain.value, rainTarget, 1.2, dt);
+    RAIN.uWet.value = RAIN.uWet.value < rainTarget ? Math.min(rainTarget, RAIN.uWet.value + dt / 10) : Math.max(rainTarget, RAIN.uWet.value - dt / 60);
+    RAIN.uRainTime.value = t;
+    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, [sky, rainFX.group]);
+    // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
+    const flash = lightning.update(dt, horror === 1 && !paused);
+    sky.material.uniforms.uFlash.value = flash;
+    hemi.intensity = baseHemi + flash * 2.2; scene.environmentIntensity = baseEnv + flash * 1.4;
+    moonBeam?.update(t, camera);
+    if (mode === 'car' && flashlight.on) flashlight.set(false);
+    flashlight.update(camera);
+    rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
+    if (!paused) {
+      const pp = mode === 'car' && active ? active.car.group.position : player.pos;
+      bear?.update(dt, t, { active: horror === 1, px: pp.x, pz: pp.z, inCar: mode === 'car', torch: flashlight.on, camX: camera.position.x, camZ: camera.position.z });
+    }
     post.grade.uniforms.uTime.value = t;
     post.composer.render(dt);
     input.endFrame();
@@ -707,7 +794,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, cascades, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, RAIN, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

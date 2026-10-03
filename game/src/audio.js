@@ -25,6 +25,22 @@ export class Audio {
     this.windGain = ctx.createGain(); this.windGain.gain.value = 0.05;
     wn.connect(wf).connect(this.windGain).connect(this.master); wn.start();
     this.windFilter = wf;
+    // rain: a hiss (drops on asphalt and leaves) over a soft roar, silent until it rains
+    const ra = ctx.createBufferSource(); ra.buffer = this.noise; ra.loop = true;
+    const rh = ctx.createBiquadFilter(); rh.type = 'highpass'; rh.frequency.value = 900;
+    const rl = ctx.createBiquadFilter(); rl.type = 'lowpass'; rl.frequency.value = 7000;
+    const rb = ctx.createBufferSource(); rb.buffer = this.noise; rb.loop = true; rb.playbackRate.value = 0.7;
+    const rbf = ctx.createBiquadFilter(); rbf.type = 'bandpass'; rbf.frequency.value = 420; rbf.Q.value = 0.6;
+    this.rainGain = ctx.createGain(); this.rainGain.gain.value = 0;
+    ra.connect(rh).connect(rl).connect(this.rainGain); rb.connect(rbf).connect(this.rainGain);
+    this.rainGain.connect(this.master); ra.start(); rb.start();
+    // night storm: a low uneasy drone (two detuned tones and a hollow wind), silent until then
+    this.drone = ctx.createGain(); this.drone.gain.value = 0; this.drone.connect(this.master);
+    for (const f of [41.2, 43.6, 61.7]) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.value = 0.35; o.connect(g).connect(this.drone); o.start(); }
+    const hw = ctx.createBufferSource(); hw.buffer = this.noise; hw.loop = true; hw.playbackRate.value = 0.35;
+    const hwf = ctx.createBiquadFilter(); hwf.type = 'bandpass'; hwf.frequency.value = 260; hwf.Q.value = 4;
+    const hwg = ctx.createGain(); hwg.gain.value = 0.6; hw.connect(hwf).connect(hwg).connect(this.drone); hw.start();
+    this.howlF = hwf;
     // distant village rumble
     const rn = ctx.createBufferSource(); rn.buffer = this.noise; rn.loop = true; rn.playbackRate.value = 0.5;
     const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 120;
@@ -98,14 +114,53 @@ export class Audio {
       o.connect(g).connect(out); o.start(t); o.stop(t + 0.1);
     }
   }
+  // thunder: a crack (close strikes) and a long rolling rumble, after the sound has travelled `delay` s
+  thunder(delay, km) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay, near = Math.max(0, 1 - km / 3);
+    const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true; s.playbackRate.value = 0.4 + Math.random() * 0.2;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.7;
+    f.frequency.setValueAtTime(300 + 1500 * near, t); f.frequency.exponentialRampToValueAtTime(70, t + 5.5);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime((0.5 + 0.9 * near), t + 0.05 + 0.4 * (1 - near));
+    for (let k = 1; k < 6; k++) g.gain.linearRampToValueAtTime((0.5 + 0.7 * near) * Math.random() * (1 - k / 7), t + 0.4 + k * 0.7);
+    g.gain.linearRampToValueAtTime(0, t + 6.5);
+    s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t + 7);
+  }
+  // a bear: a low growl (rough, pulsing) or a roar (louder, opening up); quieter with distance
+  bear(roar, dist) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, len = roar ? 2.2 : 1.6, k = Math.max(0.08, Math.min(1, 12 / Math.max(dist, 1)));
+    const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true; s.playbackRate.value = roar ? 0.55 : 0.4;
+    const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 3; f1.frequency.setValueAtTime(roar ? 220 : 120, t);
+    if (roar) f1.frequency.linearRampToValueAtTime(420, t + 0.5);
+    f1.frequency.linearRampToValueAtTime(roar ? 180 : 95, t + len);
+    const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = roar ? 700 : 380; f2.gain.value = 8; f2.Q.value = 2;
+    const am = ctx.createGain(); am.gain.value = 0.6;
+    const lfo = ctx.createOscillator(); lfo.frequency.value = roar ? 34 : 26; const lg = ctx.createGain(); lg.gain.value = 0.4; lfo.connect(lg).connect(am.gain);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime((roar ? 2.4 : 1.4) * k, t + 0.15); g.gain.setValueAtTime((roar ? 2.0 : 1.1) * k, t + len * 0.7); g.gain.linearRampToValueAtTime(0, t + len);
+    s.connect(f1).connect(f2).connect(am).connect(g).connect(this.master);
+    s.start(t); s.stop(t + len + 0.1); lfo.start(t); lfo.stop(t + len + 0.1);
+  }
+  hit() {                                                     // the bear's blow: a thud
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+    const g = ctx.createGain(); g.gain.setValueAtTime(1.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.45);
+  }
   update(dt, st) {
     if (!this.ctx || this.ctx.state !== 'running') return;
     this.t += dt;
     const now = this.ctx.currentTime;
     this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41), now, 0.5);
     this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0), now, 0.3);
+    const rain = st.rain ?? 0;
+    this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0), now, 1.5);
+    this.howlF.frequency.setTargetAtTime(220 + 120 * Math.sin(this.t * 0.17) + 60 * Math.sin(this.t * 0.53), now, 0.8);
+    this.rainGain.gain.setTargetAtTime(0.34 * rain * (0.55 + 0.45 * (st.rainOpen ?? 1)), now, 0.6);
     this.nextBird -= dt;
-    if (this.nextBird <= 0) { this.chirp(Math.random() * 2 - 1); this.nextBird = 1.5 + Math.random() * 6; }
+    if (this.nextBird <= 0) { if (rain < 0.2 && !(st.night > 0.5)) this.chirp(Math.random() * 2 - 1); this.nextBird = 1.5 + Math.random() * 6; }   // (no birdsong in a downpour or at night)
     const e = this.eng;
     if (st.driving) {
       const f = st.rpm / 60 * 2;

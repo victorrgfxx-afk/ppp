@@ -44,6 +44,8 @@ export function buildMaterials() {
   std('pavers', { map: TEX.pavers, normalMap: TEX.paversN, roughness: 0.9, color: 0xe8e6e2 });
   std('curb', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.88, color: 0xd6d4cf });
   std('concrete', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.92, color: 0xe6e4df });
+  // hard road surfaces: puddles on the level and water running downhill when it rains (rain.js; clones inherit it)
+  for (const k of ['asphalt', 'pavers', 'concrete']) M[k].userData.wet = 'road';
   std('gravel', { map: TEX.gravel, normalMap: TEX.gravelN, normalScale: n(0, 1.2), roughness: 0.97 });
   std('grassGround', { map: TEX.grass, normalMap: TEX.grassN, roughness: 0.98 });
   std('soil', { map: TEX.soil, normalMap: TEX.soilN, roughness: 0.98 });

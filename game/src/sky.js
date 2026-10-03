@@ -29,7 +29,13 @@ uniform float uDisk;
 uniform float uEnvPass;
 uniform float uEnvDesat;
 uniform vec3 uGround;
+uniform float uNight;
+uniform float uHole;
+uniform float uFlash;
+uniform vec3 uMoonDir;
+uniform vec3 uMoonCol;
 varying vec3 vDir;
+float skyHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 
 float fbm3(vec2 q, float t) {
   return texture2D(uNoise, q).r * 0.55 + texture2D(uNoise, q * 2.3 + 0.3).g * 0.3 + texture2D(uNoise, q * 5.1 - t).b * 0.15;
@@ -54,6 +60,9 @@ void main() {
   float cov = uCover + (big - 0.5) * 0.5;
   float soft = mix(0.4, 0.09, uCumulus);
   float dens = smoothstep(1.0 - cov - soft * 0.45, 1.0 - cov + soft * 0.55, c);
+  // a hole in the deck where the full moon looks through (night storm over the hill of the cross)
+  float mm = max(dot(d, uMoonDir), 0.0);
+  dens *= 1.0 - uHole * smoothstep(0.9877, 0.9962, mm);
   float thick = smoothstep(0.35, 0.95, c * dens);
   // cumulus: a step towards the sun through the density field tells the lit side from the shaded one
   vec2 ts = normalize(uSunDir.xz + vec2(1e-4)) * 0.03;
@@ -61,6 +70,19 @@ void main() {
   float lit = mix(1.0 - thick * 0.85, clamp(0.62 + (c - c2) * 5.0 - thick * 0.45, 0.0, 1.0), uCumulus);
   vec3 cloud = mix(uCloudDark, uCloudLit, lit);
   cloud += uSunColor * pow(mu, 8.0) * (1.0 - thick) * 0.6;
+  // night: stars, the moon's disk (0.52 deg, with darker maria) and its halo, clouds silvered around it, lightning
+  if (uNight > 0.001) {
+    vec3 sq = d * 150.0, sc = floor(sq);
+    float h = skyHash(sc);
+    float star = step(0.9962, h) * (1.0 - smoothstep(0.08, 0.42, length(fract(sq) - 0.5))) * (0.4 + 3.0 * fract(h * 931.7));
+    sky += vec3(0.85, 0.9, 1.0) * star * 0.05 * uNight * smoothstep(0.05, 0.3, y);
+    vec3 lc = (d - uMoonDir * mm) / 0.00455;
+    float maria = 0.78 + 0.22 * texture2D(uNoise, lc.xy * 0.35 + lc.z * 0.2 + 0.31).r;
+    sky += uMoonCol * smoothstep(0.9999844, 0.9999881, mm) * 1.5 * maria * uNight;
+    sky += uMoonCol * (0.12 * pow(mm, 1800.0) + 0.015 * pow(mm, 40.0)) * uNight;
+    cloud += uMoonCol * pow(mm, 30.0) * (1.0 - thick) * 0.12 * uNight;
+  }
+  cloud += vec3(0.75, 0.8, 1.0) * uFlash * (0.5 + thick);
   float fade = smoothstep(-0.02, 0.2, y);
   vec3 col = mix(sky, cloud, dens * fade);
   col = mix(col, uHorizon * 1.02, (1.0 - smoothstep(0.0, 0.16, y)) * 0.65);
@@ -88,6 +110,8 @@ export function createSky() {
       uEnvPass: { value: 0 },
       uEnvDesat: { value: 0 },
       uGround: { value: new THREE.Vector3(0.33, 0.33, 0.31) },
+      uNight: { value: 0 }, uHole: { value: 0 }, uFlash: { value: 0 },
+      uMoonDir: { value: new THREE.Vector3(0, 1, 0) }, uMoonCol: { value: new THREE.Vector3(0.9, 0.92, 1) },
     },
     side: THREE.BackSide, depthWrite: false, fog: false,
   });

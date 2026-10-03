@@ -1,3 +1,4 @@
+import { moonAltAz } from '../astro.js';
 import * as THREE from 'three';
 import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns } from './data.js';
 import { genGeoTextures } from './geotex.js';
@@ -136,6 +137,14 @@ export function roadNameAt(x, z) {
     }
   }
   return best;
+}
+
+// The full moon of 26 September 2026 (astro.js), as a game-frame direction like the sun's.
+export function moonDirection(date) {
+  const { lat, lon, bearing } = GEO.meta.origin, rad = Math.PI / 180;
+  const m = moonAltAz(date, lat, lon), el = m.el * rad, az = m.az * rad;
+  const e = Math.sin(az) * Math.cos(el), nn = Math.cos(az) * Math.cos(el), up = Math.sin(el), th = bearing * rad;
+  return { dir: new THREE.Vector3(-e * Math.cos(th) + nn * Math.sin(th), up, e * Math.sin(th) + nn * Math.cos(th)).normalize(), el: m.el, az: m.az, illum: m.illum };
 }
 
 // Sun position (NOAA approximation) for a date/time at the map origin, as a game-frame direction.

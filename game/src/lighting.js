@@ -121,7 +121,14 @@ export const WEATHER = {
     env: 0.75, fog: [0.56, 0.6, 0.65], fogDensity: 1 / 4000, exposure: 0.92, shadow: 1,
   },
 };
-export const WEATHER_ORDER = ['senin', 'noros', 'innorat'];
+// torrential rain (rain.js): a low, dark, even deck; the sun only a faint glow; heavy haze, visibility ~1.5 km
+WEATHER.ploaie = {
+  label: 'Ploaie torențială', cover: 0.97, cumulus: 0, zenith: [0.2, 0.215, 0.235], horizon: [0.36, 0.38, 0.4], bright: 0.95,
+  cloudLit: [0.47, 0.49, 0.52], cloudDark: [0.22, 0.235, 0.255],
+  sun: 0.35, sunColor: [0.85, 0.88, 0.95], hemi: 0.5, hemiSky: [0.62, 0.66, 0.72], hemiGround: [0.2, 0.2, 0.19],
+  env: 0.9, envGround: [0.2, 0.2, 0.19], fog: [0.33, 0.35, 0.38], fogDensity: 1 / 520, exposure: 1.3, shadow: 0.45, rain: 1,
+};
+export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie'];
 
 // ------------------------------------------------------------------ time of day
 // Direct sunlight through the atmosphere: Kasten-Young air mass and per-channel optical depths (Rayleigh at
@@ -136,6 +143,7 @@ export function sunlightAt(elDeg) {
   const up = THREE.MathUtils.smoothstep(elDeg, -0.8, 2.5);          // the disk sinks behind the horizon
   return { color: rel.map(v => v / k), intensity: Math.min(1.15, rel[1]) * up, day: THREE.MathUtils.smoothstep(elDeg, -4, 22) };
 }
-// the hours offered (local summer time, UTC+3): the photos were taken around 11:30
-export const HOURS = [8, 10, 11.5, 13, 15, 17, 18.5];
+// the hours offered (local summer time, UTC+3): the photos were taken around 11:30; the night of 26 September 2026 has
+// a full moon (16:49 UTC)
+export const HOURS = [8, 10, 11.5, 13, 15, 17, 18.5, 20, 22, 23.5];   // 20:00 dusk; 22:00 and 23:30 under the full moon
 export const hourLabel = (h) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
