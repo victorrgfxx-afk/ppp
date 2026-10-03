@@ -47,7 +47,14 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | V | – | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
-| P / Esc | captură ecran / meniu (calitate grafică, sunet) | |
+| P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
+| T / O | vremea (senin, parțial noros, înnorat) / ora din zi (8:00 – 18:30) | la fel |
+
+## Lumina: vremea, ora și umbrele
+
+* **Vremea** (tasta **T** sau meniul): *senin*, ca în capturile Street View: cer albastru adânc cu cumulus luminați din partea soarelui, soare puternic și umbre clare. *Parțial noros*: mai mulți nori, umbre puțin mai moi. *Înnorat*: plafonul gri de sfârșit de septembrie din pozele tale 1–23, identic cu lumina de până acum. Fiecare vreme schimbă împreună cerul, soarele, lumina cerului, reflexiile, ceața și expunerea. La soare, umbra primește și lumina reflectată de solul, zidurile și frunzele luminate din jur (nu doar albastrul cerului), ca să nu iasă albastră și neagră.
+* **Ora** (tasta **O** sau meniul): soarele e pus din poziția reală pentru 26 septembrie la Poiana Câmpina (formulele NOAA), de la 8:00 (8° deasupra orizontului) la 18:30 (6°). Pozele sunt făcute pe la 11:30 (39°). Culoarea și puterea soarelui vin din drumul luminii prin atmosferă (masa de aer Kasten–Young, împrăștiere Rayleigh și aerosoli): la amiază e alb-gălbui, spre apus portocaliu. Cerul, norii și ceața se încălzesc și se întunecă odată cu el.
+* **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
 

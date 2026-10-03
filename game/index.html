@@ -98,11 +98,14 @@
       <div><b>L</b> faruri · <b>H</b> claxon</div>
       <div><b>1–9, 0</b> punctele din poze (toate 21 în lista de mai jos)</div>
       <div><b>N</b> noclip: zbor liber prin orice (Space sus, C jos, Shift rapid)</div>
+      <div><b>T</b> vremea: senin / parțial noros / înnorat · <b>O</b> ora din zi (soarele real, 26 septembrie)</div>
       <div><b>P</b> captură ecran · <b>Esc</b> meniu</div>
     </div>
     <div class="row">
       <button id="play" class="primary">Joacă</button>
       <label>Grafică <select id="quality"><option value="low">Scăzută</option><option value="medium">Medie</option><option value="high">Înaltă</option><option value="ultra">Ultra</option></select></label>
+      <label>Vremea <select id="weather"></select></label>
+      <label>Ora <select id="hour"></select></label>
       <label>Sensibilitate <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
     </div>
     <div id="views"></div>
@@ -116,6 +119,8 @@
     <div class="row">
       <button id="resume" class="primary">Continuă</button>
       <label>Grafică <select id="quality2"><option value="low">Scăzută</option><option value="medium">Medie</option><option value="high">Înaltă</option><option value="ultra">Ultra</option></select></label>
+      <label>Vremea <select id="weather2"></select></label>
+      <label>Ora <select id="hour2"></select></label>
       <button id="mute">Sunet: pornit</button>
     </div>
     <p style="margin-top:14px">Tastele 1–9 și 0 (și lista din ecranul de start) te duc exact în locurile din care au fost făcute fotografiile, ca să compari.</p>

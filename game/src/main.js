@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { QUALITY, defaultQuality, W, setProfile } from './config.js';
 import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
-import { createSky, createLights, buildEnvironment } from './sky.js';
+import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
+import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel } from './lighting.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
@@ -21,8 +22,11 @@ import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, 
 // Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
   '1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth )', '1.0 - exp( - fogDensity * vFogDepth )');
-// Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina.
-const SUN_TIME = new Date('2026-09-26T08:30:00Z');
+// one sun, several shadow maps (fine near, coarse far): patched into the light loop before any shader compiles
+installCascadedShadows();
+// Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina. The hour can be
+// changed in the menu (O); local summer time is UTC+3.
+const sunTime = (hour) => new Date(Date.UTC(2026, 8, 26) + (hour - 3) * 3600e3);
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -91,15 +95,34 @@ async function main() {
   const sky = createSky();
   scene.add(sky);
   const sunDir = sky.material.uniforms.uSunDir.value;
-  const sunInfo = sunDirection(SUN_TIME);
+  let hour = HOURS.includes(store.get('hour', 11.5)) ? store.get('hour', 11.5) : 11.5;
+  let sunInfo = sunDirection(sunTime(hour));
   sunDir.copy(sunInfo.dir);
   const { sun } = createLights(scene, sunDir);
   sun.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
   sun.shadow.radius = Q.shadowRadius;
   Object.assign(sun.shadow.camera, { left: -Q.shadowBox, right: Q.shadowBox, top: Q.shadowBox, bottom: -Q.shadowBox });
   sun.shadow.camera.updateProjectionMatrix();
-  scene.environment = buildEnvironment(renderer, sky);
-  scene.environmentIntensity = 0.75;
+  const hemi = scene.children.find(o => o.isHemisphereLight);
+  const cascades = new SunCascades(scene, sun, sunDir, Q);
+  // weather and hour: sky, sun, sky light, reflections, haze and exposure together (T / O or the menu switch them)
+  let weatherKey = WEATHER[store.get('weather', 'senin')] ? store.get('weather', 'senin') : 'senin';
+  const mul = (a, b) => a.map((v, i) => v * b[i]);
+  const applyWeather = (key, h = hour) => {
+    weatherKey = key; hour = h;
+    sunInfo = sunDirection(sunTime(hour));
+    sunDir.copy(sunInfo.dir);
+    const w = WEATHER[key], L = sunlightAt(sunInfo.el), d = L.day, warm = L.color.map(c => THREE.MathUtils.lerp(c, 1, d));
+    setSkyWeather(sky, { ...w, sunColor: mul(w.sunColor, L.color), horizon: mul(w.horizon, warm), cloudLit: mul(w.cloudLit, warm), bright: w.bright * (0.3 + 0.7 * d) });
+    sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; sun.shadow.intensity = w.shadow;
+    hemi.color.fromArray(w.hemiSky); hemi.groundColor.fromArray(w.hemiGround); hemi.intensity = w.hemi * (0.35 + 0.65 * d);
+    fogColor.fromArray(mul(w.fog, warm)).multiplyScalar(0.45 + 0.55 * d); scene.fog.color.copy(fogColor); scene.fog.density = w.fogDensity;   // (FogExp2 keeps its own copy)
+    renderer.toneMappingExposure = w.exposure * (1 + 0.7 * (1 - d));   // like a camera: it opens up when the sun is low
+    scene.environment?.dispose();
+    scene.environment = buildEnvironment(renderer, sky);
+    scene.environmentIntensity = w.env * (0.35 + 0.65 * d);
+  };
+  applyWeather(weatherKey);
 
   progress(0.85, 'Construiesc harta: relief, clădiri OSM, drumuri, Prahova, păduri…');
   await new Promise(r => setTimeout(r, 20));
@@ -250,6 +273,18 @@ async function main() {
   $('start').classList.add('on');
   $('quality').value = qKey;
   $('sens').value = store.get('sens', 1);
+  const setWeather = (key) => { applyWeather(key); store.set('weather', key); $('weather').value = key; $('weather2').value = key; };
+  const setHour = (h) => { applyWeather(weatherKey, h); store.set('hour', h); $('hour').value = h; $('hour2').value = h; };
+  for (const id of ['weather', 'weather2']) {
+    $(id).innerHTML = WEATHER_ORDER.map(k => `<option value="${k}">${WEATHER[k].label}</option>`).join('');
+    $(id).value = weatherKey;
+    $(id).addEventListener('change', (e) => setWeather(e.target.value));
+  }
+  for (const id of ['hour', 'hour2']) {
+    $(id).innerHTML = HOURS.map(h => `<option value="${h}">${hourLabel(h)}</option>`).join('');
+    $(id).value = hour;
+    $(id).addEventListener('change', (e) => setHour(parseFloat(e.target.value)));
+  }
 
   // ---------- UI wiring ----------
   const begin = () => {
@@ -547,6 +582,8 @@ async function main() {
     let prompt = '';
     if (!paused) {
       if (input.hit('KeyP')) screenshot();
+      if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
+      if (input.hit('KeyO')) { setHour(HOURS[(HOURS.indexOf(hour) + 1) % HOURS.length]); hud.toast(`Ora ${hourLabel(hour)} · soarele la ${Math.round(sunInfo.el)}° deasupra orizontului`); }
       // N: noclip, free flight to look around the map quickly (from a car too: you step out first)
       if (input.hit('KeyN')) {
         if (mode === 'car') exitCar(true);
@@ -626,11 +663,6 @@ async function main() {
     }
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = damp(camera.fov, fov, 6, dt); camera.updateProjectionMatrix(); }
 
-    // sun + shadow box follow the view (snapped to reduce shimmering)
-    const fp = mode === 'car' && active ? active.car.group.position : player.pos;
-    const snap = 0.5;
-    sun.target.position.set(Math.round(fp.x / snap) * snap, world.groundHeight(fp.x, fp.z), Math.round(fp.z / snap) * snap);
-    sun.position.copy(sun.target.position).addScaledVector(sunDir, 100);
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
     if ((frameNo++ & 7) === 0) {
@@ -657,6 +689,8 @@ async function main() {
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
     if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
+    // the sun's shadow cascades follow the view, ahead of the camera, texel-snapped
+    cascades.update(camera, world.groundHeight(camera.position.x, camera.position.z));
     post.grade.uniforms.uTime.value = t;
     post.composer.render(dt);
     input.endFrame();
@@ -673,7 +707,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, sun: sunInfo, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, cascades, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

@@ -531,7 +531,7 @@ export async function exportUnreal(game, sink, { log = (s) => console.log('[ue] 
   }
   const v0 = game.views?.[0];
   if (v0) manifest.playerStart = { position: [v0.x, ground(v0.x, v0.z), v0.z], forward: [-Math.sin(v0.yaw), 0, -Math.cos(v0.yaw)] };
-  if (game.sun) manifest.sun = { toSun: game.sun.dir.toArray(), elevation: game.sun.el, azimuth: game.sun.az, date: '2026-09-26T08:30:00Z' };
+  if (game.sun) manifest.sun = { toSun: game.sun.dir.toArray(), elevation: game.sun.el, azimuth: game.sun.az, date: new Date(Date.UTC(2026, 8, 26) + ((game.hour ?? 11.5) - 3) * 3600e3).toISOString() };
 
   // ---- calibration: a 1 x 2 x 3 m box from the origin (the Unreal script reads the importer's axes and scale off it)
   {
