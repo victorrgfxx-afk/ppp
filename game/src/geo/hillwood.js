@@ -22,6 +22,10 @@ import { hillOpen, HILL_BOX, trackAt, trackPoint, drapelSpots } from './drapel.j
 // The ground cover is generated around the player in 16 m tiles (hash-seeded, the same each time) and only on this hill.
 
 const HB = HILL_BOX, TS = 16;
+// The forest scene (cinematic.js): the user's pin (45.1182321 N 25.7049276 E) is on the meadow by the dirt track, 20 m
+// short of the wood; the scene plays on the nearest flat ground well inside it (28 m on, 11 m from its edge), in a small
+// clearing: no generated trees within 4.5 m, nothing of the ground cover within r (the scene's own carpet of dry leaves)
+export const SCENE_SPOT = { x: -841.6, z: -1653.6, r: 6.6 };
 const clamp01 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
 function hash(i, j, s) {
   let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(s, 1274126177)) | 0;
@@ -91,6 +95,7 @@ function trodden(x, z) {
 function site(x, z) {
   if (x < HB.x0 || x > HB.x1 || z < HB.z0 || z > HB.z1 || blocked(x, z)) return null;
   if (EGG && Math.hypot(x - EGG.x, z - EGG.z) < EGG.clear) return null;
+  if (Math.hypot(x - SCENE_SPOT.x, z - SCENE_SPOT.z) < SCENE_SPOT.r) return null;
   const f = wood(x, z);
   if (!f && hillOpen(x, z) + 0.35 * (valueNoise2(x, z, 6, 41) - 0.5) < 0.5) return null;
   let tk = 1, onTrack = false;
@@ -590,9 +595,10 @@ export function buildHillwoodStatic(B, world) {
     }
   }
   if (egg) EGG = { x: egg.x, z: egg.z, clear: 2.6 };
+  if (wood(SCENE_SPOT.x, SCENE_SPOT.z)) clearForest(SCENE_SPOT.x, SCENE_SPOT.z, 4.5);
   const R = rng(2024);
   let nLogs = 0, nRocks = 0;
-  const eggNear = (x, z, r) => egg && Math.hypot(x - egg.x, z - egg.z) < r;
+  const eggNear = (x, z, r) => (egg && Math.hypot(x - egg.x, z - egg.z) < r) || Math.hypot(x - SCENE_SPOT.x, z - SCENE_SPOT.z) < r;
   // fallen trunks: a 28 m grid over the wood, likelier in the old stands and on the slopes
   for (let j = Math.floor(HB.z0 / 28); j <= Math.floor(HB.z1 / 28); j++) for (let i = Math.floor(HB.x0 / 28); i <= Math.floor(HB.x1 / 28); i++) {
     const x = (i + 0.2 + 0.6 * hash(i, j, 1)) * 28, z = (j + 0.2 + 0.6 * hash(i, j, 2)) * 28;

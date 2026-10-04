@@ -51,6 +51,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | T / O | vremea (senin, parțial noros, înnorat, ploaie torențială) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
+| K | scena din pădurea de lângă cruce (cinematic, ~17 s; K / Space / Enter o sare, Esc o pune pe pauză) | la fel (cobori întâi) |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -70,6 +71,23 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * **Pe dealul crucii umblă un urs brun** de Carpați, de ~2 m, sculptat cu blană adevărată (ca și câinii), cu cocoașa de umeri, gheare și colți. Se plimbă și adulmecă prin pădure în jurul crucii. Te observă de la ~30 m (de la ~44 m dacă ai lanterna aprinsă), se oprește, rage și atacă în galop.
   * Dacă te prinde pe jos, te doboară și apoi se retrage. Într-o mașină nu te poate atinge: stă în fața ei și mârâie.
   * Ursul apare doar în combinația noapte + ploaie.
+* **Scena din pădure (K, sau butonul „Scena din pădure” din meniu)**: cele două clipuri tale, jucate ca film în pădurea
+  de pe dealul crucii de deasupra Străzii Măgurii (pinul 45,1182321 N 25,7049276 E e chiar la marginea pădurii, așa că
+  scena e la 28 m de el, în primul loc plat din pădure, într-un mic luminiș acoperit cu frunze uscate). Noaptea (22:00,
+  senin), filmat „din mână”, cu lanterna celui care filmează:
+  * **Cadrul 1** (clipul 2): creatura palidă și slabă iese din întuneric în fugă, urlă cu brațele sus; cel în maiou negru
+    o prinde pe la spate, cel în tricou crem îi prinde brațul și o trântesc împreună pe frunze, unde o țin la pământ.
+  * **Cadrul 2** (clipul 1): mai jos și mai aproape, frunzele explodează; o ridică de picioare și atârnă cu capul în jos,
+    zbătându-se, în lumina lanternei unui prieten din stânga (raza se vede în praf); o aruncă, iar ea fuge în patru labe
+    în întuneric, cu cel în tricou după ea.
+  * Cele trei personaje sunt sculptate procedural (forme cu distanță semnată → plasă de ~42 000 de vârfuri fiecare) și
+    au schelet cu 19 oase; brațele și picioarele ajung unde trebuie prin cinematică inversă (mâinile pe umerii, brațele
+    și gleznele creaturii), iar picioarele calcă singure pe panta reală a luminișului. Frunzele zboară cu fizică (gravitație,
+    frecare cu aerul, rotire). Sunetele (urletul răgușit, trântitul, foșnetul) sunt sintetizate.
+  * Nu se adaugă nicio lumină nouă (lanterna prietenului e lumina lunii, împrumutată), deci niciun shader nu se reface;
+    personajele se construiesc prima dată când pornești scena (câteva secunde, pe ecran negru: ~9 s în Chromium cu
+    randare software, mai puțin pe un procesor obișnuit). La sfârșit rămâi în pădure, unde era camera, cu vremea și ora
+    de dinainte.
 * **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
@@ -321,6 +339,8 @@ src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridi
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
+src/cast.js           personajele scenei din pădure (sculptate SDF, schelet, cinematică inversă)
+src/cinematic.js      scena din pădure (K): coregrafia, camera din mână, lanternele, frunzele
 tools/extract_textures.py   extrage și rectifică texturile din reference/*.jpg
 tools/smoke-test.mjs        test automat în Chromium headless (capturi din cele 5 puncte)
 ```

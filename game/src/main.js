@@ -8,6 +8,8 @@ import { RAIN, wetScene, RainOcclusion, RainFX, Spray } from './rain.js';
 import { MoonBeam, Flashlight, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
+import { ForestScene } from './cinematic.js';
+import { SCENE_SPOT } from './geo/hillwood.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
@@ -287,6 +289,9 @@ async function main() {
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
   flashlight = new Flashlight(scene);
+  // the forest scene of the user's two clips (K): in the clearing of the wood by the cross, the first camera's back to
+  // the cross (stage +z points back towards it), its carpet of dry leaves always there
+  const forest = new ForestScene(scene, { x: SCENE_SPOT.x, z: SCENE_SPOT.z, y: geoGround(SCENE_SPOT.x, SCENE_SPOT.z), yaw: 1.178, ground: geoGround });
   const lightning = new Lightning((delay, km) => audio.thunder(delay, km));
   const hurt = document.createElement('div');
   hurt.style.cssText = 'position:fixed;inset:0;pointer-events:none;opacity:0;z-index:5;background:radial-gradient(ellipse at center, rgba(110,0,0,0) 25%, rgba(150,0,0,0.88) 100%)';
@@ -366,7 +371,7 @@ async function main() {
     paused = false; started = true;
     $('start').classList.remove('on');
     $('pause').classList.remove('on');
-    $('hud').classList.add('on');
+    if (!cine.state) $('hud').classList.add('on');
   };
   $('play').addEventListener('click', begin);
   $('resume').addEventListener('click', begin);
@@ -636,6 +641,87 @@ async function main() {
     mode = 'foot'; active = null;
   };
 
+  // ---------- the forest scene (K) ----------
+  // night (22:00, clear), the torch of the one who films and a friend's torch off to the left (the moon's spot light,
+  // borrowed: no new light, so no shader is rebuilt), black bars, the title; K / Space / Enter skip it, Esc pauses it.
+  // Afterwards you stand where the camera was, the weather and the hour as they were.
+  const cine = { state: null, warm: 0, prev: null, moon: null };
+  const cineSound = (n) => n === 'shriek' ? audio.shriek() : n === 'thud' ? audio.thud() : n === 'growl' ? audio.bear(false, 3) : audio.rustle(n === 'rustle-big' ? 9 : 4);
+  const playForest = () => {
+    if (cine.state) return;
+    if (mode === 'car') exitCar(true);
+    if (player.noclip) player.setNoclip(false);
+    cine.state = 'prep';
+    cine.prev = { weather: weatherKey, hour, torch: flashlight.on };
+    $('cineFade').style.opacity = 1; $('cineTitle').style.opacity = 0;
+    $('cine').classList.add('on', 'prep');
+    $('hud').classList.remove('on');
+    setTimeout(() => {                                       // (the black screen shows first: the cast takes ~1-3 s to make)
+      forest.build();
+      applyWeather('senin', 22);
+      // the wood at night as a phone sees it: black beyond the torches (the sky's light, its reflections and the moon
+      // through the leaves turned down for the film; applyWeather puts them back)
+      baseHemi *= 0.25; baseEnv *= 0.25; sun.intensity *= 0.3;
+      RAIN.uRain.value = 0; RAIN.uWet.value = 0;
+      flashlight.set(true);
+      cine.torch = { angle: flashlight.light.angle, penumbra: flashlight.light.penumbra };
+      const l = moonBeam?.light;
+      if (l) {
+        const c = l.shadow.camera;
+        cine.moon = { color: l.color.getHex(), decay: l.decay, distance: l.distance, angle: l.angle, penumbra: l.penumbra, near: c.near, far: c.far, bias: l.shadow.bias, nb: l.shadow.normalBias, shaft: moonBeam.shaft.visible };
+        l.color.set(0xfff4e4); l.decay = 2; l.distance = 30;
+        c.near = 0.2; c.far = 30; c.updateProjectionMatrix();
+        l.shadow.bias = -0.0008; l.shadow.normalBias = 0.03; l.shadow.autoUpdate = true;
+        moonBeam.shaft.visible = false;
+      }
+      forest.start();
+      cine.state = 'play'; cine.warm = 3;                     // three frames behind the black: every shader made
+    }, 60);
+  };
+  const endForest = () => {
+    if (cine.state !== 'play') return;
+    const v = forest.endView();
+    forest.stop();
+    cine.state = null;
+    const l = moonBeam?.light, o = cine.moon;
+    if (l && o) {
+      const c = l.shadow.camera;
+      l.color.setHex(o.color); l.decay = o.decay; l.distance = o.distance; l.angle = o.angle; l.penumbra = o.penumbra;
+      l.target.position.copy(moonBeam.target); l.target.updateMatrixWorld();
+      c.near = o.near; c.far = o.far; c.updateProjectionMatrix();
+      l.shadow.bias = o.bias; l.shadow.normalBias = o.nb; l.shadow.autoUpdate = false; l.shadow.needsUpdate = true;
+      moonBeam.shaft.visible = o.shaft;
+    }
+    applyWeather(cine.prev.weather, cine.prev.hour);
+    Object.assign(flashlight.light, cine.torch);
+    flashlight.set(cine.prev.torch);
+    player.setPose(v.x, v.z, v.yaw, v.pitch);
+    camera.up.set(0, 1, 0);
+    $('cine').classList.remove('on', 'prep');
+    $('cineFade').style.opacity = 0; $('cineTitle').style.opacity = 0;
+    $('hud').classList.add('on');
+    hud.toast('Creatura a fugit în întunericul pădurii…', 4);
+  };
+  $('cineSkip').addEventListener('click', endForest);
+  for (const id of ['cineBtn', 'cineBtn2']) $(id).addEventListener('click', () => { begin(); playForest(); });
+  // one frame of the scene: the film's camera, torches and leaves; the bars' fade and the title
+  const forestFrame = (dt) => {
+    const lights = { cam: flashlight.light, side: moonBeam?.light };
+    if (cine.warm > 0) {
+      // behind the black: the first shot's camera and torches (t stays 0), the wood around it built at once, and a
+      // frame drawn with every new material in it (the bodies, their shadows, the beam)
+      forest.update(0, camera, lights);
+      if (cine.warm === 3) { geoWorld.update(camera.position); wetScene(scene); shareInstancedDepth(scene); forest.near(camera.position); }
+      forest.beam.mesh.visible = forest.leaves.fly.visible = true;
+      if (--cine.warm === 0) $('cine').classList.remove('prep');
+      return;
+    }
+    const r = forest.update(dt, camera, lights, { sound: cineSound });
+    $('cineFade').style.opacity = r.fade.toFixed(3);
+    $('cineTitle').style.opacity = (THREE.MathUtils.smoothstep(r.t, 1.2, 2.2) * (1 - THREE.MathUtils.smoothstep(r.t, 4.8, 5.8))).toFixed(3);
+    if (forest.done) endForest();
+  };
+
   // ---------- main loop ----------
   const clock = new THREE.Timer();
   let roadName = null;
@@ -653,7 +739,11 @@ async function main() {
     sky.material.uniforms.uTime.value = t;
 
     let prompt = '';
-    if (!paused) {
+    if (!paused && cine.state) {
+      input.consumeMouse();
+      if (cine.state === 'play' && !cine.warm && (input.hit('KeyK') || input.hit('Space') || input.hit('Enter'))) endForest();
+    } else if (!paused) {
+      if (input.hit('KeyK')) playForest();
       if (input.hit('KeyP')) screenshot();
       if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
@@ -734,6 +824,7 @@ async function main() {
       if (photoFov && Math.hypot(player.pos.x - photoFov.x, player.pos.z - photoFov.z) > 0.25) photoFov = null;
       fov = (photoFov ? photoFov.fov : 70) + player.fovKick;
     }
+    if (cine.state) fov = camera.fov;                       // (the film sets its own lens)
     if (shake > 0) {
       camera.position.x += (Math.random() - 0.5) * shake * 0.2;
       camera.position.y += (Math.random() - 0.5) * shake * 0.2;
@@ -741,6 +832,7 @@ async function main() {
     }
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = damp(camera.fov, fov, 6, dt); camera.updateProjectionMatrix(); }
 
+    if (cine.state === 'play' && !paused) forestFrame(dt);
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
     if ((frameNo & 127) === 0) wetScene(scene);            // materials streamed in since
@@ -755,6 +847,7 @@ async function main() {
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
       geoWorld.update(camera.position);
       shareInstancedDepth(scene);                         // (the trees and ground cover streamed in since)
+      forest.near(camera.position);
       roadName = roadNameAt(pos0().x, pos0().z);
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
@@ -789,9 +882,11 @@ async function main() {
     const flash = lightning.update(dt, horror === 1 && !paused);
     sky.material.uniforms.uFlash.value = flash;
     hemi.intensity = baseHemi + flash * 2.2; scene.environmentIntensity = baseEnv + flash * 1.4;
-    moonBeam?.update(t, camera);
-    if (mode === 'car' && flashlight.on) flashlight.set(false);
-    flashlight.update(camera);
+    if (!cine.state) {
+      moonBeam?.update(t, camera);
+      if (mode === 'car' && flashlight.on) flashlight.set(false);
+      flashlight.update(camera);
+    }
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
     if (post.ssr) post.ssr.enabled = RAIN.uWet.value > 0.01 && !window.__game?.noSSR;   // reflections in wet ground only when there is any
@@ -818,7 +913,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, RAIN, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, cine, playForest, endForest, RAIN, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

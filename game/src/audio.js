@@ -142,6 +142,31 @@ export class Audio {
     s.connect(f1).connect(f2).connect(am).connect(g).connect(this.master);
     s.start(t); s.stop(t + len + 0.1); lfo.start(t); lfo.stop(t + len + 0.1);
   }
+  // the forest scene (cinematic.js): the creature's hoarse shriek (a rasping cry that rises and breaks), a body hitting
+  // the ground, dry leaves thrown about
+  shriek() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, len = 0.9 + Math.random() * 0.5, top = 560 + Math.random() * 220;
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + 0.05); g.gain.setValueAtTime(0.5, t + len * 0.6); g.gain.linearRampToValueAtTime(0, t + len);
+    g.connect(this.master);
+    // the voice: a sawtooth sliding up and down, roughened by a fast flutter, through two formants
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(240, t); o.frequency.exponentialRampToValueAtTime(top, t + 0.22); o.frequency.exponentialRampToValueAtTime(top * 0.62, t + len);
+    const am = ctx.createGain(); am.gain.value = 0.55;
+    const fl = ctx.createOscillator(); fl.frequency.value = 31 + Math.random() * 12; const flg = ctx.createGain(); flg.gain.value = 0.45; fl.connect(flg).connect(am.gain);
+    for (const [f, q, k] of [[1150, 3, 0.7], [2700, 5, 0.45]]) { const b = ctx.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; const w = ctx.createGain(); w.gain.value = k; o.connect(am); am.connect(b).connect(w).connect(g); }
+    // and the breath through the throat
+    const n = ctx.createBufferSource(); n.buffer = this.noise; n.loop = true; n.playbackRate.value = 1.3;
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.setValueAtTime(1600, t); nf.frequency.linearRampToValueAtTime(2400, t + len); nf.Q.value = 1.5;
+    const ng = ctx.createGain(); ng.gain.value = 0.5; n.connect(nf).connect(ng).connect(g);
+    o.start(t); fl.start(t); n.start(t); o.stop(t + len + 0.05); fl.stop(t + len + 0.05); n.stop(t + len + 0.05);
+  }
+  thud() {
+    this.burst({ f: 110, q: 0.7, dur: 0.35, gain: 0.6, type: 'lowpass' });
+    this.burst({ f: 260, q: 0.8, dur: 0.12, gain: 0.25 });
+    this.rustle(5);
+  }
+  rustle(n = 4) { for (let i = 0; i < n; i++) this.burst({ f: 2600 + Math.random() * 3000, q: 0.9, dur: 0.07 + Math.random() * 0.1, gain: 0.08, delay: i * 0.035 + Math.random() * 0.03 }); }
   hit() {                                                     // the bear's blow: a thud
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
