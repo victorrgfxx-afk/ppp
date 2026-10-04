@@ -2,7 +2,37 @@ import * as THREE from 'three';
 import { TEX } from './textures.js';
 import { M } from './materials.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
-import { Batcher } from './util.js';
+
+// Geometry pieces [geometry, material (or one per group), matrix?] -> one non-indexed geometry with a single group
+// (one draw call) per material, in the order the materials first appear. The same triangles as separate meshes.
+function mergeByMaterial(items) {
+  const mats = [], bins = [];
+  const bin = (mat) => { let i = mats.indexOf(mat); if (i < 0) { i = mats.push(mat) - 1; bins.push({ p: [], n: [], uv: [] }); } return bins[i]; };
+  for (const [g0, mat, mtx] of items) {
+    let g = g0.index ? g0.toNonIndexed() : g0;
+    if (mtx) { g = g === g0 ? g.clone() : g; g.applyMatrix4(mtx); }
+    if (!g.attributes.normal) g.computeVertexNormals();
+    const P = g.attributes.position.array, N = g.attributes.normal.array, U = g.attributes.uv?.array;
+    const ranges = Array.isArray(mat) ? g.groups.map(r => [r.start, r.count, mat[r.materialIndex]]) : [[0, g.attributes.position.count, mat]];
+    for (const [start, count, m] of ranges) {
+      const o = bin(m);
+      for (let i = start; i < start + count; i++) {
+        o.p.push(P[3 * i], P[3 * i + 1], P[3 * i + 2]); o.n.push(N[3 * i], N[3 * i + 1], N[3 * i + 2]);
+        o.uv.push(U ? U[2 * i] : 0, U ? U[2 * i + 1] : 0);         // (no uv: the attribute's default, 0)
+      }
+    }
+  }
+  const nv = bins.reduce((s, o) => s + o.p.length / 3, 0);
+  const p = new Float32Array(nv * 3), n = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), geo = new THREE.BufferGeometry();
+  let start = 0;
+  bins.forEach((o, i) => { p.set(o.p, start * 3); n.set(o.n, start * 3); uv.set(o.uv, start * 2); geo.addGroup(start, o.p.length / 3, i); start += o.p.length / 3; });
+  geo.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(n, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.computeBoundingSphere();
+  return { geo, mats };
+}
+const pose = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
 
 // Parametric car bodies lofted from side/top profiles of the real models in the photos.
 // Local frame: forward = -Z, right = +X, origin on the ground under the middle of the car.
@@ -235,23 +265,16 @@ export function buildCar(modelKey, paint, plateKey) {
   group.add(bodyPivot);
   const raw = carBodyGeometry(m);
   const body = toCreasedNormals(raw.body, 0.55), caps = raw.caps;
-  const glass = S.glass.clone();
-  const bodyMesh = new THREE.Mesh(body, [paint, glass, S.trim, S.under]);
-  bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
-  bodyPivot.add(bodyMesh);
-  const capMesh = new THREE.Mesh(caps, paint);
-  capMesh.castShadow = true; capMesh.receiveShadow = true;
-  bodyPivot.add(capMesh);
+  // see-through from both sides: three.js draws such a material twice (inner faces, then outer) and re-picks its
+  // shader program both times, every frame. Two materials, one per side, on the same triangles draw the same.
+  const glassIn = S.glass.clone(), glassOut = S.glass.clone();
+  glassIn.side = THREE.BackSide; glassOut.side = THREE.FrontSide;
+  const glass = { set opacity(v) { glassIn.opacity = glassOut.opacity = v; }, get opacity() { return glassOut.opacity; } };
+  // the body, its end caps and every fixed detail are merged into one mesh: one draw call per material
+  const rigid = [[body, [paint, glassIn, S.trim, S.under]], [caps, paint]];
 
   const zAt = (s) => s - m.L / 2;
-  // static detail parts are merged per material (few draw calls per car)
-  const parts = new Batcher();
-  const e = new THREE.Euler();
-  const add = (geo, material, x, y, z, rx = 0, ry = 0, rz = 0) => {
-    const mtx = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(e.set(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
-    parts.add(material, geo, mtx);
-    return null;
-  };
+  const add = (geo, material, x, y, z, rx = 0, ry = 0, rz = 0) => { rigid.push([geo, material, pose(x, y, z, rx, ry, rz)]); return null; };
 
   // find where the body surface is for a point (x,y), marching from the front or rear
   const surfaceS = (x, y, fromFront) => {
@@ -340,11 +363,10 @@ export function buildCar(modelKey, paint, plateKey) {
   const steer = new THREE.Group();
   steer.position.set(-0.38, pw.belt - 0.06, zAt(m.wind[0] + 0.6));
   steer.rotation.x = -1.1;
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.02, 8, 24), dashMat);
-  steer.add(rim);
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), dashMat);
-  hub.rotation.x = Math.PI / 2; steer.add(hub);
-  for (const a of [0, 2.1, 4.2]) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.015), dashMat); sp.rotation.z = a; sp.position.set(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0); steer.add(sp); }
+  // rim, hub and 3 spokes: one mesh
+  const wheelParts = [[new THREE.TorusGeometry(0.18, 0.02, 8, 24), dashMat], [new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), dashMat, pose(0, 0, 0, Math.PI / 2, 0, 0)]];
+  for (const a of [0, 2.1, 4.2]) wheelParts.push([new THREE.BoxGeometry(0.16, 0.02, 0.015), dashMat, pose(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0, 0, 0, a)]);
+  steer.add(new THREE.Mesh(mergeByMaterial(wheelParts).geo, dashMat));
   bodyPivot.add(steer);
 
   // wheels
@@ -362,33 +384,64 @@ export function buildCar(modelKey, paint, plateKey) {
   const rimMat = new THREE.MeshStandardMaterial({ map: TEX[m.wheelTex], roughness: 0.3, metalness: 0.8, alphaTest: 0 });
   const rimGeo = new THREE.CircleGeometry(m.r * 0.72, 28);
   const arch = new THREE.MeshStandardMaterial({ color: 0x0d0d0e, roughness: 0.9, side: THREE.DoubleSide });
+  // each wheel: steering pivot -> spin -> tyre, rim (outside) and dark inner disc. The pivot and spin are kept as
+  // transforms only; the 4 tyres, the 4 rims and the 4 discs are 3 meshes whose vertices setWheels places when the
+  // wheels turn (a parked car: once). Not instanced: these materials are also drawn uninstanced (the body's
+  // underside), and three.js would switch shader programs back and forth for every car.
+  const fourOf = (geo0, mat) => {
+    const g = geo0.index ? geo0.toNonIndexed() : geo0, n = g.attributes.position.count, U0 = g.attributes.uv?.array;
+    const geo = new THREE.BufferGeometry(), U = new Float32Array(n * 8);
+    if (U0) for (let i = 0; i < 4; i++) U.set(U0, i * n * 2);
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 12), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+    return { mesh: new THREE.Mesh(geo, mat), n, P0: g.attributes.position.array, N0: g.attributes.normal.array };
+  };
+  const tires = fourOf(tireGeo, S.tire), rims = fourOf(rimGeo, rimMat), inners = fourOf(new THREE.CircleGeometry(m.r * 0.72, 20), S.under);
+  tires.mesh.castShadow = true;
+  const wells = [];
   for (const [ai, a] of m.axles.entries()) {
     for (const sg of [-1, 1]) {
-      const pivot = new THREE.Group();
-      const p = profileAt(m, a);
+      const pivot = new THREE.Object3D();
       const x = sg * (m.W / 2 - m.tireW / 2 - 0.005);
       pivot.position.set(x, m.r, zAt(a));
-      const spin = new THREE.Group();
-      pivot.add(spin);
-      const tire = new THREE.Mesh(tireGeo, S.tire); tire.castShadow = true; spin.add(tire);
-      const rimM = new THREE.Mesh(rimGeo, rimMat);
-      rimM.position.x = sg * (m.tireW / 2 + 0.002);
-      rimM.rotation.y = sg * Math.PI / 2;
-      spin.add(rimM);
-      const inner = new THREE.Mesh(new THREE.CircleGeometry(m.r * 0.72, 20), S.under);
-      inner.position.x = -sg * (m.tireW / 2 + 0.002); inner.rotation.y = -sg * Math.PI / 2;
-      spin.add(inner);
-      group.add(pivot);
+      const spin = new THREE.Object3D();
+      const rimAt = pose(sg * (m.tireW / 2 + 0.002), 0, 0, 0, sg * Math.PI / 2, 0), innerAt = pose(-sg * (m.tireW / 2 + 0.002), 0, 0, 0, -sg * Math.PI / 2, 0);
       // dark wheel-well liner
-      const well = new THREE.Mesh(new THREE.CylinderGeometry(m.r + 0.06, m.r + 0.06, m.tireW + 0.1, 18, 1, true, -Math.PI / 2, Math.PI), arch);
-      well.rotation.z = Math.PI / 2;
-      well.position.set(x, m.r, zAt(a));
-      bodyPivot.add(well);
-      wheels.push({ pivot, spin, front: ai === 0, side: sg, x, z: zAt(a) });
-      void p;
+      wells.push([new THREE.CylinderGeometry(m.r + 0.06, m.r + 0.06, m.tireW + 0.1, 18, 1, true, -Math.PI / 2, Math.PI), arch, pose(x, m.r, zAt(a), 0, 0, Math.PI / 2)]);
+      wheels.push({ pivot, spin, rimAt, innerAt, front: ai === 0, side: sg, x, z: zAt(a) });
     }
   }
-  parts.build(bodyPivot);
+  group.add(tires.mesh, rims.mesh, inners.mesh);
+  bodyPivot.add(new THREE.Mesh(mergeByMaterial(wells).geo, arch));
+  const wm = new THREE.Matrix4(), wp = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3();
+  const put = (f, i, M) => {
+    const P = f.mesh.geometry.attributes.position, N = f.mesh.geometry.attributes.normal, o = i * f.n;
+    nm.getNormalMatrix(M);
+    for (let k = 0; k < f.n; k++) {
+      v.fromArray(f.P0, k * 3).applyMatrix4(M).toArray(P.array, (o + k) * 3);
+      v.fromArray(f.N0, k * 3).applyNormalMatrix(nm).toArray(N.array, (o + k) * 3);
+    }
+  };
+  let wSpin = NaN, wSteer = NaN;
+  const setWheels = (spinA, steerA) => {
+    if (spinA === wSpin && steerA === wSteer) return;
+    wSpin = spinA; wSteer = steerA;
+    wheels.forEach((w, i) => {
+      w.spin.rotation.x = spinA; if (w.front) w.pivot.rotation.y = -steerA;
+      w.pivot.updateMatrix(); w.spin.updateMatrix();
+      wp.multiplyMatrices(w.pivot.matrix, w.spin.matrix);
+      put(tires, i, wp); put(rims, i, wm.multiplyMatrices(wp, w.rimAt)); put(inners, i, wm.multiplyMatrices(wp, w.innerAt));
+    });
+    for (const f of [tires, rims, inners]) { const g = f.mesh.geometry; g.attributes.position.needsUpdate = g.attributes.normal.needsUpdate = true; g.computeBoundingSphere(); }
+  };
+  setWheels(0, 0);
+  const merged = mergeByMaterial(rigid);
+  const gIn = merged.geo.groups.find(r => merged.mats[r.materialIndex] === glassIn);
+  merged.geo.addGroup(gIn.start, gIn.count, merged.mats.push(glassOut) - 1);        // (outer faces after the inner ones)
+  const bodyMesh = new THREE.Mesh(merged.geo, merged.mats);
+  bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
+  bodyPivot.add(bodyMesh);
 
   // soft contact shadow (grounds the car like ambient occlusion)
   if (!shared.blob) {
@@ -409,7 +462,7 @@ export function buildCar(modelKey, paint, plateKey) {
   group.add(blob);
 
   return {
-    group, bodyPivot, wheels, steer, model: m,
+    group, bodyPivot, wheels, setWheels, steer, model: m,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,
     half: { w: m.W / 2 + 0.05, l: m.L / 2 },
   };

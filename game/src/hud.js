@@ -9,13 +9,12 @@ export class HUD {
       speedVal: document.getElementById('speedVal'),
       gear: document.getElementById('gear'),
       carName: document.getElementById('carName'),
-      fps: document.getElementById('fps'),
       toast: document.getElementById('toast'),
       loc: document.getElementById('loc'),
     };
     this.map = document.getElementById('minimap');
     this.ctx = this.map.getContext('2d');
-    this.fpsAcc = 0; this.fpsN = 0; this.toastT = 0;
+    this.toastT = 0;
     if (opts.geo) { this.geoMap(opts.geo, opts.ortho, opts.orthoW); return; }
     // pre-render the static map (1 px = 0.5 m)
     const S = 2, X0 = -70, X1 = 70, Z0 = -270, Z1 = 200;
@@ -86,9 +85,7 @@ export class HUD {
   useSheet(s) { this.sheet = s; this.static = s.c; this.S = s.S; this.X0 = s.X0; this.Z0 = s.Z0; }
   toast(msg, t = 2.5) { this.el.toast.textContent = msg; this.el.toast.classList.add('on'); this.toastT = t; }
   update(dt, st) {
-    // fps
-    this.fpsAcc += dt; this.fpsN++;
-    if (this.fpsAcc > 0.5) { this.el.fps.textContent = Math.round(this.fpsN / this.fpsAcc) + ' FPS'; this.fpsAcc = 0; this.fpsN = 0; }
+    // (the frame rate: perf.js)
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) this.el.toast.classList.remove('on'); }
     this.el.prompt.textContent = st.prompt || '';
     this.el.prompt.classList.toggle('on', !!st.prompt);
@@ -116,7 +113,10 @@ export class HUD {
     g.scale(zoom, zoom);
     g.translate(-(st.x - this.X0) * S, -(st.z - this.Z0) * S);
     g.drawImage(this.static, 0, 0);
+    // (only the cars inside the round map: the ones outside would be clipped away anyway)
+    const reach = (w / 2) / (zoom * S) + 4;
     for (const c of st.cars) {
+      if (Math.abs(c.x - st.x) > reach || Math.abs(c.z - st.z) > reach) continue;
       g.save();
       g.translate((c.x - this.X0) * S, (c.z - this.Z0) * S);
       g.rotate(-c.h);

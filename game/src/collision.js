@@ -35,19 +35,22 @@ export class CollisionWorld {
   addAABB(x0, x1, z0, z1, y0 = -10, y1 = 10, tag = '') {
     return this.addStatic(new Box((x0 + x1) / 2, (z0 + z1) / 2, Math.abs(x1 - x0) / 2, Math.abs(z1 - z0) / 2, 0, y0, y1, tag));
   }
-  addDynamic(b) { this.dynamic.add(b); return b; }
-  removeDynamic(b) { this.dynamic.delete(b); }
+  // (also kept as an array, in the set's order: queries walk it without an iterator)
+  addDynamic(b) { this.dynamic.add(b); this.dynList = [...this.dynamic]; return b; }
+  removeDynamic(b) { this.dynamic.delete(b); this.dynList = [...this.dynamic]; }
   query(x, z, r, out = []) {
     out.length = 0;
     const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL);
     const j0 = Math.floor((z - r) / CELL), j1 = Math.floor((z + r) / CELL);
-    const seen = new Set();
+    // a box spanning several cells is listed once: each query stamps the boxes it has taken (no garbage per query)
+    const stamp = this._stamp = (this._stamp ?? 0) + 1;
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
       const list = this.grid.get(this._key(i, j));
       if (!list) continue;
-      for (const b of list) if (!seen.has(b)) { seen.add(b); out.push(b); }
+      for (let k = 0; k < list.length; k++) { const b = list[k]; if (b._q !== stamp) { b._q = stamp; out.push(b); } }
     }
-    for (const b of this.dynamic) out.push(b);
+    const dyn = this.dynList ?? [];
+    for (let k = 0; k < dyn.length; k++) out.push(dyn[k]);
     for (const p of this.providers) p(x, z, r, out);
     return out;
   }

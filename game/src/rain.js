@@ -226,6 +226,7 @@ export class RainOcclusion {
     renderer.setRenderTarget(this.rt);
     renderer.setClearColor(0x000000, 1);                         // (nothing drawn: taken as the ground near the camera)
     renderer.clear();
+    scene.updateMatrixWorld();                                    // (the scene does not update itself: main.js)
     renderer.render(scene, this.cam);
     renderer.setRenderTarget(rt0);
     renderer.setClearColor(_cc, ca);

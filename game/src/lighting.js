@@ -97,6 +97,19 @@ export class SunCascades {
   setEnabled(on) { for (let i = 1; i < this.list.length; i++) this.list[i].light.castShadow = on; }
 }
 
+// Instanced shadow casters get a depth material of their own (the same as three.js's): with one for every caster,
+// three.js re-picks the shader program each time an instanced caster follows a plain one, and back, ~50 times a
+// frame. Not for casters whose material needs its own depth variant (alpha-tested leaves: three.js makes those).
+const _instDepth = new THREE.MeshDepthMaterial(), _instDepthCol = new THREE.MeshDepthMaterial();
+const ownVariant = (m) => (m.displacementMap && m.displacementScale !== 0) || (m.alphaMap && m.alphaTest > 0) || (m.map && m.alphaTest > 0) ||
+  m.alphaToCoverage === true || (m.clipShadows === true && Array.isArray(m.clippingPlanes) && m.clippingPlanes.length > 0);
+export function shareInstancedDepth(root) {
+  root.traverse((o) => {
+    if (!o.isInstancedMesh || !o.castShadow || o.customDepthMaterial !== undefined || [o.material].flat().some(ownVariant)) return;
+    o.customDepthMaterial = o.instanceColor ? _instDepthCol : _instDepth;
+  });
+}
+
 // ------------------------------------------------------------------ weather
 // Each preset: the sky shader's uniforms, the sun / sky lights, the image-based light, fog and exposure.
 // "senin" and "noros" match the sunny Street View captures (deep blue sky, cumulus, hard sun shadows); "innorat" is the

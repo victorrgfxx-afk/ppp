@@ -128,7 +128,7 @@ export function roadNameAt(x, z) {
   for (const r of GEO.roadNames || []) {
     const P = r.P;
     for (let i = 0; i < P.length - 1; i++) {
-      const [ax, az] = P[i], [bx, bz] = P[i + 1];
+      const A = P[i], Bp = P[i + 1], ax = A[0], az = A[1], bx = Bp[0], bz = Bp[1];   // (no destructuring: no garbage)
       if (Math.min(ax, bx) - bd > x || Math.max(ax, bx) + bd < x || Math.min(az, bz) - bd > z || Math.max(az, bz) + bd < z) continue;
       const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
       const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));

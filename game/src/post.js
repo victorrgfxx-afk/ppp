@@ -10,11 +10,22 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 // GTAO that ignores alpha-tested foliage/grass (they would render as solid quads in its normal pass).
 class FoliageSafeGTAO extends GTAOPass {
+  // the scene pass has already rendered this frame's shadow maps: its normal pass must not render them all again
+  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    const sm = renderer.shadowMap, auto = sm.autoUpdate;
+    sm.autoUpdate = false;
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+    sm.autoUpdate = auto;
+  }
+  // (only the visible part of the scene: what is hidden is not drawn anyway, and a hidden object hides its subtree)
   _overrideVisibility() {
     const cache = this._visibilityCache;
-    this.scene.traverse((o) => {
-      if ((o.isPoints || o.isLine || o.userData.noAO) && o.visible) { o.visible = false; cache.push(o); }
-    });
+    const hide = (o) => {
+      if (!o.visible) return;
+      if (o.isPoints || o.isLine || o.userData.noAO) { o.visible = false; cache.push(o); return; }
+      for (const c of o.children) hide(c);
+    };
+    hide(this.scene);
   }
 }
 

@@ -50,6 +50,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
 | T / O | vremea (senin, parțial noros, înnorat, ploaie torențială) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | L | lanterna (noaptea se aprinde singură) | faruri |
+| G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -285,6 +286,29 @@ Three.js r186 (inclus în `vendor/`, merge offline): materiale PBR cu hărți de
 
 Calitatea implicită e aleasă automat (Scăzută pe telefon, Medie/Înaltă pe PC) și se poate schimba din meniu.
 
+### Performanță
+
+Optimizat **fără să se schimbe imaginea**: aceleași triunghiuri, materiale, umbre și efecte, doar fără munca făcută de
+două ori. Verificat cadru cu cadru (cadre deterministe, aceeași oră, aceeași ploaie) pe 6 scene (zi, ploaie, noapte cu
+ploaie, horror pe deal, pădure, DN1): 5 identice pixel cu pixel, la ploaie 4 pixeli din 360 000 diferă cu 1/255.
+
+- umbrele (soarele / luna, lanterna) se randau de două ori pe cadru: a doua oară în trecerea de normale a AO-ului;
+- matricele celor ~7 500 de obiecte se recalculau la fiecare trecere: acum o dată pe cadru;
+- o mașină parcată avea 33 de obiecte (≈36 de desenări): caroseria cu toate detaliile e o singură plasă, cu o desenare
+  pe material, iar volanul, aripile interioare, cele 4 anvelope, jante și discuri sunt unite (≈17 desenări);
+- three.js își reevalua programul de shader de 140–180 de ori pe cadru (geamurile văzute pe ambele fețe, umbrele
+  obiectelor instanțiate): acum ~9;
+- cele 120 de mașini parcate nu mai recalculează la fiecare cadru înălțimea terenului de sub roți, iar coliziunile,
+  numele străzii și minimapa nu mai produc gunoi de memorie (2,4 → 1,25 MB pe cadru).
+
+Măsurat în Chromium (aceeași mașină, Înaltă): timpul CPU al unui cadru scade cu 46–50 % (strada casei 72 → 39 ms,
+DN1 48 → 24 ms, noaptea cu ploaie 76 → 39 ms, în randare software), desenările de la ~4 100 la ~2 900.
+
+**G** arată contorul: FPS, cât durează un cadru, timpul CPU (jocul și apelurile WebGL) și timpul GPU (prin
+`EXT_disjoint_timer_query_webgl2`, în Chrome/Edge pe desktop; „n/d” unde browserul nu-l oferă), desenările,
+triunghiurile și rezoluția la care se randează. Pentru 60 FPS ambele trebuie să încapă în ~16,7 ms: dacă GPU-ul e
+peste, limita e placa video la rezoluția aleasă (Înaltă randează la 1,25× rezoluția ecranului, Ultra la 2×).
+
 ## Structură
 
 ```
@@ -296,6 +320,7 @@ src/cars.js           caroserii parametrice   src/vehicle.js  fizica mașinii
 src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
+src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
 tools/extract_textures.py   extrage și rectifică texturile din reference/*.jpg
 tools/smoke-test.mjs        test automat în Chromium headless (capturi din cele 5 puncte)
 ```

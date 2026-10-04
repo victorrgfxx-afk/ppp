@@ -3,7 +3,7 @@ import { QUALITY, defaultQuality, W, setProfile } from './config.js';
 import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
-import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel } from './lighting.js';
+import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
 import { RAIN, wetScene, RainOcclusion, RainFX, Spray } from './rain.js';
 import { MoonBeam, Flashlight, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
@@ -17,6 +17,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { createComposer } from './post.js';
+import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
@@ -80,6 +81,8 @@ async function main() {
   renderer.toneMappingExposure = 0.92;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  const perf = new PerfMeter(renderer, $('fps'));
+  perf.set(store.get('perf', false));
 
   const progress = (p, label) => { $('bar').style.width = Math.round(p * 80) + '%'; $('loadText').textContent = label; };
   await loadTextures('assets/textures/', progress, renderer.capabilities.getMaxAnisotropy());
@@ -327,8 +330,12 @@ async function main() {
   wetScene(scene);
   const rainFX = new RainFX(scene), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise);
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
+  shareInstancedDepth(scene);
   renderer.compile(scene, camera);
   post.composer.render(0);
+  // from now on the scene's world matrices are updated once per frame, just before it is drawn (the passes that draw
+  // it again in the same frame, like the ambient occlusion's, would only redo the same work)
+  scene.matrixWorldAutoUpdate = false;
   $('loader').classList.add('done');
   $('start').classList.add('on');
   $('quality').value = qKey;
@@ -638,6 +645,7 @@ async function main() {
   const focus = new THREE.Vector3();
   const tmpV = new THREE.Vector3();
   renderer.setAnimationLoop(() => {
+    perf.begin();
     clock.update();
     const dt = Math.min(0.05, clock.getDelta());
     t += dt;
@@ -647,6 +655,7 @@ async function main() {
     let prompt = '';
     if (!paused) {
       if (input.hit('KeyP')) screenshot();
+      if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
       if (input.hit('KeyO')) {
         setHour(HOURS[(HOURS.indexOf(hour) + 1) % HOURS.length]);
@@ -745,6 +754,7 @@ async function main() {
     if ((frameNo++ & 7) === 0) {
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
       geoWorld.update(camera.position);
+      shareInstancedDepth(scene);                         // (the trees and ground cover streamed in since)
       roadName = roadNameAt(pos0().x, pos0().z);
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
@@ -790,12 +800,15 @@ async function main() {
       bear?.update(dt, t, { active: horror === 1, px: pp.x, pz: pp.z, inCar: mode === 'car', torch: flashlight.on, camX: camera.position.x, camZ: camera.position.z });
     }
     post.grade.uniforms.uTime.value = t;
+    scene.updateMatrixWorld();
     post.composer.render(dt);
+    perf.end();
     input.endFrame();
   });
 
   function screenshot() {
     if (window.top !== window) { hud.toast('Captura de ecran (P) merge când rulezi jocul local'); return; }
+    scene.updateMatrixWorld();
     post.composer.render(0);
     const a = document.createElement('a');
     a.href = renderer.domElement.toDataURL('image/png');

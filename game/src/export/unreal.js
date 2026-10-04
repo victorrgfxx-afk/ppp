@@ -502,16 +502,22 @@ export async function exportUnreal(game, sink, { log = (s) => console.log('[ue] 
     grp.traverse(o => {
       if (!o.isMesh || !o.visible) return;
       const ms = Array.isArray(o.material) ? o.material : [o.material];
-      const rec = matOf(ms[0]);
-      let a = acc.get(rec.name); if (!a) { a = Object.assign(new Acc(), { rec }); acc.set(rec.name, a); }
       const g = o.geometry, P = g.attributes.position, N = g.attributes.normal ?? (g.computeVertexNormals(), g.attributes.normal), U = g.attributes.uv, idx = g.index ? g.index.array : null, cnt = idx ? idx.length : P.count;
-      nm.getNormalMatrix(o.matrixWorld);
-      const flip = o.matrixWorld.determinant() < 0;
-      for (let k = 0; k < cnt - 2; k += 3) for (const t of flip ? [0, 2, 1] : [0, 1, 2]) {
-        const i = idx ? idx[k + t] : k + t;
-        v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); a.p.push(v.x); a.p.push(v.y); a.p.push(v.z);
-        v.fromBufferAttribute(N, i).applyMatrix3(nm); a.nr.push(v.x); a.nr.push(v.y); a.nr.push(v.z);
-        a.uv.push(U ? U.getX(i) : 0); a.uv.push(U ? U.getY(i) : 0);
+      // a mesh with one material per group (the body and its details), and the wheels drawn as instances
+      // (a range drawn twice, like the glass's two sides, is exported once)
+      const ranges = Array.isArray(o.material) && g.groups.length ? g.groups.filter((r, i) => !g.groups.slice(0, i).some(q => q.start === r.start && q.count === r.count)).map(r => [r.start, r.start + r.count, ms[r.materialIndex]]) : [[0, cnt, ms[0]]];
+      const worlds = o.isInstancedMesh ? Array.from({ length: o.count }, (_, j) => o.getMatrixAt(j, new THREE.Matrix4()).premultiply(o.matrixWorld)) : [o.matrixWorld];
+      for (const mw of worlds) for (const [k0, k1, mat] of ranges) {
+        const rec = matOf(mat);
+        let a = acc.get(rec.name); if (!a) { a = Object.assign(new Acc(), { rec }); acc.set(rec.name, a); }
+        nm.getNormalMatrix(mw);
+        const flip = mw.determinant() < 0;
+        for (let k = k0; k < k1 - 2; k += 3) for (const t of flip ? [0, 2, 1] : [0, 1, 2]) {
+          const i = idx ? idx[k + t] : k + t;
+          v.fromBufferAttribute(P, i).applyMatrix4(mw); a.p.push(v.x); a.p.push(v.y); a.p.push(v.z);
+          v.fromBufferAttribute(N, i).applyMatrix3(nm); a.nr.push(v.x); a.nr.push(v.y); a.nr.push(v.z);
+          a.uv.push(U ? U.getX(i) : 0); a.uv.push(U ? U.getY(i) : 0);
+        }
       }
     });
     const name = `Car_${String(++ci).padStart(2, '0')}_${san(veh.name || veh.car?.model?.name || 'car')}`;

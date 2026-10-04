@@ -167,7 +167,7 @@ export class Audio {
       e.o1.frequency.setTargetAtTime(f, now, 0.03);
       e.o2.frequency.setTargetAtTime(f * 0.5, now, 0.03);
       e.o3.frequency.setTargetAtTime(f * 2.02, now, 0.03);
-      e.lp.frequency.setTargetAtTime(350 + st.rpm * 0.28 + st.throttle * 900, now, 0.05);
+      e.lp.frequency.setTargetAtTime(350 + st.rpm * 0.28 + Math.abs(st.throttle) * 900, now, 0.05);   // (braking / reverse: the pedal is -1; a negative cutoff silenced the engine)
       e.out.gain.setTargetAtTime(0.06 + Math.abs(st.throttle) * 0.1 + st.rpm / 60000, now, 0.08);
       this.squeal.gain.setTargetAtTime(Math.max(0, Math.min(0.25, (Math.abs(st.slip) - 2.5) * 0.05)), now, 0.05);
       this.horn.gain.setTargetAtTime(st.horn ? 0.12 : 0, now, 0.01);

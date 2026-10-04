@@ -44,8 +44,15 @@ export class Vehicle {
     const s = Math.sin(this.h), c = Math.cos(this.h);
     const hw = this.m.W / 2 - 0.15;
     const zf = this.m.axles[0] - this.m.L / 2, zr = this.m.axles[1] - this.m.L / 2;
-    const at = (lx, lz) => this.world.groundHeight(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.gy);
-    const fl = at(-hw, zf), fr = at(hw, zf), rl = at(-hw, zr), rr = at(hw, zr);
+    // (the ground does not change: a car that has not moved since the last call stands on the same 4 heights, so a
+    // parked car does not sample the terrain and the bridge decks every frame)
+    const k = this._ground ??= { x: NaN };
+    if (k.x !== this.x || k.z !== this.z || k.h !== this.h || k.gy !== this.gy) {
+      const at = (lx, lz) => this.world.groundHeight(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.gy);
+      k.x = this.x; k.z = this.z; k.h = this.h; k.gy = this.gy;
+      k.fl = at(-hw, zf); k.fr = at(hw, zf); k.rl = at(-hw, zr); k.rr = at(hw, zr);
+    }
+    const { fl, fr, rl, rr } = k;
     const y = (fl + fr + rl + rr) / 4;
     this.gy = y;
     const pitchG = Math.atan2((fl + fr) / 2 - (rl + rr) / 2, this.wheelbase);
@@ -55,10 +62,7 @@ export class Vehicle {
     this.car.bodyPivot.rotation.set(this.pitch, 0, this.roll);
     this.car.bodyPivot.position.y = -Math.abs(this.pitch) * 0.2;
     // wheels
-    for (const w of this.car.wheels) {
-      w.spin.rotation.x = this.spin;
-      if (w.front) w.pivot.rotation.y = -this.steer;
-    }
+    this.car.setWheels(this.spin, this.steer);
     if (this.car.steer) this.car.steer.rotation.z = this.steer * 7;
     this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
     void dt;
