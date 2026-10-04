@@ -32,6 +32,7 @@ uniform float uWet, uRain, uRainTime, uOccOn;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 varying vec3 vWetP;
+float wetReflOut = 0.0;                              // how much this point mirrors the scene (screen-space reflections, post.js)
 ${OCC_GLSL}
 float wetNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -65,12 +66,14 @@ if (uWet > 0.001) {
   float upF = smoothstep(0.6, 0.92, wetGeoN.y);
   float open = wetOpen(wp);
   float wet = uWet * mix(0.3, 1.0, open);
+  float rough0 = roughnessFactor;
+  float dist = length(wp - cameraPosition);
   // porous things darken when soaked (soil, plaster, asphalt), metal and paint hardly; everything gets glossier
   float por = clamp((roughnessFactor - 0.25) / 0.6, 0.0, 1.0) * (1.0 - metalnessFactor);
 #ifndef WET_LEAF
-  diffuseColor.rgb *= 1.0 - wet * por * mix(0.3, 0.45, upF);
+  diffuseColor.rgb *= 1.0 - wet * por * mix(0.3, 0.5, upF);
 #endif
-  roughnessFactor = mix(roughnessFactor, roughnessFactor * mix(0.7, 0.35, upF), wet);
+  roughnessFactor = mix(roughnessFactor, roughnessFactor * mix(0.7, 0.32, upF), wet);
   vec2 slopeW = vec2(0.0);
   float water = 0.0;
 #ifdef WET_ROAD
@@ -81,7 +84,7 @@ if (uWet > 0.001) {
     float sl = length(gN.xz) / max(gN.y, 0.05);
     float lvl = 1.0 - smoothstep(0.012, 0.035, sl);
     float n = wetNoise(wp.xz * 0.45) * 0.65 + wetNoise(wp.xz * 1.7 + 5.3) * 0.35;
-    float pud = smoothstep(0.6, 0.7, n) * lvl;
+    float pud = smoothstep(0.57, 0.66, n) * lvl;
     vec2 fd = normalize(gN.xz + vec2(1e-5));          // downhill
     vec2 fa = vec2(-fd.y, fd.x);
     float al = dot(wp.xz, fd), ac = dot(wp.xz, fa);
@@ -98,21 +101,41 @@ if (uWet > 0.001) {
   }
 #endif
   diffuseColor.rgb *= 1.0 - 0.3 * water;
-  roughnessFactor = mix(roughnessFactor, 0.06, water);
-  // raindrop rings where the rain lands: open, level, near the camera (beyond ~25 m they are below a pixel)
-  float rip = uRain * open * upF * (1.0 - smoothstep(12.0, 26.0, length(wp - cameraPosition)));
-#ifdef WET_LEAF
-  rip = 0.0;
+  roughnessFactor = mix(roughnessFactor, 0.05, water);
+  // raindrop rings only on standing water; beyond ~25 m they are below a pixel
+  float rip = uRain * open * upF * (1.0 - smoothstep(12.0, 26.0, dist)) * smoothstep(0.25, 0.7, water);
+  if (rip > 0.01) slopeW += wetRipples(wp.xz, uRainTime) * rip * 0.24;
+#ifndef WET_LEAF
+  // the impacts: in a downpour hard ground 'boils' with tiny crowns of spray (~4 cm), each lasting ~0.08 s, about
+  // 140 at a time on every square metre (~3000 drops/m2/s at 50 mm/h)
+  float imp = uRain * open * upF * (1.0 - smoothstep(5.0, 13.0, dist));
+  if (imp > 0.01) {
+    float sp = 0.0;
+    for (int k = 0; k < 2; k++) {
+      vec2 q = wp.xz * 24.0 + float(k) * vec2(0.5, 0.27);
+      vec2 c = floor(q);
+      float ph = fract(uRainTime * 2.6 + rainHash(c + float(k) * 7.0));
+      vec2 o = vec2(rainHash(c + 1.3), rainHash(c + 2.7)) * 0.6 + 0.2;
+      float r = length(fract(q) - o);
+      sp += (1.0 - smoothstep(0.04, 0.1 + 0.3 * ph, r)) * (1.0 - smoothstep(0.0, 0.22, ph)) * step(rainHash(c + 5.1), 0.55);
+    }
+    sp = clamp(sp, 0.0, 1.0) * imp;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.72), sp * 0.65);
+    roughnessFactor = mix(roughnessFactor, 0.45, sp);
+  }
 #endif
-#ifndef WET_ROAD
-  rip *= 0.35;
-#endif
-  if (rip > 0.01) slopeW += wetRipples(wp.xz, uRainTime) * rip * mix(0.05, 0.24, water);   // rings show on standing water, faintly on a wet film
   normal = normalize(normal - (viewMatrix * vec4(slopeW.x, 0.0, slopeW.y, 0.0)).xyz);
+  // for the screen-space reflections: standing and running water mirror, a wet road film a little, other level hard
+  // surfaces (roofs, slabs, car roofs) a little; leaves and rough ground not
+#ifdef WET_ROAD
+  wetReflOut = max(water, 0.5 * wet * upF * open);
+#elif !defined(WET_LEAF)
+  wetReflOut = wet * upF * open * 0.25 * (1.0 - smoothstep(0.55, 0.85, rough0));
+#endif
 }
 `;
 
-function injectWet(sh, kind) {
+function injectWet(sh, kind, opaque) {
   const v = sh.vertexShader, f = sh.fragmentShader;
   if (v.includes('vWetP')) return;                 // already in (a material cloned from a patched one keeps its hook)
   if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>')) return;
@@ -126,10 +149,12 @@ function injectWet(sh, kind) {
     wetW = instanceMatrix * wetW;
 #endif
     vWetP = (modelMatrix * wetW).xyz; }`);
-  const def = kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : '';
+  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : '') + (opaque ? '#define WET_OUT\n' : '');
   sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS)
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
-    .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN);
+    .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN)
+    // opaque surfaces write their reflectivity into the (otherwise always 1) alpha of the scene buffer
+    .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef WET_OUT\n  gl_FragColor.a = 1.0 - wetReflOut;\n#endif');
 }
 
 // Make a standard / physical material react to the rain (its own onBeforeCompile, if any, runs first).
@@ -142,8 +167,9 @@ export function wetMaterial(m) {
   const kind = m.userData.wet === 'road' ? 'road' : (m.alphaTest > 0 || m.transparent) ? 'leaf' : 'solid';
   const key0 = m.customProgramCacheKey();
   const prev = m.onBeforeCompile;
-  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind); };
-  m.customProgramCacheKey = () => key0 + '|wet-' + kind;
+  const opaque = !m.transparent;
+  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque); };
+  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '');
   m.needsUpdate = true;
 }
 export function wetScene(root) {
@@ -214,21 +240,23 @@ export class RainOcclusion {
 const STREAK_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
-uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth;
+uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth, uCurtain;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 uniform vec2 uWind;
 uniform vec3 uCam;
 uniform vec4 uTorch, uTorchDir;      // torch position (w: on) and direction (w: cos of the cone)
 uniform vec4 uBeam, uBeamDir;        // the moon's shaft: a point on its axis (w: radius) and the axis (w: on)
-varying float vA, vLit;
+varying float vA, vLit, vB;
 varying vec2 vC;
 ${OCC_GLSL}
 void main() {
-  vC = corner; vA = 0.0; vLit = 0.0;
+  vC = corner; vA = 0.0; vLit = 0.0; vB = 0.0;
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);                       // (culled unless placed below)
   if (aSeed.w > uRain) return;
-  float fall = uSpeed * (0.8 + 0.4 * fract(aSeed.z * 13.7));
+  // drop size: big drops fall faster (~9 m/s for 3 mm, ~6 m/s for 1 mm), leave longer, wider, brighter streaks
+  float sz = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
+  float fall = uSpeed * (0.66 + 0.36 * sz);
   vec3 vel = vec3(uWind.x, -fall, uWind.y);
   vec3 box = vec3(2.0 * uRadius, uHeight, 2.0 * uRadius);
   vec3 org = uCam - vec3(uRadius, uHeight * 0.4, uRadius);
@@ -238,9 +266,14 @@ void main() {
   vec3 dir = normalize(vel), toCam = uCam - p;
   float dist = length(toCam);
   vec3 side = normalize(cross(dir, toCam));
-  float w = (0.004 + dist * 0.0014) * uWidth;                   // ~1.5 px wide at any distance
-  vec3 pos = p - dir * uLen * (0.75 + 0.5 * aSeed.w) * corner.y + side * w * corner.x;
+  float w = (0.0025 + dist * 0.0011) * (0.7 + 0.6 * sz) * uWidth;   // ~1 px wide at any distance
+  vec3 pos = p - dir * uLen * (0.45 + 0.8 * sz) * corner.y + side * w * corner.x;
   vA = (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.5, 1.5, dist);
+  vB = 0.55 + 0.45 * sz;
+  // gusts drive denser sheets of rain across the view (curtains), drifting with the wind
+  vec2 wd = normalize(uWind + vec2(1e-4));
+  float cur = 0.5 + 0.5 * sin(dot(p.xz, wd) * 0.09 - uRainTime * 1.3) * cos(dot(p.xz, vec2(-wd.y, wd.x)) * 0.05 + uRainTime * 0.37);
+  vA *= mix(1.0, 0.2 + 0.8 * cur, uCurtain);
   // drops caught in the torch's cone or in the moon's shaft light up
   vec3 tp = p - uTorch.xyz; float tl = length(tp);
   vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
@@ -251,13 +284,14 @@ void main() {
 const STREAK_FRAG = /* glsl */`
 uniform vec3 uColor;
 uniform float uOpacity;
-varying float vA, vLit;
+varying float vA, vLit, vB;
 varying vec2 vC;
 void main() {
+  // drawn additively: a drop is a tiny lens that shows the bright sky, so it lightens what is behind it - plain against
+  // dark trees and walls, almost gone against the sky (like real rain)
   float a = vA * uOpacity * (1.0 - abs(vC.x)) * smoothstep(0.0, 0.2, vC.y) * (1.0 - smoothstep(0.55, 1.0, vC.y));
-  a *= 1.0 + vLit * 0.6;
   if (a < 0.002) discard;
-  gl_FragColor = vec4(uColor + vec3(0.9, 0.92, 1.0) * vLit * 1.2, min(a, 1.0));
+  gl_FragColor = vec4(uColor * vB + vec3(0.9, 0.92, 1.0) * vLit * 1.4, min(a, 1.0));
 }`;
 
 const SPLASH_VERT = /* glsl */`
@@ -332,12 +366,12 @@ export class RainFX {
     this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
     this.beam = { value: new THREE.Vector4() }; this.beamDir = { value: new THREE.Vector4(0, 1, 0, 0) };
     const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
-      transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });   // (the quads face either way)
+      transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });   // (the quads face either way)
     const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5; this.group.add(m); return m; };
     // two layers of streaks: close ones (a few metres, the ones you read as drops) and the curtain further out
     const quad = [-1, 0, 1, 0, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
-    add(cloud(9000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9 }, uLen: { value: 0.45 }, uOpacity: { value: 0.5 }, uWidth: { value: 1 } }));
-    add(cloud(26000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9 }, uLen: { value: 0.6 }, uOpacity: { value: 0.3 }, uWidth: { value: 1 } }));
+    add(cloud(10000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uLen: { value: 0.42 }, uOpacity: { value: 0.9 }, uWidth: { value: 1 }, uCurtain: { value: 0.3 } }));
+    add(cloud(30000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uLen: { value: 0.55 }, uOpacity: { value: 0.62 }, uWidth: { value: 1 }, uCurtain: { value: 1 } }));
     add(cloud(2600, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mk(SPLASH_VERT, SPLASH_FRAG, { uRadius: { value: 12 }, uOpacity: { value: 0.55 } }));
   }
 
@@ -347,9 +381,104 @@ export class RainFX {
     if (torch?.on) { this.torch.value.set(torch.pos.x, torch.pos.y, torch.pos.z, 1); this.torchDir.value.set(torch.dir.x, torch.dir.y, torch.dir.z, 0.93); } else this.torch.value.w = 0;
     if (beam?.on) { this.beam.value.set(beam.pos.x, beam.pos.y, beam.pos.z, beam.r); this.beamDir.value.set(beam.dir.x, beam.dir.y, beam.dir.z, 1); } else this.beamDir.value.w = 0;
     this.cam.value.copy(camera.position);
-    this.color.value.setScalar(0.9 * light).multiply(_tint);
+    this.color.value.setScalar(0.32 * light).multiply(_tint);         // (added on top of the scene)
     const t = RAIN.uRainTime.value;
     this.wind.value.set(1.6 + 0.8 * Math.sin(t * 0.37), 0.7 + 0.5 * Math.sin(t * 0.23 + 1));   // gusts
   }
 }
 const _tint = new THREE.Color(0.97, 1, 1.05);
+
+// ------------------------------------------------------------------ spray thrown up by the tyres on a wet road
+const SPRAY_VERT = /* glsl */`
+attribute vec2 corner;
+attribute vec4 aP;          // position, size
+attribute float aA;         // opacity
+uniform vec3 uCam;
+varying vec2 vC;
+varying float vA;
+void main() {
+  vC = corner; vA = aA;
+  vec3 toCam = normalize(uCam - aP.xyz);
+  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
+  vec3 up = cross(toCam, right);
+  gl_Position = projectionMatrix * viewMatrix * vec4(aP.xyz + (right * corner.x + up * corner.y) * aP.w, 1.0);
+}`;
+const SPRAY_FRAG = /* glsl */`
+uniform vec3 uColor;
+uniform sampler2D uNoise;
+varying vec2 vC;
+varying float vA;
+void main() {
+  float r = length(vC);
+  float n = texture2D(uNoise, vC * 0.35 + vec2(vA * 3.1, vA * 1.7)).r;
+  float a = vA * (1.0 - smoothstep(0.25, 1.0, r)) * (0.45 + 0.55 * n);
+  if (a < 0.003) discard;
+  gl_FragColor = vec4(uColor, a);
+}`;
+
+export class Spray {
+  constructor(scene, noise, n = 420) {
+    this.n = n; this.next = 0;
+    this.p = new Float32Array(n * 3); this.v = new Float32Array(n * 3); this.age = new Float32Array(n).fill(9); this.life = new Float32Array(n).fill(1);
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('corner', new THREE.Float32BufferAttribute([-1, -1, 1, -1, 1, 1, -1, 1], 2));
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]);
+    this.aP = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4); this.aP.setUsage(THREE.DynamicDrawUsage);
+    this.aA = new THREE.InstancedBufferAttribute(new Float32Array(n), 1); this.aA.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('aP', this.aP); g.setAttribute('aA', this.aA);
+    g.instanceCount = n;
+    this.cam = { value: new THREE.Vector3() }; this.color = { value: new THREE.Color() };
+    const mat = new THREE.ShaderMaterial({ vertexShader: SPRAY_VERT, fragmentShader: SPRAY_FRAG, uniforms: { uCam: this.cam, uColor: this.color, uNoise: { value: noise } },
+      transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    this.mesh = new THREE.Mesh(g, mat);
+    this.mesh.frustumCulled = false; this.mesh.renderOrder = 4; this.mesh.visible = false;
+    this.mesh.userData.noAO = true; this.mesh.userData.ueSkip = 'rain';
+    scene.add(this.mesh);
+  }
+
+  // car: the driven vehicle (x, z, h, vx, vz, speed) and its ground height y, or null; wet: 0..1
+  update(dt, car, y, wet, light, camPos) {
+    const sp = car ? Math.abs(car.speed) : 0;
+    if (car && wet > 0.25 && sp > 3) {
+      // each tyre lifts a fan of spray behind it, more the faster it turns (rear ones more, in the front ones' wake)
+      const fx = -Math.sin(car.h), fz = -Math.cos(car.h), rx = Math.cos(car.h), rz = -Math.sin(car.h);
+      const rate = Math.min(1, (sp - 3) / 18) * 240 * wet;
+      for (let k = 0; k < 4; k++) {
+        const along = k < 2 ? -1.35 : 1.3, side = k % 2 ? 0.78 : -0.78, share = k < 2 ? 0.65 : 0.35;
+        this.acc = (this.acc ?? 0) + rate * share * dt;
+        while (this.acc >= 1) {
+          this.acc -= 1;
+          const i = this.next = (this.next + 1) % this.n, j = i * 3, back = 0.25 + Math.random() * 0.35;
+          this.p[j] = car.x + fx * (along - 0.35) + rx * side + (Math.random() - 0.5) * 0.25;
+          this.p[j + 1] = y + 0.1 + Math.random() * 0.25;
+          this.p[j + 2] = car.z + fz * (along - 0.35) + rz * side + (Math.random() - 0.5) * 0.25;
+          // thrown off the tread backwards about as fast as the car goes, so in the world it hangs nearly where it rose
+          this.v[j] = car.vx * back * 0.5 + rx * side * (0.8 + Math.random() * 1.5);
+          this.v[j + 1] = 1.5 + Math.random() * 3;
+          this.v[j + 2] = car.vz * back * 0.5 + rz * side * (0.8 + Math.random() * 1.5);
+          this.age[i] = 0; this.life[i] = 0.6 + Math.random() * 0.7;
+        }
+      }
+    }
+    let any = false;
+    const P = this.aP.array, A = this.aA.array;
+    for (let i = 0; i < this.n; i++) {
+      const j = i * 3;
+      this.age[i] += dt;
+      const t = this.age[i] / this.life[i];
+      if (t >= 1) { A[i] = 0; P[i * 4 + 3] = 0; continue; }
+      any = true;
+      const drag = Math.exp(-2.2 * dt);
+      this.v[j] *= drag; this.v[j + 2] *= drag; this.v[j + 1] = this.v[j + 1] * drag - 1.5 * dt;   // mist: it floats
+      this.p[j] += this.v[j] * dt; this.p[j + 1] = Math.max(y + 0.05, this.p[j + 1] + this.v[j + 1] * dt); this.p[j + 2] += this.v[j + 2] * dt;
+      P[i * 4] = this.p[j]; P[i * 4 + 1] = this.p[j + 1]; P[i * 4 + 2] = this.p[j + 2]; P[i * 4 + 3] = 0.3 + 1.6 * t;   // mist spreading out
+      A[i] = 0.17 * (1 - t) * Math.min(1, t * 5);
+    }
+    this.mesh.visible = any;
+    if (!any) return;
+    this.aP.needsUpdate = true; this.aA.needsUpdate = true;
+    this.cam.value.copy(camPos);
+    this.color.value.setScalar(0.55 * light);
+  }
+}

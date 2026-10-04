@@ -81,6 +81,9 @@ function catenary(out, a, b, sag, seg = 8) {
   }
 }
 
+// the street lamp heads of the map (world positions), for their reflections in a wet road (post.js)
+export const LAMPS = [];
+
 // n: unit vector across the line (crossarm direction); lampSide: +-1 = lamp arm along +-n, 0 = none
 function concretePoleGeo(B, mats, x, z, n, lampSide) {
   const y = heightAt(x, z);
@@ -101,6 +104,7 @@ function concretePoleGeo(B, mats, x, z, n, lampSide) {
     B.geo(mats.metal, la, T);
     const head = new THREE.BoxGeometry(0.5, 0.07, 0.22); head.translate(lampSide * 1.3, h - 2.22, 0);
     B.geo(mats.lamp, head, T);
+    LAMPS.push(new THREE.Vector3(lampSide * 1.3, h - 2.27, 0).applyMatrix4(T));
   }
   return { top: y + h - 0.6, y, T };
 }

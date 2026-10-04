@@ -4,8 +4,9 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel } from './lighting.js';
-import { RAIN, wetScene, RainOcclusion, RainFX } from './rain.js';
+import { RAIN, wetScene, RainOcclusion, RainFX, Spray } from './rain.js';
 import { MoonBeam, Flashlight, Lightning } from './night.js';
+import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
@@ -324,7 +325,8 @@ async function main() {
   player.update(0, input, null, 0);
   // rain: every lit material learns to get wet (before compiling, so switching to rain recompiles nothing)
   wetScene(scene);
-  const rainFX = new RainFX(scene), rainOcc = new RainOcclusion();
+  const rainFX = new RainFX(scene), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise);
+  const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   renderer.compile(scene, camera);
   post.composer.render(0);
   $('loader').classList.add('done');
@@ -733,6 +735,13 @@ async function main() {
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
     if ((frameNo & 127) === 0) wetScene(scene);            // materials streamed in since
+    // the 8 nearest street lamps, for their reflections in a wet road
+    if (post.ssr && (frameNo & 7) === 4) {
+      const cp = camera.position, near = [];
+      for (const l of allLamps) { const d = (l.x - cp.x) ** 2 + (l.z - cp.z) ** 2; if (d < 150 * 150) near.push([d, l]); }
+      near.sort((a, b) => a[0] - b[0]);
+      post.ssr.setLamps(near.slice(0, 8).map(e => e[1]), M.lampGlass.emissiveIntensity);
+    }
     if ((frameNo++ & 7) === 0) {
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
       geoWorld.update(camera.position);
@@ -774,6 +783,8 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
+    spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
+    if (post.ssr) post.ssr.enabled = RAIN.uWet.value > 0.01 && !window.__game?.noSSR;   // reflections in wet ground only when there is any
     if (!paused) {
       const pp = mode === 'car' && active ? active.car.group.position : player.pos;
       bear?.update(dt, t, { active: horror === 1, px: pp.x, pz: pp.z, inCar: mode === 'car', torch: flashlight.on, camX: camera.position.x, camZ: camera.position.z });
