@@ -51,7 +51,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | T / O | vremea (senin, parțial noros, înnorat, ploaie torențială) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
-| K | scena din pădurea de lângă cruce (cinematic, ~17 s; K / Space / Enter o sare, Esc o pune pe pauză) | la fel (cobori întâi) |
+| K | scena din pădurea de lângă cruce (cinematic, ~17 s; doar la 23:30, pe vreme înnorată; K / Space / Enter o sare, Esc o pune pe pauză) | la fel (cobori întâi) |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -73,8 +73,10 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * Ursul apare doar în combinația noapte + ploaie.
 * **Scena din pădure (K, sau butonul „Scena din pădure” din meniu)**: cele două clipuri tale, jucate ca film în pădurea
   de pe dealul crucii de deasupra Străzii Măgurii (pinul 45,1182321 N 25,7049276 E e chiar la marginea pădurii, așa că
-  scena e la 28 m de el, în primul loc plat din pădure, într-un mic luminiș acoperit cu frunze uscate). Noaptea (22:00,
-  senin), filmat „din mână”, cu lanterna celui care filmează:
+  scena e la 28 m de el, în primul loc plat din pădure, într-un mic luminiș acoperit cu frunze uscate).
+  **Are loc doar la ora 23:30, pe vreme înnorată**: atunci pornește singură când intri în luminiș (din nou abia după ce
+  te-ai îndepărtat ~40 m de el) sau cu K de oriunde; la altă oră sau pe altă vreme K doar îți spune când are loc, iar
+  dacă schimbi ora sau vremea în timpul ei, se oprește. Filmată „din mână”, cu lanterna celui care filmează:
   * **Cadrul 1** (clipul 2): creatura palidă și slabă iese din întuneric în fugă, urlă cu brațele sus; cel în maiou negru
     o prinde pe la spate, cel în tricou crem îi prinde brațul și o trântesc împreună pe frunze, unde o țin la pământ.
   * **Cadrul 2** (clipul 1): mai jos și mai aproape, frunzele explodează; o ridică de picioare și atârnă cu capul în jos,
@@ -86,8 +88,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
     frecare cu aerul, rotire). Sunetele (urletul răgușit, trântitul, foșnetul) sunt sintetizate.
   * Nu se adaugă nicio lumină nouă (lanterna prietenului e lumina lunii, împrumutată), deci niciun shader nu se reface;
     personajele se construiesc prima dată când pornești scena (câteva secunde, pe ecran negru: ~9 s în Chromium cu
-    randare software, mai puțin pe un procesor obișnuit). La sfârșit rămâi în pădure, unde era camera, cu vremea și ora
-    de dinainte.
+    randare software, mai puțin pe un procesor obișnuit). La sfârșit rămâi în pădure, unde era camera.
 * **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
