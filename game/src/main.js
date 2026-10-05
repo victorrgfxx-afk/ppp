@@ -9,6 +9,8 @@ import { MoonBeam, Flashlight, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
 import { ForestScene } from './forest.js';
+import { Hikers } from './hikers.js';
+import { laneAt, CLIP } from './geo/urcus.js';
 import { SCENE_SPOT } from './geo/hillwood.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
@@ -292,6 +294,8 @@ async function main() {
   // the forest scene of the user's two clips, live in the clearing of the wood by the cross (+z of its stage points back
   // towards the cross); its carpet of dry leaves is always there
   const forest = new ForestScene(scene, { x: SCENE_SPOT.x, z: SCENE_SPOT.z, y: geoGround(SCENE_SPOT.x, SCENE_SPOT.z), yaw: 1.178, ground: geoGround, world });
+  // the user's clip IMG_0725 on the lane up to the cross: the barefoot man and the three walkers ahead of him (16:11, clear)
+  const hikers = new Hikers(scene, (x, z) => world.groundHeight(x, z), world, renderer);
   const lightning = new Lightning((delay, km) => audio.thunder(delay, km));
   const hurt = document.createElement('div');
   hurt.style.cssText = 'position:fixed;inset:0;pointer-events:none;opacity:0;z-index:5;background:radial-gradient(ellipse at center, rgba(110,0,0,0) 25%, rgba(150,0,0,0.88) 100%)';
@@ -592,6 +596,13 @@ async function main() {
   if (uzLm?.views && !PHOTO_VIEWS.some(v => v.uzinei)) {
     for (const v of uzLm.views) PHOTO_VIEWS.push({ uzinei: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
   }
+  // the user's clip IMG_0725 (an iPhone's 3x lens, 27.5 deg on its long side): the lane up to the cross 15 m above the
+  // junction, the man 15 m ahead, the three 75 m up, past the S (worked out from their sizes and places in its first
+  // frame, geo/urcus.js); it also sets the clip's hour and sky and its moment (hikers.js)
+  if (!PHOTO_VIEWS.some(v => v.clip)) {
+    const c = laneAt(...CLIP.cam), m = laneAt(...CLIP.man), y = world.groundHeight(c.x, c.z) + CLIP.eye, ym = world.groundHeight(m.x, m.z);
+    PHOTO_VIEWS.push({ clip: true, x: c.x, z: c.z, yaw: Math.atan2(-(m.x - c.x), -(m.z - c.z)) - 0.003, pitch: Math.atan2(ym - y, Math.hypot(m.x - c.x, m.z - c.z)) + 4.15 * Math.PI / 180, fov: 27.5, label: 'Clipul IMG_0725 — drumul spre cruce, 16:11' });
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;
@@ -605,6 +616,7 @@ async function main() {
     photoFov = v.fov ? { fov: v.fov, x: v.x, z: v.z } : null;
     camera.fov = v.fov ?? 70; camera.updateProjectionMatrix();
     hud.toast(v.label);
+    if (v.clip) { setHour(CLIP_HOUR); setWeather('senin'); hikers.atClip(); }
   };
 
   const nearestCar = () => {
@@ -646,6 +658,9 @@ async function main() {
   // K (or the menu's button) takes you to the edge of the clearing, then too.
   const SCENE_HOUR = 23.5, SCENE_WEATHER = 'innorat';
   const sceneTime = () => hour === SCENE_HOUR && weatherKey === SCENE_WEATHER;
+  // the clip on the lane up to the cross: at its hour, on a clear afternoon
+  const CLIP_HOUR = 16 + 11 / 60;
+  const clipTime = () => hour === CLIP_HOUR && weatherKey === 'senin';
   const forestSound = (n, d) => {
     const k = Math.min(1, Math.max(0.04, 5 / Math.max(d, 1)));            // fainter with the distance
     if (n === 'shriek') audio.shriek(k); else if (n === 'thud') audio.thud(k); else if (n === 'growl') audio.bear(false, d); else audio.rustle(n === 'rustle-big' ? 9 : 4, k);
@@ -769,6 +784,7 @@ async function main() {
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = damp(camera.fov, fov, 6, dt); camera.updateProjectionMatrix(); }
 
     if (!paused) forest.update(dt, { ok: sceneTime(), px: pos0().x, pz: pos0().z, camera, sound: forestSound });
+    if (!paused) hikers.update(dt, { ok: clipTime(), px: pos0().x, pz: pos0().z, camera });
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
     if ((frameNo & 127) === 0) wetScene(scene);            // materials streamed in since
@@ -848,7 +864,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, RAIN, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

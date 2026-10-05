@@ -297,7 +297,7 @@ function manPaint(look) {
     }
     if (r === 'socket') return [skin, 0];
     if (r === 'lip') return [look.lip, 0];
-    if (r === 'shoe') return y < 0.022 ? [0xdedad2, 3] : [look.shoe, 3];          // the sole
+    if (r === 'shoe') return look.barefoot ? [skin, 0] : y < 0.022 ? [0xdedad2, 3] : [look.shoe, 3];          // the sole
     if (r === 'hair') return [look.hair, 2];
     const hy = J.head[1];
     // hair: above the hairline, down the sides to the sideburns, over the back; the eyebrows
@@ -449,6 +449,17 @@ export const CAST = {
   // the one in the cream T-shirt: broad and fit, curly dark hair, a full dark beard, black trousers
   tee: { kind: 'tee', cell: 0.0085, P: { h: 1.79, shoulderW: 0.198, hipW: 0.095, armAngle: 47, upper: 0.295, fore: 0.26, hand: 0.185, thigh: 0.44, foot: 0.25, neckLen: 0, hunch: 0, muscle: 0.7, belly: 0.12 },
     sculpt: (sc, J, P) => { manSculpt(sc, J, P); curls(sc, J, 70, 91, 0.026, 0.012); }, paint: manPaint({ skin: 0xbb8d70, lip: 0x9e6355, hair: 0x15100d, beard: 0x1f1712, shirt: 0xe3dccb, pants: 0x18181a, shorts: false, shoe: 0x1c1c1e }) },
+  // the clip IMG_0725 (hikers.js): the man walking up the lane to the cross barefoot, grey-haired, a white T-shirt and
+  // khaki shorts; the three walkers ahead of him (seen from 35 m: a dark blue shirt, a light blue one, a white one and a
+  // pale cap), made coarser
+  barefoot: { kind: 'barefoot', cell: 0.0085, P: { h: 1.77, shoulderW: 0.19, hipW: 0.09, armAngle: 47, upper: 0.295, fore: 0.26, hand: 0.185, thigh: 0.44, foot: 0.25, neckLen: 0, hunch: 0.01, muscle: 0.3, belly: 0.12 },
+    sculpt: manSculpt, paint: manPaint({ skin: 0xc79c80, lip: 0x9e6a5a, hair: 0x67625a, shirt: 0xe9e7e1, pants: 0x6e5d42, shorts: true, sock: 0xc79c80, barefoot: true }) },
+  walkerA: { kind: 'walkerA', cell: 0.0115, P: { h: 1.8, shoulderW: 0.2, hipW: 0.093, armAngle: 47, upper: 0.3, fore: 0.265, hand: 0.19, thigh: 0.445, foot: 0.26, neckLen: 0, hunch: 0, muscle: 0.4, belly: 0.1 },
+    sculpt: manSculpt, paint: manPaint({ skin: 0xc8a084, lip: 0xa06a5a, hair: 0x2a2420, shirt: 0x253250, pants: 0x2b2b30, shorts: false, shoe: 0x29292c }) },
+  walkerB: { kind: 'walkerB', cell: 0.0115, P: { h: 1.75, shoulderW: 0.2, hipW: 0.098, armAngle: 47, upper: 0.29, fore: 0.255, hand: 0.185, thigh: 0.43, foot: 0.25, neckLen: 0, hunch: 0.01, muscle: 0.25, belly: 0.4 },
+    sculpt: manSculpt, paint: manPaint({ skin: 0xc49a7c, lip: 0x9e6a5a, hair: 0x3b322a, shirt: 0x6ea8dc, pants: 0x36383e, shorts: false, shoe: 0x3a3a3e }) },
+  walkerC: { kind: 'walkerC', cell: 0.0115, P: { h: 1.71, shoulderW: 0.19, hipW: 0.1, armAngle: 47, upper: 0.285, fore: 0.25, hand: 0.18, thigh: 0.42, foot: 0.245, neckLen: 0, hunch: 0.03, muscle: 0.15, belly: 0.45 },
+    sculpt: manSculpt, paint: manPaint({ skin: 0xc8a086, lip: 0xa06a5a, hair: 0xd9d6cc, shirt: 0xe6e4de, pants: 0xa99d84, shorts: false, shoe: 0x6b6258 }) },
   // the creature
   creature: { kind: 'creature', cell: 0.0072, P: { h: 1.9, shoulderW: 0.175, hipW: 0.08, armAngle: 44, upper: 0.34, fore: 0.33, hand: 0.25, thigh: 0.48, foot: 0.27, neckLen: 0.02, hunch: 0.02, muscle: 0, belly: 0 },
     sculpt: creatureSculpt, paint: creaturePaint },

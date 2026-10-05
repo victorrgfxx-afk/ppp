@@ -28,7 +28,11 @@ const TYPES = [
   { name: 'lombardy poplar', H: 26, crown: 2.5, trunkR: 0.34, cards: 180, leaf: 'leaves', tint: 0xb2c294, bole: 0.14 },
   { name: 'poplar', H: 25, crown: 4.2, trunkR: 0.42, cards: 170, leaf: 'leaves', tint: 0xb6c698, bole: 0.2 },
   { name: 'young pine', H: 8.5, crown: 2.3, conifer: true, low: 1.9 },
+  // the lane up to the cross in mid-October (the user's clip IMG_0725): broadleaves gone yellow, a birch
+  { name: 'autumn broadleaf', H: 16, crown: 4.6, trunkR: 0.3, cards: 150, leaf: 'leavesAutumn', tint: 0xffffff, bole: 0.28 },
+  { name: 'autumn birch', H: 15, crown: 3.1, trunkR: 0.19, cards: 115, leaf: 'leavesAutumn', tint: 0xfff4dc, bole: 0.36, bark: 'barkLight' },
 ];
+export const TREE_T = { oak: 0, hornbeam: 1, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17 };
 const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2;
 
 function cyl(p0, p1, r0, r1, seg) {
@@ -217,8 +221,8 @@ export function buildTrees(scene, world, renderer, quality) {
   const r = rng(99);
   let count = 0;
   for (let i = 0; i < n; i++) {
-    if (density < 1 && r() > density) continue;
-    if (inHole(T.x[i], T.z[i])) { r(); r(); r(); continue; }
+    if (density < 1 && !T.keep?.[i] && r() > density) continue;             // (keep: trees a place needs at every quality)
+    if (T.s[i] <= 0 || inHole(T.x[i], T.z[i])) { r(); r(); r(); continue; }      // (scale 0: a tree a place has removed)
     const k = count++;
     X[k] = T.x[i]; Z[k] = T.z[i]; Y[k] = heightAt(X[k], Z[k]) - 0.05;
     TY[k] = Math.min(TYPES.length - 1, T.t[i]); R[k] = r() * Math.PI * 2; S[k] = T.s[i] * (0.9 + r() * 0.2); V[k] = 0.85 + r() * 0.3;

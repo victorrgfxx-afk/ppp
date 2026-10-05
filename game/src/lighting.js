@@ -158,5 +158,5 @@ export function sunlightAt(elDeg) {
 }
 // the hours offered (local summer time, UTC+3): the photos were taken around 11:30; the night of 26 September 2026 has
 // a full moon (16:49 UTC)
-export const HOURS = [8, 10, 11.5, 13, 15, 17, 18.5, 20, 22, 23.5];   // 20:00 dusk; 22:00 and 23:30 under the full moon
+export const HOURS = [8, 10, 11.5, 13, 15, 16 + 11 / 60, 17, 18.5, 20, 22, 23.5];   // 16:11 the clip on the lane to the cross; 20:00 dusk; 22:00 and 23:30 under the full moon
 export const hourLabel = (h) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;

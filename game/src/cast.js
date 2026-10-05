@@ -48,7 +48,7 @@ function castMaterial(kind) {
       }`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = rough;');
   };
-  m.customProgramCacheKey = () => 'cast-' + kind;
+  m.customProgramCacheKey = () => 'cast';
   return m;
 }
 

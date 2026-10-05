@@ -56,7 +56,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 ## Lumina: vremea, ora și umbrele
 
 * **Vremea** (tasta **T** sau meniul): *senin*, ca în capturile Street View: cer albastru adânc cu cumulus luminați din partea soarelui, soare puternic și umbre clare. *Parțial noros*: mai mulți nori, umbre puțin mai moi. *Înnorat*: plafonul gri de sfârșit de septembrie din pozele tale 1–23, identic cu lumina de până acum. Fiecare vreme schimbă împreună cerul, soarele, lumina cerului, reflexiile, ceața și expunerea. La soare, umbra primește și lumina reflectată de solul, zidurile și frunzele luminate din jur (nu doar albastrul cerului), ca să nu iasă albastră și neagră.
-* **Ora** (tasta **O** sau meniul): soarele e pus din poziția reală pentru 26 septembrie la Poiana Câmpina (formulele NOAA), de la 8:00 (8° deasupra orizontului) la 18:30 (6°). Pozele sunt făcute pe la 11:30 (39°). Culoarea și puterea soarelui vin din drumul luminii prin atmosferă (masa de aer Kasten–Young, împrăștiere Rayleigh și aerosoli): la amiază e alb-gălbui, spre apus portocaliu. Cerul, norii și ceața se încălzesc și se întunecă odată cu el.
+* **Ora** (tasta **O** sau meniul): soarele e pus din poziția reală pentru 26 septembrie la Poiana Câmpina (formulele NOAA), de la 8:00 (8° deasupra orizontului) la 18:30 (6°); în listă e și 16:11, ora clipului IMG_0725 (28°). Pozele sunt făcute pe la 11:30 (39°). Culoarea și puterea soarelui vin din drumul luminii prin atmosferă (masa de aer Kasten–Young, împrăștiere Rayleigh și aerosoli): la amiază e alb-gălbui, spre apus portocaliu. Cerul, norii și ceața se încălzesc și se întunecă odată cu el.
 * **Ploaie torențială** (a patra vreme din **T**): plafon jos și întunecat, ceață (vizibilitate ~1,5 km), suprafețe ude și zgomot de ploaie.
   * **Picăturile** cad în două straturi în jurul tău (aproape și „perdeaua” de mai departe), cu vânt în rafale, și rămân pe loc în lume când te miști. Au mărimi diferite: cele mari (~3 mm) cad cu ~9 m/s și lasă dâre mai lungi, cele mici cu ~6 m/s. Se adună peste imagine ca lumină, fiindcă o picătură e o lentilă mică ce arată cerul. Se văd bine pe fundal întunecat (copaci, ziduri) și aproape deloc pe cer, ca în realitate. Rafalele de vânt trec prin ploaie „perdele” mai dese.
   * **Nu plouă prin copaci, acoperișuri sau mașini**: o hartă de înălțimi văzută de sus, pe ±48 m în jurul tău, dă pentru fiecare punct prima suprafață pe care cade ploaia (coroana, acoperișul, capota, tablierul podului sau solul). Picăturile se opresc acolo, stropii sar de pe ea, iar ce e cu peste ~0,5 m dedesubt rămâne adăpostit: sub coroane și sub streșini solul e doar umed, fără bălți, fără inele și fără apă care curge. Harta se reface când te muți 6 m (și la fiecare ~0,5 s, pentru mașini).
@@ -93,6 +93,38 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * Personajele se construiesc pe alt fir de execuție (un worker) din momentul în care ora e 23:30 și e înnorat, deci
     jocul nu se oprește deloc: durează câteva secunde, cât timp mergi spre luminiș. Unde browserul nu permite worker, se
     construiesc câte ~5 ms între cadre. Nu se adaugă nicio lumină nouă, deci niciun shader nu se reface.
+* **Scena din clipul tău IMG_0725** (`src/geo/urcus.js`, `src/hikers.js`): ulița asfaltată care urcă de pe Strada
+  Măgurii spre cruce (OSM way 198810461), în primul ei urcuș. Clipul nu are coordonate GPS, așa că locul e dedus: drumul
+  urcă cu 10–15% și face un S strâns (la stânga la ~45 m de intersecție, înapoi la dreapta ~30 m mai sus), iar soarele
+  de la 16:11 e în față-dreapta, ca în clip (coroanele galbene luminate din spate).
+  * **Măsurat pe primul cadru.** Obiectivul 3x al iPhone-ului 13 Pro (77 mm echivalent) dă ~27,5° pe latura lungă.
+    Omul are 940 px din 3840, deci e la ~15 m de cameră. Blocul de beton (~0,6 m) e la ~31 m, pe marginea dreaptă, exact
+    unde drumul cotește la stânga. Cei trei sunt pe brațul următor al S-ului, la 75–82 m pe drum, și se văd de la brâu în
+    sus peste desișul din interiorul S-ului. Camera, omul, blocul și cei trei sunt puși astfel încât unghiurile dintre
+    ei să iasă ca în clip (în plan, sub 0,2°).
+  * **Relieful**: DEM-ul de 30 m dă o pantă uniformă de 12–14%, iar cu el picioarele omului ieșeau cu 1,9° prea sus
+    față de bloc și de cei trei. În clip, primii 15 m de deasupra camerei sunt mai domoli (~8%), iar S-ul e mai abrupt.
+    Pe o fâșie de 9–15 m de o parte și de alta a drumului, relieful e corectat la rezoluție de 1 m:
+    * coborât cu până la 0,5 m între 18 și 55 m (ca o tranșee de drum de deal);
+    * ridicat cu până la 0,8 m între 80 și 135 m.
+    Verificat prin proiecție în camera jocului, pe cadrul de 2160 × 3840: capetele celor trei sunt la 6–23 px de unde
+    sunt în clip, iar blocul și capul omului la ~50 px (~0,35°).
+  * **Locul**: asfalt îngust de 4 m, uzat. Pe dreapta: acostament cosit, apoi mure și tufe. Desișul umple interiorul
+    S-ului, iar pe liniile privirii spre cei trei e tăiat sub nivelul șoldurilor lor. Pe acele linii nu e niciun
+    trunchi sau coroană; coroanele sunt calculate după cum le construiește generatorul de copaci. Dincolo de ei e un
+    perete de frunziș verde închis, cu copaci înalți îngălbeniți în jur. Pe stânga e o pădure mai întunecată. Iarba e
+    cosită pe 3 m de la asfalt până la cruce și e scurtă sub desiș.
+  * **Scena** (doar la **16:11, pe senin**; ora e în lista tastei **O**):
+    * bărbatul cărunt, desculț, în tricou alb și pantaloni scurți kaki, cu rucsac negru cu buzunar roșu, își duce
+      bocancii în mâna dreaptă;
+    * mai sus urcă un grup de trei: tricou bleumarin cu rucsac albastru, tricou albastru-deschis, tricou alb cu șapcă.
+    Pornesc de la intersecție, urcă ~160 m până la cruce în ~2,5 minute, se opresc acolo și se uită în vale. Tălpile nu
+    alunecă: cât un picior e pe sol, rămâne pe loc. Nu treci prin ei. După ce te îndepărtezi 250 m, scena se reia.
+  * Vederea „Clipul IMG_0725” din listă te pune exact unde a fost filmat, cu câmpul vizual al obiectivului 3x, la ora
+    și în momentul din clip.
+  * Cei patru se construiesc în worker, ca personajele din pădure, din momentul în care e 16:11 pe senin.
+  * Aproximat: locul exact (dedus, nu din GPS), speciile și înălțimea copacilor, fețele oamenilor (procedurale). În joc
+    e 26 septembrie, iar clipul e din octombrie, așa că doar copacii de pe acest urcuș sunt îngălbeniți.
 * **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
@@ -344,10 +376,12 @@ src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridi
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
-src/castgeo.js        personajele scenei din pădure: geometria (sculptate SDF, ponderile scheletului), fără three.js
+src/castgeo.js        personajele (pădurea, clipul IMG_0725): geometria (sculptate SDF, ponderile scheletului), fără three.js
 src/castworker.js     le construiește într-un worker, ca jocul să nu se oprească
 src/cast.js           plasele cu schelet și pozarea (cinematică inversă)
 src/forest.js         scena din pădure, live: coregrafia, drumurile printre copaci, frunzele, cine apare și dispare
+src/hikers.js         scena din clipul IMG_0725: omul desculț și cei trei de pe ulița spre cruce (16:11, senin)
+src/geo/urcus.js      urcușul uliței spre cruce: lățimea, desișul, blocul de beton, copacii, linia privirii din clip
 tools/extract_textures.py   extrage și rectifică texturile din reference/*.jpg
 tools/smoke-test.mjs        test automat în Chromium headless (capturi din cele 5 puncte)
 ```

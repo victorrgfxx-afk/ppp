@@ -22,7 +22,7 @@ import { hillOpen, HILL_BOX, trackAt, trackPoint, drapelSpots } from './drapel.j
 // The ground cover is generated around the player in 16 m tiles (hash-seeded, the same each time) and only on this hill.
 
 const HB = HILL_BOX, TS = 16;
-// The forest scene (cinematic.js): the user's pin (45.1182321 N 25.7049276 E) is on the meadow by the dirt track, 20 m
+// The forest scene (forest.js): the user's pin (45.1182321 N 25.7049276 E) is on the meadow by the dirt track, 20 m
 // short of the wood; the scene plays on the nearest flat ground well inside it (28 m on, 11 m from its edge), in a small
 // clearing: no generated trees within 4.5 m, nothing of the ground cover within r (the scene's own carpet of dry leaves)
 export const SCENE_SPOT = { x: -841.6, z: -1653.6, r: 6.6 };
@@ -86,6 +86,10 @@ function blockRaster() {
   return { x0, z0, W, H, R };
 }
 const blocked = (x, z) => { const i = Math.round(x - BL.x0), j = Math.round(z - BL.z0); return i < 0 || j < 0 || i >= BL.W || j >= BL.H || BL.R[j * BL.W + i] === 1; };
+// short grass where another place says so (urcus.js: the lane's mown verges, under the thicket in the clip)
+const SHORT = [];
+export function addShortGrass(fn) { SHORT.push(fn); }
+const short = (x, z) => SHORT.some(f => f(x, z));
 // trodden short: by the cross, around the flagpole and the parked car (the photo's foreground)
 function trodden(x, z) {
   if (!SP) return false;
@@ -185,7 +189,7 @@ function fernTexture() {
   }
   const t = tex(c); t.premultiplyAlpha = false; return t;
 }
-function brambleTexture() {
+export function brambleTexture() {
   const W = 256, c = canvas(W, W), g = c.getContext('2d'), R = rng(19);
   g.clearRect(0, 0, W, W);
   for (let i = 0; i < 9; i++) {
@@ -222,7 +226,7 @@ function woodEndTexture() {
 
 // ------------------------------------------------------------------ plant geometries (shared by all tiles)
 // three crossed vertical cards, w x 1 m, normals up (lit like a sward, not like panels)
-function starGeo(w = 1) {
+export function starGeo(w = 1) {
   const qs = [];
   for (const a of [0, Math.PI / 3, 2 * Math.PI / 3]) {
     const g = new THREE.PlaneGeometry(w, 1); g.translate(0, 0.47, 0); g.rotateY(a); qs.push(g);
@@ -299,7 +303,7 @@ export function buildHillwood(scene, world, quality) {
         let h, w, c;
         if (!s.forest) {
           const patch = 0.75 + 0.5 * valueNoise2(x, z, 9, 5), dry = valueNoise2(x, z, 14, 77);
-          const tall = !near || (r1 < 0.3 && s.tk === 1 && !trodden(x, z));
+          const tall = !short(x, z) && (!near || (r1 < 0.3 && s.tk === 1 && !trodden(x, z)));
           if (tall) { h = (0.55 + 0.4 * r2) * patch * (near ? 1 : 1.12); w = h * (near ? 1.0 : vfar ? 2.2 : 1.35); }
           else { h = (0.24 + 0.18 * r2) * s.tk; w = 0.95 + 0.4 * r3; }
           c = [0.8 + 0.28 * dry, 0.9 + 0.08 * dry, 0.62 + 0.1 * dry];

@@ -355,7 +355,8 @@ function genChainLink() {
 function genLeaves(kind = 'broad') {
   // Leaf-cluster card with alpha (drawn leaves)
   const n = 512;
-  const r = rng(kind === 'broad' ? 101 : 202);
+  const r = rng(kind === 'broad' ? 101 : kind === 'autumn' ? 151 : 202);
+  const autumn = kind === 'autumn';
   const c = document.createElement('canvas'); c.width = c.height = n;
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, n, n);
@@ -366,20 +367,28 @@ function genLeaves(kind = 'broad') {
     const a = r() * Math.PI * 2;
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * 110, cy + Math.sin(a) * 110); ctx.stroke();
   }
-  const count = kind === 'broad' ? 170 : 260;
+  const count = kind === 'small' ? 260 : 170;
   for (let i = 0; i < count; i++) {
     const a = r() * Math.PI * 2, rad = Math.sqrt(r()) * n * 0.42;
     const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad * 0.9;
-    const L = kind === 'broad' ? 26 + r() * 22 : 16 + r() * 12;
-    const Wd = L * (kind === 'broad' ? 0.45 : 0.35);
+    const L = kind !== 'small' ? 26 + r() * 22 : 16 + r() * 12;
+    const Wd = L * (kind !== 'small' ? 0.45 : 0.35);
     const ang = a + (r() - 0.5) * 1.4;
     const light = r();
     const g = 70 + light * 90;
     const yellow = r() < 0.18 ? 40 : 0;
     ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
     const grd = ctx.createLinearGradient(-L / 2, 0, L / 2, 0);
-    grd.addColorStop(0, `rgb(${(g * 0.45 + yellow) | 0},${(g * 0.9 + yellow * 0.6) | 0},${(g * 0.3) | 0})`);
-    grd.addColorStop(1, `rgb(${(g * 0.6 + yellow) | 0},${(g * 1.05 + yellow * 0.6) | 0},${(g * 0.38) | 0})`);
+    if (autumn) {
+      // mid-October: most leaves gone yellow (lime, field maple, birch), some still green, a few orange and brown
+      const k = r(), v = 0.75 + light * 0.4;
+      const [cr, cg, cb] = k < 0.62 ? [232, 186, 48] : k < 0.8 ? [196, 176, 62] : k < 0.92 ? [214, 132, 40] : [150, 104, 52];
+      grd.addColorStop(0, `rgb(${(cr * v * 0.86) | 0},${(cg * v * 0.86) | 0},${(cb * v * 0.8) | 0})`);
+      grd.addColorStop(1, `rgb(${Math.min(255, cr * v) | 0},${Math.min(255, cg * v) | 0},${(cb * v) | 0})`);
+    } else {
+      grd.addColorStop(0, `rgb(${(g * 0.45 + yellow) | 0},${(g * 0.9 + yellow * 0.6) | 0},${(g * 0.3) | 0})`);
+      grd.addColorStop(1, `rgb(${(g * 0.6 + yellow) | 0},${(g * 1.05 + yellow * 0.6) | 0},${(g * 0.38) | 0})`);
+    }
     ctx.fillStyle = grd;
     ctx.beginPath();
     ctx.moveTo(-L / 2, 0);
@@ -392,7 +401,7 @@ function genLeaves(kind = 'broad') {
   }
   const t = tex(c, { repeat: false });
   t.premultiplyAlpha = false;
-  TEX[kind === 'broad' ? 'leaves' : 'leavesSmall'] = t;
+  TEX[kind === 'broad' ? 'leaves' : kind === 'autumn' ? 'leavesAutumn' : 'leavesSmall'] = t;
 }
 
 function genFirBranch() {
@@ -708,7 +717,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); }], ['brad', genFirBranch], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('autumn'); }], ['brad', genFirBranch], ['scoarță', genBark],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

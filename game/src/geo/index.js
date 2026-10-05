@@ -30,6 +30,7 @@ import { preparePasarela } from './pasarela.js';
 import { prepareViteazul } from './viteazul.js';
 import { prepareUzinei } from './uzinei.js';
 import { prepareBiserica } from './biserica.js';
+import { prepareUrcus } from './urcus.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -72,6 +73,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareViteazul();                                    // Str. Mihai Viteazul up from the exit: onto the aerial, its 1 m ground, no forest on the lots
   prepareUzinei();                                      // Str. Uzinei and Strada Bisericii by the STOP junction: onto the aerial, the works measured
   prepareBiserica();                                    // the painted church, its precinct and the cemetery: no forest there, the school's colours
+  prepareUrcus();                                       // the lane up to the cross (the user's clip): its real width, the trees by its first bend
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
