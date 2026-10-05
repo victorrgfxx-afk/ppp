@@ -51,7 +51,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | T / O | vremea (senin, parțial noros, înnorat, ploaie torențială) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
-| K | scena din pădurea de lângă cruce (cinematic, ~17 s; doar la 23:30, pe vreme înnorată; K / Space / Enter o sare, Esc o pune pe pauză) | la fel (cobori întâi) |
+| K | te duce la marginea luminișului din pădurea de lângă cruce, unde se petrece scena (doar la 23:30, pe vreme înnorată) | la fel (cobori întâi) |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -71,24 +71,28 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * **Pe dealul crucii umblă un urs brun** de Carpați, de ~2 m, sculptat cu blană adevărată (ca și câinii), cu cocoașa de umeri, gheare și colți. Se plimbă și adulmecă prin pădure în jurul crucii. Te observă de la ~30 m (de la ~44 m dacă ai lanterna aprinsă), se oprește, rage și atacă în galop.
   * Dacă te prinde pe jos, te doboară și apoi se retrage. Într-o mașină nu te poate atinge: stă în fața ei și mârâie.
   * Ursul apare doar în combinația noapte + ploaie.
-* **Scena din pădure (K, sau butonul „Scena din pădure” din meniu)**: cele două clipuri tale, jucate ca film în pădurea
-  de pe dealul crucii de deasupra Străzii Măgurii (pinul 45,1182321 N 25,7049276 E e chiar la marginea pădurii, așa că
-  scena e la 28 m de el, în primul loc plat din pădure, într-un mic luminiș acoperit cu frunze uscate).
-  **Are loc doar la ora 23:30, pe vreme înnorată**: atunci pornește singură când intri în luminiș (din nou abia după ce
-  te-ai îndepărtat ~40 m de el) sau cu K de oriunde; la altă oră sau pe altă vreme K doar îți spune când are loc, iar
-  dacă schimbi ora sau vremea în timpul ei, se oprește. Filmată „din mână”, cu lanterna celui care filmează:
-  * **Cadrul 1** (clipul 2): creatura palidă și slabă iese din întuneric în fugă, urlă cu brațele sus; cel în maiou negru
-    o prinde pe la spate, cel în tricou crem îi prinde brațul și o trântesc împreună pe frunze, unde o țin la pământ.
-  * **Cadrul 2** (clipul 1): mai jos și mai aproape, frunzele explodează; o ridică de picioare și atârnă cu capul în jos,
-    zbătându-se, în lumina lanternei unui prieten din stânga (raza se vede în praf); o aruncă, iar ea fuge în patru labe
-    în întuneric, cu cel în tricou după ea.
+* **Scena din pădure**: cele două clipuri tale, jucate în joc, nu ca film: tu rămâi la control, te miști și te uiți
+  unde vrei și o luminezi cu lanterna ta. Are loc în pădurea de pe dealul crucii de deasupra Străzii Măgurii (pinul
+  45,1182321 N 25,7049276 E e chiar la marginea pădurii, așa că luminișul e la 28 m de el, în primul loc plat din pădure,
+  acoperit cu frunze uscate).
+  * **Doar la ora 23:30, pe vreme înnorată.** Atunci, cei doi bărbați așteaptă în luminiș. Când ajungi la 16 m, creatura
+    palidă iese din întuneric în fugă și urlă cu brațele sus; cel în maiou negru o prinde pe la spate, cel în tricou crem
+    îi prinde brațul și o trântesc pe frunze, unde o țin la pământ. Apoi cel în maiou trece la picioarele ei, o ridică de
+    picioare și atârnă cu capul în jos, zbătându-se; o aruncă, iar ea fuge în patru labe în întuneric, printre trunchiuri
+    și în partea opusă ție, cu amândoi după ea.
+  * Totul merge continuu (în clipuri sunt două cadre: a doua parte e întoarsă față–spate ca să continue exact de unde
+    rămâne prima). Drumurile pe care fug sunt găsite pe loc, ocolind trunchiurile, buștenii și pietrele. Nu treci prin
+    ei. Sunetele (urletul răgușit, trântitul, foșnetul) se aud mai încet de departe. După ce nu-i mai vezi, au dispărut;
+    scena se poate întâmpla din nou după ce te-ai îndepărtat 60 m. La altă oră sau pe altă vreme nu se întâmplă nimic.
+  * **K** (sau butonul „Scena din pădure” din meniu) te duce la marginea luminișului, la 19 m, cu cea mai liberă privire
+    printre copaci; la altă oră sau vreme doar îți spune când are loc.
   * Cele trei personaje sunt sculptate procedural (forme cu distanță semnată → plasă de ~42 000 de vârfuri fiecare) și
     au schelet cu 19 oase; brațele și picioarele ajung unde trebuie prin cinematică inversă (mâinile pe umerii, brațele
     și gleznele creaturii), iar picioarele calcă singure pe panta reală a luminișului. Frunzele zboară cu fizică (gravitație,
-    frecare cu aerul, rotire). Sunetele (urletul răgușit, trântitul, foșnetul) sunt sintetizate.
-  * Nu se adaugă nicio lumină nouă (lanterna prietenului e lumina lunii, împrumutată), deci niciun shader nu se reface;
-    personajele se construiesc prima dată când pornești scena (câteva secunde, pe ecran negru: ~9 s în Chromium cu
-    randare software, mai puțin pe un procesor obișnuit). La sfârșit rămâi în pădure, unde era camera.
+    frecare cu aerul, rotire).
+  * Personajele se construiesc pe alt fir de execuție (un worker) din momentul în care ora e 23:30 și e înnorat, deci
+    jocul nu se oprește deloc: durează câteva secunde, cât timp mergi spre luminiș. Unde browserul nu permite worker, se
+    construiesc câte ~5 ms între cadre. Nu se adaugă nicio lumină nouă, deci niciun shader nu se reface.
 * **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
@@ -340,8 +344,10 @@ src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridi
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
-src/cast.js           personajele scenei din pădure (sculptate SDF, schelet, cinematică inversă)
-src/cinematic.js      scena din pădure (K): coregrafia, camera din mână, lanternele, frunzele
+src/castgeo.js        personajele scenei din pădure: geometria (sculptate SDF, ponderile scheletului), fără three.js
+src/castworker.js     le construiește într-un worker, ca jocul să nu se oprească
+src/cast.js           plasele cu schelet și pozarea (cinematică inversă)
+src/forest.js         scena din pădure, live: coregrafia, drumurile printre copaci, frunzele, cine apare și dispare
 tools/extract_textures.py   extrage și rectifică texturile din reference/*.jpg
 tools/smoke-test.mjs        test automat în Chromium headless (capturi din cele 5 puncte)
 ```

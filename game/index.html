@@ -54,19 +54,6 @@
   #carName { font-size: 13px; color: var(--muted); }
   #fps { position: absolute; right: 12px; top: 10px; font-size: 12px; color: var(--muted); }
   #fps.detail { top: 66px; color: #fff; background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; text-align: right; white-space: pre; }
-  /* the forest scene (K): black bars to 2.2:1, a fade, the title, the skip button */
-  #cine { position: fixed; inset: 0; pointer-events: none; z-index: 8; display: none; }
-  #cine.on { display: block; }
-  #cine .lb { position: absolute; left: 0; right: 0; height: max(0px, calc(50vh - 50vw / 2.2)); background: #000; }
-  #cine .lb.top { top: 0; } #cine .lb.bot { bottom: 0; }
-  #cineFade { position: absolute; inset: 0; background: #000; }
-  #cinePrep { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font-size: 15px; letter-spacing: .04em; display: none; }
-  #cine.prep #cinePrep { display: block; }
-  #cineTitle { position: absolute; left: 6vw; bottom: calc(max(0px, 50vh - 50vw / 2.2) + 5vh); opacity: 0; color: #f2ede4; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
-  #cineTitle b { display: block; font-size: clamp(20px, 3.2vw, 40px); font-weight: 300; letter-spacing: .12em; text-transform: uppercase; }
-  #cineTitle span { display: block; margin-top: 6px; font-size: clamp(11px, 1.2vw, 15px); letter-spacing: .22em; text-transform: uppercase; color: rgba(242,237,228,.7); }
-  #cineSkip { position: absolute; right: 16px; bottom: 12px; pointer-events: auto; font-size: 12px; padding: 6px 10px; background: rgba(0,0,0,.45); color: rgba(255,255,255,.7); border-color: rgba(255,255,255,.18); }
-  #cine.prep #cineSkip { display: none; }
   #menuBtn { position: absolute; right: 12px; top: 30px; pointer-events: auto; padding: 6px 10px; font-size: 13px; background: var(--panel); }
   #touch { display: none; }
   @media (pointer: coarse) {
@@ -114,7 +101,7 @@
       <div><b>N</b> noclip: zbor liber prin orice (Space sus, C jos, Shift rapid)</div>
       <div><b>T</b> vremea: senin / parțial noros / înnorat · <b>O</b> ora din zi (soarele real, 26 septembrie)</div>
       <div><b>P</b> captură ecran · <b>G</b> contor de performanță · <b>Esc</b> meniu</div>
-      <div><b>K</b> scena din pădurea de lângă cruce: doar la 23:30, pe vreme înnorată (pornește și singură când ajungi în luminiș; K / Space o sare)</div>
+      <div><b>K</b> scena din pădurea de lângă cruce: doar la 23:30, pe vreme înnorată (pornește când intri în luminiș; K te duce la marginea lui)</div>
     </div>
     <div class="row">
       <button id="play" class="primary">Joacă</button>
@@ -153,14 +140,6 @@
   <div id="speed"><div><span id="speedVal">0</span><small> km/h</small><span id="gear">1</span></div><div id="carName"></div></div>
   <div id="fps"></div>
   <button id="menuBtn">Meniu</button>
-</div>
-
-<div id="cine">
-  <div id="cineFade"></div>
-  <div class="lb top"></div><div class="lb bot"></div>
-  <div id="cineTitle"><b>Pădurea de lângă cruce</b><span>Strada Măgurii · Poiana Câmpina · 23:30</span></div>
-  <div id="cinePrep">Se pregătește scena…</div>
-  <button id="cineSkip">Sari peste (K)</button>
 </div>
 
 <div id="touch">
