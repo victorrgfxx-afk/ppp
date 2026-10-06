@@ -93,38 +93,48 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * Personajele se construiesc pe alt fir de execuție (un worker) din momentul în care ora e 23:30 și e înnorat, deci
     jocul nu se oprește deloc: durează câteva secunde, cât timp mergi spre luminiș. Unde browserul nu permite worker, se
     construiesc câte ~5 ms între cadre. Nu se adaugă nicio lumină nouă, deci niciun shader nu se reface.
-* **Scena din clipul tău IMG_0725** (`src/geo/urcus.js`, `src/hikers.js`): ulița asfaltată care urcă de pe Strada
-  Măgurii spre cruce (OSM way 198810461), în primul ei urcuș. Clipul nu are coordonate GPS, așa că locul e dedus: drumul
-  urcă cu 10–15% și face un S strâns (la stânga la ~45 m de intersecție, înapoi la dreapta ~30 m mai sus), iar soarele
-  de la 16:11 e în față-dreapta, ca în clip (coroanele galbene luminate din spate).
-  * **Măsurat pe primul cadru.** Obiectivul 3x al iPhone-ului 13 Pro (77 mm echivalent) dă ~27,5° pe latura lungă.
-    Omul are 940 px din 3840, deci e la ~15 m de cameră. Blocul de beton (~0,6 m) e la ~31 m, pe marginea dreaptă, exact
-    unde drumul cotește la stânga. Cei trei sunt pe brațul următor al S-ului, la 75–82 m pe drum, și se văd de la brâu în
-    sus peste desișul din interiorul S-ului. Camera, omul, blocul și cei trei sunt puși astfel încât unghiurile dintre
-    ei să iasă ca în clip (în plan, sub 0,2°).
-  * **Relieful**: DEM-ul de 30 m dă o pantă uniformă de 12–14%, iar cu el picioarele omului ieșeau cu 1,9° prea sus
-    față de bloc și de cei trei. În clip, primii 15 m de deasupra camerei sunt mai domoli (~8%), iar S-ul e mai abrupt.
-    Pe o fâșie de 9–15 m de o parte și de alta a drumului, relieful e corectat la rezoluție de 1 m:
-    * coborât cu până la 0,5 m între 18 și 55 m (ca o tranșee de drum de deal);
-    * ridicat cu până la 0,8 m între 80 și 135 m.
-    Verificat prin proiecție în camera jocului, pe cadrul de 2160 × 3840: capetele celor trei sunt la 6–23 px de unde
-    sunt în clip, iar blocul și capul omului la ~50 px (~0,35°).
-  * **Locul**: asfalt îngust de 4 m, uzat. Pe dreapta: acostament cosit, apoi mure și tufe. Desișul umple interiorul
-    S-ului, iar pe liniile privirii spre cei trei e tăiat sub nivelul șoldurilor lor. Pe acele linii nu e niciun
-    trunchi sau coroană; coroanele sunt calculate după cum le construiește generatorul de copaci. Dincolo de ei e un
-    perete de frunziș verde închis, cu copaci înalți îngălbeniți în jur. Pe stânga e o pădure mai întunecată. Iarba e
-    cosită pe 3 m de la asfalt până la cruce și e scurtă sub desiș.
+* **Scena din clipul tău IMG_0725** (`src/geo/urcus.js`, `src/geo/urcus_mask.js`, `src/hikers.js`): pe ulița asfaltată
+  care trece dealul de la Strada Măgurii (OSM way 198810461), la ~1 km de intersecție, unde străbate pădura de deasupra
+  poienii. Pinul tău (45,1146323 N, 25,6952029 E) e chiar pe marginea drumului de acolo. Clipul e filmat mergând spre
+  nord-est (spre intersecție, ușor la deal), cu soarele de la 16:11 aproape în spate. De aceea tufele și coroanele
+  galbene apar luminate din față.
+  * **Drumul pus pe ortofoto**: pe porțiunea s = 860–1225 m, linia OSM e cu până la 3,3 m la sud-est de asfalt. Am trasat
+    centrul benzii gri din ortofoto Esri (z18) din 5 în 5 m, iar ulița e mutată pe el. Lățimea e de 4,5 m.
+  * **Potrivit pe primul cadru** (obiectivul 3x, ~27,5° pe latura lungă), direct cu camera și relieful jocului, pe
+    cadrul de 2160 × 3840:
+    * omul e la 15 m (940 px înălțime);
+    * blocul de beton e pe marginea dreaptă, unde începe desișul (eroare 3 px);
+    * cei trei drumeți merg alăturați la ~67 m, pe malul din dreapta, la 0,3–3 m de asfalt, printre tufe (capetele lor
+      la ≤ 5 px de cele din clip).
+    Pe asfalt nu încăpeau: la distanța asta, drumul cotește în cadru mai la stânga.
+  * **Locul**: pe dreapta e un acostament cosit, apoi desișul (pâlcul întunecat de lângă drum de pe ortofoto). Desișul e
+    ținut sub linia privirii spre șoldurile celor trei, iar printre tufe e lăsată poteca lor. În clip nu se vede nicio
+    linie electrică, așa că am scos stâlpii generați automat pe porțiunea asta.
+  * **Pădurea** e trasată pe ortofoto pe 700 × 700 m, în celule de 5 m:
+    * arboretele brune (desfrunzite în imagine) sunt de foioase;
+    * coroanele verde-închis sunt grupuri de conifere;
+    * zonele intermediare sunt amestec.
+    Pădurea de la sud de drum lipsea din joc și acum există.
+  * **Speciile pădurii** sunt cele din clip: fag care trece în portocaliu și galben, carpen galben, mesteacăn, stejar
+    încă verde, câțiva fagi încă verzi, plus molizi și brazi în grupuri. Coniferele sunt ~5% în arboretele de
+    foioase, ~25% în cele amestecate și ~40% în cele întunecate. Spre 250–420 m de loc, amestecul revine la cel
+    obișnuit al hărții.
   * **Scena** (doar la **16:11, pe senin**; ora e în lista tastei **O**):
     * bărbatul cărunt, desculț, în tricou alb și pantaloni scurți kaki, cu rucsac negru cu buzunar roșu, își duce
       bocancii în mâna dreaptă;
-    * mai sus urcă un grup de trei: tricou bleumarin cu rucsac albastru, tricou albastru-deschis, tricou alb cu șapcă.
-    Pornesc de la intersecție, urcă ~160 m până la cruce în ~2,5 minute, se opresc acolo și se uită în vale. Tălpile nu
-    alunecă: cât un picior e pe sol, rămâne pe loc. Nu treci prin ei. După ce te îndepărtezi 250 m, scena se reia.
+    * înainte merg alăturați trei drumeți: tricou bleumarin cu rucsac albastru, tricou albastru-deschis, tricou alb cu
+      șapcă.
+    Vin pe uliță de la cotul de sub poiană, iau poteca de pe mal pe lângă desiș și revin pe asfalt. Urcă până în vârful
+    pantei, unde se opresc și se uită spre poiană. Tălpile nu alunecă și nu treci prin ei. După ce te îndepărtezi 250 m,
+    scena se reia.
   * Vederea „Clipul IMG_0725” din listă te pune exact unde a fost filmat, cu câmpul vizual al obiectivului 3x, la ora
     și în momentul din clip.
-  * Cei patru se construiesc în worker, ca personajele din pădure, din momentul în care e 16:11 pe senin.
-  * Aproximat: locul exact (dedus, nu din GPS), speciile și înălțimea copacilor, fețele oamenilor (procedurale). În joc
-    e 26 septembrie, iar clipul e din octombrie, așa că doar copacii de pe acest urcuș sunt îngălbeniți.
+  * Cei patru se construiesc în worker din momentul în care e 16:11 pe senin.
+  * Aproximat:
+    * poteca de pe mal: nu e pe hartă; e dedusă din clip;
+    * speciile și înălțimea copacilor;
+    * fețele oamenilor (procedurale).
+    În joc e 26 septembrie, iar clipul e din octombrie, așa că doar pădurea din jurul locului e îngălbenită.
 * **Umbre în cascadă**: soarele are mai multe hărți de umbră. Una fină în jurul tău (texel de ~2 cm la „Înaltă”), una largă de ±260 m (±150 și ±600 m la „Ultra”) și trecere lină între ele. Așa, casele, stâlpii și copacii aruncă umbră până departe, nu doar în primii 45 m. Hărțile stau în fața camerei și sunt aliniate la texel, ca umbrele să nu „tremure” când mergi. La „Scăzută” rămâne o singură hartă.
 
 Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te uiți, butoane pentru sărit/fugă/F/claxon/cameră.
@@ -380,8 +390,9 @@ src/castgeo.js        personajele (pădurea, clipul IMG_0725): geometria (sculpt
 src/castworker.js     le construiește într-un worker, ca jocul să nu se oprească
 src/cast.js           plasele cu schelet și pozarea (cinematică inversă)
 src/forest.js         scena din pădure, live: coregrafia, drumurile printre copaci, frunzele, cine apare și dispare
-src/hikers.js         scena din clipul IMG_0725: omul desculț și cei trei de pe ulița spre cruce (16:11, senin)
-src/geo/urcus.js      urcușul uliței spre cruce: lățimea, desișul, blocul de beton, copacii, linia privirii din clip
+src/hikers.js         scena din clipul IMG_0725: omul desculț și cei trei pe ulița prin pădure (16:11, senin)
+src/geo/urcus.js      locul clipului IMG_0725: ulița pe ortofoto, desișul, blocul, poteca, pădurea și speciile ei
+src/geo/urcus_mask.js pădurea din jurul lui, trasată pe ortofoto (foioase / amestec / conifere, celule de 5 m)
 tools/extract_textures.py   extrage și rectifică texturile din reference/*.jpg
 tools/smoke-test.mjs        test automat în Chromium headless (capturi din cele 5 puncte)
 ```

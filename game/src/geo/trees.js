@@ -28,11 +28,14 @@ const TYPES = [
   { name: 'lombardy poplar', H: 26, crown: 2.5, trunkR: 0.34, cards: 180, leaf: 'leaves', tint: 0xb2c294, bole: 0.14 },
   { name: 'poplar', H: 25, crown: 4.2, trunkR: 0.42, cards: 170, leaf: 'leaves', tint: 0xb6c698, bole: 0.2 },
   { name: 'young pine', H: 8.5, crown: 2.3, conifer: true, low: 1.9 },
-  // the lane up to the cross in mid-October (the user's clip IMG_0725): broadleaves gone yellow, a birch
+  // the wood of the user's clip IMG_0725 in mid-October (geo/urcus.js): broadleaves gone yellow, a birch
   { name: 'autumn broadleaf', H: 16, crown: 4.6, trunkR: 0.3, cards: 150, leaf: 'leavesAutumn', tint: 0xffffff, bole: 0.28 },
   { name: 'autumn birch', H: 15, crown: 3.1, trunkR: 0.19, cards: 115, leaf: 'leavesAutumn', tint: 0xfff4dc, bole: 0.36, bark: 'barkLight' },
+  // and the wood there (forest-grown, as the stands' beech and hornbeam): beech turning orange and yellow, hornbeam yellow
+  { name: 'autumn beech (forest)', H: 22, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leavesAutumn', tint: 0xffe2c0, bole: 0.48, bark: 'barkLight' },
+  { name: 'autumn hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leavesAutumn', tint: 0xf4f6d6, bole: 0.4 },
 ];
-export const TREE_T = { oak: 0, hornbeam: 1, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17 };
+export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19 };
 const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2;
 
 function cyl(p0, p1, r0, r1, seg) {
@@ -352,6 +355,10 @@ export function valueNoise2(x, z, cell, s) {
 }
 
 const SP = 5.2, GT = 280, ST = 70, SSP = 7.5;
+// places that set their own stand composition (urcus.js: the wood around the clip IMG_0725):
+// fn(x, z, type, edge, code, h1, h2) -> type, with h1 and h2 two hashes of the tree's cell
+const MIX = [];
+export function addForestMix(fn) { MIX.push(fn); }
 // every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
 function eachForestTree(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / SP); j <= Math.floor(z1 / SP); j++) for (let i = Math.floor(x0 / SP); i <= Math.floor(x1 / SP); i++) {
@@ -367,6 +374,7 @@ function eachForestTree(x0, z0, x1, z1, cb) {
     if (hash3(i, j, 4) < needle * (0.55 + 0.9 * valueNoise2(x, z, 55, 7))) ty = edge ? T_SPRUCE_LOW : hash3(i, j, 5) < 0.62 ? T_PINE : T_SPRUCE;
     else if (edge) ty = T_EDGE;
     else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.4 ? T_BEECH : b < 0.7 ? T_HORN : T_OAK; }
+    for (const f of MIX) ty = f(x, z, ty, edge, code, hash3(i, j, 12), hash3(i, j, 13));
     // age classes: whole stands younger or older
     const s = (0.68 + 0.45 * valueNoise2(x, z, 110, 9)) * (0.88 + 0.24 * hash3(i, j, 7));
     cb(x, z, ty, s, hash3(i, j, 8) * Math.PI * 2, 0.82 + 0.3 * hash3(i, j, 9));

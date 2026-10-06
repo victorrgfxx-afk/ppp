@@ -596,12 +596,12 @@ async function main() {
   if (uzLm?.views && !PHOTO_VIEWS.some(v => v.uzinei)) {
     for (const v of uzLm.views) PHOTO_VIEWS.push({ uzinei: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
   }
-  // the user's clip IMG_0725 (an iPhone's 3x lens, 27.5 deg on its long side): the lane up to the cross 15 m above the
-  // junction, the man 15 m ahead, the three 75 m up, past the S (worked out from their sizes and places in its first
-  // frame, geo/urcus.js); it also sets the clip's hour and sky and its moment (hikers.js)
+  // the user's clip IMG_0725 (an iPhone's 3x lens, 27.5 deg on its long side): the lane through the wood above the meadow,
+  // 1 km from Strada Măgurii, the man 15 m ahead, the three ~80 m on (fitted to their places in its first frame,
+  // geo/urcus.js); it also sets the clip's hour and sky and its moment (hikers.js)
   if (!PHOTO_VIEWS.some(v => v.clip)) {
     const c = laneAt(...CLIP.cam), m = laneAt(...CLIP.man), y = world.groundHeight(c.x, c.z) + CLIP.eye, ym = world.groundHeight(m.x, m.z);
-    PHOTO_VIEWS.push({ clip: true, x: c.x, z: c.z, yaw: Math.atan2(-(m.x - c.x), -(m.z - c.z)) - 0.003, pitch: Math.atan2(ym - y, Math.hypot(m.x - c.x, m.z - c.z)) + 4.15 * Math.PI / 180, fov: 27.5, label: 'Clipul IMG_0725 — drumul spre cruce, 16:11' });
+    PHOTO_VIEWS.push({ clip: true, x: c.x, z: c.z, yaw: Math.atan2(-(m.x - c.x), -(m.z - c.z)) - 0.003, pitch: Math.atan2(ym - y, Math.hypot(m.x - c.x, m.z - c.z)) + 4.15 * Math.PI / 180, fov: 27.5, label: 'Clipul IMG_0725 — ulița prin pădure, 16:11' });
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {

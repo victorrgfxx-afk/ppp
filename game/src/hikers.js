@@ -1,26 +1,28 @@
 import * as THREE from 'three';
 import { Actor, makeCast } from './cast.js';
-import { laneAt, CLIP } from './geo/urcus.js';
+import { laneAt, CLIP, bankWeight, ROAD_O } from './geo/urcus.js';
 
-// The user's clip IMG_0725, live on the lane up to the cross (geo/urcus.js) at 16:11 on a clear afternoon, as the clip
-// has it: a grey-haired man walks up barefoot in a white T-shirt and khaki shorts, a black and red backpack on, his
-// boots hanging from his right hand; 60 m ahead (80 m along the lane, past its S) three walkers go up in a loose group
-// (a dark blue shirt and a blue backpack, a light blue shirt, a white one and a pale cap). They walk from the junction
-// with Strada Măgurii up to the cross (~160 m, 2.5 minutes; each comes into the lane from the junction), stop there and
+// The user's clip IMG_0725, live on the lane through the wood above the meadow (geo/urcus.js) at 16:11 on a clear
+// afternoon, as the clip has it: a grey-haired man walks barefoot in a white T-shirt and khaki shorts, a black and red
+// backpack on, his boots hanging from his right hand; ~50 m ahead three walkers go on abreast (a dark blue shirt
+// and a blue backpack, a light blue shirt, a white one and a pale cap), along the bank past the thicket. They come up the
+// lane from the bend below the meadow (~250 m, 4 minutes; each comes round the bend in turn) to the top of the rise, stop and
 // look about. It happens again after you have been 250 m away; the clip's own view (in the photo list) puts you where it
 // was filmed, at the moment it shows. You walk among them: each has a collider, they do not walk through you.
 const D = Math.PI / 180;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-export const T_CLIP = 28;                         // s: the clip's moment (the man 30 m up the lane, the three 105-112 m)
-export const T_START = -74;                       // s: the three come up from the junction (the man follows later)
-// at the clip's moment ([s, o] on the lane, from the clip: geo/urcus.js)
+export const T_CLIP = 28;                         // s: the clip's moment
+const S_IN = 1165;                                // they come round the bend at s = 1165 m and walk towards smaller s
+// at the clip's moment ([s, o] on the lane, from the clip: geo/urcus.js); stop: where each stands at the top (lane s)
 const [MAN, WA, WB, WC] = [CLIP.man, ...CLIP.walkers];
 const WALKERS = [
-  { kind: 'barefoot', s: MAN[0], o: MAN[1], v: 1.0, stop: 150, o2: 2.2, pack: [0x1c1d22, 0x27282e], boots: true },
-  { kind: 'walkerA', s: WA[0], o: WA[1], v: 1.12, stop: 157, o2: -2.4, pack: [0x24407a, 0x1d2c52] },
-  { kind: 'walkerB', s: WB[0], o: WB[1], v: 1.12, stop: 158.5, o2: -1.0 },
-  { kind: 'walkerC', s: WC[0], o: WC[1], v: 1.12, stop: 155.5, o2: 0.6 },
+  { kind: 'barefoot', s: MAN[0], o: MAN[1], v: 1.0, stop: 918, o2: -1.6, pack: [0x1c1d22, 0x27282e], boots: true },
+  { kind: 'walkerA', s: WA[0], o: WA[1], or: ROAD_O[0], v: 1.12, stop: 909, o2: 1.6, pack: [0x24407a, 0x1d2c52] },
+  { kind: 'walkerB', s: WB[0], o: WB[1], or: ROAD_O[1], v: 1.12, stop: 907, o2: -0.4 },
+  { kind: 'walkerC', s: WC[0], o: WC[1], or: ROAD_O[2], v: 1.12, stop: 910.5, o2: 0.6 },
 ];
+// the first of them comes round the bend this long before the clip's moment
+export const T_START = Math.floor(Math.min(...WALKERS.map(w => T_CLIP - (S_IN - w.s) / w.v)));
 const CYCLE = 1.36;                               // m walked per stride cycle (two steps)
 const ORDER = WALKERS.map(w => w.kind);
 
@@ -33,7 +35,7 @@ export class Hikers {
     this.origin = { x: o.x, z: o.z, y: ground(o.x, o.z) };
     this.stage = new THREE.Group(); this.stage.position.set(o.x, this.origin.y, o.z); scene.add(this.stage);
     this.state = 'off'; this.ready = false; this.t = 0; this.tn = 0;
-    this.end = Math.max(...WALKERS.map(w => T_CLIP + (w.stop - w.s) / w.v));
+    this.end = Math.max(...WALKERS.map(w => T_CLIP + (w.s - w.stop) / w.v));
     this._f = new THREE.Frustum(); this._m = new THREE.Matrix4(); this._s = new THREE.Sphere();
   }
   ground(x, z) { return this.groundW(x + this.origin.x, z + this.origin.z) - this.origin.y; }
@@ -70,12 +72,12 @@ export class Hikers {
     this.prepare(ctx.camera);
     if (!this.ready) return;
     const px = ctx.px - this.origin.x, pz = ctx.pz - this.origin.z;
-    const mid = this.local(80, 0), far = Math.hypot(px - mid.x, pz - mid.z);
+    const mid = this.local(1040, 0), far = Math.hypot(px - mid.x, pz - mid.z);
     ctx.camera.updateMatrixWorld();
     this._m.multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse); this._f.setFromProjectionMatrix(this._m);
     if (this.state === 'off') {
       // from the start; not before your eyes
-      const start = this.local(15, 0);
+      const start = this.local(S_IN, 0);
       if (this.clip || far > 140 || !this.seen(start.x, start.z, 18)) { this.state = 'run'; if (!this.clip) this.t = T_START; }
       else return;
     }
@@ -96,17 +98,20 @@ export class Hikers {
   }
   // one walker at time t: up the lane at its pace, then standing at the top, looking about
   pose(a, t, px, pz) {
-    const w = a.w, d0 = w.s + w.v * (t - T_CLIP), d = Math.max(0.5, Math.min(w.stop, d0)), walking = d0 > 0.5 && d0 < w.stop;
-    if (d0 < 0) { if (a.mesh.visible) { a.mesh.visible = false; if (a.boots) a.boots.visible = false; if (a.boxIn) { this.world.removeDynamic(a.box); a.boxIn = false; } } return; }   // (not yet in the lane)
+    // d: metres walked from the bend (the lane at S_IN - d)
+    const w = a.w, end = S_IN - w.stop, d0 = (S_IN - w.s) + w.v * (t - T_CLIP), d = Math.max(0.5, Math.min(end, d0)), walking = d0 > 0.5 && d0 < end;
+    if (d0 < 0) { if (a.mesh.visible) { a.mesh.visible = false; if (a.boots) a.boots.visible = false; if (a.boxIn) { this.world.removeDynamic(a.box); a.boxIn = false; } } return; }   // (not yet round the bend)
     // at the top they spread out across the lane (o2) and turn to the view
-    const u = Math.max(0, Math.min(1, (d - (w.stop - 6)) / 6)), o = w.o + (w.o2 - w.o) * u * u * (3 - 2 * u);
-    const p = this.local(d, o);
+    // on the asphalt, along the bank past the thicket (the three: where the clip has them), at the top spread across it
+    const sl = S_IN - d, ow = w.or === undefined ? w.o : w.or + (w.o - w.or) * bankWeight(sl);
+    const u = Math.max(0, Math.min(1, (d - (end - 6)) / 6)), o = ow + (w.o2 - ow) * u * u * (3 - 2 * u);
+    const p = this.local(sl, o);
     if (!a.mesh.visible) {
       a.mesh.visible = true; if (a.boots) a.boots.visible = true;
       if (!a.boxIn) { this.world.addDynamic(a.box); a.boxIn = true; }
     }
-    let yaw = Math.atan2(p.hx, p.hz) / D;
-    if (!walking) yaw += 50 + (w.o2 * 9);                                   // standing: turned towards the valley
+    let yaw = Math.atan2(-p.hx, -p.hz) / D;                               // (walking towards smaller s)
+    if (!walking) yaw -= 55 + (w.o2 * 9);                                   // standing: turned to the meadow and the valley
     const ph = d / CYCLE, sd = w.kind.length * 7, n = (f, k) => Math.sin(this.tn * f + sd + k) * 0.5 + Math.sin(this.tn * f * 2.3 + sd * 1.7 + k) * 0.5;
     const g = this.ground(p.x, p.z), hipY = a.J.hips[1] - (walking ? 0.035 : 0.015);
     const bob = walking ? Math.abs(Math.sin(ph * 2 * Math.PI)) * 0.022 : 0;
