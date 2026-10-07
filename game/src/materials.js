@@ -145,6 +145,7 @@ export function buildMaterials() {
   leaf('leavesSmall', TEX.leavesSmall, 0xe8f0d8, 0.04);
   leaf('leavesDark', TEX.leaves, 0x93a67e, 0.035);
   leaf('leavesAutumn', TEX.leavesAutumn, 0xffffff, 0.035);                 // the lane up to the cross in mid-October
+  leaf('leavesPinnate', TEX.leavesPinnate, 0xffffff, 0.045);                // black locust
   leaf('fir', TEX.fir, 0x9fb59a, 0.018);
   leaf('sumac', TEX.fir, 0xd8e0a0, 0.05);
   leaf('flowers', TEX.flowers, 0xffffff, 0.03);           // pinnate sumac fronds (photo 7, across the street)

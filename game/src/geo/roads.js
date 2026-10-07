@@ -121,7 +121,7 @@ export function buildRoads(B, world, mats) {
 
 function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
   const w = r.w, surf = r.s;
-  const P = resample(P0, r.br ? 5 : 3.5);
+  const P = resample(P0, r.br ? 5 : r.step ?? 3.5);       // (r.step: a finer ribbon over a 1 m terrain zone)
   const N = normals(P);
   const mat = mats[surf] ?? mats.asphalt;
   let yfn;

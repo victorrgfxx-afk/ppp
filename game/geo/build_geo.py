@@ -302,7 +302,7 @@ def land_cover(rivers_a, log):
     share = {GENUS_GROUPS[g_]: round(float((grp == g_).sum() / max(1, forest.sum())) * 100, 2) for g_ in range(1, len(GENUS_GROUPS))}
     log('tree cover: forest %.1f %% of the world (OSM-independent), genus shares %%' % (forest.mean() * 100), share)
     log('shrubland %.1f ha' % ((g20 == 13).sum() * 400 / 1e4))
-    return dict(forest=forest, code=code, sp=sp, n20=n20, F5=F5, tcd=tcd, shrub=(clc == 5) & ~forest)
+    return dict(forest=forest, code=code, sp=sp, n20=n20, F5=F5, tcd=tcd, shrub=(clc == 5) & ~forest, arable=(clc == 7) & ~forest)
 
 
 def s2_mosaic_sampler(z):
@@ -644,11 +644,13 @@ def main():
     rivers_a = osm.areas(lambda t: (t.get('natural') == 'water' and t.get('water') in ('river', 'stream', 'canal')) or t.get('waterway') == 'riverbank')
     # the forests themselves: 10 m Copernicus / national maps instead of the OSM polygons (see land_cover)
     LC = land_cover(rivers_a, log)
-    k0 = int(round((WEXT - EXT) / 5))
-    forest_near = LC['forest'][k0:LC['F5'] - k0, k0:LC['F5'] - k0].astype(np.float32)
+    # (OSM's forest polygons still steer the lot fences' random draws below, as when the photo views were matched)
+    forest_osm_a = osm.areas(lambda t: t.get('landuse') == 'forest' or t.get('natural') == 'wood')
+    lc_k0 = int(round((WEXT - EXT) / 5))               # the near grid's corner in the 5 m land-cover rasters
 
-    def forest_on(n, ext):
-        return cv2.resize(forest_near if ext == EXT else LC['forest'].astype(np.float32), (n, n), interpolation=cv2.INTER_AREA)
+    def lc_on(key, n, ext):             # a 5 m land-cover mask (land_cover) as cover fractions on an n x n grid over +-ext
+        m = LC[key][lc_k0:LC['F5'] - lc_k0, lc_k0:LC['F5'] - lc_k0] if ext == EXT else LC[key]
+        return cv2.resize(m.astype(np.float32), (n, n), interpolation=cv2.INTER_AREA)
     log('dem + landcover')
 
     # ---- Prahova: the whole waterway through the map, water level monotone downstream, riverbed carve
@@ -948,8 +950,10 @@ def main():
         lines_rail = draw_lines(n, ext, [(p, 5.0) for _, p, _ in rails], 5.0)
         rd_mask = draw_lines(n, ext, [(p, road_width(w, t)) for _, w, p, t in roads if road_surface(t) in ('gravel', 'dirt')], 3)
         ct = clay_t if clay_t is not None else 0
-        R_ = np.clip(forest_on(n, ext), 0, 1) * (1 - ct)
-        G_ = np.clip(np.maximum(sp(farm_a) * 0.9, ct), 0, 1)
+        R_ = np.clip(lc_on('forest', n, ext), 0, 1) * (1 - ct)
+        # ploughed fields where CLC+ 2021 has arable land: OSM's farmland here is 40 % hay meadow and pasture (CLC+
+        # 'permanent herbaceous', grass in the game) and 40 % trees, and only 15 % ploughed
+        G_ = np.clip(np.maximum(lc_on('arable', n, ext) * 0.9, ct), 0, 1)
         B_ = np.clip(np.maximum.reduce([rb_t, lines_rail, sp(indus_a) * 0.6, rd_mask * 0.8]), 0, 1)
         out = cv2.GaussianBlur(np.stack([B_, G_, R_], -1), (0, 0), max(0.8, 1.2 * s / 0.34))
         out[..., 2] = np.round(out[..., 2] * 16) / 16          # forest floor weight in 16 steps (the 10 m mosaic packs better)
@@ -1162,15 +1166,27 @@ def main():
     log('forest stands', {k: int((fcode == v).sum() * 25 / 1e4) for k, v in (('broad ha', 1), ('mixed ha', 2), ('needle ha', 3))})
     # genus per 20 m cell: bits 0-3 group (GENUS_GROUPS), bit 4 pure stand (>= 80 %), bits 5-7 tree cover density / 100 * 7
     write_b64('species.json', LC['sp'])
+    # One random sequence places all the trees below. The riverside, orchard and yard draws are laid out with OSM's forest
+    # polygons, as when the photo views were matched (laid out with the new forests, every yard tree on the map would
+    # move); the trees that fall in the forests of land_cover are dropped, and the riversides and yards that OSM had
+    # under forest but the 10 m maps leave open get their own draws at the end.
+    forest_osm_x = fill_areas(XN, WEXT, forest_osm_a, dtype=np.uint8) > 0
+    opened = forest_osm_x & ~forest_x
+
+    def add(px, pz, jj, ii, t, sc):
+        k = ~forest_x[jj, ii]
+        T_.append((px[k], pz[k], np.asarray(t)[k] if np.ndim(t) else np.full(k.sum(), t), sc[k]))
     # riverside willows / poplars on the green parts of the river corridor
-    wx_, wz_, jj, ii = scatter(7.0, (EXR == 0) & ~rb_x & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~forest_x & ~lots, out_keep=0.5)
-    T_.append((wx_, wz_, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_))))
+    river_m = (EXR == 0) & ~rb_x & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~lots
+    wx_, wz_, jj, ii = scatter(7.0, river_m & ~forest_osm_x, out_keep=0.5)
+    add(wx_, wz_, jj, ii, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_)))
     # orchards (plum / apple rows)
-    ox_, oz_, _, _ = scatter(6.0, free & orch_x, keep=0.85, jitter=0.12, far_keep=0.5, out_keep=0.3)
-    T_.append((ox_, oz_, np.full(len(ox_), 3), trng.uniform(0.8, 1.1, len(ox_))))
+    ox_, oz_, jj, ii = scatter(6.0, free & orch_x, keep=0.85, jitter=0.12, far_keep=0.5, out_keep=0.3)
+    add(ox_, oz_, jj, ii, 3, trng.uniform(0.8, 1.1, len(ox_)))
     # yards: fruit trees, walnuts, spruces where Sentinel-2 shows vegetation
-    yx_, yz_, jj, ii = scatter(10.0, free & (resid_x | near_b) & ~forest_x & ~orch_x & ~farm_x & (green > 4), far_keep=0.75, out_keep=0.5)
-    T_.append((yx_, yz_, trng.choice([3, 4, 1, 2, 0], len(yx_), p=[0.45, 0.18, 0.17, 0.12, 0.08]), trng.uniform(0.7, 1.15, len(yx_))))
+    yard_m = free & (resid_x | near_b) & ~orch_x & ~farm_x & (green > 4)
+    yx_, yz_, jj, ii = scatter(10.0, yard_m & ~forest_osm_x, far_keep=0.75, out_keep=0.5)
+    add(yx_, yz_, jj, ii, trng.choice([3, 4, 1, 2, 0], len(yx_), p=[0.45, 0.18, 0.17, 0.12, 0.08]), trng.uniform(0.7, 1.15, len(yx_)))
     # scattered field trees: where the 10 m tree cover density (Copernicus 2018) shows trees outside the forests
     sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10) & (tcd_x >= 30), keep=0.6, out_keep=1.0)
     T_.append((sx_, sz_, trng.choice([0, 1, 4], len(sx_)), trng.uniform(0.8, 1.2, len(sx_))))
@@ -1178,6 +1194,12 @@ def main():
     # bushes branched to the ground (type 12 scaled to 3.5-6 m)
     bx_, bz_, _, _ = scatter(6.0, free & shrub_x & ~forest_x & ~resid_x, keep=0.5, far_keep=0.8, out_keep=0.6)
     T_.append((bx_, bz_, np.full(len(bx_), 12), trng.uniform(0.27, 0.46, len(bx_))))
+    # the riversides and yards OSM had under forest that the 10 m maps leave open: trees only where the tree cover density
+    # sees some (riverside strips >= 30 %, yards >= 10 %)
+    wx_, wz_, jj, ii = scatter(7.0, river_m & opened & (tcd_x >= 30), out_keep=0.5)
+    add(wx_, wz_, jj, ii, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_)))
+    yx_, yz_, jj, ii = scatter(10.0, yard_m & opened & (tcd_x >= 10), far_keep=0.75, out_keep=0.5)
+    add(yx_, yz_, jj, ii, trng.choice([3, 4, 1, 2, 0], len(yx_), p=[0.45, 0.18, 0.17, 0.12, 0.08]), trng.uniform(0.7, 1.15, len(yx_)))
     for lm in lm_out:
         if lm['type'] != 'underpass': continue
         ur_, nr_ = np.array(lm['ur']), np.array(lm['nr'])
@@ -1196,6 +1218,9 @@ def main():
     log('trees', len(rec), [len(t[0]) for t in T_])
 
     # ---- street fences (lot fronts) and utility poles along village streets
+    # The fences' gates and the poles' sides come from one random sequence that each lot front draws from; its lots are
+    # laid out with OSM's forest polygons, as when the photo views were matched (else every pole on the map would change
+    # sides); the fences that end up in the forests of land_cover are dropped afterwards.
     from shapely.geometry import LineString
     fences, poles = [], []
     frng = np.random.default_rng(5)
@@ -1214,7 +1239,7 @@ def main():
             q = np.array([off.interpolate(k * 1.5).coords[0] for k in range(nS + 1)])
             ii = np.clip(np.round((q[:, 0] + WEXT) * s_).astype(int), 0, XN - 1); jj = np.clip(np.round((q[:, 1] + WEXT) * s_).astype(int), 0, XN - 1)
             fi = np.clip(np.round((q[:, 0] + WEXT) * frs).astype(int), 0, FN - 1); fj = np.clip(np.round((q[:, 1] + WEXT) * frs).astype(int), 0, FN - 1)
-            valid = (FR[fj, fi] == 0) & ~blk[jj, ii] & ~rb_x[jj, ii] & ~forest_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < WEXT - 40)
+            valid = (FR[fj, fi] == 0) & ~blk[jj, ii] & ~rb_x[jj, ii] & ~forest_osm_x[jj, ii] & (near_b[jj, ii] | resid_x[jj, ii]) & ~lotsbox(q) & (np.maximum(np.abs(q[:, 0]), np.abs(q[:, 1])) < WEXT - 40)
             if wid == GARII_ID: valid &= ~((q[:, 1] > LOTS[2] - 8) & (q[:, 1] < LOTS[3] + 8))
             for x0_, x1_, z0_, z1_ in NO_FENCES: valid &= ~((q[:, 0] > x0_) & (q[:, 0] < x1_) & (q[:, 1] > z0_) & (q[:, 1] < z1_))
             k = 0
@@ -1258,7 +1283,12 @@ def main():
                     seq = []; continue
                 seq.append([round(float(c[0]), 2), round(float(c[1]), 2)])
             if len(seq) > 1: poles.append(dict(s=side, p=seq))
-    log('fences', len(fences), 'pole runs', len(poles))
+    def in_forest(f):
+        c = np.array(f[1:]).reshape(-1, 2); i_ = np.clip(np.round((c[:, 0] + WEXT) * s_).astype(int), 0, XN - 1); j_ = np.clip(np.round((c[:, 1] + WEXT) * s_).astype(int), 0, XN - 1)
+        return forest_x[j_, i_].mean() > 0.5
+    n_f = len(fences); fences = [f for f in fences if not in_forest(f)]
+    del forest_osm_x
+    log('fences', len(fences), '(%d in the forests dropped)' % (n_f - len(fences)), 'pole runs', len(poles))
 
     zs = zc[rows]
     geo = dict(

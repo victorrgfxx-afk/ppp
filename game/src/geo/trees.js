@@ -34,11 +34,13 @@ const TYPES = [
   // and the wood there (forest-grown, as the stands' beech and hornbeam): beech turning orange and yellow, hornbeam yellow
   { name: 'autumn beech (forest)', H: 22, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leavesAutumn', tint: 0xffe2c0, bole: 0.48, bark: 'barkLight' },
   { name: 'autumn hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leavesAutumn', tint: 0xf4f6d6, bole: 0.4 },
-  // black locust (Robinia, planted on the eroded slopes and by the villages): open crown of small light leaves, dark bark
-  { name: 'black locust (forest)', H: 18, crown: 3.7, trunkR: 0.24, cards: 90, leaf: 'leavesSmall', tint: 0xd6e2a6, bole: 0.46 },
+  // black locust (Robinia, planted on the eroded slopes and by the villages): airy crown of pinnate light leaves, dark
+  // bark; at the stand edges (as along DN1 at Cornu, KartaView July 2016) leafy down to a few metres
+  { name: 'black locust (forest)', H: 18, crown: 3.7, trunkR: 0.24, cards: 105, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.42 },
+  { name: 'edge black locust', H: 14, crown: 4.0, trunkR: 0.22, cards: 125, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.18 },
 ];
-export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20 };
-const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20;
+export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20, robiniaEdge: 21 };
+const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20, T_ROBINIA_EDGE = 21;
 // genus groups of species.json (data.js) -> forest tree type: Fagus, Quercus, Carpinus, Abies, Picea, Pinus, Populus,
 // Robinia, Salix, Tilia, other deciduous (maples, ash, cherry ...), other evergreen
 const GENUS_T = [0, T_BEECH, T_OAK, T_HORN, T_SPRUCE, T_SPRUCE, T_PINE, 14, T_ROBINIA, 5, T_HORN, T_HORN, T_SPRUCE];
@@ -387,6 +389,7 @@ function eachForestTree(x0, z0, x1, z1, cb) {
       ty = GENUS_T[gg];
       // stand edges: the broadleaves keep their branches down to the ground, spruces their low skirts
       if (edge && (ty === T_BEECH || ty === T_OAK || ty === T_HORN)) ty = T_EDGE;
+      else if (edge && ty === T_ROBINIA) ty = T_ROBINIA_EDGE;
       else if (edge && ty === T_SPRUCE) ty = T_SPRUCE_LOW;
     } else {
       // stands outside the genus map: species in stands of a few hectares, pines in the needle stands

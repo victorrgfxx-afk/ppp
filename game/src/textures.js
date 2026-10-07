@@ -404,6 +404,48 @@ function genLeaves(kind = 'broad') {
   TEX[kind === 'broad' ? 'leaves' : kind === 'autumn' ? 'leavesAutumn' : 'leavesSmall'] = t;
 }
 
+function genPinnate() {
+  // Black locust (Robinia pseudoacacia) foliage card: pinnate leaves (a rachis with 4-6 pairs of elliptic, round-tipped
+  // leaflets and an end leaflet), light yellow-green, the airy but full crown of the trees along DN1 at Cornu
+  // (KartaView, July 2016); the small-leaf card of the fruit trees reads as bare twigs on these tall trees
+  const n = 512, r = rng(313);
+  const c = document.createElement('canvas'); c.width = c.height = n;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, n, n);
+  const cx = n / 2, cy = n / 2;
+  ctx.strokeStyle = 'rgba(70,58,38,0.6)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i++) {
+    const a = r() * Math.PI * 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * 130, cy + Math.sin(a) * 120); ctx.stroke();
+  }
+  for (let i = 0; i < 115; i++) {
+    const a = r() * Math.PI * 2, rad = Math.sqrt(r()) * n * 0.29;            // (leaves stay inside the card)
+    const x0 = cx + Math.cos(a) * rad, y0 = cy + Math.sin(a) * rad * 0.9;
+    const ang = a + (r() - 0.5) * 1.6, len = 62 + r() * 30, pairs = 4 + Math.floor(r() * 3);
+    const light = r(), yl = r() < 0.25 ? 24 : 0;
+    ctx.save(); ctx.translate(x0, y0); ctx.rotate(ang);
+    ctx.strokeStyle = 'rgba(88,104,44,0.8)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke();
+    const leaflet = (px, py, rot, L) => {
+      const g = 92 + light * 80 + (r() - 0.5) * 24;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(rot);
+      ctx.fillStyle = `rgb(${(g * 0.56 + yl) | 0},${(g * 0.98 + yl * 0.5) | 0},${(g * 0.34) | 0})`;
+      ctx.beginPath(); ctx.ellipse(L / 2, 0, L / 2, L * 0.27, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    };
+    for (let k = 0; k < pairs; k++) {
+      const t = (k + 0.7) / (pairs + 0.4) * len, L = 13 + r() * 5;
+      leaflet(t, -1, -1.2 + (r() - 0.5) * 0.3, L);
+      leaflet(t, 1, 1.2 + (r() - 0.5) * 0.3, L);
+    }
+    leaflet(len, 0, 0, 14 + r() * 4);
+    ctx.restore();
+  }
+  const t = tex(c, { repeat: false });
+  t.premultiplyAlpha = false;
+  TEX.leavesPinnate = t;
+}
+
 function genFirBranch() {
   const w = 256, h = 512;
   const r = rng(303);
@@ -717,7 +759,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('autumn'); }], ['brad', genFirBranch], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('autumn'); genPinnate(); }], ['brad', genFirBranch], ['scoarță', genBark],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

@@ -14,7 +14,8 @@ import { guardrail, guardrailMaterials } from './cantacuzino.js';
 //   south of it (the houses along it match the aerial), so that stretch is moved onto the aerial first; the
 //   abutment's front stands ~0.8 m off its west edge (photo 62).
 //   heights: photo 62 puts the top of the deck ~7 m over Strada Gării (at the abutment's front edge: ~5 m of
-//   clearance under ~2 m of deck and cornice) - 26.95 m on the game's datum, which also clears the railway by ~6.5 m;
+//   clearance under ~2 m of deck and cornice), so the crest is set from the street's height (CREST_OVER), which also
+//   clears the railway by ~6.5 m;
 //   the deck's shadow on the aerial keeps 6-9 m over the ground all the way, so from there the deck descends with the
 //   valley (~6.7 %) to the DN1 junction (12.2 m).
 //   cross-section (photo 61): 7.5 m of asphalt with a solid centre line, raised sidewalks ~1.2 m behind concrete kerbs,
@@ -32,8 +33,11 @@ const GARII_N = '1190212198', GARII_S = '14190389', GARII_W = '217351658';
 const G_SHIFT = [-2.30, 3.98];                             // Strada Gării onto the aerial: 4.6 m towards bearing 72°
 const X = { road: 3.75, kerb: 3.95, walk: 5.2, edge: 5.5, girder: 5.35, lift: 0.2 };   // across the deck (m from the axis)
 const DEPTH = 1.7;                                        // top of the asphalt to the soffit
-const CREST = 26.95, S_CREST = [6, 85], Y0 = 26.85;       // the deck's crest (m) and the join with the approach (photo 61:
-                                                          // nearly level from the railings back to the curve)
+const CREST_OVER = 7.04, S_CREST = [6, 85], Y0_UNDER = 0.1;   // the deck's crest over Strada Gării (photo 62; 26.95 m on
+                                                          // V46's EU-DEM datum, where the street lay at 19.91 m: it
+                                                          // follows the street on the bare-earth DEM, 1.3 m lower) and
+                                                          // the join with the approach just under it (photo 61: nearly
+                                                          // level from the railings back to the curve)
 const ABUT_E = 314;                                       // front face of the east abutment (s)
 const WINGS = 8.6, BATTER = 2.5;                          // the west wing walls: the railings' start to the abutment's
                                                           // foot; its front face leans back 2.5 m (photo 62, resected)
@@ -70,6 +74,9 @@ function moveGarii() {
       out.push([F.P[i][0], F.P[i][1], F.S[i]]);
     }
     r.p = out.flatMap(([x, z, t]) => { const v = k(t, L); return [x + G_SHIFT[0] * v, z + G_SHIFT[1] * v]; });
+    // its ribbon follows the 1 m terrain of the bed (with 3.5 m steps its chords dipped 2-4 cm under the ground where the
+    // street sags under the bridge on the bare-earth DEM: grass showed through, photo 62)
+    r.step = 1;
     frames.push({ F, k, L });
     BEDS.push({ F: frame(pairs(r.p)), v: out.map(([, , t]) => k(t, L)), hw: r.w / 2 });
   }
@@ -138,6 +145,7 @@ export function vadBridge() {
     }
   }
   const ABUT_W = sx - (sg ? sg.w / 2 : 3.2) / sin - 0.8, JOINT = ABUT_W - WINGS, ABUT_TOP = ABUT_W - BATTER;
+  const CREST = gridHeight(GEO, ...W(sx, 0)) + CREST_OVER, Y0 = CREST - Y0_UNDER;
   // the deck's profile: up from the approach to the crest over Strada Gării and the railway, then down the valley
   const yEnd = gridHeight(GEO, ...W(L, 0)) + 0.05, dA = 40, dB = 12, g = (CREST - yEnd) / (L - S_CREST[1] - dA / 2 - dB / 3);
   const yDeck = (s) => {
