@@ -8,7 +8,7 @@ export async function loadGeo(base) {
   const get = (f) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
   // binary grids travel as base64 in JSON (static hosts may refuse .bin)
   const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  const [json, h, hw, far, trees, forest] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null)]);
+  const [json, h, hw, far, trees, forest, species] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null), get('species.json').then(bin).catch(() => null)]);
   Object.assign(GEO, json);
   const g = json.meta.grid;
   // near grid (5 m, +-3 km around the street) and world grid (10 m, the whole playable map)
@@ -32,6 +32,12 @@ export async function loadGeo(base) {
   }
   // forest stands, 2 bits per 5 m cell (0 none, 1 broadleaved, 2 mixed, 3 needleleaved)
   GEO.forestBits = forest && json.forest ? new Uint8Array(forest) : null;
+  // tree genus per 20 m cell (land_cover in geo/build_geo.py: the Romanian genus map 2025 on the Copernicus forests):
+  // bits 0-3 group (json.species.groups: 1 Fagus, 2 Quercus, 3 Carpinus, 4 Abies, 5 Picea, 6 Pinus, 7 Populus,
+  // 8 Robinia, 9 Salix, 10 Tilia, 11 other deciduous, 12 other evergreen, 13 shrubland), bit 4 pure stand (>= 80 %),
+  // bits 5-7 tree cover density (Copernicus 2018) / 100 * 7
+  GEO.speciesBits = species && json.species ? new Uint8Array(species) : null;
+  if (GEO.speciesBits) GEO.speciesMix = speciesMix(GEO.speciesBits, json.species.n);
   const fi = new Int16Array(far);
   GEO.farN = json.meta.far.n; GEO.farExt = json.meta.far.ext;
   GEO.F = new Float32Array(fi.length);
@@ -130,6 +136,53 @@ export function farAt(x, z) {
   const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
   const a = F[j * n + i], b = F[j * n + i + 1], c = F[(j + 1) * n + i], d = F[(j + 1) * n + i + 1];
   return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+// share of each genus leading the stands within ~300 m (blocks of 10 x 10 cells, 3 x 3 blocks): the companions of a stand
+const MIX_B = 10, NG = 13;
+function speciesMix(B, n) {
+  const nb = Math.ceil(n / MIX_B), cnt = new Float32Array(nb * nb * NG), out = new Float32Array(nb * nb * NG);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const g = B[j * n + i] & 15;
+    if (g && g < NG) cnt[((j / MIX_B | 0) * nb + (i / MIX_B | 0)) * NG + g]++;
+  }
+  for (let bj = 0; bj < nb; bj++) for (let bi = 0; bi < nb; bi++) {
+    const o = (bj * nb + bi) * NG;
+    let tot = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const cj = bj + dj, ci = bi + di;
+      if (cj < 0 || ci < 0 || cj >= nb || ci >= nb) continue;
+      for (let g = 1; g < NG; g++) { out[o + g] += cnt[(cj * nb + ci) * NG + g]; tot += cnt[(cj * nb + ci) * NG + g]; }
+    }
+    if (tot) for (let g = 1; g < NG; g++) out[o + g] /= tot;
+  }
+  return { nb, w: out };
+}
+export function speciesAt(x, z) {
+  const S = GEO.species, B = GEO.speciesBits;
+  if (!B) return 0;
+  const i = Math.round((x + S.ext) / S.step), j = Math.round((z + S.ext) / S.step);
+  if (i < 0 || j < 0 || i >= S.n || j >= S.n) return 0;
+  return B[j * S.n + i];
+}
+// a companion genus of a stand led by g, picked by h in [0, 1): the genera leading the stands around, plus the
+// hornbeam that goes with the hill beeches and sessile oaks here (habitats 91V0 / 91Y0: Dacian beech forests,
+// Dacian oak-hornbeam forests) though it rarely leads a stand
+const COMP_PRIOR = [0, 0.08, 0.08, 0.25, 0, 0, 0, 0, 0, 0, 0, 0.08, 0];
+export function speciesCompanion(x, z, g, h) {
+  const S = GEO.species, X = GEO.speciesMix;
+  if (!X) return g;
+  const i = Math.min(S.n - 1, Math.max(0, Math.round((x + S.ext) / S.step))), j = Math.min(S.n - 1, Math.max(0, Math.round((z + S.ext) / S.step)));
+  const o = ((j / MIX_B | 0) * X.nb + (i / MIX_B | 0)) * NG;
+  let tot = 0;
+  for (let k = 1; k < NG; k++) if (k !== g) tot += X.w[o + k] + COMP_PRIOR[k];
+  let a = h * tot;
+  for (let k = 1; k < NG; k++) {
+    if (k === g) continue;
+    a -= X.w[o + k] + COMP_PRIOR[k];
+    if (a < 0) return k;
+  }
+  return g;
 }
 
 export function forestCode(x, z) {

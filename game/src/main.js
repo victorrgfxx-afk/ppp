@@ -399,7 +399,7 @@ async function main() {
   // ~20 deg off the arms' normal (the right arm looks 21% longer)
   const crossLm = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossLm && !PHOTO_VIEWS.some(v => v.cross)) {
-    const fx = Math.cos((-11.8 + 47.98) * Math.PI / 180), fz = Math.cos((-11.8 - 42.02) * Math.PI / 180);
+    const fx = Math.cos((-8.37 + 47.98) * Math.PI / 180), fz = Math.cos((-8.37 - 42.02) * Math.PI / 180);   // bearing -8.4 deg
     PHOTO_VIEWS.push({ cross: true, x: crossLm.x - fx * 11, z: crossLm.z - fz * 11, yaw: Math.atan2(-fx, -fz), pitch: 0.3, label: 'Poza 24 — crucea de pe deal' });
   }
   // photos 25-29 (the user's Street View screenshots): the railway underpass of DJ100E by Strada Gării
@@ -539,7 +539,7 @@ async function main() {
     view(trLm.views.a, 0.02, 'Poza 58 — Strada Toma Cantacuzino: cotul spre calea ferată');
     view(trLm.views.b, 0.0, 'Poza 59 — Strada Gării: de-a lungul triajului');
   }
-  // photo 60: the flag by the cross, the cross edge-on beyond it (pose resected on the hill's skyline: 15.3 deg up, 49 deg fov)
+  // photo 60: the flag by the cross, the cross edge-on beyond it (pose resected on the hill's skyline: 15.8 deg up, 54.4 deg fov)
   if (drLm?.view && !PHOTO_VIEWS.some(v => v.drapel)) {
     const v = drLm.view;
     PHOTO_VIEWS.push({ drapel: true, x: v.from[0], z: v.from[1], yaw: v.yaw, pitch: v.pitch, fov: v.fov, label: 'Poza 60 — drapelul de lângă crucea de pe deal' });

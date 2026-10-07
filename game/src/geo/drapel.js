@@ -10,16 +10,18 @@ import { HILL, CLUMPS } from './drapel_mask.js';
 // exactly edge-on (its arms point along the view), the track climbing the knoll behind it to the wooded hill, the lane on
 // the left, the thorn scrub on the meadow.
 // The camera is resected on the photo: the skyline of the wooded hill (its dome just left of the frame's centre, traced
-// on ~100 columns) against the DEM with ~18 m of canopy on the stands, and the cross's top and foot (pixels 646,1106 /
-// 650,1283 on the 1320 x 1517 photo), solved for position, heading, tilt and focal length: 4 of 5 starts land on the
-// same pose, the skyline fits to 0.37 deg rms, the cross to 2-6 px. The camera stands ~103 m east of the cross (bearing
-// 98 deg: the photo's coordinate is ~70 m off), looks west (279 deg), tilted up 15.3 deg, 49 deg vertical field of view
-// (a cropped frame). Seen edge-on from there, the cross's arms run along bearing 98/278 deg (build_geo.py).
-// The pole: 17 px thick at the car's roof (a ~11 cm steel pipe) puts it ~11 m ahead, 5 deg right of the centre, just
-// past the car's nose; the frame's top edge is ~10.4 m up there and the flag's hoist runs on above it: a ~11.5 m pole,
+// on ~100 columns) against the bare-earth ground (FABDEM) with the stands' ~20 m of trees on it, and the cross's top and
+// foot (pixels 646,1106 / 650,1283 on the 1320 x 1517 photo), solved for position, heading, tilt and focal length: the
+// skyline fits to 0.24 deg rms, the cross to 2-3 px (the same pose to within 3 m for 14-22 m of trees). The camera stands
+// ~95 m east of the cross (bearing 102 deg: the photo's coordinate is ~70 m off), looks west (282 deg), tilted up
+// 15.8 deg, 54.4 deg vertical field of view (a cropped frame). Seen edge-on from there, the cross's arms run along
+// bearing 102/282 deg (build_geo.py).
+// The pole: 17 px thick at the car's roof (a ~11 cm steel pipe) puts it ~9.75 m ahead, 6 deg right of the centre, just
+// past the car's nose; the frame's top edge is ~10.7 m up there and the flag's hoist runs on above it: a ~11.5 m pole,
 // the flag (~3 x 2 m) hanging down to ~7 m.
-const DIST = 102.95, POLE_AHEAD = 11, POLE_RIGHT = 0.97;       // metres
-const VIEW = { pitch: 0.268, fov: 49.0, yawOff: -0.0067 };       // the frame's centre is 0.4 deg right of the cross
+const DIST = 94.88, POLE_AHEAD = 9.75, POLE_RIGHT = 0.97;       // metres
+const VIEW = { pitch: 0.2758, fov: 54.4, yawOff: -0.0079 };      // the frame's centre is 0.45 deg right of the cross
+const CAR = [6.3, 0.82];                                         // the car's centre: metres ahead, right
 const POLE = { h: 11.5, r0: 0.057, r1: 0.032 };
 const FLAG = { hoist: 2.0, fly: 3.0, droop: 1.0 };
 
@@ -47,12 +49,14 @@ export function prepareDrapel() {
   const fo = bits(HILL.forest), op = bits(HILL.open), on = (u, k) => (u[k >> 3] >> (k & 7)) & 1;
   OPEN = op;
   for (let j = 0; j < HILL.nj; j++) for (let i = 0; i < HILL.ni; i++) {
-    const k = j * HILL.ni + i;
-    if (!on(fo, k)) continue;
+    const k = j * HILL.ni + i, open = on(op, k);
+    if (!on(fo, k) && !open) continue;
     const x = HILL.x0 + 5 * i, z = HILL.z0 + 5 * j, gi = Math.round((x + F.ext) / F.step), gj = Math.round((z + F.ext) / F.step);
     if (gi < 0 || gj < 0 || gi >= F.n || gj >= F.n) continue;
-    if ((GEO.holes || []).some(h => x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z, 2))) continue;   // kept clear by another module
     const g = gj * F.n + gi;
+    // the meadow traced on the aerial stays open (the 10 m forest maps round its edges into the wood)
+    if (open) { B[g >> 2] &= ~(3 << ((g & 3) << 1)); continue; }
+    if ((GEO.holes || []).some(h => x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z, 2))) continue;   // kept clear by another module
     if (((B[g >> 2] >> ((g & 3) << 1)) & 3) === 0) B[g >> 2] |= 1 << ((g & 3) << 1);
   }
   const T = GEO.trees;
@@ -74,11 +78,19 @@ export function prepareDrapel() {
     }
     GEO.trees = { n: k, x: out.x.subarray(0, k), z: out.z.subarray(0, k), t: out.t.subarray(0, k), s: out.s.subarray(0, k) };
   }
+  // the parking spot by the pole: the photo has the car's roof 3 deg under the horizon (0.23 m under the eye at its rear),
+  // so the ground falls ~0.35 m from the camera to the car (5.5 %); the 30 m bare-earth DEM drops ~0.95 m there. The
+  // flag's track is laid at that grade from the camera's ground (the eye height the pose was resected with), fading back
+  // into the DEM 6 m past the level stretch and over 1.5 m at its sides
+  const padY = L ? gridHeight(GEO, L.cam[0], L.cam[1]) : null;
+  const sCam = TR.length ? local(TR[0], L.cam[0], L.cam[1])?.s ?? 6 : 6;
+  const pad = (T, q, g) => padY === null || !T.flat0 ? g
+    : g + (padY - 0.055 * Math.max(0, q.s - sCam) - g) * clamp01((T.flat0 + 6 - q.s) / 6) * clamp01((5 - q.d) / 1.5);
   // the two dirt tracks: rutted and bumpy in the ground itself (the car rides the ruts), no trees on them
   TR.forEach((T, k) => {
     addFineZone({ x0: T.x0, x1: T.x1, z0: T.z0, z1: T.z1,
       test: (x, z) => { const q = local(T, x, z); return !!q && q.d < 5; },
-      h: (x, z) => { const q = local(T, x, z), g = gridHeight(GEO, x, z); return q ? g + rough(T, q.s, q.o) : g; } });
+      h: (x, z) => { const q = local(T, x, z), g = gridHeight(GEO, x, z); return q ? pad(T, q, g) + rough(T, q.s, q.o) : g; } });
     for (let i = 0; i < T.pts.length - 1; i += 8) {
       const [ax, az] = T.pts[i], [bx, bz] = T.pts[Math.min(T.pts.length - 1, i + 8)], l = Math.hypot(bx - ax, bz - az) || 1;
       addHole([(ax + bx) / 2, (az + bz) / 2], l / 2 + 0.5, TW / 2 + 0.4, (bx - ax) / l, (bz - az) / l);
@@ -93,13 +105,13 @@ export function prepareDrapel() {
 
 // The two dirt tracks of photo 60 (neither is in OSM, the aerial predates them), in the view's frame:
 // - the one the user drove up, very rough (ruts, bare soil, grass on the hump), from the lane just south of the cross to
-//   the flagpole: the photo's lower left, ray-cast from its pixels onto the ground (9.6 m / -9 deg, 13.7 m / -8.5 deg,
-//   75 m, 90 m, 106 m, joining the lane at its centre line 133 m out); [metres ahead, metres right]
-const FLAG_TRACK = [[-6, -0.6], [0, -0.9], [9.5, -1.5], [13.6, -2.0], [45, -6.3], [74.4, -10.4], [88.9, -10.9], [105.4, -10.9], [120, -11.6], [132.6, -12.75]];
+//   the flagpole: the photo's lower left, ray-cast from its pixels onto the ground (8.7 m / -9 deg, 12.4 m / -8.5 deg,
+//   68 m, 81 m, 96 m, joining the lane at its centre line 120 m out); [metres ahead, metres right]
+const FLAG_TRACK = [[-6, -0.6], [0, -0.9], [8.6, -1.35], [12.3, -1.8], [40.5, -5.68], [67.0, -9.37], [80.1, -9.82], [95.0, -9.82], [108.1, -10.45], [119.5, -11.49]];
 // - the one past the cross that leads to the wood: from the lane (120 m out) straight up the knoll just left of the
 //   cross, bending right at the tree line (the photo: -1.1 deg at the cross's side, +2.3 deg where it meets the trees),
-//   on into the wood; [distance, azimuth deg right of the axis]
-const FOREST_TRACK = [[120.6, -1.3], [150, -1.25], [200, -1.15], [250, -1.05], [285, -0.8], [305, -0.1], [318, 0.8], [328, 1.6], [340, 2.3], [360, 3.1], [385, 3.8], [410, 4.3]];
+//   on into the wood; [distance, azimuth deg right of the axis] (from the lane, 111 m out)
+const FOREST_TRACK = [[111.3, -1.3], [138.4, -1.25], [184.6, -1.15], [230.7, -1.05], [263.0, -0.8], [281.5, -0.1], [293.5, 0.8], [302.7, 1.6], [313.8, 2.3], [332.2, 3.1], [355.3, 3.8], [378.4, 4.3]];
 const TW = 2.6;                                              // track width, m
 let TR = [], OPEN = null;
 
@@ -128,7 +140,7 @@ export function trackPoint(id, s) {
 export function drapelSpots() {
   const L = layout(); if (!L) return null;
   const { cam, pole, hx, hz, rx, rz, cross } = L;
-  return { cam, pole, cross, car: [cam[0] + hx * 6.75 + rx * 0.82, cam[1] + hz * 6.75 + rz * 0.82], h: [hx, hz] };
+  return { cam, pole, cross, car: [cam[0] + hx * CAR[0] + rx * CAR[1], cam[1] + hz * CAR[0] + rz * CAR[1]], h: [hx, hz] };
 }
 
 // Catmull-Rom through the control points, sampled every ~0.6 m, with tangents, arc length and a 5 m grid index
@@ -275,8 +287,8 @@ export function buildDrapel(B, world) {
     acc.flush(B, Mt.track, null, { noCast: true });
   }
   // the user's car parked just in front of the camera, facing the cross (photo 60): its rear spans half the frame's width
-  // (1.8 m over 660 px: the tail ~4.5 m ahead), its roof sits at eye level, the body's centre line 10 deg right of the axis
-  const car = { model: 'suv', paint: 0x8b9895, x: cam[0] + hx * 6.75 + rx * 0.82, z: cam[1] + hz * 6.75 + rz * 0.82, h: Math.atan2(-hx, -hz) };
+  // (1.8 m over 660 px: the tail ~4 m ahead), its roof 3 deg under the horizon, the body's centre line 11 deg right of the axis
+  const car = { model: 'suv', paint: 0x8b9895, x: cam[0] + hx * CAR[0] + rx * CAR[1], z: cam[1] + hz * CAR[0] + rz * CAR[1], h: Math.atan2(-hx, -hz) };
   const bbox = { x0: Math.min(cam[0], px) - 5, x1: Math.max(cam[0], px) + 5, z0: Math.min(cam[1], pz) - 5, z1: Math.max(cam[1], pz) + 5 };
   // the open hilltop: no map trees on the pole, the car or the first 30 m of the view
   const T = GEO.trees;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { GEO, heightAt, forestCode, inHole } from './data.js';
+import { GEO, heightAt, forestCode, inHole, speciesAt, speciesCompanion } from './data.js';
 import { M, addWind } from '../materials.js';
 import { rng } from '../util.js';
 
@@ -34,9 +34,18 @@ const TYPES = [
   // and the wood there (forest-grown, as the stands' beech and hornbeam): beech turning orange and yellow, hornbeam yellow
   { name: 'autumn beech (forest)', H: 22, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leavesAutumn', tint: 0xffe2c0, bole: 0.48, bark: 'barkLight' },
   { name: 'autumn hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leavesAutumn', tint: 0xf4f6d6, bole: 0.4 },
+  // black locust (Robinia, planted on the eroded slopes and by the villages): open crown of small light leaves, dark bark
+  { name: 'black locust (forest)', H: 18, crown: 3.7, trunkR: 0.24, cards: 90, leaf: 'leavesSmall', tint: 0xd6e2a6, bole: 0.46 },
 ];
-export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19 };
-const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2;
+export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20 };
+const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20;
+// genus groups of species.json (data.js) -> forest tree type: Fagus, Quercus, Carpinus, Abies, Picea, Pinus, Populus,
+// Robinia, Salix, Tilia, other deciduous (maples, ash, cherry ...), other evergreen
+const GENUS_T = [0, T_BEECH, T_OAK, T_HORN, T_SPRUCE, T_SPRUCE, T_PINE, 14, T_ROBINIA, 5, T_HORN, T_HORN, T_SPRUCE];
+const GENUS_CONIFER = [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1];
+// understory under each genus: beech casts the deepest shade (a bare floor), oak and black locust stands are full of
+// hazel, hawthorn and dogwood
+const GENUS_SHRUB = [1, 0.45, 1, 0.65, 0.5, 0.5, 0.6, 0.9, 1, 0.9, 0.7, 0.8, 0.5];
 
 function cyl(p0, p1, r0, r1, seg) {
   const d = new THREE.Vector3().subVectors(p1, p0), L = d.length();
@@ -367,13 +376,25 @@ function eachForestTree(x0, z0, x1, z1, cb) {
     if (x < x0 || x >= x1 || z < z0 || z >= z1) continue;
     const code = forestCode(x, z);
     if (!code) continue;
-    // species in stands of a few hectares; pines dominate the needle stands (planted black pine)
-    const needle = code === 3 ? 0.9 : code === 2 ? 0.45 : 0.04;
     const edge = !forestCode(x + 8, z) || !forestCode(x - 8, z) || !forestCode(x, z + 8) || !forestCode(x, z - 8);
+    const sp = speciesAt(x, z), g = sp & 15;
     let ty;
-    if (hash3(i, j, 4) < needle * (0.55 + 0.9 * valueNoise2(x, z, 55, 7))) ty = edge ? T_SPRUCE_LOW : hash3(i, j, 5) < 0.62 ? T_PINE : T_SPRUCE;
-    else if (edge) ty = T_EDGE;
-    else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.4 ? T_BEECH : b < 0.7 ? T_HORN : T_OAK; }
+    if (g && g < 13) {
+      // the mapped genus (Romanian genus map 2025): it leads with >= 80 % of the trees in a pure stand, 50-80 % in a
+      // dominant one (taken as 88 / 62 %); the others are its companions. Open stands are thinned to their cover density.
+      if (hash3(i, j, 14) > Math.min(1, Math.max(0.3, (sp >> 5) / 7 * 100 / 80))) continue;
+      const gg = hash3(i, j, 4) < (sp & 16 ? 0.88 : 0.62) ? g : speciesCompanion(x, z, g, hash3(i, j, 15));
+      ty = GENUS_T[gg];
+      // stand edges: the broadleaves keep their branches down to the ground, spruces their low skirts
+      if (edge && (ty === T_BEECH || ty === T_OAK || ty === T_HORN)) ty = T_EDGE;
+      else if (edge && ty === T_SPRUCE) ty = T_SPRUCE_LOW;
+    } else {
+      // stands outside the genus map: species in stands of a few hectares, pines in the needle stands
+      const needle = code === 3 ? 0.9 : code === 2 ? 0.45 : 0.02;
+      if (hash3(i, j, 4) < needle * (0.55 + 0.9 * valueNoise2(x, z, 55, 7))) ty = edge ? T_SPRUCE_LOW : hash3(i, j, 5) < 0.62 ? T_PINE : T_SPRUCE;
+      else if (edge) ty = T_EDGE;
+      else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.55 ? T_BEECH : b < 0.75 ? T_HORN : T_OAK; }
+    }
     for (const f of MIX) ty = f(x, z, ty, edge, code, hash3(i, j, 12), hash3(i, j, 13));
     // age classes: whole stands younger or older
     const s = (0.68 + 0.45 * valueNoise2(x, z, 110, 9)) * (0.88 + 0.24 * hash3(i, j, 7));
@@ -386,9 +407,13 @@ function eachShrub(x0, z0, x1, z1, cb) {
     const x = (i + hash3(i, j, 22)) * SSP, z = (j + hash3(i, j, 23)) * SSP;
     const code = x < x0 || x >= x1 || z < z0 || z >= z1 ? 0 : forestCode(x, z);
     if (!code) continue;
-    // understory: hazel / hawthorn shrubs, and saplings of the stand (young hornbeams, spruces in conifer stands)
+    const g = speciesAt(x, z) & 15;
+    if (g && g < 13 && hash3(i, j, 28) > GENUS_SHRUB[g]) continue;
+    // understory: hazel / hawthorn shrubs, and saplings of the stand (young beeches under the beeches, hornbeams,
+    // spruces in conifer stands)
     const k = hash3(i, j, 27);
-    if (k < 0.3) cb(x, z, code === 3 && k < 0.2 ? T_SPRUCE : T_HORN, 0.22 + 0.2 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
+    const sap = g && g < 13 ? (GENUS_CONIFER[g] ? T_SPRUCE : g === 1 ? T_BEECH : T_HORN) : code === 3 && k < 0.2 ? T_SPRUCE : T_HORN;
+    if (k < 0.3) cb(x, z, sap, 0.22 + 0.2 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
     else cb(x, z, T_SHRUB, 0.6 + 0.8 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
   }
 }

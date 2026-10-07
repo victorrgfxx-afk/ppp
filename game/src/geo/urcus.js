@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { GEO, heightAt } from './data.js';
+import { GEO, heightAt, speciesAt } from './data.js';
 import { M } from '../materials.js';
 import { brambleTexture, starGeo, addShortGrass } from './hillwood.js';
-import { TREE_T, TREE_TYPES, addForestMix, valueNoise2 } from './trees.js';
+import { TREE_T, TREE_TYPES, addForestMix } from './trees.js';
 import { WOOD } from './urcus_mask.js';
 
 // The user's clip IMG_0725 (an iPhone 13 Pro's 3x lens, 11 October 2025, 16:11), on the lane over the hill from Strada
@@ -12,18 +12,19 @@ import { WOOD } from './urcus_mask.js';
 // clip has them).
 // Measured in the clip's first frame (27.5 deg over its long side) and fitted on the lane: the man 15 m from the lens, the
 // concrete block on the right edge where a thicket starts (the dark clump on the aerial, by the road on the meadow's side),
-// the three walkers ~80 m on, where the lane bends gently right, seen from the waist up over that thicket (the lines of
+// the three walkers ~75 m on, where the lane bends gently right, seen from the waist up over that thicket (the lines of
 // sight cut across the inside of the bend). As the clip shows it: worn asphalt, a mown verge on the right, the thicket,
-// the wood on both sides: broadleaves gone yellow and orange, conifer groups among them.
+// the wood on both sides: broadleaves gone yellow and orange, oaks still green.
 // Positions along the lane: s metres from the junction (the clip walks towards smaller s), o metres right of the centre
 // line facing larger s (so o > 0 is north-west, on the clip's left).
 export const LANE_ID = '198810461';
 const LANE_W = 4.5;
 // the clip's moment ([s, o] on the lane as traced), fitted in the game's own camera and ground to the clip's first frame
-// (2160 x 3840): the lens (1.6 m up, the player's eye), the man (15 m on: 940 px tall), the three walkers (hikers.js; their
-// heads within 5 px of the clip's, the block within 3 px): abreast ~67 m on, on the bank right of the asphalt among the
-// bushes; the lines of sight to their hips stay clear
-export const CLIP = { cam: [1051.5, 0.8], eye: 1.6, man: [1036.5, -0.4], walkers: [[982.5, -2.5], [984, -4.5], [983, -5.5]], hip: 0.95, block: 1021 };
+// (2160 x 3840), on the ground as geo/build_geo.py corrects it from this same frame (CLIP_LANE): the lens (1.6 m up, the
+// player's eye), the man (15 m on: 940 px tall), the three walkers (hikers.js; their heads within 4 px of the clip's, the
+// block within 10 px): abreast ~75 m on, one at the asphalt's right edge, two on the bank right of it among the bushes;
+// the lines of sight to their hips stay clear
+export const CLIP = { cam: [1051.5, 0.8], eye: 1.6, man: [1036.5, -0.4], walkers: [[976, -1.25], [977.5, -3.5], [976, -4.5]], hip: 0.95, block: 1021 };
 // the walkers' path along the bank (hikers.js): off the asphalt between s 994 and 988, back onto it between 974 and 964
 export const BANK = [994, 988, 974, 964];
 // the thicket on the meadow's side, from the block on: s range, out to o (negative: the clip's right), as the aerial has
@@ -134,8 +135,10 @@ function onPath(x, z, r) {
 // The wood, as the aerial has it (urcus_mask.js; the game's stand raster had most of it missing south of the lane): its
 // cover and kind written into the raster here, none on the lines of sight or in the thicket (bushes there, below). And its
 // trees, as in the clip and as such a Subcarpathian wood is: beech turning orange and yellow, hornbeam yellow, birches,
-// oaks still green, some beech still green; spruce and fir in groups: few in the broadleaved stands, a quarter of the
-// mixed ones, 40% of the dark ones (fading back to the map's own mix 250-420 m out).
+// oaks still green, some beech still green (fading back to the map's own mix 250-420 m out). No conifers: the clip shows
+// none, and neither do the 10 m maps (CLC+ 2021: no needle-leaved pixel within 420 m; the genus map 2025: beech and oak
+// stands), so the aerial's dark crowns are green oaks and the bramble-grown thickets, not spruce. Where the genus map
+// has oak leading, oaks take a bigger share.
 function stampWood(S) {
   const B = GEO.forestBits, F = GEO.forest;
   if (!B || !F) return;
@@ -158,10 +161,10 @@ function stampWood(S) {
   addForestMix((x, z, ty, edge, code, h1, h2) => {
     const d = Math.hypot(x - C.x, z - C.z);
     if (d > R1 || h1 > (d < R0 ? 1 : (R1 - d) / (R1 - R0))) return ty;
-    const conifer = (code === 3 ? 0.4 : code === 2 ? 0.25 : 0.05) * (0.4 + 1.2 * valueNoise2(x, z, 45, 31));
-    if (h2 < conifer) return edge ? T.spruceLow : T.spruceF;
-    const u = (h2 - conifer) / (1 - conifer);
+    const g = speciesAt(x, z) & 15, u = h2;
+    if (g === 4 || g === 5 || g === 6 || g === 12) return ty;                          // a mapped conifer stand keeps its own
     if (edge) return u < 0.45 ? T.autumn : u < 0.65 ? T.autumnBirch : u < 0.85 ? T.edge : T.oak;
+    if (g === 2) return u < 0.2 ? T.autumnBeechF : u < 0.4 ? T.autumnHornbeamF : u < 0.47 ? T.autumnBirch : u < 0.55 ? T.beech : T.oakF;
     return u < 0.36 ? T.autumnBeechF : u < 0.6 ? T.autumnHornbeamF : u < 0.7 ? T.autumnBirch : u < 0.82 ? T.beech : T.oakF;
   });
 }

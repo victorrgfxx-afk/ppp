@@ -3,7 +3,9 @@
 
 Open data sources (downloaded into geo/raw by fetch_raw.sh):
   * OpenStreetMap (c) OpenStreetMap contributors, ODbL - buildings, roads, railway, river, landuse, power lines
-  * Terrain Tiles on AWS (terrarium, z15; EU-DEM / SRTM based)   - terrain of the playable map (+-8 km)
+  * FABDEM V1-2 (Hawker et al. 2022, U. Bristol; CC BY-NC-SA 4.0): Copernicus GLO-30 with forests and buildings
+    removed by machine learning - the bare-earth terrain of the playable map (+-8 km)
+  * Terrain Tiles on AWS (terrarium, z15; EU-DEM / SRTM based)   - (the playable map's terrain until V47; still fetched)
   * Copernicus GLO-30 DSM (c) ESA / DLR / Airbus                  - far terrain ring (+-20 km)
   * Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0, modified Copernicus Sentinel data 2023) - ground colour
 
@@ -155,7 +157,7 @@ def terrarium_sampler():
     return sample
 
 
-def cop_sampler(name='cop30'):
+def cop_sampler(name='cop30', interp=cv2.INTER_LINEAR):
     C = np.load(os.path.join(RAW, name + '.npy')).astype(np.float32)
     C[C < -1000] = np.nan
     if np.isnan(C).any():
@@ -164,8 +166,143 @@ def cop_sampler(name='cop30'):
     a, _, c, _, e, f = t
 
     def sample(lat, lon):
-        return cv2.remap(C, ((lon - c) / a - 0.5).astype(np.float32), ((lat - f) / e - 0.5).astype(np.float32), cv2.INTER_LINEAR)
+        return cv2.remap(C, ((lon - c) / a - 0.5).astype(np.float32), ((lat - f) / e - 0.5).astype(np.float32), interp)
     return sample
+
+
+# ------------------------------------------------------------------ trees: extent, leaf type, genus (10 m maps)
+# genus groups written to species.json (src/geo/data.js speciesAt reads the same numbering)
+GENUS_GROUPS = ['none', 'Fagus', 'Quercus', 'Carpinus', 'Abies', 'Picea', 'Pinus', 'Populus', 'Robinia', 'Salix', 'Tilia',
+                'other deciduous', 'other evergreen', 'shrubland']
+# classes of the Romanian genus map (Keskes & Nita 2026, data_dictionary.csv): 0/1 Fagus pure/dominant, 2/3 Quercus,
+# 4/5 Carpinus, 6/7 Abies, 8 other deciduous (dominant), 9 other evergreen (dominant), 10/11 Picea, 12/13 Pinus,
+# 14/15 Populus, 16/17 Robinia, 18/19 Salix, 20/21 Tilia -> (group, pure)
+GENUS_CLASS = {0: (1, 1), 1: (1, 0), 2: (2, 1), 3: (2, 0), 4: (3, 1), 5: (3, 0), 6: (4, 1), 7: (4, 0), 8: (11, 0), 9: (12, 0),
+               10: (5, 1), 11: (5, 0), 12: (6, 1), 13: (6, 0), 14: (7, 1), 15: (7, 0), 16: (8, 1), 17: (8, 0), 18: (9, 1),
+               19: (9, 0), 20: (10, 1), 21: (10, 0)}
+CONIFER_GROUPS = (4, 5, 6, 12)
+
+
+def brow_fix(X, Z, H, C=None):
+    """CROSS_BROW: EU-DEM's relief relative to the cross in the sector NNW of it, on a grid (X, Z, H)"""
+    C = C or CROSS_BROW
+    cx, cz = ll_to_game(C['lat'], C['lon']); cx, cz = float(cx) + C['shift'][0], float(cz) + C['shift'][1]
+    R = C['fade'][0]
+    sel = (np.abs(X - cx) < R) & (np.abs(Z - cz) < R)
+    x, z = X[sel], Z[sel]
+    d = np.hypot(x - cx, z - cz)
+    e, n = -(x - cx) * C_ + (z - cz) * S_, (x - cx) * S_ + (z - cz) * C_
+    db = np.abs((np.degrees(np.arctan2(e, n)) - C['bearing'] + 180) % 360 - 180)
+    ss = lambda t: np.clip(t, 0, 1) ** 2 * (3 - 2 * np.clip(t, 0, 1))
+    w = ss((C['fade'][0] - d) / (C['fade'][0] - C['full'][0])) * ss((C['fade'][1] - db) / (C['fade'][1] - C['full'][1]))
+    old = terrarium_sampler()
+    la, lo = game_to_ll(np.array([cx]), np.array([cz])); lat, lon = game_to_ll(x, z)
+    T = old(lat[None], lon[None])[0]; T0 = old(la[None], lo[None])[0, 0]
+    H0_ = float(Grid(H).at(np.float32([cx]), np.float32([cz])).ravel()[0])
+    out = H.copy(); out[sel] = H[sel] + w * ((T - T0) - (H[sel] - H0_))
+    return out
+
+
+def lane_bump(osm, X, Z):
+    """the CLIP_LANE correction on a grid (X, Z): lane distance s and offset of each node near the stretch"""
+    C, out = CLIP_LANE, np.zeros(X.shape, np.float32)
+    if C['way'] not in osm.ways: return out
+    P = osm.pts(C['way']); S = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(P, axis=0).T))])
+    k0, k1 = max(0, np.searchsorted(S, C['s'][0]) - 2), min(len(P) - 1, np.searchsorted(S, C['s'][-1]) + 2)
+    P, S = P[k0:k1 + 1], S[k0:k1 + 1]
+    R = C['full'] + C['fade']
+    sel = (X > P[:, 0].min() - R) & (X < P[:, 0].max() + R) & (Z > P[:, 1].min() - R) & (Z < P[:, 1].max() + R)
+    x, z = X[sel], Z[sel]
+    a, b = P[:-1], P[1:]; ab = b - a; l2 = (ab ** 2).sum(1)
+    t = np.clip(((x[:, None] - a[:, 0]) * ab[:, 0] + (z[:, None] - a[:, 1]) * ab[:, 1]) / l2, 0, 1)
+    d = np.hypot(x[:, None] - a[:, 0] - t * ab[:, 0], z[:, None] - a[:, 1] - t * ab[:, 1])
+    k = d.argmin(1); r = np.arange(len(x))
+    s_ = S[k] + t[r, k] * np.sqrt(l2[k])
+    w = np.clip(1 - (d[r, k] - C['full']) / C['fade'], 0, 1)
+    w = w * w * (3 - 2 * w)
+    out[sel] = (np.interp(s_, C['s'], C['d'], left=0, right=0) * w).astype(np.float32)
+    return out
+
+
+def lc_sampler(name):
+    """nearest pixel of a 10 m land-cover window (fetch_raw.py: raw/lc_<name>.npy), 255 outside"""
+    A = np.load(os.path.join(RAW, f'lc_{name}.npy'))
+    (a, _, c, _, e, f), crs = eval(open(os.path.join(RAW, f'lc_{name}_t.txt')).read())
+
+    def sample(lat, lon):
+        if crs == 'EPSG:3857':
+            R = 6378137.0
+            x, y = R * np.radians(lon), R * np.log(np.tan(np.pi / 4 + np.radians(lat) / 2))
+        else:
+            from rasterio.warp import transform
+            x, y = map(np.array, transform('EPSG:4326', crs, lon.ravel().tolist(), lat.ravel().tolist()))
+            x, y = x.reshape(lat.shape), y.reshape(lat.shape)
+        i, j = np.floor((x - c) / a).astype(int), np.floor((y - f) / e).astype(int)
+        ok = (i >= 0) & (j >= 0) & (i < A.shape[1]) & (j < A.shape[0])
+        out = np.full(lat.shape, 255, np.uint8)
+        out[ok] = A[j[ok], i[ok]]
+        return out
+    return sample
+
+
+def land_cover(rivers_a, log):
+    """5 m forest raster of the world grid and 20 m genus raster from three independent 10 m maps:
+    Copernicus HRL Forest Type 2018 + Tree Cover Density 2018, Copernicus CLC+ Backbone 2021, and the Romanian
+    genus map (Keskes & Nita 2026, reference 2025). A cell is forest when at least two of the three say so
+    (they agree on 92 % of the cells; OSM maps only ~60 % of these forests here)."""
+    F5 = int(round(2 * WEXT / 5)) + 1
+    v = np.linspace(-WEXT, WEXT, F5)
+    S = {k: lc_sampler(k) for k in ('fty', 'tcd', 'clcp', 'genus')}
+    L = {k: np.empty((F5, F5), np.uint8) for k in S}
+    for r0 in range(0, F5, 320):
+        Xc, Zc = np.meshgrid(v, v[r0:r0 + 320])
+        la, lo = game_to_ll(Xc, Zc)
+        for k, f in S.items(): L[k][r0:r0 + 320] = f(la, lo)
+    fty, tcd, clc, gen = L['fty'], L['tcd'], L['clcp'], L['genus']
+    tcd[tcd > 100] = 0
+    votes = ((fty == 1) | (fty == 2)).astype(np.uint8) + ((clc == 2) | (clc == 3)) + (gen <= 21)
+    forest = votes >= 2
+    lab, nl = ndimage.label(forest); sz = np.bincount(lab.ravel()); sz[0] = 1 << 30
+    forest &= sz[lab] >= 40                                         # specks under 0.1 ha
+    lab, nl = ndimage.label(~forest); sz = np.bincount(lab.ravel())
+    forest |= sz[lab] < 20                                          # holes under 0.05 ha
+    # genus group + pure flag per 5 m cell; forest cells the genus map leaves out take the nearest mapped stand
+    # (within 600 m), or willows / poplars inside 60 m of the rivers (the riverside strips the map does not cover)
+    lut_g = np.zeros(256, np.uint8); lut_p = np.zeros(256, np.uint8)
+    for k, (g_, p_) in GENUS_CLASS.items(): lut_g[k], lut_p[k] = g_, p_
+    grp, pure = lut_g[gen], lut_p[gen]
+    miss = forest & (grp == 0)
+    d, (jj, ii) = ndimage.distance_transform_edt(grp == 0, return_indices=True)
+    near = miss & (d <= 120)
+    grp[near], pure[near] = grp[jj[near], ii[near]], pure[jj[near], ii[near]]
+    riv = cv2.dilate(fill_areas(F5, WEXT, rivers_a, dtype=np.uint8), np.ones((25, 25), np.uint8)) > 0
+    rip = miss & riv
+    grp[rip] = np.where(ndimage.gaussian_filter(np.random.default_rng(5).standard_normal((F5, F5)), 3)[rip] > 0, 9, 7)
+    pure[rip] = 0
+    grp[~forest] = 0; pure[~forest] = 0
+    # leaf type code (forest.json): 1 broadleaved, 3 needleleaved, 2 mixed (conifer share 20-60 % within 25 m)
+    con = np.isin(grp, CONIFER_GROUPS) | (forest & (grp == 0) & (clc == 2))
+    cf = ndimage.uniform_filter(con.astype(np.float32), 5) / np.maximum(ndimage.uniform_filter(forest.astype(np.float32), 5), 1e-3)
+    code = np.where(con, 3, 1).astype(np.uint8)
+    code[(code == 1) & (cf >= 0.2)] = 2
+    code[(code == 3) & (cf <= 0.6)] = 2
+    code[~forest] = 0
+    # 20 m species raster: the commonest group of the 4 x 4 cells (forest only), its pure flag, tree cover density
+    n20 = int(round(2 * WEXT / 20)) + 1
+    cnt = np.stack([ndimage.uniform_filter((grp == g_).astype(np.float32), 4)[::4, ::4][:n20, :n20] for g_ in range(1, len(GENUS_GROUPS))])
+    g20 = (cnt.argmax(0) + 1).astype(np.uint8); g20[cnt.max(0) < 0.05] = 0
+    p20 = (ndimage.uniform_filter(pure.astype(np.float32), 4)[::4, ::4][:n20, :n20] >= 0.5).astype(np.uint8)
+    fsum = ndimage.uniform_filter(forest.astype(np.float32), 4)[::4, ::4][:n20, :n20]
+    t20 = ndimage.uniform_filter(np.where(forest, tcd, 0).astype(np.float32), 4)[::4, ::4][:n20, :n20] / np.maximum(fsum, 1e-3)
+    dens = np.clip(np.round(t20 / 100 * 7), 0, 7).astype(np.uint8)
+    # shrubland outside the forests (CLC+ 'low-growing woody plants': hawthorn, blackthorn, dog rose, young trees): group 13
+    sh20 = ndimage.uniform_filter(((clc == 5) & ~forest).astype(np.float32), 4)[::4, ::4][:n20, :n20]
+    g20[(g20 == 0) & (sh20 >= 0.5)] = 13
+    sp = (g20 | p20 << 4 | dens << 5).astype(np.uint8)
+    share = {GENUS_GROUPS[g_]: round(float((grp == g_).sum() / max(1, forest.sum())) * 100, 2) for g_ in range(1, len(GENUS_GROUPS))}
+    log('tree cover: forest %.1f %% of the world (OSM-independent), genus shares %%' % (forest.mean() * 100), share)
+    log('shrubland %.1f ha' % ((g20 == 13).sum() * 400 / 1e4))
+    return dict(forest=forest, code=code, sp=sp, n20=n20, F5=F5, tcd=tcd, shrub=(clc == 5) & ~forest)
 
 
 def s2_mosaic_sampler(z):
@@ -436,13 +573,12 @@ OVERRIDES = {
 # landmarks from the user's photos: position from the coordinates they sent, orientation and size from the photo
 LANDMARKS = [
     # photo 24: white lattice steel cross on the hill above Strada Măgurii (45.1184046 N, 25.7037585 E); nudged 5 m off the
-    # lane that OSM maps right next to the pin; arms along bearing 98.2 deg: photo 60 sees it exactly edge-on from ~103 m
+    # lane that OSM maps right next to the pin; arms along bearing 101.63 deg: photo 60 sees it exactly edge-on from ~95 m
     # east (camera resected on the skyline of the wooded hill, src/geo/drapel.js); photo 24 looks NNW, ~20 deg off the arms' normal
-    dict(type='cross', lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), arms_bearing=98.2, pad=5.5, clear=28.0),
+    # the hilltop is level out to 11 m round the slab (photo 24: the camera, 11 m off, looks down on the slab, its eye above
+    # the slab's top; FABDEM falls ~1.6 m from the cross to there)
+    dict(type='cross', lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), arms_bearing=101.63, pad=11.0, clear=28.0),
 ]
-# forest stands whose OSM polygon has no leaf_type but the photos show the mix: the hill across the Prahova
-# (photos 7, 17, 23: black pines between the beeches and hornbeams)
-FOREST_MIXED_AT = [(20.0, 560.0), (-120.0, 520.0), (140.0, 520.0)]
 # OSM footprints that are two buildings in reality: cut along a line (game xz), each part with its own look
 SPLITS = {
     # photo 28: the shop 'SHOPPING Oana' (gable facing the DJ100E junction) and the lower wing along the lane
@@ -459,6 +595,23 @@ UNDERPASSES = [
          clear=3.4, deck=0.95, l0=-4.0, l1=5.4, curb=3.9, wtop=5.4, grade=0.004, reach=260.0, fade=160.0, A=17.0, L=20.0,
          Lw=8.0, atEnd=9.4, wend=1.3),        # splayed stone wing walls: 8 m long, out to 9.4 m from the tracks' axis, 1.3 m high at the end
 ]
+# the lane of the user's clip IMG_0725 (OSM way 198810461, src/geo/urcus.js) runs along a steep side-hill, where one 30 m
+# DEM cell spans ~10 m of height: metres added to the bare-earth DEM at lane distance s (from the way's first node), fitted
+# in the game's camera on the clip (the block 30 m ahead and the three walkers 68 m ahead land within 4.8 px rms; with the
+# DEM alone the walkers come out 330 px too low: the lane there is ~7 m higher than FABDEM has it, and Copernicus GLO-30
+# and GEDTM30 agree with FABDEM, so it is the 30 m grid, not one model); the dip the DEMs show past them (s 930-980, out of
+# the clip's sight) is filled to a straight grade. Full within 25 m of the lane, fading out over the next 60 m. The knots
+# are the game's lane distances 920 ... 1040 (on the lane traced onto the aerial, urcus.js TRACE) given along the OSM way,
+# which is ~3.5 m shorter by there: the camera (1051.5) and the man (1036.5) keep the DEM's ground.
+CLIP_LANE = dict(way='198810461', s=[919.4, 928.3, 937.9, 947.8, 957.4, 967.4, 980.1, 1017.5, 1036.4],
+                 d=[0, 1.4, 3.5, 5.5, 6.7, 7.0, 6.75, 1.75, 0], full=25.0, fade=60.0)
+# the hilltop of the cross (photo 24, looking NNW, ~327-17 deg across the frame): right of the cross, the photo has the
+# ground falling away to the valley from the slab's back edge, left of it a wooded hill rising towards the horizon. FABDEM
+# (and COP30, GEDTM30) has a 3-4 m hump 30-60 m out on the right half (the shoulder of that hill, or the scrub clumps
+# the bare-earth models leave in), which would hide the valley there. In that sector the local relief (relative to the
+# cross) is EU-DEM's, which shows the fall: full within 80 m and +-23 deg of bearing 7, fading out by 140 m and +-35 deg
+# (the wooded hill on the left, photo 60's camera, east, and photo 24's, south-south-east, keep FABDEM's ground)
+CROSS_BROW = dict(lat=45.1184046, lon=25.7037585, shift=(-4.8, -1.5), bearing=7.0, full=(80.0, 23.0), fade=(140.0, 35.0))
 # no generated lot fences here (the photos show verges, lamps and the railway): x0, x1, z0, z1
 NO_FENCES = [(-650.0, -520.0, -245.0, -135.0),          # around the underpass (photos 26-29)
              (-600.0, -330.0, -180.0, -138.0)]          # Strada Gării east of the junction (photo 25)
@@ -476,21 +629,26 @@ def main():
     Xw, Zw = grid_xz(WN, WEXT)                  # world grid, 10 m (the whole map, +-8 km)
     lat, lon = game_to_ll(X, Z)
     latw, lonw = game_to_ll(Xw, Zw)
-    terr, copf = terrarium_sampler(), cop_sampler('cop30_far')
+    # the bare ground (FABDEM): the DSMs (EU-DEM / SRTM, Copernicus) stand 7-11 m high on the forests' canopy here
+    # (measured over the map: median 6.9 and 11.0 m in the stands, 1.9 and 2.4 m in the open: buildings, orchards)
+    terr, copf = cop_sampler('fabdem', cv2.INTER_CUBIC), cop_sampler('cop30_far')
     H = ndimage.gaussian_filter(terr(lat, lon), 0.7).astype(np.float32)
     Hw = ndimage.gaussian_filter(terr(latw, lonw), 0.4).astype(np.float32)
 
     # ---- land cover
-    is_forest = lambda t: t.get('landuse') == 'forest' or t.get('natural') in ('wood',)
-    forest_a = osm.areas(is_forest)
     farm_a = osm.areas(lambda t: t.get('landuse') in ('farmland', 'allotments'))
     orchard_a = osm.areas(lambda t: t.get('landuse') in ('orchard', 'vineyard'))
     resid_a = osm.areas(lambda t: t.get('landuse') in ('residential',))
     indus_a = osm.areas(lambda t: t.get('landuse') in ('industrial', 'railway', 'construction', 'military') or t.get('amenity') == 'parking')
     water_a = osm.areas(lambda t: t.get('natural') == 'water' and t.get('water') not in ('river', 'stream', 'canal'))
     rivers_a = osm.areas(lambda t: (t.get('natural') == 'water' and t.get('water') in ('river', 'stream', 'canal')) or t.get('waterway') == 'riverbank')
-    H -= 4.0 * ndimage.gaussian_filter(fill_areas(N, EXT, forest_a), 2.0)       # DSM canopy bias -> approx. bare ground
-    Hw -= 4.0 * ndimage.gaussian_filter(fill_areas(WN, WEXT, forest_a), 1.0)
+    # the forests themselves: 10 m Copernicus / national maps instead of the OSM polygons (see land_cover)
+    LC = land_cover(rivers_a, log)
+    k0 = int(round((WEXT - EXT) / 5))
+    forest_near = LC['forest'][k0:LC['F5'] - k0, k0:LC['F5'] - k0].astype(np.float32)
+
+    def forest_on(n, ext):
+        return cv2.resize(forest_near if ext == EXT else LC['forest'].astype(np.float32), (n, n), interpolation=cv2.INTER_AREA)
     log('dem + landcover')
 
     # ---- Prahova: the whole waterway through the map, water level monotone downstream, riverbed carve
@@ -630,6 +788,7 @@ def main():
     log('street + lots, H0 =', round(H0, 2))
 
     # ---- landmarks: a level pad for the foundation (near grid), recorded for the game
+    H = brow_fix(X, Z, H)                                     # the cross's hilltop (CROSS_BROW)
     lm_out = []
     for lm in LANDMARKS:
         x, z = ll_to_game(lm['lat'], lm['lon'])
@@ -713,6 +872,8 @@ def main():
         lm_out.append(up_rec)
         log('underpass', U['name'], 'O', O.round(1), 'road', round(G0 - H0, 2), 'deck top', round(top - H0, 2), 'rails raised near', len(near_rails))
 
+    # the clip's lane (CLIP_LANE), after the roads' cut and fill (whose smoothing along the road would flatten it)
+    H += lane_bump(osm, X, Z)
     # ---- stitch: the near grid's edge follows the world grid; the world grid takes the near grid inside
     edge = np.maximum(np.abs(X), np.abs(Z))
     we = smoothstep(EXT - 200, EXT, edge)
@@ -787,10 +948,12 @@ def main():
         lines_rail = draw_lines(n, ext, [(p, 5.0) for _, p, _ in rails], 5.0)
         rd_mask = draw_lines(n, ext, [(p, road_width(w, t)) for _, w, p, t in roads if road_surface(t) in ('gravel', 'dirt')], 3)
         ct = clay_t if clay_t is not None else 0
-        R_ = np.clip(sp(forest_a), 0, 1) * (1 - ct)
+        R_ = np.clip(forest_on(n, ext), 0, 1) * (1 - ct)
         G_ = np.clip(np.maximum(sp(farm_a) * 0.9, ct), 0, 1)
         B_ = np.clip(np.maximum.reduce([rb_t, lines_rail, sp(indus_a) * 0.6, rd_mask * 0.8]), 0, 1)
-        return cv2.GaussianBlur(np.stack([B_, G_, R_], -1), (0, 0), max(0.8, 1.2 * s / 0.34))
+        out = cv2.GaussianBlur(np.stack([B_, G_, R_], -1), (0, 0), max(0.8, 1.2 * s / 0.34))
+        out[..., 2] = np.round(out[..., 2] * 16) / 16          # forest floor weight in 16 steps (the 10 m mosaic packs better)
+        return out
 
     TN = 2048
     s2n = ground_colour(TN, EXT, 15)
@@ -802,12 +965,12 @@ def main():
     clay_bgr = np.array([118, 138, 156], np.float32)            # grey-ochre clay of the eroded bank (photo 7)
     s2n = (s2n * (1 - clay_t[..., None]) + clay_bgr * clay_t[..., None]).astype(np.uint8)
     cv2.imwrite(os.path.join(OUT, 'ortho.jpg'), s2n, [cv2.IMWRITE_JPEG_QUALITY, 88])
-    cv2.imwrite(os.path.join(OUT, 'splat.png'), np.round(splat_map(TN, EXT, clay_t) * 255).astype(np.uint8))
+    cv2.imwrite(os.path.join(OUT, 'splat.png'), np.round(splat_map(TN, EXT, clay_t) * 255).astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])
     TW = 4096
     # z14 tiles are softer: roofs bleed ~15 m into the yards, so the halo and the garden blend are wider
     s2w = ground_colour(TW, WEXT, 14, halo_m=16.0, garden=0.62)
     cv2.imwrite(os.path.join(OUT, 'ortho_w.jpg'), s2w, [cv2.IMWRITE_JPEG_QUALITY, 86])
-    cv2.imwrite(os.path.join(OUT, 'splat_w.png'), np.round(splat_map(TW, WEXT) * 255).astype(np.uint8))
+    cv2.imwrite(os.path.join(OUT, 'splat_w.png'), np.round(splat_map(TW, WEXT) * 255).astype(np.uint8), [cv2.IMWRITE_PNG_COMPRESSION, 9])
     Xft, Zft = grid_xz(2048, FAR_EXT)
     cv2.imwrite(os.path.join(OUT, 'ortho_far.jpg'), s2_mosaic_sampler(11)(*game_to_ll(Xft, Zft)), [cv2.IMWRITE_JPEG_QUALITY, 85])
     log('textures')
@@ -956,7 +1119,11 @@ def main():
     free = (EXR == 0) & ~clay_x & ~rb_x & (dr_x > 12) & ~lots & (edge_x < WEXT - 20)
     for lm in lm_out:                                     # meadow around the landmarks (photo 24)
         free &= (XX - lm['x']) ** 2 + (ZZ - lm['z']) ** 2 > lm['clear'] ** 2
-    forest_x = fill_areas(XN, WEXT, forest_a, dtype=np.uint8) > 0
+    # no forest crowns through the roofs: the stands keep ~6 m off the buildings (the 10 m maps reach into the yards)
+    bclear = cv2.dilate((EXR == 1).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    forest_x = (cv2.resize(LC['forest'].astype(np.uint8), (XN, XN), interpolation=cv2.INTER_NEAREST) > 0) & ~bclear
+    tcd_x = cv2.resize(LC['tcd'], (XN, XN), interpolation=cv2.INTER_NEAREST)               # tree cover density 2018, %
+    shrub_x = cv2.resize(LC['shrub'].astype(np.uint8), (XN, XN), interpolation=cv2.INTER_NEAREST) > 0
     orch_x = fill_areas(XN, WEXT, orchard_a, dtype=np.uint8) > 0
     resid_x = fill_areas(XN, WEXT, resid_a, dtype=np.uint8) > 0
     farm_x = fill_areas(XN, WEXT, farm_a, dtype=np.uint8) > 0
@@ -985,27 +1152,16 @@ def main():
         return px[ok], pz[ok], jj[ok], ii[ok]
     T_ = []
     # ---- forest stands (the forest trees themselves are generated in the game around the player):
-    # 5 m raster, 2 bits per cell: 0 none, 1 broadleaved (beech / oak / hornbeam), 2 mixed, 3 needleleaved
-    F5 = int(round(2 * WEXT / 5)) + 1
-    LEAF = {'broadleaved': 1, 'mixed': 2, 'needleleaved': 3}
-    fcode = np.zeros((F5, F5), np.uint8)
-    from shapely.geometry import Point, Polygon as SPoly
-    for outers, inners, tg, _ in forest_a:
-        code = LEAF.get(tg.get('leaf_type'), 9)
-        if code == 9 and any(SPoly(outers[0]).contains(Point(*q)) for q in FOREST_MIXED_AT if len(outers[0]) > 2): code = 2
-        elif code == 9 and tg.get('leaf_cycle') == 'deciduous': code = 1     # no leaf_type but deciduous: broadleaved (photo 60)
-        for r in outers: cv2.fillPoly(fcode, [np.round(to_px(r, F5, WEXT) * 8).astype(np.int32)], int(code), cv2.LINE_8, 3)
-        for r in inners: cv2.fillPoly(fcode, [np.round(to_px(r, F5, WEXT) * 8).astype(np.int32)], 0, cv2.LINE_8, 3)
-    # untagged stands: mostly broadleaved, with mixed and pine stands in patches of a few hectares
-    nz = ndimage.gaussian_filter(np.random.default_rng(21).standard_normal((F5 // 8 + 1,) * 2), 2.0)
-    nz = cv2.resize((nz / nz.std()).astype(np.float32), (F5, F5), interpolation=cv2.INTER_CUBIC)
-    unk = fcode == 9
-    fcode[unk] = np.where(nz[unk] > 1.5, 3, np.where(nz[unk] > 0.9, 2, 1)).astype(np.uint8)
-    blocked = cv2.resize((~free).astype(np.uint8) * 255, (F5, F5), interpolation=cv2.INTER_AREA) > 110
+    # 5 m raster, 2 bits per cell: 0 none, 1 broadleaved, 2 mixed, 3 needleleaved (land_cover: Copernicus + genus map)
+    F5 = LC['F5']
+    fcode = LC['code'].copy()
+    blocked = cv2.resize((~free | bclear).astype(np.uint8) * 255, (F5, F5), interpolation=cv2.INTER_AREA) > 110
     fcode[blocked] = 0
     flat = np.concatenate([fcode.ravel(), np.zeros((-fcode.size) % 4, np.uint8)]).reshape(-1, 4)
     write_b64('forest.json', (flat[:, 0] | flat[:, 1] << 2 | flat[:, 2] << 4 | flat[:, 3] << 6).astype(np.uint8))
     log('forest stands', {k: int((fcode == v).sum() * 25 / 1e4) for k, v in (('broad ha', 1), ('mixed ha', 2), ('needle ha', 3))})
+    # genus per 20 m cell: bits 0-3 group (GENUS_GROUPS), bit 4 pure stand (>= 80 %), bits 5-7 tree cover density / 100 * 7
+    write_b64('species.json', LC['sp'])
     # riverside willows / poplars on the green parts of the river corridor
     wx_, wz_, jj, ii = scatter(7.0, (EXR == 0) & ~rb_x & (dr_x > 11) & (dr_x < 120) & (green > 6) & ~forest_x & ~lots, out_keep=0.5)
     T_.append((wx_, wz_, trng.choice([5, 1], len(wx_), p=[0.7, 0.3]), trng.uniform(0.75, 1.15, len(wx_))))
@@ -1015,9 +1171,13 @@ def main():
     # yards: fruit trees, walnuts, spruces where Sentinel-2 shows vegetation
     yx_, yz_, jj, ii = scatter(10.0, free & (resid_x | near_b) & ~forest_x & ~orch_x & ~farm_x & (green > 4), far_keep=0.75, out_keep=0.5)
     T_.append((yx_, yz_, trng.choice([3, 4, 1, 2, 0], len(yx_), p=[0.45, 0.18, 0.17, 0.12, 0.08]), trng.uniform(0.7, 1.15, len(yx_))))
-    # scattered field trees
-    sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10), keep=0.35, out_keep=1.0)
+    # scattered field trees: where the 10 m tree cover density (Copernicus 2018) shows trees outside the forests
+    sx_, sz_, _, _ = scatter(32.0, free & ~forest_x & ~resid_x & ~near_b & (green > 10) & (tcd_x >= 30), keep=0.6, out_keep=1.0)
     T_.append((sx_, sz_, trng.choice([0, 1, 4], len(sx_)), trng.uniform(0.8, 1.2, len(sx_))))
+    # shrubland (CLC+ 2021 'low-growing woody plants': hawthorn, blackthorn, dog rose and young trees on old pastures):
+    # bushes branched to the ground (type 12 scaled to 3.5-6 m)
+    bx_, bz_, _, _ = scatter(6.0, free & shrub_x & ~forest_x & ~resid_x, keep=0.5, far_keep=0.8, out_keep=0.6)
+    T_.append((bx_, bz_, np.full(len(bx_), 12), trng.uniform(0.27, 0.46, len(bx_))))
     for lm in lm_out:
         if lm['type'] != 'underpass': continue
         ur_, nr_ = np.array(lm['ur']), np.array(lm['nr'])
@@ -1106,12 +1266,13 @@ def main():
                   grid=dict(n=N, ext=EXT, step=STEP), world=dict(n=WN, ext=WEXT, step=WSTEP, scale=WSCALE),
                   far=dict(n=FAR_N, ext=FAR_EXT), trees=dict(scale=TREE_SCALE),
                   street=dict(z0=STREET_Z[0], z1=STREET_Z[1]), lots=LOTS,
-                  sources=['OpenStreetMap contributors (ODbL)', 'Terrain Tiles on AWS (EU-DEM/SRTM, terrarium z15)',
+                  sources=['OpenStreetMap contributors (ODbL)', 'FABDEM V1-2, Hawker et al. 2022 (CC BY-NC-SA 4.0)',
                            'Copernicus GLO-30 DSM', 'Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0)']),
         profile=dict(z0=float(zs[0]), step=STEP, y=np.round(prof2[rows] - H0, 3).tolist()),
         buildings=bl, roads=rl, rails=ral, platforms=plat, power=power, water=cells, water2=cells_w,
         river=dict(p=np.round(rp, 1).ravel().tolist(), lev=np.round(lev - H0, 2).tolist()),
-        fences=fences, poles=poles, landmarks=lm_out, forest=dict(n=F5, ext=WEXT, step=5.0))
+        fences=fences, poles=poles, landmarks=lm_out, forest=dict(n=F5, ext=WEXT, step=5.0),
+        species=dict(n=LC['n20'], ext=WEXT, step=20.0, groups=GENUS_GROUPS))
     with open(os.path.join(OUT, 'geo.json'), 'w') as f:
         json.dump(geo, f, separators=(',', ':'), ensure_ascii=False)
     log('geo.json', os.path.getsize(os.path.join(OUT, 'geo.json')) // 1024, 'KB')
