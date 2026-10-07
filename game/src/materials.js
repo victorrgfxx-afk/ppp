@@ -143,6 +143,7 @@ export function buildMaterials() {
   const leaf = (name, map, color, amp) => addWind(std(name, { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, color, alphaToCoverage: false }), amp);
   leaf('leaves', TEX.leaves, 0xffffff, 0.035);
   leaf('leavesSmall', TEX.leavesSmall, 0xe8f0d8, 0.04);
+  leaf('leavesDense', TEX.leavesDense, 0xe8f0d8, 0.04);                     // fruit trees, willows
   leaf('leavesDark', TEX.leaves, 0x93a67e, 0.035);
   leaf('leavesAutumn', TEX.leavesAutumn, 0xffffff, 0.035);                 // the lane up to the cross in mid-October
   leaf('leavesPinnate', TEX.leavesPinnate, 0xffffff, 0.045);                // black locust

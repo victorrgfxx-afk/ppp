@@ -355,7 +355,7 @@ function genChainLink() {
 function genLeaves(kind = 'broad') {
   // Leaf-cluster card with alpha (drawn leaves)
   const n = 512;
-  const r = rng(kind === 'broad' ? 101 : kind === 'autumn' ? 151 : 202);
+  const r = rng(kind === 'broad' ? 101 : kind === 'autumn' ? 151 : kind === 'dense' ? 223 : 202);
   const autumn = kind === 'autumn';
   const c = document.createElement('canvas'); c.width = c.height = n;
   const ctx = c.getContext('2d');
@@ -367,12 +367,12 @@ function genLeaves(kind = 'broad') {
     const a = r() * Math.PI * 2;
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * 110, cy + Math.sin(a) * 110); ctx.stroke();
   }
-  const count = kind === 'small' ? 260 : 170;
+  const count = kind === 'small' ? 260 : kind === 'dense' ? 560 : 170;     // (dense: the small leaves of the fruit trees and willows, full crowns as in the photos)
   for (let i = 0; i < count; i++) {
     const a = r() * Math.PI * 2, rad = Math.sqrt(r()) * n * 0.42;
     const x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad * 0.9;
-    const L = kind !== 'small' ? 26 + r() * 22 : 16 + r() * 12;
-    const Wd = L * (kind !== 'small' ? 0.45 : 0.35);
+    const small = kind === 'small' || kind === 'dense', L = !small ? 26 + r() * 22 : 16 + r() * 12;
+    const Wd = L * (!small ? 0.45 : 0.35);
     const ang = a + (r() - 0.5) * 1.4;
     const light = r();
     const g = 70 + light * 90;
@@ -401,7 +401,7 @@ function genLeaves(kind = 'broad') {
   }
   const t = tex(c, { repeat: false });
   t.premultiplyAlpha = false;
-  TEX[kind === 'broad' ? 'leaves' : kind === 'autumn' ? 'leavesAutumn' : 'leavesSmall'] = t;
+  TEX[kind === 'broad' ? 'leaves' : kind === 'autumn' ? 'leavesAutumn' : kind === 'dense' ? 'leavesDense' : 'leavesSmall'] = t;
 }
 
 function genPinnate() {
@@ -759,7 +759,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('autumn'); genPinnate(); }], ['brad', genFirBranch], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); }], ['brad', genFirBranch], ['scoarță', genBark],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

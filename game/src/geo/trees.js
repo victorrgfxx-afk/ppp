@@ -12,9 +12,9 @@ const TYPES = [
   { name: 'oak', H: 15, crown: 5.0, trunkR: 0.34, cards: 115, leaf: 'leavesDark', tint: 0xb9c7a3 },
   { name: 'hornbeam', H: 12, crown: 3.8, trunkR: 0.24, cards: 100, leaf: 'leaves', tint: 0xc4d0a8 },
   { name: 'spruce', H: 17, crown: 3.0, conifer: true },
-  { name: 'fruit', H: 5.2, crown: 2.4, trunkR: 0.13, cards: 80, leaf: 'leavesSmall', tint: 0xd8e0c0 },
+  { name: 'fruit', H: 5.2, crown: 2.4, trunkR: 0.13, cards: 80, leaf: 'leavesDense', tint: 0xd8e0c0 },
   { name: 'walnut', H: 13, crown: 5.4, trunkR: 0.36, cards: 115, leaf: 'leaves', tint: 0xb4c49c },
-  { name: 'willow', H: 11, crown: 4.0, trunkR: 0.3, cards: 100, leaf: 'leavesSmall', tint: 0xc8d7a0, droop: true },
+  { name: 'willow', H: 11, crown: 4.0, trunkR: 0.3, cards: 100, leaf: 'leavesDense', tint: 0xc8d7a0, droop: true },
   // forest-grown trees of the mapped stands (generated around the player): tall clear boles, high crowns
   { name: 'beech', H: 23, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leaves', tint: 0xbccb98, bole: 0.5, bark: 'barkLight' },
   { name: 'oak (forest)', H: 20, crown: 4.7, trunkR: 0.36, cards: 130, leaf: 'leavesDark', tint: 0xaabd92, bole: 0.44 },

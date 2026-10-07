@@ -19,6 +19,26 @@ function resample(P, maxSeg) {
   return out;
 }
 
+// around the railway underpass the wing walls, their slopes and the corner's stone wall are built from the photos (25-29)
+// over the mapped road's edges: the road keeps its plain ribbon there
+const nearUnderpass = (x, z) => GEO.ups.some(U => { const dx = x - U.x, dz = z - U.z; return Math.abs(dx * U.ur[0] + dz * U.ur[1]) <= U.A + 8 && Math.abs(dx * U.nr[0] + dz * U.nr[1]) <= U.L + 8; });
+
+// the ribbon's vertices: every maxSeg metres, and where the ground's long profile bends more than those steps follow
+// (cuts, crests, the 1 m terrain zones) a step is halved, down to ~0.4 m, until the ground at its middle stands at most
+// 1 cm over the chord (or 6 cm under it): no grass through the asphalt between the vertices
+export function ribbonPath(P0, maxSeg, h) {
+  const P = resample(P0, maxSeg);
+  if (!h) return P;
+  const out = [P[0]];
+  const split = (a, b, ha, hb, depth) => {
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], hm = h(m[0], m[1]), e = hm - (ha + hb) / 2;
+    if (depth < 3 && (e > 0.01 || e < -0.06) && !nearUnderpass(m[0], m[1])) { split(a, m, ha, hm, depth + 1); split(m, b, hm, hb, depth + 1); } else out.push(b);
+  };
+  let ha = h(P[0][0], P[0][1]);
+  for (let i = 1; i < P.length; i++) { const hb = h(P[i][0], P[i][1]); split(P[i - 1], P[i], ha, hb, 0); ha = hb; }
+  return out;
+}
+
 // left normals with limited miter
 function normals(P) {
   const N = [];
@@ -37,15 +57,20 @@ function normals(P) {
   return N;
 }
 
+// yfn(k, off): the height at vertex k, off metres across (a flat cross-section ignores off); opts.strips: cut across
 function ribbon(B, material, P, N, off0, off1, yfn, tile, opts = {}) {
+  const n = opts.strips ?? 1;
+  if (n > 1) {
+    for (let j = 0; j < n; j++) ribbon(B, material, P, N, off0 + (off1 - off0) * j / n, off0 + (off1 - off0) * (j + 1) / n, yfn, tile, { ...opts, strips: 1 });
+    return;
+  }
   const pos = [], nrm = [], uv = [];
   let acc = 0;
   for (let i = 0; i < P.length - 1; i++) {
     const q = [];
     for (const k of [i, i + 1]) {
       const [x, z] = P[k], [nx, nz] = N[k];
-      const y = yfn(k);
-      q.push([x + nx * off0, y, z + nz * off0], [x + nx * off1, y, z + nz * off1]);
+      q.push([x + nx * off0, yfn(k, off0), z + nz * off0], [x + nx * off1, yfn(k, off1), z + nz * off1]);
     }
     const L = Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]);
     const [a0, a1, b0, b1] = q;             // a0/a1 at i (off0/off1), b0/b1 at i+1
@@ -121,11 +146,12 @@ export function buildRoads(B, world, mats) {
 
 function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
   const w = r.w, surf = r.s;
-  const P = resample(P0, r.br ? 5 : r.step ?? 3.5);       // (r.step: a finer ribbon over a 1 m terrain zone)
+  const custom = r.br && r.id === prahovaBridge()?.r.id ? prahovaBridge() : null;
+  const dy = r.dy ?? (() => 0.035);                       // r.dy(x, z): a ribbon kept under a neighbour's asphalt (breaza.js)
+  const P = ribbonPath(P0, r.br ? 5 : r.step ?? 3.5, r.br ? null : (x, z) => heightAt(x, z) + dy(x, z));   // (r.step: a finer ribbon)
   const N = normals(P);
   const mat = mats[surf] ?? mats.asphalt;
   let yfn;
-  const custom = r.br && r.id === prahovaBridge()?.r.id ? prahovaBridge() : null;
   if (custom) {
     // the Prahova bridge (bridge.js): its own deck profile, barriers, railings and piers
     yfn = (k) => custom.yAt(custom.local(P[k][0], P[k][1])[0]);
@@ -138,18 +164,22 @@ function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
     yfn = (k) => { const t = L[k] / (acc || 1); return y0 + (y1 - y0) * t + Math.sin(Math.PI * t) * Math.min(0.8, acc * 0.004); };
     bridgeStructure(B, mats, P, N, w, yfn);
     bridges.push({ P, w: w / 2 + 0.5, y: P.map((_, k) => yfn(k)) });
-  } else {
-    const dy = r.dy ?? (() => 0.035);                     // r.dy(x, z): a ribbon kept under a neighbour's asphalt (breaza.js)
-    yfn = (k) => heightAt(P[k][0], P[k][1]) + dy(P[k][0], P[k][1]);
-  }
-  ribbon(B, mat, P, N, -w / 2, w / 2, yfn, TILE[surf] ?? 1.3);
+  } else yfn = (k) => heightAt(P[k][0], P[k][1]) + dy(P[k][0], P[k][1]);
+  // across, the asphalt follows the ground where it comes up to 30 cm over the axis's level at that side's edge (a 5 m
+  // terrain cell reaching into the road no longer covers its edge; that ground is what the wheels roll on anyway); where
+  // the edge meets a higher bank that side stays flat and the bank keeps covering it, as before
+  const flat = custom || r.br;
+  const over = (k, off) => { const [x, z] = P[k], [nx, nz] = N[k], xo = x + nx * off, zo = z + nz * off; return heightAt(xo, zo) + dy(xo, zo) - yfn(k); };
+  const sideOk = flat ? null : P.map((p, k) => nearUnderpass(p[0], p[1]) ? [false, false] : [over(k, -w / 2) <= 0.3, over(k, w / 2) <= 0.3]);
+  const sf = flat ? yfn : (k, off) => sideOk[k][off < 0 ? 0 : 1] ? yfn(k) + Math.min(0.3, Math.max(0, over(k, off))) : yfn(k);
+  ribbon(B, mat, P, N, -w / 2, w / 2, sf, TILE[surf] ?? 1.3, { strips: flat ? 1 : Math.max(2, Math.min(4, Math.ceil(w / 2))) });
   const major = ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary'].includes(r.c);
   if (surf === 'asphalt' && !r.br && !r.noShoulder && ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential'].includes(r.c)) {
     const sw = major ? 0.9 : 0.45;
-    ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + sw, (k) => yfn(k) - 0.02, 1.2);
-    if (!r.outerShoulder) ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k) => yfn(k) - 0.02, 1.2);   // outerShoulder: a median on the left
+    ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + sw, (k, o) => sf(k, o) - 0.02, 1.2);
+    if (!r.outerShoulder) ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k, o) => sf(k, o) - 0.02, 1.2);   // outerShoulder: a median on the left
   }
-  if (major && surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, yfn, r, nearJunction, custom ? { solid: true, edges: false } : {});
+  if (major && surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, sf, r, nearJunction, custom ? { solid: true, edges: false } : {});
   if (r.n) names.push({ n: r.n, P: P0 });
 }
 
@@ -166,7 +196,7 @@ function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
     const flush = () => {
       if (run.length > 1) {
         const idx = run;
-        ribbon(B, mats.marking, idx.map(k => P[k]), idx.map(k => N[k]), side * off - lw / 2, side * off + lw / 2, (i) => yfn(idx[i]) + 0.004, 4, { along: true });
+        ribbon(B, mats.marking, idx.map(k => P[k]), idx.map(k => N[k]), side * off - lw / 2, side * off + lw / 2, (i, o) => yfn(idx[i], o) + 0.004, 4, { along: true });
       }
       run = [];
     };
@@ -181,7 +211,7 @@ function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {
   for (let k = 0; k < P.length - 1; k++) {
     const L = Math.hypot(P[k + 1][0] - P[k][0], P[k + 1][1] - P[k][1]);
     const on = solid || (r.solidAt && acc >= r.solidAt[0] && acc <= r.solidAt[1]) || (acc % 9) < 3;   // solidAt: a no-overtaking stretch [s0, s1]
-    if (on && ok[k] && ok[k + 1]) ribbon(B, mats.marking, [P[k], P[k + 1]], [N[k], N[k + 1]], -lw / 2, lw / 2, (i) => yfn(k + i) + 0.004, 4, { along: true });
+    if (on && ok[k] && ok[k + 1]) ribbon(B, mats.marking, [P[k], P[k + 1]], [N[k], N[k + 1]], -lw / 2, lw / 2, (i, o) => yfn(k + i, o) + 0.004, 4, { along: true });
     acc += L;
   }
 }
