@@ -514,6 +514,73 @@ function genFirBranch() {
   TEX.fir = t;
 }
 
+// Norway spruce foliage atlas for the detailed near spruces (geo/firs.js), 512 x 1024:
+//  top half: a branch spray seen from above (base at the bottom, tip at the top): the axis and its side shoots, each a
+//  bottle-brush of 1-2 cm needles pointing forward, dark green with lighter new growth at the tips;
+//  bottom half: the "comb" of a Norway spruce branch: pendulous branchlets hanging from the axis (top edge).
+function genSpruceAtlas() {
+  const W = 512, H = 1024, r = rng(517);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, W, H);
+  g.lineCap = 'round';
+  const needleCol = (t) => {                       // t: 0 old needles .. 1 this year's shoot tip
+    const v = 0.75 + r() * 0.5, k = Math.max(0, t - 0.7) / 0.3;
+    const R = (24 + 40 * k) * v, G = (52 + 52 * k) * v, B = (36 + 20 * k) * v;
+    return `rgb(${R | 0},${G | 0},${B | 0})`;
+  };
+  // a shoot from (x0, y0) to (x1, y1): a thin twig with needles all round it, seen as a brush pointing to the tip
+  const shoot = (x0, y0, x1, y1, len, w) => {
+    const L = Math.hypot(x1 - x0, y1 - y0), dx = (x1 - x0) / L, dy = (y1 - y0) / L;
+    g.strokeStyle = 'rgb(88,62,42)'; g.lineWidth = w;
+    g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    g.lineWidth = 1.8;                                   // (thick enough to survive the smaller mip levels)
+    for (let s = 0; s < L; s += 1.3) {
+      const t = s / L, px = x0 + dx * s, py = y0 + dy * s;
+      for (const side of [-1, 1]) {
+        if (r() < 0.05) continue;
+        const ang = (0.55 + r() * 0.5) * side, ca = Math.cos(ang), sa = Math.sin(ang);
+        const nl = len * (0.75 + r() * 0.5) * (1 - 0.35 * t * t);
+        const ex = px + (dx * ca - dy * sa) * nl, ey = py + (dx * sa + dy * ca) * nl;
+        g.strokeStyle = needleCol(t); g.beginPath(); g.moveTo(px, py); g.lineTo(ex, ey); g.stroke();
+      }
+      if (r() < 0.35) {                                            // needles pointing up / down out of the plane: short
+        g.strokeStyle = needleCol(t); g.beginPath(); g.moveTo(px, py); g.lineTo(px + dx * len * 0.5 + (r() - 0.5) * 3, py + dy * len * 0.5 + (r() - 0.5) * 3); g.stroke();
+      }
+    }
+  };
+  // spray: the axis up the middle, alternate side shoots, shorter towards the tip, with their own side shoots
+  const ax = W / 2, base = 506, tip = 10;
+  shoot(ax, base, ax + (r() - 0.5) * 8, tip, 9, 3.2);
+  for (let i = 0; i < 34; i++) {
+    const t = 0.03 + i / 34 * 0.92, y = base - t * (base - tip), side = i % 2 ? 1 : -1;
+    const L = (1 - t) * 200 + 34, a = 0.75 + r() * 0.25;
+    const ex = ax + side * Math.sin(a) * L, ey = y - Math.cos(a) * L;
+    shoot(ax, y, Math.max(6, Math.min(W - 6, ex)), Math.max(4, ey), 7.5, 1.8);
+    for (let j = 1; j < 4; j++) {                                  // second order shoots
+      const u = j / 4, sx = ax + (ex - ax) * u, sy = y + (ey - y) * u, l2 = L * (0.38 - 0.08 * j) * (0.8 + r() * 0.4);
+      for (const s2 of [-1, 1]) {
+        if (r() < 0.25) continue;
+        const b = a * side + s2 * (0.7 + r() * 0.3);
+        shoot(sx, sy, Math.max(4, Math.min(W - 4, sx + Math.sin(b) * l2)), Math.max(4, sy - Math.cos(b) * l2), 6, 1.1);
+      }
+    }
+  }
+  // comb: pendulous branchlets hanging from the axis along the top edge of the lower half
+  const top = 520;
+  g.strokeStyle = 'rgb(84,60,40)'; g.lineWidth = 4; g.beginPath(); g.moveTo(0, top); g.lineTo(W, top); g.stroke();
+  for (let x = 5; x < W - 4; x += 6 + r() * 5) {
+    const L = 160 + r() * 230, sway = (r() - 0.5) * 50;
+    const pts = [[x, top]];
+    for (let k = 1; k <= 4; k++) pts.push([x + sway * (k / 4) * (k / 4) + (r() - 0.5) * 6, top + L * k / 4]);
+    for (let k = 0; k < 4; k++) shoot(pts[k][0], pts[k][1], pts[k + 1][0], Math.min(H - 6, pts[k + 1][1]), 7.5 - k * 0.6, 1.6 - k * 0.25);
+  }
+  const t = tex(c, { repeat: false });
+  t.premultiplyAlpha = false;
+  t.anisotropy = 4;
+  TEX.spruceAtlas = t;
+}
+
 function genBark() {
   const w = 256, h = 512;
   const H = heightField(w, h, (x, y) => {
@@ -787,7 +854,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); }], ['brad', genFirBranch], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); }], ['scoarță', genBark],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

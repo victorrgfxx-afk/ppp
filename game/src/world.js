@@ -359,5 +359,5 @@ export function buildWorld(scene, world, quality, opts = {}) {
   for (const a of areas) { a.z0 = Math.max(a.z0, SZ[0]); a.z1 = Math.min(a.z1, SZ[1]); }
   const grass = buildGrass(scene, areas.filter(a => a.z1 > a.z0), quality.grass, (x, z) => world.groundHeight(x, z));
   if (!geo) buildHills(scene);
-  return { meshes, lamps, houses, grass };
+  return { meshes, lamps, houses, grass, forest };
 }

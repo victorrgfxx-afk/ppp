@@ -203,7 +203,7 @@ export class Vehicle {
       let any = false;
       this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
       for (const b of list) {
-        if (b === this.box || b.y1 < gy + 0.45 || b.y0 > gy + 2.2 || b.ghost) continue;   // curbs and decks overhead don't count
+        if (b === this.box || b.y1 < gy + 0.45 || b.y0 > gy + 2.2 || b.ghost || b.sapling) continue;   // curbs and decks overhead don't count; a car rides over the young spruces
         const p = boxBox(this.box, b);
         if (!p) continue;
         if (b.npc) { b.npc.hit(this, p); continue; }

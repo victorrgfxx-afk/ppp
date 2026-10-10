@@ -196,7 +196,7 @@ export function yuccaArchetype(seed, H = 0.8) {
 
 // ---------- instanced placement ----------
 export class Forest {
-  constructor(scene) { this.scene = scene; this.types = new Map(); }
+  constructor(scene) { this.scene = scene; this.types = new Map(); this.records = new Map(); }
   add(type, archetypeFn, x, y, z, rotY = 0, scale = 1) {
     if (!this.types.has(type)) this.types.set(type, { make: archetypeFn, list: [] });
     this.types.get(type).list.push([x, y, z, rotY, scale]);
@@ -217,8 +217,24 @@ export class Forest {
         im.userData.noAO = material.alphaTest > 0;
         im.computeBoundingSphere();
         this.scene.add(im);
+        (t.ims ??= []).push(im);
       }
     }
+  }
+  // the instances of a type as records for the near detailed spruces (geo/firs.js: hidden here while drawn there)
+  firRecords(type, spec) {
+    const t = this.types.get(type);
+    if (!t) return [];
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+    return t.list.map(([x, y, z, ry, sc], i) => {
+      const rec = { x, y, z, s: sc, rot: ry, v: 1, spec };
+      rec.hide = (on) => {
+        rec.pooled = on;
+        m4.compose(new THREE.Vector3(x, y, z), q.setFromAxisAngle(up, ry), new THREE.Vector3(sc, sc, sc));
+        for (const im of t.ims) { im.setMatrixAt(i, on ? zero : m4); im.instanceMatrix.needsUpdate = true; }
+      };
+      return rec;
+    });
   }
 }
 

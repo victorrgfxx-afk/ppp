@@ -158,7 +158,10 @@ const SNOW_MAIN = /* glsl */`
 if (uSnow > 0.001) {
   vec3 sp = vWetP;
   float sUp = smoothstep(0.32, 0.78, wetGeoN.y);
-  float sOpen = wetOpen(sp);
+  // (under a high canopy, a forest's crowns 10 m and more up, about half the snow still sifts through to the floor;
+  // under low crowns and eaves 2-4 m up a little blows in: a patchy dusting thinning towards the trunk or the wall)
+  float sGap = rainTop(sp.xz) - sp.y;
+  float sOpen = max(wetOpen(sp), max(0.5 * smoothstep(10.0, 14.0, sGap), 0.28 * smoothstep(1.6, 4.0, sGap)));
   float sn = wetNoise(sp.xz * 0.7) * 0.55 + wetNoise(sp.xz * 2.9 + 7.1) * 0.3 + wetNoise(sp.xz * 11.0 + 3.3) * 0.15;
   float sVal = sUp * sOpen * (0.62 + 0.38 * sn) * SNOW_K;
   float sTh = 1.0 - uSnow;
@@ -282,20 +285,21 @@ void main() {
   float h = topH(vUv), g = lowH(vUv);
   // open to the sky down to (nearly) the ground: not under a roof, eaves, a car, a bridge deck, a spruce. The snow lies
   // on the top surface there (ground, road, kerb, step); where it does not, on the open surface next to it.
-  float open = 0.0, baseSum = 0.0;
+  // Under a high canopy (a forest's crowns, 10 m and more up) about half of it still reaches the floor.
+  float open = 0.0, baseSum = 0.0, ow = 0.0;
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
     vec2 uv = at(vec2(float(i), float(j)) * 0.35);
-    float t = topH(uv), o = step(t - lowH(uv), 0.6);
-    open += o; baseSum += o * t;
+    float t = topH(uv), l = lowH(uv), o = step(t - l, 0.6), c = 0.45 * smoothstep(10.0, 14.0, t - l);
+    open += o + c; baseSum += o * t + c * l; ow += o + c;
   }
-  float base = h - g < 0.6 ? h : open > 0.0 ? baseSum / open : g;
+  float base = h - g < 0.6 ? h : h - g > 10.0 ? g : ow > 0.0 ? baseSum / ow : g;
   // ... and the open surface around, averaged over ~2 m: a deep cover fills the steps (kerbs, plinths, ditches) and
   // rounds them over instead of following them
   float wide = 0.0, wn = 0.0;
   for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
     vec2 uv = at(vec2(float(i), float(j)) * 0.45);
-    float t = topH(uv), o = step(t - lowH(uv), 0.6) * (1.0 - 0.12 * float(i * i + j * j));
-    wide += o * t; wn += o;
+    float t = topH(uv), l = lowH(uv), o = (step(t - l, 0.6) + 0.45 * smoothstep(10.0, 14.0, t - l)) * (1.0 - 0.12 * float(i * i + j * j));
+    wide += o * (t - l < 0.6 ? t : l); wn += o;
   }
   wide = wn > 0.0 ? wide / wn : base;
   open /= 9.0;

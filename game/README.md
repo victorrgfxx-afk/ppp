@@ -76,6 +76,21 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
     * Gardurile, soclurile și bordurile se îngroapă treptat: la 5 cm se văd, la 45 cm dispar.
     * Pe drumurile din OSM roțile tasează zăpada: rămâne asfalt ud cu zloată, iar pe margini se ridică un mal care coboară spre asfalt pe ~1 m. Mașina pe care o conduci dă zăpada la o parte.
     * Mai departe de 48 m continuă doar stratul alb de pe suprafețe.
+  * **Brazii de lângă tine sunt detaliați**, iarna și vara. Cei mai apropiați 40 de molizi și brazi (24 la „Medie”, 12 la „Scăzută”), pe o rază de ~46 m, nu mai sunt carduri în etaje:
+    * au trunchi și ramuri adevărate, în verticile la ~42 cm (creșterea unui an), câte 5–6 ramuri plus câteva mai mici între ele. Ramurile coboară spre mijloc și își ridică vârful, ca la molid;
+    * pe fiecare ramură e un „spray” de ace, cu încă unul înclinat dedesubt pentru volum. Ramurile din partea de jos și din mijlocul coroanei au și „pieptenele” de rămurele atârnate al molidului;
+    * molizii crescuți în pădure au pe trunchi, sub coroană, cioturi de ramuri uscate.
+    * Textura de ace e desenată ac cu ac (1–2 cm, verde închis, cu vârfurile noi mai deschise).
+    * Iarna, pe fiecare ramură stă o pernă de zăpadă cu cocoloașe, mai groasă la mijlocul ramurii, uneori ruptă în două. Crește odată cu stratul și e plină de la ~20 cm.
+    * Brazii de departe sunt redesenați o dată iarna, din modelul detaliat cu zăpadă pe ramuri.
+  * **Prin pădurea de molid crește tineret**: desișuri de molizi tineri de 2–5 m, cu ramuri până la pământ, pe ~o cincime din arboret, unde în realitate se regenerează pădurea. Pe tulpina lor nu treci, o ocolești, dar printre ramuri da. Mașina trece peste ei.
+  * **Când intri într-un brad, ramurile se dau la o parte** în jurul tău, pe jos sau cu mașina. Când ieși, revin și se leagănă ca un arc amortizat (~1,7 Hz). Auzi foșnetul acelor.
+    * Zăpada de pe ramurile pe care le miști cade pe tine și în jur: ~70% pulbere și restul bulgări de 2–7 cm. Cade întâi de jos, apoi de mai sus, pe măsură ce scuturătura urcă pe brad.
+    * Pulberea încetinește imediat la ~0,7 m/s și se împrăștie. Bulgării cad liber și se sparg în pulbere când ajung jos. Se aude o bufnitură moale și foșnetul pulberii.
+    * Ramurile scuturate rămân fără zăpadă. Cât ninge, se acoperă din nou în ~1,5 minute.
+    * Dacă lovești cu mașina trunchiul unui brad, se scutură tot, cu toată zăpada.
+    * Din când în când, o ramură își lasă singură încărcătura să cadă.
+  * Sub pădurile înalte (coroane la peste 10 m) ajunge totuși la sol cam jumătate din zăpadă.
   * **Iarna, foioasele stau goale**: stejarii, fagii, carpenii, salcâmii, pomii și tufele au doar crengi și rămurele, cu zăpadă pe ele. Copacii îndepărtați și pădurile de pe dealuri trec la crengi gri-maronii, iar molizii și pinii rămân verzi. Iarba nu se mai vede sub zăpadă, iar sub foioasele goale ninge până la sol.
   * **Mașina alunecă**: pe zăpadă aderența scade la ~1/3 din cea pe asfalt uscat (pe zăpadă bătătorită μ ≈ 0,2–0,3, pe asfalt uscat 0,8–1). Accelerația și frânarea rămân sub ~0,33 g (la 508-ul hyper ~0,46 g). Frânarea de la 50 km/h ține 27,8 m în loc de 9,8 m, iar 0–50 km/h ia 4,7 s în loc de 3,4 s (testat pe modelul mașinii). Mașina nu poate vira mai strâns decât țin cauciucurile (~0,34 g lateral față de ~1,7 g pe uscat) și iese din curbă dacă intri prea repede. La ploaie condusul rămâne ca înainte. În afara drumului zăpada adâncă ține mașina în loc: la 45 cm ajunge la 30 km/h abia în ~16 s și nu trece de ~37 km/h. Tot acolo, pe jos, mergi mai încet: la 50 cm, de 2 ori mai încet.
   * Pașii scârțâie în zăpadă, păsările tac cât ninge (și sunt mai rare cât stă zăpada), iar cauciucurile aproape nu mai scârțâie în viraje.

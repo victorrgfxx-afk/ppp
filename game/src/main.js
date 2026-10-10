@@ -16,6 +16,7 @@ import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
 import { Vehicle, TRACTION } from './vehicle.js';
+import { FirDetail } from './geo/firs.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
@@ -347,7 +348,15 @@ async function main() {
   // the lying snow: a blanket over the ground near the camera, shaped from the height maps and the roads (rain.js)
   const blanket = new SnowBlanket(scene);
   rainOcc.roads = snowRoads(GEO.roads);
-  const occHide = [sky, rainFX.group, snowFX.group, blanket.mesh, ...(geoWorld.canopy?.meshes ?? [])];
+  // the spruces near you in detail: the branches you push through, the snow that falls off them (geo/firs.js)
+  const firs = new FirDetail(scene, { cap: { 'Scăzută': 12, 'Medie': 24, 'Înaltă': 40 }[Q.label] ?? 56, audio });
+  firs.addSource(geoWorld.trees.firSource);
+  if (built.forest) {
+    const yard = [...built.forest.firRecords('spruce', { key: 'yard14', H: 14, crown: 2.9, low: 1.0, seed: 11 }),
+      ...built.forest.firRecords('spruceB', { key: 'yard10', H: 10, crown: 2.2, low: 1.0, seed: 12 })];
+    firs.addSource((x, z, Rr, out) => { for (const r of yard) if (Math.abs(r.x - x) < Rr && Math.abs(r.z - z) < Rr) out.push(r); });
+  }
+  const occHide = [sky, rainFX.group, snowFX.group, blanket.mesh, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
@@ -888,6 +897,13 @@ async function main() {
     if (mode === 'car' && active) { SNOW.uSnowCar.value.set(active.x, active.z, active.h, 1); SNOW.uSnowCarSize.value.set(active.car.half.w, active.car.half.l); }
     else SNOW.uSnowCar.value.w = 0;
     blanket.update();
+    // who pushes through the spruces: you on foot (a 1.75 m capsule) or the car you drive (its front and back)
+    const firBodies = [];
+    if (mode === 'car' && active) {
+      const fx = -Math.sin(active.h), fz = -Math.cos(active.h), gy = active.car.group.position.y, r = active.car.half.w + 0.25;
+      for (const k of [1.3, -1.3]) firBodies.push({ id: k, x: active.x + fx * k, z: active.z + fz * k, y0: gy, y1: gy + 1.5, r, speed: Math.abs(active.speed), car: true, impact: active.impact });
+    } else firBodies.push({ id: 0, x: player.pos.x, z: player.pos.z, y0: player.pos.y, y1: player.pos.y + 1.75, r: 0.3, speed: Math.hypot(player.vel.x, player.vel.z) });
+    firs.update(dt, camera.position, firBodies);
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
     if (post.ssr) post.ssr.enabled = RAIN.uWet.value > 0.01 && !window.__game?.noSSR;   // reflections in wet ground only when there is any
     if (!paused) {
@@ -913,7 +929,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, firs, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

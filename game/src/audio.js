@@ -97,6 +97,12 @@ export class Audio {
     }
   }
   jump() { this.burst({ f: 600, q: 0.8, dur: 0.08, gain: 0.05 }); }
+  // snow sliding off branches: a soft thump and the hiss of the powder (a whole tree's load: longer and heavier)
+  snowDrop(k = 1, big = false) {
+    if (!this.ctx || k < 0.02) return;
+    this.burst({ f: 150, q: 0.7, dur: big ? 0.55 : 0.28, gain: (big ? 0.45 : 0.2) * k, type: 'lowpass' });
+    for (let i = 0; i < (big ? 10 : 4); i++) this.burst({ f: 2800 + Math.random() * 4500, q: 0.6, dur: 0.25 + Math.random() * 0.45, gain: 0.03 * k, delay: 0.04 + i * 0.07 + Math.random() * 0.05 });
+  }
   land(surface) { this.step(surface, 1.2); this.burst({ f: 140, q: 0.7, dur: 0.12, gain: 0.2 }); }
   door() { this.burst({ f: 180, q: 0.8, dur: 0.18, gain: 0.35 }); this.burst({ f: 900, q: 2, dur: 0.05, gain: 0.1, delay: 0.02 }); }
   crash(v) { const g = Math.min(0.9, v * 0.08); this.burst({ f: 250, q: 0.5, dur: 0.4, gain: g, type: 'lowpass' }); this.burst({ f: 3200, q: 1, dur: 0.25, gain: g * 0.4 }); }

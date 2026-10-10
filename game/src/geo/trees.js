@@ -4,6 +4,7 @@ import { GEO, heightAt, forestCode, inHole, speciesAt, speciesCompanion } from '
 import { M, addWind } from '../materials.js';
 import { TEX } from '../textures.js';
 import { rng } from '../util.js';
+import { spruceDetail } from './firs.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
 // Sentinel-2 shows vegetation). Near: light 3D trees per 200 m chunk; far: impostor billboards
@@ -39,9 +40,24 @@ const TYPES = [
   // bark; at the stand edges (as along DN1 at Cornu, KartaView July 2016) leafy down to a few metres
   { name: 'black locust (forest)', H: 18, crown: 3.7, trunkR: 0.24, cards: 105, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.42 },
   { name: 'edge black locust', H: 14, crown: 4.0, trunkR: 0.22, cards: 125, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.18 },
+  // natural regeneration in the spruce and fir stands: young spruces branched down to the ground (understory only)
+  { name: 'young spruce', H: 4.6, crown: 1.6, conifer: true, low: 0.15, noImpostor: true },
 ];
-export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20, robiniaEdge: 21 };
-const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20, T_ROBINIA_EDGE = 21;
+// the detailed model of each spruce-like type for the near ones (firs.js)
+const FIR_SPEC = TYPES.map((t, i) => t.conifer && !t.pine ? { key: 'ty' + i, H: t.H, crown: t.crown, low: t.low ?? 1.3, seed: 50 + i, stubs: (t.low ?? 1.3) > 3 } : null);
+const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+// a near conifer's record for firs.js: its card model instances (refs) are hidden while it is drawn in detail
+function firRecord(t, spec) {
+  t.spec = spec; t.refs = [];
+  t.hide = (on) => {
+    t.pooled = on;
+    const m = on ? ZERO : new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot), new THREE.Vector3(t.s, t.s, t.s));
+    for (const [im, j] of t.refs) { im.setMatrixAt(j, m); im.instanceMatrix.needsUpdate = true; }
+  };
+  return t;
+}
+export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20, robiniaEdge: 21, youngSpruce: 22 };
+const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20, T_ROBINIA_EDGE = 21, T_YOUNG = 22;
 // genus groups of species.json (data.js) -> forest tree type: Fagus, Quercus, Carpinus, Abies, Picea, Pinus, Populus,
 // Robinia, Salix, Tilia, other deciduous (maples, ash, cherry ...), other evergreen
 const GENUS_T = [0, T_BEECH, T_OAK, T_HORN, T_SPRUCE, T_SPRUCE, T_PINE, 14, T_ROBINIA, 5, T_HORN, T_HORN, T_SPRUCE];
@@ -240,7 +256,7 @@ export function buildTrees(scene, world, renderer, quality) {
     if (T.s[i] <= 0 || inHole(T.x[i], T.z[i])) { r(); r(); r(); continue; }      // (scale 0: a tree a place has removed)
     const k = count++;
     X[k] = T.x[i]; Z[k] = T.z[i]; Y[k] = heightAt(X[k], Z[k]) - 0.05;
-    TY[k] = Math.min(TYPES.length - 1, T.t[i]); R[k] = r() * Math.PI * 2; S[k] = T.s[i] * (0.9 + r() * 0.2); V[k] = 0.85 + r() * 0.3;
+    TY[k] = Math.min(T_ROBINIA_EDGE, T.t[i]); R[k] = r() * Math.PI * 2; S[k] = T.s[i] * (0.9 + r() * 0.2); V[k] = 0.85 + r() * 0.3;
     const push = (map, key, cx, cz) => { let c = map.get(key); if (!c) { c = { cx, cz, idx: [] }; map.set(key, c); } c.idx.push(k); };
     const ci = Math.floor(X[k] / CH), cj = Math.floor(Z[k] / CH);
     push(near, ci + ',' + cj, (ci + 0.5) * CH, (cj + 0.5) * CH);
@@ -275,10 +291,12 @@ export function buildTrees(scene, world, renderer, quality) {
   const nearMat = (mat) => { if (!nearMats.has(mat)) nearMats.set(mat, withSwitch(mat, nearR, false, 'near')); return nearMats.get(mat); };
   const buildNear = (ch) => {
     const grp = new THREE.Group();
+    ch.firs = [];
     const byType = TYPES.map(() => []);
     for (const k of ch.idx) byType[TY[k]].push(k);
     byType.forEach((list, ty) => {
       if (!list.length) return;
+      const recs = FIR_SPEC[ty] ? list.map(k => firRecord({ x: X[k], y: Y[k], z: Z[k], s: S[k], rot: R[k], v: V[k] }, FIR_SPEC[ty])) : null;
       for (const [g, mat] of models[ty].parts) {
         if (mat.userData.core) continue;                 // the dark inner volume is only for the impostors
         const leafy = mat !== M.bark;
@@ -288,7 +306,9 @@ export function buildTrees(scene, world, renderer, quality) {
         im.userData.noAO = true;
         im.computeBoundingSphere();
         grp.add(im);
+        if (recs) recs.forEach((t, j) => t.refs.push([im, j]));
       }
+      if (recs) ch.firs.push(...recs);
     });
     grp.userData.ueSkip = 'trees';
     scene.add(grp);
@@ -334,13 +354,19 @@ export function buildTrees(scene, world, renderer, quality) {
   for (const m of [...impMat, ...(forest.impMat || [])]) if (m) m.userData.snow = 0.35;
   // winter (the snow modes): the broadleaves stand bare. Their leaf cards draw twigs (main.js swaps the maps of every
   // leaf material); their far billboards are baked again once, from the same models with twigs and no inner crown
-  // volume. Spruces and pines keep their needles.
+  // volume. Spruces and pines keep their needles; the spruces' billboards are baked from their detailed model with
+  // the snow lying on every branch (firs.js).
   let winterImp = null;
   const setWinter = (on) => {
     if (on && !winterImp) {
       const twig = new THREE.MeshStandardMaterial({ map: TEX.twigs, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.92, color: 0xc2b8ab });
-      winterImp = models.map(({ t, parts, imp }) => !imp || t.conifer || t.pine ? null
-        : bakeImpostor(renderer, parts.filter(([, m]) => !m.userData.core).map(([g, m]) => [g, m.userData.bark ? m : twig]), t));
+      const needle = new THREE.MeshStandardMaterial({ map: TEX.spruceAtlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.74, color: 0xe2f0d6 });
+      const snow = new THREE.MeshStandardMaterial({ roughness: 0.85, color: new THREE.Color().setRGB(0.87, 0.9, 0.94) });
+      winterImp = models.map(({ t, parts, imp }, ty) => {
+        if (!imp || t.pine) return null;
+        if (t.conifer) { const d = spruceDetail(FIR_SPEC[ty]); return bakeImpostor(renderer, [[d.wood, M.bark], [d.needle, needle], [d.snow, snow], ...parts.filter(([, m]) => m.userData.core)], t); }
+        return bakeImpostor(renderer, parts.filter(([, m]) => !m.userData.core).map(([g, m]) => [g, m.userData.bark ? m : twig]), t);
+      });
     }
     models.forEach((mo, ty) => {
       const w = winterImp?.[ty];
@@ -348,10 +374,19 @@ export function buildTrees(scene, world, renderer, quality) {
       for (const m of [impMat[ty], forest.impMat?.[ty]]) if (m) m.map = on ? w.tex : mo.imp.tex;
     });
   };
+  // the conifers near (x, z) for the detailed pool (firs.js): mapped ones and the forest's
+  const firSource = (x, z, Rr, out) => {
+    for (const ch of nearList) {
+      if (!ch.firs || !ch.grp?.visible || Math.abs(ch.cx - x) > CH / 2 + Rr || Math.abs(ch.cz - z) > CH / 2 + Rr) continue;
+      for (const t of ch.firs) if (Math.abs(t.x - x) < Rr && Math.abs(t.z - z) < Rr) out.push(t);
+    }
+    forest.firSource?.(x, z, Rr, out);
+  };
   return {
     count,
     forest,
     setWinter,
+    firSource,
     // everything the Unreal export needs (tools/export-unreal.mjs): the models and every mapped tree as placed here
     exportData: { TYPES, models, count, X, Y, Z, R, S, V, TY },
     update(camPos) {
@@ -435,9 +470,22 @@ function eachShrub(x0, z0, x1, z1, cb) {
     // understory: hazel / hawthorn shrubs, and saplings of the stand (young beeches under the beeches, hornbeams,
     // spruces in conifer stands)
     const k = hash3(i, j, 27);
-    const sap = g && g < 13 ? (GENUS_CONIFER[g] ? T_SPRUCE : g === 1 ? T_BEECH : T_HORN) : code === 3 && k < 0.2 ? T_SPRUCE : T_HORN;
-    if (k < 0.3) cb(x, z, sap, 0.22 + 0.2 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
+    const sap = g && g < 13 ? (GENUS_CONIFER[g] ? T_YOUNG : g === 1 ? T_BEECH : T_HORN) : code === 3 && k < 0.2 ? T_YOUNG : T_HORN;
+    if (k < 0.3) cb(x, z, sap, sap === T_YOUNG ? 0.5 + 0.7 * hash3(i, j, 24) : 0.22 + 0.2 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
     else cb(x, z, T_SHRUB, 0.6 + 0.8 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
+  }
+  // natural regeneration of the spruce and fir stands: thickets of young spruces (2-5 m, branched to the ground) in
+  // the gaps, a fifth of the stand
+  const RSP = 3.4;
+  for (let j = Math.floor(z0 / RSP); j <= Math.floor(z1 / RSP); j++) for (let i = Math.floor(x0 / RSP); i <= Math.floor(x1 / RSP); i++) {
+    if (hash3(i, j, 31) > 0.75) continue;
+    const x = (i + hash3(i, j, 35)) * RSP, z = (j + hash3(i, j, 36)) * RSP;
+    if (x < x0 || x >= x1 || z < z0 || z >= z1 || valueNoise2(x, z, 38, 43) < 0.6) continue;
+    const code = forestCode(x, z);
+    if (!code) continue;
+    const g = speciesAt(x, z) & 15;
+    if (!(g && g < 13 ? GENUS_CONIFER[g] && g !== 6 : code === 3)) continue;           // (not under the pines)
+    cb(x, z, T_YOUNG, 0.45 + 0.75 * hash3(i, j, 32), hash3(i, j, 33) * Math.PI * 2, 0.85 + 0.25 * hash3(i, j, 34));
   }
 }
 
@@ -489,13 +537,18 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
       eachShrub(x0, z0, x0 + ST, z0 + ST, (x, z, ty, s, rot, v) => sh.push({ x, y: heightAt(x, z) - 0.05, z, ty, s, rot, v, under: true }));
       for (const t of sh) { const key = 'u' + t.ty; if (!byType.has(key)) byType.set(key, []); byType.get(key).push(t); }
     }
+    sub.firs = [];
     for (const [key, list] of byType) {
       const ty = list[0].ty;
       const r = list[0].under ? Q.shrub : Q.near;
+      // the spruces near enough are drawn in detail (firs.js): their instances here are hidden meanwhile
+      if (FIR_SPEC[ty]) for (const t of list) { if (!t.spec) firRecord(t, FIR_SPEC[ty]); t.refs = []; sub.firs.push(t); }
       for (const [g, mat] of models[ty].parts) {
         if (mat.userData.core) continue;
         const leafy = !mat.userData.bark;
-        grp.add(instancedFrom(list, g, nearMat(mat, r), !list[0].under, leafy, TYPES[ty].tint ?? 0xffffff));
+        const im = instancedFrom(list, g, nearMat(mat, r), !list[0].under, leafy, TYPES[ty].tint ?? 0xffffff);
+        grp.add(im);
+        if (FIR_SPEC[ty]) list.forEach((t, k) => { t.refs.push([im, k]); if (t.pooled) im.setMatrixAt(k, ZERO); });
       }
     }
     grp.userData.ueSkip = 'forest';
@@ -507,12 +560,13 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
   const pool = [];
   world.addProvider((qx, qz, qr, out) => {
     let used = 0;
-    eachForestTree(qx - qr - 1, qz - qr - 1, qx + qr + 1, qz + qr + 1, (x, z, ty, s) => {
-      const tr = (TYPES[ty].trunkR ?? 0.28) * s + 0.05;
+    const each = (x0, z0, x1, z1, cb) => { eachForestTree(x0, z0, x1, z1, cb); if (Q.shrub > 0) eachShrub(x0, z0, x1, z1, (x, z, ty, s) => { if (ty === T_YOUNG) cb(x, z, ty, s); }); };
+    each(qx - qr - 1, qz - qr - 1, qx + qr + 1, qz + qr + 1, (x, z, ty, s) => {
+      const tr = ty === T_YOUNG ? 0.12 : (TYPES[ty].trunkR ?? 0.28) * s + 0.05;   // (a young spruce's stem: you go round it)
       let b = pool[used];
       if (!b) { b = new world.Box(0, 0, 1, 1, 0, 0, 1, 'tree'); pool.push(b); }
       const y = heightAt(x, z);
-      b.x = x; b.z = z; b.hw = b.hd = tr; b.rot = 0; b.y0 = y - 1; b.y1 = y + 10; b.update();
+      b.x = x; b.z = z; b.hw = b.hd = tr; b.rot = 0; b.y0 = y - 1; b.y1 = y + 10; b.sapling = ty === T_YOUNG; b.update();
       out.push(b); used++;
     });
   });
@@ -522,6 +576,16 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
     Q,
     impMat,
     count: () => live,
+    // the spruces near (x, z) (firs.js)
+    firSource(x, z, Rr, out) {
+      for (const t of tiles.values()) {
+        if (Math.abs(t.cx - x) > GT / 2 + Rr || Math.abs(t.cz - z) > GT / 2 + Rr) continue;
+        for (const s of t.subs.values()) {
+          if (!s.grp || !s.firs || Math.abs(s.cx - x) > ST / 2 + Rr || Math.abs(s.cz - z) > ST / 2 + Rr) continue;
+          for (const f of s.firs) if (Math.abs(f.x - x) < Rr && Math.abs(f.z - z) < Rr) out.push(f);
+        }
+      }
+    },
     update(cam) {
       // a jump (photo views, tests, respawn) builds everything at once; walking/driving spreads the work
       const jump = !last || Math.hypot(cam.x - last.x, cam.z - last.z) > 150;
@@ -538,10 +602,10 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
       for (const [key, t] of tiles) {
         const d = Math.hypot(t.cx - cam.x, t.cz - cam.z);
         if (d > reach + 350) {
-          dispose(t.grp); for (const s of t.subs.values()) if (s.grp) dispose(s.grp);
+          dispose(t.grp); for (const s of t.subs.values()) { if (s.grp) dispose(s.grp); for (const f of s.firs ?? []) f.dead = true; }
           live -= t.n; tiles.delete(key); continue;
         }
-        if (d > Q.near + GT) { for (const s of t.subs.values()) if (s.grp) { dispose(s.grp); s.grp = null; } continue; }
+        if (d > Q.near + GT) { for (const s of t.subs.values()) if (s.grp) { dispose(s.grp); s.grp = null; for (const f of s.firs ?? []) f.refs = []; } continue; }
         for (const s of t.subs.values()) {
           const inR = Math.hypot(s.cx - cam.x, s.cz - cam.z) < Q.near + ST * 0.75;
           if (inR && !s.grp && performance.now() - t0 < budget + 10) s.grp = buildSub(s);
