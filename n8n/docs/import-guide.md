@@ -5,7 +5,7 @@ Sunt **schelete complete și valide structural**: noduri, conexiuni (inclusiv le
 
 **Ce am verificat efectiv:**
 - JSON valid, nume de noduri unice, zero conexiuni către noduri inexistente, zero noduri orfane (validator în `build-workflows.mjs`).
-- Logica tuturor nodurilor Code — 21 de teste automate în `tests/run-tests.mjs`, toate trec.
+- Logica tuturor nodurilor Code — 44 de teste automate în `tests/run-tests.mjs`, toate trec, inclusiv fiecare regulă de calcul a scorului de optimizare.
 - Ambele lanțuri complete, rulate end-to-end prin runner-ul local (`local/run.mjs`, mod `--dry-run`): formular → extracție → strateg → HTML, și brief → calendar → felii → generare → deduplicare → CSV.
 - Endpoint-ul de sărbători, apelat live: `https://date.nager.at/api/v3/PublicHolidays/2026/RO` → 200, cu `localName` în română, inclusiv Paștele ortodox (mobil).
 - Comportamentul de conversie al Google Drive API (HTML → Google Doc) — documentat oficial de Google.
@@ -23,7 +23,7 @@ n8n → **Workflows → Import from File** → `01-social-audit.json`. Repetă p
 ### 2. Reatașează credențialele (obligatoriu — nu se importă niciodată)
 | Nod | Credențial |
 |---|---|
-| Analyze Screenshot, Chat Model Strateg, Chat Model Idei, Auto-fixing Parser | OpenAI (sau înlocuiește nodurile Chat Model cu Anthropic / Google Gemini) |
+| Analyze Screenshot, Chat Model Scorer, Chat Model Strateg, Chat Model Idei, toate Auto-fixing Parser | OpenAI (sau înlocuiește nodurile Chat Model cu Anthropic / Google Gemini) |
 | Create Client Folder | Google Drive OAuth2 |
 | Upload Google Doc | Google Drive OAuth2 (selectat ca *Predefined Credential Type*) |
 | Log In Sheet, Get Niche Brief, Get International Days, Save Ideas | Google Sheets OAuth2 |
@@ -31,24 +31,25 @@ n8n → **Workflows → Import from File** → `01-social-audit.json`. Repetă p
 ### 3. Alege modelele
 Valorile din JSON (`gpt-4o`) sunt **doar valori inițiale**, ca importul să nu pice pe un câmp gol. Deschide fiecare nod și alege din dropdown modelul curent:
 - **Analyze Screenshot** — obligatoriu un model cu vision.
+- **Chat Model Scorer** — judecă 20 de criterii pe platformă; un model bun, la temperature 0. Consecvența contează mai mult decât creativitatea.
 - **Chat Model Strateg** — aici se vede calitatea auditului. Pune modelul cel mai bun pe care ți-l permiți.
 - **Chat Model Idei** — volum mare, calitate medie suficientă. Pune modelul ieftin. Aici economisești real.
 
 ### 4. Completează ID-urile
 - Caută `INLOCUIESTE_CU_ID_SPREADSHEET` în ambele workflow-uri (nodurile Google Sheets) și pune ID-ul spreadsheet-ului `Agency OS`.
 - Verifică numele tab-urilor: `Clienti`, `NicheBriefs`, `ZileInternationale`, `Idei`.
-- În nodul `Log In Sheet`, maparea e pe *Define Below* — numele coloanelor trebuie să existe în tab-ul `Clienti`.
+- În nodul `Log In Sheet`, maparea e pe *Define Below* — tab-ul `Clienti` trebuie să aibă coloanele: `data, client, nisa, platforme, scor_general, potential_general, scor_instagram, scor_tiktok, scor_facebook, scor_text, folder_url, document_url, avertismente`.
 
 ### 5. Verifică cele două locuri mai sensibile
 
 **a) Câmpul File din Form Trigger.** Deschide nodul, confirmă că „Capturi de ecran" e de tip *File* cu *Multiple Files* pornit. Dacă versiunea ta numește altfel opțiunea, setează-o din UI — codul din „Normalize Screenshots" e scris special ca să nu depindă de numele câmpului.
 
-**b) Analyze Screenshot → Options.** Confirmă **Length of Description (Max Tokens) = 1500** și **Detail = high**. Dacă a rămas pe 300, JSON-ul se taie la mijloc și „Merge Extractions" aruncă eroare — cu exact acel mesaj, ca să știi unde să te uiți.
+**b) Analyze Screenshot → Options.** Confirmă **Length of Description (Max Tokens) = 3000** și **Detail = high**. Dacă a rămas pe 300, JSON-ul se taie la mijloc și „Merge Extractions" aruncă eroare — cu exact acel mesaj, ca să știi unde să te uiți.
 
 ### 6. Dacă un nod nu se importă curat
-`Auto-fixing Parser` / `Auto-fixing Parser Idei` sunt **opționale** — repară ieșirile JSON stricate ale modelului. Dacă versiunea ta de n8n nu are nodul:
+`Auto-fixing Parser` / `Auto-fixing Parser Scorer` / `Auto-fixing Parser Idei` sunt **opționale** — repară ieșirile JSON stricate ale modelului. Dacă versiunea ta de n8n nu are nodul:
 1. Șterge-l.
-2. Conectează `Audit Schema` direct la `Strateg` (ieșirea `ai_outputParser`), respectiv `Idea Schema` direct la `Idea Generator`.
+2. Conectează `Audit Schema` direct la `Strateg`, `Score Schema` direct la `Scorer`, respectiv `Idea Schema` direct la `Idea Generator` (ieșirea `ai_outputParser`).
 Workflow-ul funcționează identic, doar că un răspuns malformat va da eroare în loc să fie reparat automat.
 
 ### 6b. Testează întâi local, apoi în n8n
@@ -82,5 +83,6 @@ node n8n/build-workflows.mjs      # apoi build
 | structura ieșirii LLM | `schemas/*.json` |
 | logica unui nod Code | `src/*.js` (+ adaugă un test) |
 | limitele de caractere | `src/a1-build-document.js`, obiectul `PLATFORM_LIMITS` |
+| criteriile, etichetele sau formula scorului | `src/a1-compute-score.js` (tabelele `COMMON`, `SPECIFIC`, funcția `labelOf`) **și** `prompts/04-optimization-scorer.md` — ambele, plus testele |
 | agresivitatea deduplicării | `src/b-dedupe-and-number.js`, `COSINE_THRESHOLD` / `TRIGRAM_THRESHOLD` |
 | numărul de idei per felie | nodul `Start`, câmpul `ideas_per_slice` |

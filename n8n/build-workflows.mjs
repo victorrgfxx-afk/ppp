@@ -69,33 +69,48 @@ const agentA = {
       text: prompt('01-vision-extractor.md'),
       inputType: 'base64',
       binaryPropertyName: 'data',
-      options: { detail: 'high', maxTokens: 1500 },
+      options: { detail: 'high', maxTokens: 3000 },
     }, { retryOnFail: true, maxTries: 2, onError: 'continueRegularOutput' }),
     node('Merge Extractions', 'n8n-nodes-base.code', 2, [40, 300], { jsCode: code('a1-merge-extractions.js') }),
-    node('Strateg', '@n8n/n8n-nodes-langchain.chainLlm', 1.5, [260, 300], {
+    node('Scorer', '@n8n/n8n-nodes-langchain.chainLlm', 1.5, [260, 300], {
+      promptType: 'define',
+      text: `=${prompt('04-optimization-scorer.md')}`,
+      hasOutputParser: true,
+    }, { retryOnFail: true, maxTries: 3, waitBetweenTries: 2000 }),
+    node('Chat Model Scorer', '@n8n/n8n-nodes-langchain.lmChatOpenAi', 1.2, [200, 520], {
+      model: { __rl: true, value: REASONING_MODEL, mode: 'list', cachedResultName: REASONING_MODEL },
+      options: { temperature: 0 },
+    }),
+    node('Auto-fixing Parser Scorer', '@n8n/n8n-nodes-langchain.outputParserAutofixing', 1, [400, 520], { options: {} }),
+    node('Score Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', 1.2, [560, 700], {
+      schemaType: 'manual',
+      inputSchema: schema('score-output.schema.json'),
+    }),
+    node('Compute Score', 'n8n-nodes-base.code', 2, [520, 300], { jsCode: code('a1-compute-score.js') }),
+    node('Strateg', '@n8n/n8n-nodes-langchain.chainLlm', 1.5, [740, 300], {
       promptType: 'define',
       text: `=${prompt('02-strategist-audit.md')}`,
       hasOutputParser: true,
     }, { retryOnFail: true, maxTries: 2 }),
-    node('Chat Model Strateg', '@n8n/n8n-nodes-langchain.lmChatOpenAi', 1.2, [200, 520], {
+    node('Chat Model Strateg', '@n8n/n8n-nodes-langchain.lmChatOpenAi', 1.2, [680, 520], {
       model: { __rl: true, value: REASONING_MODEL, mode: 'list', cachedResultName: REASONING_MODEL },
       options: { temperature: 0.4 },
     }),
-    node('Auto-fixing Parser', '@n8n/n8n-nodes-langchain.outputParserAutofixing', 1, [400, 520], { options: {} }),
-    node('Audit Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', 1.2, [560, 700], {
+    node('Auto-fixing Parser', '@n8n/n8n-nodes-langchain.outputParserAutofixing', 1, [880, 520], { options: {} }),
+    node('Audit Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', 1.2, [1040, 700], {
       schemaType: 'manual',
       inputSchema: schema('audit-output.schema.json'),
     }),
-    node('Create Client Folder', 'n8n-nodes-base.googleDrive', 3, [520, 300], {
+    node('Create Client Folder', 'n8n-nodes-base.googleDrive', 3, [980, 300], {
       resource: 'folder',
       operation: 'create',
-      name: "={{ $('Form Trigger').first().json['Nume client'] }} — Audit {{ $now.format('yyyy-MM-dd') }}",
+      name: "={{ $('Form Trigger').first().json['Nume client'] }} — Audit {{ $now.toFormat('yyyy-MM-dd') }}",
       driveId: { __rl: true, value: 'My Drive', mode: 'list', cachedResultName: 'My Drive' },
       folderId: { __rl: true, value: "={{ $('Form Trigger').first().json['ID folder Drive părinte'] }}", mode: 'id' },
       options: {},
     }),
-    node('Build Document', 'n8n-nodes-base.code', 2, [740, 300], { jsCode: code('a1-build-document.js') }),
-    node('Upload Google Doc', 'n8n-nodes-base.httpRequest', 4.2, [960, 300], {
+    node('Build Document', 'n8n-nodes-base.code', 2, [1200, 300], { jsCode: code('a1-build-document.js') }),
+    node('Upload Google Doc', 'n8n-nodes-base.httpRequest', 4.2, [1420, 300], {
       method: 'POST',
       url: 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true',
       authentication: 'predefinedCredentialType',
@@ -106,18 +121,23 @@ const agentA = {
       body: '={{ $json.multipart }}',
       options: {},
     }),
-    node('Log In Sheet', 'n8n-nodes-base.googleSheets', 4.5, [1180, 300], {
+    node('Log In Sheet', 'n8n-nodes-base.googleSheets', 4.5, [1640, 300], {
       operation: 'append',
       documentId: sheetDoc,
       sheetName: sheetName('Clienti'),
       columns: {
         mappingMode: 'defineBelow',
         value: {
-          data: "={{ $now.format('yyyy-MM-dd') }}",
+          data: "={{ $now.toFormat('yyyy-MM-dd') }}",
           client: "={{ $('Form Trigger').first().json['Nume client'] }}",
           nisa: "={{ $('Form Trigger').first().json['Nișă'] }}",
           platforme: "={{ $('Form Trigger').first().json['Platforme incluse'] }}",
-          scor: "={{ $('Strateg').first().json.output.overall_score }}",
+          scor_general: "={{ $('Compute Score').first().json.score.general ? $('Compute Score').first().json.score.general.score_display : $('Compute Score').first().json.score.platforms[0].score_display }}",
+          potential_general: "={{ $('Compute Score').first().json.score.general ? $('Compute Score').first().json.score.general.potential_display : $('Compute Score').first().json.score.platforms[0].potential_display }}",
+          scor_instagram: "={{ ($('Compute Score').first().json.score.platforms.find(p => p.platform === 'instagram') || {}).score_display || '' }}",
+          scor_tiktok: "={{ ($('Compute Score').first().json.score.platforms.find(p => p.platform === 'tiktok') || {}).score_display || '' }}",
+          scor_facebook: "={{ ($('Compute Score').first().json.score.platforms.find(p => p.platform === 'facebook') || {}).score_display || '' }}",
+          scor_text: "={{ $('Compute Score').first().json.score.text }}",
           folder_url: "=https://drive.google.com/drive/folders/{{ $('Create Client Folder').first().json.id }}",
           document_url: '=https://docs.google.com/document/d/{{ $json.id }}/edit',
           avertismente: "={{ $('Build Document').first().json.flags.join(' | ') }}",
@@ -131,7 +151,9 @@ const agentA = {
     'Form Trigger': { main: [[{ node: 'Normalize Screenshots', type: 'main', index: 0 }]] },
     'Normalize Screenshots': { main: [[{ node: 'Analyze Screenshot', type: 'main', index: 0 }]] },
     'Analyze Screenshot': { main: [[{ node: 'Merge Extractions', type: 'main', index: 0 }]] },
-    'Merge Extractions': { main: [[{ node: 'Strateg', type: 'main', index: 0 }]] },
+    'Merge Extractions': { main: [[{ node: 'Scorer', type: 'main', index: 0 }]] },
+    Scorer: { main: [[{ node: 'Compute Score', type: 'main', index: 0 }]] },
+    'Compute Score': { main: [[{ node: 'Strateg', type: 'main', index: 0 }]] },
     Strateg: { main: [[{ node: 'Create Client Folder', type: 'main', index: 0 }]] },
     'Create Client Folder': { main: [[{ node: 'Build Document', type: 'main', index: 0 }]] },
     'Build Document': { main: [[{ node: 'Upload Google Doc', type: 'main', index: 0 }]] },
@@ -144,6 +166,14 @@ const agentA = {
     },
     'Audit Schema': { ai_outputParser: [[{ node: 'Auto-fixing Parser', type: 'ai_outputParser', index: 0 }]] },
     'Auto-fixing Parser': { ai_outputParser: [[{ node: 'Strateg', type: 'ai_outputParser', index: 0 }]] },
+    'Chat Model Scorer': {
+      ai_languageModel: [[
+        { node: 'Scorer', type: 'ai_languageModel', index: 0 },
+        { node: 'Auto-fixing Parser Scorer', type: 'ai_languageModel', index: 0 },
+      ]],
+    },
+    'Score Schema': { ai_outputParser: [[{ node: 'Auto-fixing Parser Scorer', type: 'ai_outputParser', index: 0 }]] },
+    'Auto-fixing Parser Scorer': { ai_outputParser: [[{ node: 'Scorer', type: 'ai_outputParser', index: 0 }]] },
   },
   settings: { executionOrder: 'v1' },
   pinData: {},

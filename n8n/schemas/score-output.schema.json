@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "required": ["platforms"],
+  "properties": {
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["platform", "criteria"],
+        "properties": {
+          "platform": { "type": "string", "enum": ["instagram", "tiktok", "facebook"] },
+          "last_post_date": { "type": ["string", "null"], "description": "doar Facebook: AAAA-LL-ZZ sau null" },
+          "criteria": {
+            "type": "array",
+            "minItems": 20,
+            "maxItems": 20,
+            "items": {
+              "type": "object",
+              "required": ["id", "met", "not_in_screenshots", "evidence"],
+              "properties": {
+                "id": { "type": "integer", "minimum": 1, "maximum": 20 },
+                "met": { "type": "boolean" },
+                "not_in_screenshots": { "type": "boolean" },
+                "evidence": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

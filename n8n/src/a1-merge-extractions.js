@@ -44,14 +44,34 @@ const covered = [...new Set(extractions.map((e) => e.platform).filter((p) => p &
 
 const lowConfidence = extractions.filter((e) => e.confidence === 'low').map((e) => e.screenshot);
 
+// Scorul de optimizare masoara doar ce controleaza clientul in profil: urmaritorii,
+// like-urile si vizualizarile NU au voie sa-l influenteze. Cea mai sigura garantie
+// e ca scorer-ul nici sa nu le vada, nu o instructiune in prompt.
+const AUDIENCE_KEYS = ['metrics', 'engagement_visible'];
+const scoring_extractions = extractions.map((e) => {
+  const copy = { ...e };
+  for (const k of AUDIENCE_KEYS) delete copy[k];
+  return copy;
+});
+
+// Data de azi in fusul orar al agentiei (criteriul Facebook "Activitate" depinde de ea).
+let today;
+try {
+  today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+} catch (e) {
+  today = new Date().toISOString().slice(0, 10);
+}
+
 return [{
   json: {
     client,
     extractions,
+    scoring_extractions,
     failed,
     covered,
     lowConfidence,
     screenshotCount: items.length,
     extractedCount: extractions.length,
+    today,
   },
 }];

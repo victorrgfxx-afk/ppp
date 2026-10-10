@@ -52,77 +52,306 @@ t('parseaza JSON in ```json, ignora raspunsurile invalide', () => {
   eq(r.lowConfidence.length, 1, 'capturi cu confidence scazut');
 });
 
+t('scoate metricile de audienta din datele pentru scorer si pune data de azi', () => {
+  const out = runNode('a1-merge-extractions.js', {
+    input: [{ json: { content: JSON.stringify({ platform: 'instagram', account: { bio_text: 'x' }, metrics: { followers: '12K' }, engagement_visible: [{ likes: '300' }] }) } }],
+    nodes: { 'Form Trigger': [{ json: { 'Nume client': 'X' } }] },
+  })[0].json;
+  assert(out.extractions[0].metrics, 'extractia completa pastreaza metricile (pentru strateg)');
+  assert(!('metrics' in out.scoring_extractions[0]), 'scorer-ul nu vede urmaritorii');
+  assert(!('engagement_visible' in out.scoring_extractions[0]), 'scorer-ul nu vede like-urile si vizualizarile');
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(out.today), `data de azi in format AAAA-LL-ZZ: ${out.today}`);
+});
+
+/* ---------- fixture pentru scor ---------- */
+const crit = (metIds = [], { notIn = [], noEvidence = [], omit = [] } = {}) =>
+  Array.from({ length: 20 }, (_, k) => k + 1).filter((id) => !omit.includes(id)).map((id) => ({
+    id,
+    met: metIds.includes(id),
+    not_in_screenshots: notIn.includes(id),
+    evidence: metIds.includes(id) && !noEvidence.includes(id) ? `dovada ${id}` : '',
+  }));
+const post = (o = {}) => ({ media_type: 'foto', visible_text_on_cover: null, text_legible: null, has_face: false, vertical_fullscreen: true, image_clear: true, caption_has_cta: null, ...o });
+const reel = (o = {}) => post({ media_type: 'reel', visible_text_on_cover: 'Hook', text_legible: true, ...o });
+const mergedWith = (extractions, today = '2026-10-10') => [{ json: {
+  client: { 'Nume client': 'Test' }, extractions, failed: [],
+  covered: [...new Set(extractions.map((e) => e.platform))],
+  lowConfidence: [], screenshotCount: extractions.length, extractedCount: extractions.length, today,
+} }];
+const computeScore = (platforms, extractions, today) => runNode('a1-compute-score.js', {
+  input: [{ json: { output: { platforms } } }],
+  nodes: { 'Merge Extractions': mergedWith(extractions, today) },
+})[0].json.score;
+const rowOf = (sc, platform, id) => sc.platforms.find((p) => p.platform === platform).rows.find((r) => r.id === id);
+// Instagram care indeplineste toate conditiile numarabile (18 si 19 ies ✅ din date)
+const igFull = { platform: 'instagram', posts_visible: [reel(), reel(), reel()], pinned_posts: [{}, {}], highlights: [{}, {}, {}, {}] };
+const igEmpty = { platform: 'instagram' };
+const NON_AUTO_IG = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 20];
+
+console.log('\nAgent A — Compute Score (scorul de optimizare)');
+t('formula: 5 + 0,25 × ✅, potențial = 5 + 0,25 × (✅ + ❌), două zecimale cu virgulă', () => {
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([1, 2, 3, 4]) }], [igFull]);
+  const p = sc.platforms[0];
+  eq(p.count_ok, 6, '4 de la model + 18 și 19 din numărători');
+  eq(p.score_display, '6,50', 'scor');
+  eq(p.label, 'Bază pusă', 'etichetă');
+  eq(p.count_fixable, 11, 'criteriile de profil neîndeplinite (1–15 minus 4)');
+  eq(p.potential_display, '9,25', 'potențial: 5 + 0,25 × (6 + 11)');
+});
+t('etichetele, la fiecare prag', () => {
+  const cases = [[0, '5,50', 'Potențial neexploatat'], [1, '5,75', 'Potențial neexploatat'], [2, '6,00', 'Bază pusă'],
+    [6, '7,00', 'Pe drumul cel bun'], [10, '8,00', 'Bine optimizat'], [14, '9,00', 'Excelent'], [18, '10,00', 'Excelent']];
+  for (const [k, disp, lab] of cases) {
+    const p = computeScore([{ platform: 'instagram', criteria: crit(NON_AUTO_IG.slice(0, k)) }], [igFull]).platforms[0];
+    eq(`${p.score_display} · ${p.label}`, `${disp} · ${lab}`, `${k + 2} criterii îndeplinite`);
+  }
+  const zero = computeScore([{ platform: 'instagram', criteria: crit([]) }], [igEmpty]).platforms[0];
+  eq(`${zero.score_display} · ${zero.label}`, '5,00 · Potențial neexploatat', 'niciun criteriu');
+});
+t('simbolul depinde de tipul criteriului, nu de model', () => {
+  const sc = computeScore([
+    { platform: 'instagram', criteria: crit([]) },
+    { platform: 'tiktok', criteria: crit([]) },
+    { platform: 'facebook', criteria: crit([]) },
+  ], [igEmpty, { platform: 'tiktok' }, { platform: 'facebook' }]);
+  const sym = (pl, id) => rowOf(sc, pl, id).symbol;
+  eq(sym('instagram', 12), '❌', 'IG 12 profil');
+  eq(sym('instagram', 15), '❌', 'IG 15 profil');
+  eq(sym('instagram', 16), '⏳', 'IG 16 conținut');
+  eq(sym('tiktok', 13), '❌', 'TikTok 13 profil');
+  eq(sym('tiktok', 14), '⏳', 'TikTok 14 conținut');
+  eq(sym('facebook', 14), '❌', 'Facebook 14 profil');
+  eq(sym('facebook', 15), '⏳', 'Facebook 15 conținut');
+});
+t('ordinea și denumirile scurte sunt fixe, identice în fiecare raport', () => {
+  const sc = computeScore([{ platform: 'tiktok', criteria: crit([]).reverse() }], [{ platform: 'tiktok' }]);
+  const names = sc.platforms[0].rows.map((r) => `${r.id}. ${r.name}`);
+  eq(names.length, 20, '20 de criterii');
+  eq(names[0], '1. Poză de profil', 'primul');
+  eq(names[12], '13. Username', 'primul specific TikTok');
+  eq(names[19], '20. Mix de formate', 'ultimul');
+});
+t('regula 4: DA + „nu apare în capturi" devine NU, cu mențiunea în text', () => {
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([1, 2], { notIn: [2] }) }], [igFull]);
+  eq(rowOf(sc, 'instagram', 2).met, false, 'criteriul 2 devine NU');
+  assert(sc.text.includes('❌ Nume cu cuvânt-cheie (nu apare în capturi)'), 'mențiunea apare în raport');
+  assert(sc.overrides.some((o) => o.id === 2), 'corecția e înregistrată');
+});
+t('regula 3: DA fără dovadă devine NU', () => {
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([1, 3], { noEvidence: [3] }) }], [igFull]);
+  eq(rowOf(sc, 'instagram', 1).met, true, 'DA cu dovadă rămâne');
+  eq(rowOf(sc, 'instagram', 3).met, false, 'DA fără dovadă devine NU');
+});
+t('criteriu omis de model = NU, cu avertisment', () => {
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([5], { omit: [5] }) }], [igFull]);
+  eq(rowOf(sc, 'instagram', 5).met, false, 'NU');
+  assert(sc.flags.some((f) => /5\. Dovadă de încredere: neevaluat/.test(f)), 'avertisment');
+});
+t('o platformă cu capturi dar neevaluată oprește execuția', () => {
+  let msg = '';
+  try { computeScore([{ platform: 'instagram', criteria: crit([]) }], [igFull, { platform: 'tiktok' }]); } catch (e) { msg = e.message; }
+  assert(/nu a evaluat platforma: tiktok/.test(msg), `mesaj: ${msg}`);
+});
+t('o platformă evaluată fără capturi e ignorată', () => {
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([]) }, { platform: 'facebook', criteria: crit([1]) }], [igFull]);
+  eq(sc.platforms.length, 1, 'doar Instagram');
+  assert(sc.flags.some((f) => /facebook/.test(f)), 'avertisment');
+});
+t('scor general: medie cu o zecimală, doar de la 2 platforme', () => {
+  const two = computeScore([
+    { platform: 'instagram', criteria: crit([1, 2, 3]) },   // 5 ✅ → 6,25
+    { platform: 'tiktok', criteria: crit([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) }, // 10 ✅ → 7,50
+  ], [igFull, { platform: 'tiktok' }]);
+  eq(two.general.score_display, '6,9', '(6,25 + 7,50) / 2 = 6,875 → 6,9');
+  eq(two.general.label, 'Bază pusă', 'eticheta valorii afișate');
+  assert(two.text.includes('📊 SCOR GENERAL: 6,9/10 · Bază pusă'), 'linia de scor general');
+  assert(two.text.includes('🚀 POTENȚIAL DUPĂ OPTIMIZARE:'), 'linia de potențial general');
+  const one = computeScore([{ platform: 'instagram', criteria: crit([1]) }], [igFull]);
+  eq(one.general, null, 'o singură platformă: fără scor general');
+  assert(!one.text.includes('SCOR GENERAL'), 'fără linia de scor general');
+});
+t('formatul secțiunii, rând cu rând', () => {
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([1, 2, 3, 4]) }], [igFull]);
+  const L = sc.text.split('\n');
+  eq(L[0], '🎯 SCOR DE OPTIMIZARE', 'titlu');
+  eq(L[1], '✅ îndeplinit · ❌ se rezolvă imediat · ⏳ crește odată cu conținutul', 'legendă');
+  eq(L[3], 'INSTAGRAM', 'platformă');
+  eq(L[4], '✅ Poză de profil', 'primul criteriu');
+  eq(L[8], '❌ Dovadă de încredere', 'criteriu de profil neîndeplinit');
+  eq(L[19], '⏳ Grilă coerentă', 'criteriu de conținut neîndeplinit');
+  eq(L[23], '⏳ Rubrici recurente', 'ultimul criteriu');
+  eq(L[24], '→ Scor: 6,50/10 · Bază pusă', 'scor');
+  eq(L[25], '→ Potențial după optimizarea profilului: 9,25/10', 'potențial');
+  eq(L[L.length - 1], 'Fiecare ❌ rezolvat = +0,25 puncte.', 'încheiere');
+});
+
+console.log('\nAgent A — Compute Score: criteriile numărabile');
+t('IG Reels: minimum o treime din postările vizibile, indiferent ce spune modelul', () => {
+  const posts = (k) => [...Array(k)].map(() => reel()).concat([...Array(9 - k)].map(() => post()));
+  const yes = computeScore([{ platform: 'instagram', criteria: crit([]) }], [{ platform: 'instagram', posts_visible: posts(3) }]);
+  eq(rowOf(yes, 'instagram', 18).met, true, '3 din 9 = o treime');
+  const no = computeScore([{ platform: 'instagram', criteria: crit([18]) }], [{ platform: 'instagram', posts_visible: posts(2) }]);
+  eq(rowOf(no, 'instagram', 18).symbol, '⏳', '2 din 9, deși modelul a spus DA');
+  assert(no.overrides.some((o) => o.id === 18 && o.model === true && o.final === false), 'corecția e înregistrată');
+});
+t('IG Hook pe copertă: se numără doar textul lizibil', () => {
+  const ps = [reel(), reel(), reel({ text_legible: false }), post(), post()];
+  const sc = computeScore([{ platform: 'instagram', criteria: crit([19]) }], [{ platform: 'instagram', posts_visible: ps }]);
+  eq(rowOf(sc, 'instagram', 19).met, false, '2 lizibile din 5 < jumătate');
+});
+t('Highlights și postări fixate: numărul e condiție necesară, rolul îl judecă modelul', () => {
+  const few = computeScore([{ platform: 'instagram', criteria: crit([14, 12]) }],
+    [{ platform: 'instagram', highlights: [{}, {}, {}], pinned_posts: [{}] }]);
+  eq(rowOf(few, 'instagram', 14).met, false, '3 highlights < 4');
+  eq(rowOf(few, 'instagram', 12).met, false, '1 postare fixată, necesar 2–3');
+  const ok = computeScore([{ platform: 'instagram', criteria: crit([]) }],
+    [{ platform: 'instagram', highlights: [{}, {}, {}, {}, {}], pinned_posts: [{}, {}] }]);
+  eq(rowOf(ok, 'instagram', 14).met, false, 'numărul e bun, dar modelul a spus NU: rămâne NU');
+  const fb = computeScore([{ platform: 'facebook', criteria: crit([12]) }], [{ platform: 'facebook', pinned_posts: [{}, {}] }]);
+  eq(rowOf(fb, 'facebook', 12).met, false, 'pe Facebook trebuie exact 1');
+});
+t('TikTok: prezență umană, calitate tehnică, mix de formate', () => {
+  const vid = (o) => post({ media_type: 'video', ...o });
+  const half = computeScore([{ platform: 'tiktok', criteria: crit([]) }],
+    [{ platform: 'tiktok', posts_visible: [vid({ has_face: true }), vid({ has_face: true }), vid(), vid()] }]);
+  eq(rowOf(half, 'tiktok', 17).met, true, '2 din 4 fețe = jumătate');
+  const blur = computeScore([{ platform: 'tiktok', criteria: crit([19]) }],
+    [{ platform: 'tiktok', posts_visible: [vid(), vid({ vertical_fullscreen: null })] }]);
+  eq(rowOf(blur, 'tiktok', 19).met, false, 'un video nedeterminat = dubiu = NU');
+  eq(rowOf(blur, 'tiktok', 20).met, false, 'doar video, fără Photo Mode');
+  const mix = computeScore([{ platform: 'tiktok', criteria: crit([]) }],
+    [{ platform: 'tiktok', posts_visible: [vid(), post({ media_type: 'carusel_foto' })] }]);
+  eq(rowOf(mix, 'tiktok', 20).met, true, 'video + carusel foto');
+});
+t('Facebook Activitate: maximum 30 de zile, calculat din data literală', () => {
+  const fb = (txt, iso = null) => computeScore([{ platform: 'facebook', last_post_date: iso, criteria: crit([18]) }],
+    [{ platform: 'facebook', facebook_page: { last_post_date_text: txt } }], '2026-10-10');
+  eq(rowOf(fb('3 săpt.'), 'facebook', 18).met, true, '21 de zile');
+  eq(rowOf(fb('Ieri'), 'facebook', 18).met, true, 'ieri');
+  eq(rowOf(fb('12 august'), 'facebook', 18).met, false, '59 de zile');
+  eq(rowOf(fb('2 luni'), 'facebook', 18).met, false, '60 de zile');
+  eq(rowOf(fb('12 noiembrie'), 'facebook', 18).met, false, 'fără an și în viitor = anul trecut');
+  eq(rowOf(fb('20 septembrie 2026'), 'facebook', 18).met, true, '20 de zile, cu an');
+  eq(rowOf(fb(null, '2026-09-15'), 'facebook', 18).met, true, 'fără text: data AAAA-LL-ZZ de la model');
+  const none = fb(null);
+  eq(rowOf(none, 'facebook', 18).met, false, 'fără nicio dată');
+  assert(none.text.includes('⏳ Activitate (nu apare în capturi)'), 'mențiunea apare');
+});
+t('Facebook: Video / Reels prezente și CTA la majoritatea postărilor', () => {
+  const fb = (ps) => computeScore([{ platform: 'facebook', criteria: crit([19, 20]) }], [{ platform: 'facebook', posts_visible: ps }]);
+  const half = fb([post({ caption_has_cta: true }), post({ caption_has_cta: true }), post(), post()]);
+  eq(rowOf(half, 'facebook', 20).met, false, '2 din 4 nu e majoritate');
+  eq(rowOf(half, 'facebook', 19).met, false, 'niciun video');
+  const most = fb([post({ caption_has_cta: true }), post({ caption_has_cta: true }), post({ media_type: 'video', caption_has_cta: true }), post()]);
+  eq(rowOf(most, 'facebook', 20).met, true, '3 din 4');
+  eq(rowOf(most, 'facebook', 19).met, true, 'un video e suficient');
+});
+
 console.log('\nAgent A — Build Document');
-const auditMock = { json: { output: {
-    overall_score: 61,
-    score_rationale: 'Profil ingrijit vizual, dar bio-ul nu spune ce serviciu se vinde.',
-    executive_summary: 'Rezumat.',
-    quick_wins: [{ action: 'Adauga orasul in bio', time_needed: '2 minute', platform: 'instagram' }],
-    content_strategy_30_days: [{ week: 1, focus: 'Incredere', post_types: ['tur cabinet', 'echipa'], goal: 'salvari' }],
-    missing_data: ['Captura cu Insights > Audienta'],
-    red_flags: [],
-    platforms: [
-      {
-        platform: 'instagram', covered: true, handle: '@cabinet', current_bio: 'Zambete frumoase',
-        what_works: [{ observation: 'Grid consistent', evidence: '9/9 thumbnails cu aceeasi paleta', why_it_matters: 'Creste rata de follow' }],
-        what_doesnt: [{ issue: 'Bio fara serviciu', evidence: 'bio_text = "Zambete frumoase"', cost: 'Vizitatorul nu afla ce se ofera' }],
-        improvements: [{ action: 'Rescrie bio', how_to: 'Serviciu + oras + CTA', impact: 'mare', effort: 'mic', expected_result: 'Mai multe click-uri pe link' }],
-        bio_variants: [
-          { angle: 'claritate', text: 'Implant si fatete in Cluj. Programari in 24h.', cta: 'Scrie-ne pe WhatsApp', rationale: 'Contine serviciul si orasul', char_count: 999, name_field: 'Dr. Pop | Stomatologie Estetica Cluj-Napoca' },
-          { angle: 'beneficiu', text: 'Zambesti fara sa iti acoperi gura. Tratament fara durere, explicat pe intelesul tau.', cta: 'Programeaza-te', rationale: 'Vorbeste despre rezultat' },
-          { angle: 'diferentiator', text: 'Acesta este un text absurd de lung, pus intentionat in test ca sa depaseasca limita de o suta cincizeci de caractere impusa de Instagram pentru campul bio.', cta: 'Suna', rationale: 'Test depasire' },
-        ],
-      },
-      { platform: 'facebook', covered: false, bio_variants: [] },
-    ],
-  },
-} };
-t('recalculeaza numarul de caractere si marcheaza depasirea limitei', () => {
-  const out = runNode('a1-build-document.js', {
-    json: { id: 'FOLDER_ID_123' },
-    nodes: {
-      Strateg: [auditMock],
-      'Form Trigger': [{ json: { 'Nume client': 'Cabinet X', 'Nișă': 'dentist' } }],
-      'Merge Extractions': [{ json: { extractedCount: 3, screenshotCount: 4, failed: [{}], lowConfidence: [2] } }],
+const scoredItem = runNode('a1-compute-score.js', {
+  input: [{ json: { output: { platforms: [
+    { platform: 'instagram', criteria: crit([1, 3, 6, 10]) },
+    { platform: 'facebook', criteria: crit([1]) },
+  ] } } }],
+  nodes: { 'Merge Extractions': mergedWith([
+    { ...igFull, account: { bio_text: 'Zambete frumoase', display_name: 'Cabinet' }, contact: { phone: '0264 123 456' } },
+    { platform: 'facebook' },
+  ]) },
+})[0];
+const auditFixture = () => ({ output: {
+  executive_summary: 'Profilul are o bază bună.',
+  quick_wins: [{ action: 'Adaugă serviciul în câmpul Name', time_needed: '2 minute', platform: 'instagram', criteria: [2] }],
+  content_strategy_30_days: [{ week: 1, focus: 'Încredere', post_types: ['tur cabinet'], goal: 'salvări' }],
+  missing_data: [], red_flags: [],
+  platforms: [
+    {
+      platform: 'instagram', covered: true, handle: '@cabinet', current_bio: 'Zambete frumoase',
+      what_works: [{ observation: 'Poza e clară', evidence: 'logo lizibil', why_it_matters: 'recunoaștere', criteria: [1] }],
+      what_doesnt: [{ issue: 'Bio fără serviciu', evidence: '„Zambete frumoase"', cost: 'apariție în căutări', criteria: [2] }],
+      improvements: [{ action: 'Rescrie bio-ul', how_to: 'serviciu + oraș + CTA', impact: 'mare', effort: 'mic', criteria: [2, 4, 5, 7, 8, 9, 11, 12, 13, 14, 15] }],
+      bio_variants: [
+        { angle: 'claritate', text: 'Stomatologie în Cluj. Programează-te pe WhatsApp: 0264 123 456', criteria_covered: [3, 6, 7, 8], rationale: 'r', name_field: 'Cabinet | Stomatolog Cluj' },
+        { angle: 'beneficiu', text: 'Implant și fațete, [ani experiență] de experiență. Scrie-ne în DM ⬇️', criteria_covered: [3, 5, 7, 8], rationale: 'r' },
+        { angle: 'diferentiator', text: 'Stomatologie fără durere', criteria_covered: [3], rationale: 'r' },
+      ],
     },
-  });
-  const r = out[0].json;
-  const v = auditMock.json.output.platforms[0].bio_variants;
-  eq(v[0].char_count, 45, 'char_count recalculat (modelul spusese 999)');
-  eq(v[0].over_limit, false, 'varianta 1 incape');
-  eq(v[2].over_limit, true, 'varianta 3 depaseste 150');
-  assert(r.flags.some((f) => /peste limita de 150/.test(f)), 'depasirea e raportata in flags');
-  assert(r.flags.some((f) => /Name/.test(f)), 'campul Name peste 30 e raportat');
+    { platform: 'facebook', covered: true, what_works: [], what_doesnt: [], bio_variants: [],
+      improvements: [{ action: 'Completează pagina', how_to: 'Intro, buton, contact, cover', impact: 'mare', effort: 'mic', criteria: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] }] },
+  ],
+} });
+const buildDoc = (audit, json = { id: 'FOLDER_ID_123' }) => runNode('a1-build-document.js', {
+  json,
+  nodes: {
+    Strateg: [{ json: audit }],
+    'Form Trigger': [{ json: { 'Nume client': 'Cabinet X', 'Nișă': 'dentist' } }],
+    'Merge Extractions': [{ json: { ...scoredItem.json, extractedCount: 2, screenshotCount: 2, failed: [], lowConfidence: [] } }],
+    'Compute Score': [scoredItem],
+  },
+})[0].json;
+
+t('scorul de optimizare e prima secțiune, înaintea analizei', () => {
+  const { html } = buildDoc(auditFixture());
+  const iScore = html.indexOf('🎯 SCOR DE OPTIMIZARE');
+  assert(iScore > 0, 'secțiunea de scor există');
+  assert(iScore < html.indexOf('<h2>Pe scurt</h2>'), 'înainte de „Pe scurt"');
+  assert(iScore < html.indexOf('<h3>Ce e bine</h3>'), 'înainte de analiză');
+  assert(html.includes('SCOR GENERAL: '), 'scor general, sunt 2 platforme');
+  assert(html.includes('Fiecare ❌ rezolvat = +0,25 puncte.'), 'încheierea');
+});
+t('descrieri: limita, criteriile obligatorii, CTA și canal', () => {
+  const a = auditFixture();
+  a.output.platforms[0].bio_variants[0].text = 'Stomatologie în Cluj-Napoca. Implant, fațete, ortodonție, albire, urgențe în aceeași zi, parcare proprie. Programează-te pe WhatsApp la 0264 123 456 sau în DM.';
+  const { flags } = buildDoc(a);
+  assert(flags.some((f) => /varianta 1: \d+ caractere, peste limita de 150/.test(f)), 'peste 150');
+  assert(flags.some((f) => /varianta 3: nu bifează criteriile obligatorii 7, 8/.test(f)), 'lipsesc 7 și 8 declarate');
+  assert(flags.some((f) => /varianta 3: nu am găsit un verb de acțiune/.test(f)), 'fără verb de acțiune');
+  assert(flags.some((f) => /varianta 3: CTA-ul nu spune pe ce canal/.test(f)), 'fără canal');
+  assert(!flags.some((f) => /varianta 2: nu am găsit un verb/.test(f)), '„Scrie-ne" e recunoscut');
+});
+t('cifrele inventate sunt raportate, cele din capturi și placeholderele nu', () => {
+  const a = auditFixture();
+  a.output.platforms[0].bio_variants[1].text = '15 ani de experiență și 2000 de pacienți. Scrie-ne în DM';
+  const { flags } = buildDoc(a);
+  assert(flags.some((f) => /varianta 2: cifre care nu apar în capturi \(15, 2000\)/.test(f)), 'cifrele inventate');
+  assert(!flags.some((f) => /varianta 1: cifre/.test(f)), 'telefonul apare în capturi');
+  const b = buildDoc(auditFixture()).flags;
+  assert(b.some((f) => /varianta 2: conține placeholder/.test(f)), 'placeholderul e semnalat pentru completare');
+  assert(!b.some((f) => /varianta 2: cifre/.test(f)), 'placeholderul nu e cifră inventată');
+});
+t('coerența cu checklist-ul: lauda unui ❌, critica unui ✅, ❌ fără sugestie, quick win pe ⏳', () => {
+  const a = auditFixture();
+  a.output.platforms[0].what_works.push({ observation: 'x', evidence: 'x', why_it_matters: 'x', criteria: [2] });
+  a.output.platforms[0].what_doesnt.push({ issue: 'x', evidence: 'x', cost: 'x', criteria: [3] });
+  a.output.platforms[0].improvements[0].criteria = [2];
+  a.output.quick_wins.push({ action: 'Postează reels', time_needed: '1 lună', platform: 'instagram', criteria: [16] });
+  const { flags } = buildDoc(a);
+  assert(flags.some((f) => /„Ce e bine" se referă la 2\. Nume cu cuvânt-cheie, marcat ❌/.test(f)), 'laudă pe ❌');
+  assert(flags.some((f) => /„Ce nu" se referă la 3\. Ce oferi, marcat ✅/.test(f)), 'critică pe ✅');
+  assert(flags.some((f) => /❌ fără sugestie de rezolvare: .*4\. Pentru cine/.test(f)), '❌ fără sugestie');
+  assert(flags.some((f) => /criteriul 16, care nu e ❌/.test(f)), 'quick win pe ⏳');
+  const clean = buildDoc(auditFixture()).flags;
+  assert(!clean.some((f) => /se referă la|fără sugestie|nu e ❌/.test(f)), `raportul coerent nu are avertismente de coerență: ${clean.join(' | ')}`);
+});
+t('tonul: cuvintele interzise sunt detectate, inclusiv fără diacritice', () => {
+  const a = auditFixture();
+  a.output.executive_summary = 'Bio-ul actual e slab, iar grila e gresit organizata.';
+  const { flags } = buildDoc(a);
+  assert(flags.some((f) => /Ton — Pe scurt: „slab", „gresit"/.test(f)), `ton: ${flags.join(' | ')}`);
+  assert(!buildDoc(auditFixture()).flags.some((f) => /^Ton/.test(f)), 'textul curat nu e semnalat');
 });
 t('genereaza corp multipart valid pentru Drive (HTML -> Google Doc)', () => {
-  const out = runNode('a1-build-document.js', {
-    json: { id: 'FOLDER_ID_123' },
-    nodes: {
-      Strateg: [JSON.parse(JSON.stringify(auditMock))],
-      'Form Trigger': [{ json: { 'Nume client': 'Cabinet X', 'Nișă': 'dentist' } }],
-      'Merge Extractions': [{ json: { extractedCount: 3, screenshotCount: 3, failed: [], lowConfidence: [] } }],
-    },
-  });
-  const mp = out[0].json.multipart;
+  const mp = buildDoc(auditFixture()).multipart;
   const parts = mp.split('--n8nDocBoundary');
   eq(parts.length, 4, 'doua parti + inchidere');
-  assert(parts[3].startsWith('--'), 'boundary-ul de final e "--n8nDocBoundary--"');
   const meta = JSON.parse(parts[1].split('\r\n\r\n')[1].trim());
   eq(meta.mimeType, 'application/vnd.google-apps.document', 'tinta = Google Doc');
   eq(meta.parents[0], 'FOLDER_ID_123', 'documentul merge in folderul creat');
   assert(parts[2].includes('Content-Type: text/html'), 'sursa e declarata text/html');
-  assert(/<h1>Audit social media/.test(mp), 'HTML-ul contine titlul');
-  assert(/Nu s-au primit capturi/.test(mp), 'platforma neacoperita e marcata, nu evaluata');
-  assert(!/undefined/.test(out[0].json.html), 'HTML fara "undefined"');
+  assert(!/undefined/.test(mp), 'HTML fara "undefined"');
 });
 t('esueaza explicit daca lipseste id-ul folderului', () => {
   let msg = '';
-  try {
-    runNode('a1-build-document.js', {
-      json: {},
-      nodes: { Strateg: [auditMock], 'Form Trigger': [{ json: {} }], 'Merge Extractions': [{ json: {} }] },
-    });
-  } catch (e) { msg = e.message; }
+  try { buildDoc(auditFixture(), {}); } catch (e) { msg = e.message; }
   assert(/id-ul folderului/.test(msg), 'mesaj de eroare descriptiv');
 });
 

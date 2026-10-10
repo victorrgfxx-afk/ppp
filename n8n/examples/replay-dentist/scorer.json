@@ -1,0 +1,382 @@
+{
+  "platforms": [
+    {
+      "platform": "instagram",
+      "last_post_date": null,
+      "criteria": [
+        {
+          "id": 1,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "logo cu un text mic dedesubt, ilizibil la dimensiunea din captură"
+        },
+        {
+          "id": 2,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "numele afișat e doar „Cabinet Aria”, fără serviciu sau oraș"
+        },
+        {
+          "id": 3,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "primul rând e un slogan: „Zâmbete frumoase ✨”"
+        },
+        {
+          "id": 4,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu spune cui se adresează sau ce obține pacientul"
+        },
+        {
+          "id": 5,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nicio cifră sau fapt de încredere în bio"
+        },
+        {
+          "id": 6,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu apare orașul sau zona"
+        },
+        {
+          "id": 7,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "„Programări” e substantiv, nu verb de acțiune"
+        },
+        {
+          "id": 8,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "bio-ul spune canalul: „prin DM”"
+        },
+        {
+          "id": 9,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "un singur rând scurt, un singur emoji"
+        },
+        {
+          "id": 10,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu apare link, telefon, WhatsApp sau email"
+        },
+        {
+          "id": 11,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu există contact care să ducă direct la programare"
+        },
+        {
+          "id": 12,
+          "met": false,
+          "not_in_screenshots": true,
+          "evidence": "nu apar postări fixate"
+        },
+        {
+          "id": 13,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "butonul „Mesaj” există, dar categoria nu e afișată"
+        },
+        {
+          "id": 14,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "doar 2 highlights: „Recenzii”, „Echipa”"
+        },
+        {
+          "id": 15,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "coperte bleu cu iconiță albă, identice; titluri scurte"
+        },
+        {
+          "id": 16,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "bannere de ofertă și o imagine de stoc amestecate cu fotografii reale"
+        },
+        {
+          "id": 17,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "poziția 6: înainte/după; highlight „Recenzii”"
+        },
+        {
+          "id": 18,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu apare niciun reel printre cele 9 postări"
+        },
+        {
+          "id": 19,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "text lizibil pe 3 din 9 coperte"
+        },
+        {
+          "id": 20,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu se repetă niciun format sau titlu"
+        }
+      ]
+    },
+    {
+      "platform": "tiktok",
+      "last_post_date": null,
+      "criteria": [
+        {
+          "id": 1,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "același logo, text mic ilizibil"
+        },
+        {
+          "id": 2,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "„Cabinet Aria Cluj”: brand + oraș"
+        },
+        {
+          "id": 3,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "primul rând: „Cabinet stomatologic Cluj-Napoca.”"
+        },
+        {
+          "id": 4,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nu spune cui se adresează sau ce obține pacientul"
+        },
+        {
+          "id": 5,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nicio cifră sau fapt de încredere"
+        },
+        {
+          "id": 6,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "„Cluj-Napoca”"
+        },
+        {
+          "id": 7,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "„Programari” e substantiv, nu verb de acțiune"
+        },
+        {
+          "id": 8,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "„la telefon sau pe site”"
+        },
+        {
+          "id": 9,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "scris fără diacritice: „fatete”, „Programari”"
+        },
+        {
+          "id": 10,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "link: linktr.ee/cabinetaria"
+        },
+        {
+          "id": 11,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "link agregator generic; bio-ul nu spune ce face omul acolo"
+        },
+        {
+          "id": 12,
+          "met": false,
+          "not_in_screenshots": true,
+          "evidence": "nu apar video-uri fixate"
+        },
+        {
+          "id": 13,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "@cabinetaria: scurt, legat de brand, fără cifre"
+        },
+        {
+          "id": 14,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "text lizibil pe 3 din 6 coperte"
+        },
+        {
+          "id": 15,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "două reupload-uri pătrate cu bare negre între clipuri verticale"
+        },
+        {
+          "id": 16,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "„Mit vs. adevăr” apare de două ori"
+        },
+        {
+          "id": 17,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "medic la cameră în 4 din 6 coperte"
+        },
+        {
+          "id": 18,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "niciun testimonial sau rezultat vizibil"
+        },
+        {
+          "id": 19,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "două video-uri pătrate cu bare negre"
+        },
+        {
+          "id": 20,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "doar video, niciun carusel foto"
+        }
+      ]
+    },
+    {
+      "platform": "facebook",
+      "last_post_date": "2025-03-14",
+      "criteria": [
+        {
+          "id": 1,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "același logo, text mic ilizibil"
+        },
+        {
+          "id": 2,
+          "met": true,
+          "not_in_screenshots": false,
+          "evidence": "„Cabinet Stomatologic Aria”: brand + serviciu"
+        },
+        {
+          "id": 3,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "secțiunea Intro e goală"
+        },
+        {
+          "id": 4,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "secțiunea Intro e goală"
+        },
+        {
+          "id": 5,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "secțiunea Intro e goală"
+        },
+        {
+          "id": 6,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "orașul nu apare în Intro"
+        },
+        {
+          "id": 7,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "secțiunea Intro e goală"
+        },
+        {
+          "id": 8,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "secțiunea Intro e goală"
+        },
+        {
+          "id": 9,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "secțiunea Intro e goală"
+        },
+        {
+          "id": 10,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "telefonul apare doar parțial: „0264 ...”"
+        },
+        {
+          "id": 11,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "butonul „Trimite mesaj” există, dar nimic nu spune ce se întâmplă după"
+        },
+        {
+          "id": 12,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "postarea fixată e o felicitare, fără rol de prezentare sau ofertă"
+        },
+        {
+          "id": 13,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "lipsesc adresa, programul și site-ul"
+        },
+        {
+          "id": 14,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "fațada clădirii, fără text, ofertă sau CTA"
+        },
+        {
+          "id": 15,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "o felicitare și un banner, fără elemente comune cu coperta"
+        },
+        {
+          "id": 16,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nicio postare cu testimonial sau rezultat"
+        },
+        {
+          "id": 17,
+          "met": false,
+          "not_in_screenshots": true,
+          "evidence": "recenziile nu apar în capturi"
+        },
+        {
+          "id": 18,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "ultima postare: 14 martie 2025"
+        },
+        {
+          "id": 19,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "nicio postare video"
+        },
+        {
+          "id": 20,
+          "met": false,
+          "not_in_screenshots": false,
+          "evidence": "CTA doar la una din două postări"
+        }
+      ]
+    }
+  ]
+}

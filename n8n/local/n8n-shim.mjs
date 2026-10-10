@@ -14,7 +14,8 @@ export const runNode = (file, { input = [], nodes = {}, json = {} } = {}) => {
     const src = readFileSync(join(ROOT, 'src', file), 'utf8');
     compiled.set(file, new Function('$input', '$', '$json', 'console', src));
   }
-  const $input = { all: () => input };
+  // Aceleasi metode ca $input din n8n: all(), first(), last()
+  const $input = { all: () => input, first: () => input[0], last: () => input[input.length - 1] };
   const $ = (name) => {
     if (!(name in nodes)) throw new Error(`Nodul "${name}" nu e disponibil in acest context`);
     const items = nodes[name];
@@ -23,12 +24,28 @@ export const runNode = (file, { input = [], nodes = {}, json = {} } = {}) => {
   return compiled.get(file)($input, $, json, console);
 };
 
+// $now minimal, compatibil cu ce folosesc prompturile din n8n ($now.toFormat('dd.MM.yyyy')).
+// In n8n, $now e un DateTime Luxon in fusul orar al instantei; aici, Europe/Bucharest.
+export const makeNow = (isoDate) => {
+  let y, mo, d, h = '00', mi = '00';
+  if (isoDate && /^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    [y, mo, d] = isoDate.split('-');
+  } else {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Bucharest', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    ({ year: y, month: mo, day: d, hour: h, minute: mi } = parts);
+  }
+  const toFormat = (fmt) => String(fmt).replace(/yyyy|MM|dd|HH|mm/g, (t) => ({ yyyy: y, MM: mo, dd: d, HH: h, mm: mi }[t]));
+  return { toFormat, format: toFormat, toISODate: () => `${y}-${mo}-${d}` };
+};
+
 // Evalueaza expresiile n8n {{ ... }} dintr-un prompt, cu acelasi $json ca in workflow.
-export const renderTemplate = (tpl, json) => {
+export const renderTemplate = (tpl, json, { today } = {}) => {
   const literal = String(tpl).replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
   const withExpr = literal.replace(/\{\{([\s\S]*?)\}\}/g, (_, expr) => '${' + expr.trim() + '}');
   try {
-    return new Function('$json', 'JSON', 'return `' + withExpr + '`;')(json, JSON);
+    return new Function('$json', 'JSON', '$now', 'return `' + withExpr + '`;')(json, JSON, makeNow(today));
   } catch (e) {
     throw new Error(`Nu am putut evalua promptul: ${e.message}`);
   }

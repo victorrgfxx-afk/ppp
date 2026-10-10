@@ -10,7 +10,17 @@ Testele automate (`node n8n/tests/run-tests.mjs`) acoperă logica nodurilor Code
 - [ ] **O captură intenționat blurată sau tăiată** → `confidence: "low"` și câmpurile ilizibile în `unreadable`, **nu** valori inventate. Ăsta e testul care contează: un model care ghicește aici va ghici și la client.
 - [ ] **O captură TikTok și una Facebook** → `platform` detectat corect.
 
+### Scorul de optimizare
+- [ ] Rulează exemplul fără cheie și compară cu secțiunea de mai jos: `node n8n/local/run.mjs audit --client "Cabinet Dentar Aria" --screens n8n/examples/replay-dentist --replay n8n/examples/replay-dentist --today 2026-10-10` → IG 6,00 · TikTok 7,25 · Facebook 5,25 · general 6,2 → potențial 8,8.
+- [ ] Cu un model real: rulează **același set de capturi de 3 ori**. Scorul pe platformă trebuie să fie identic sau să difere cu cel mult 0,25. Dacă variază mai mult, criteriile cu dovezi diferite între rulări sunt cele de clarificat în prompt.
+- [ ] Verifică manual 5 criterii la întâmplare față de capturi. Un ✅ fără dovadă reală e semn că modelul e prea generos — coboară-i temperatura sau schimbă modelul.
+- [ ] O platformă cu **doar captura de profil, fără grilă** → criteriile de conținut ies ⏳ „(nu apare în capturi)", nu ✅.
+- [ ] Facebook cu ultima postare de acum 2 luni → „Activitate" ⏳; cu postare de acum 2 săptămâni → ✅.
+- [ ] În secțiunea internă de la finalul documentului, citește `Scor … modelul a spus DA, s-a stabilit NU`: sunt locurile unde numărătoarea a corectat modelul. Dacă apar des pe același criteriu, extractorul transcrie greșit postările.
+- [ ] Contul cu 50.000 de urmăritori și profil necompletat trebuie să ia **același scor** ca unul cu 500 de urmăritori și același profil.
+
 ### Strategul
+- [ ] Secțiunea internă „Verificări automate" nu are avertismente de coerență („se referă la … marcat ❌", „❌ fără sugestie", „quick win … nu e ❌") și de ton.
 - [ ] Fiecare observație din `what_works` / `what_doesnt` citează ceva concret în `evidence`. Dacă apar formulări de tip „conținutul pare inconsistent" fără dovadă, întărește regula 2 din prompt.
 - [ ] **Nicio recomandare generică**: caută în document „postează constant" și „hashtag-uri relevante". Dacă apar, promptul nu e respectat — coboară temperatura la 0.2.
 - [ ] Trimite capturi **doar de pe Instagram** → Facebook și TikTok apar cu `covered: false` și textul „Nu s-au primit capturi", nu evaluate din burtă. **Acesta e testul anti-halucinație numărul unu.**
@@ -18,6 +28,7 @@ Testele automate (`node n8n/tests/run-tests.mjs`) acoperă logica nodurilor Code
 
 ### Descrierile
 - [ ] 3 variante per platformă acoperită, cu unghiuri **vizibil diferite** (nu trei parafraze).
+- [ ] Fiecare variantă are serviciul, un verb de acțiune și canalul (WhatsApp / DM / link / telefon). Nicio cifră care nu apare în capturi — doar placeholdere de tipul `[ani experiență]`.
 - [ ] Numără manual caracterele la 2 variante și compară cu `char_count` din document — trebuie să coincidă (codul le recalculează, nu se bazează pe model).
 - [ ] Nicio variantă marcată „PESTE LIMITA". Dacă apar constant, adaugă în prompt: „scrie cu 15% sub limită".
 - [ ] Bio-ul TikTok chiar se citește ca TikTok, nu ca o versiune scurtată a celui de Instagram.

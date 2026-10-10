@@ -52,21 +52,25 @@ docker run -d --name n8n -p 5678:5678 \
 ## 1. Agent A — Audit profil din screenshot-uri
 
 ### 1.1 Principiul de arhitectură (partea care face diferența)
-Nu pune un singur prompt care „se uită la poze și dă verdictul". Împarte în **două creiere**:
+Nu pune un singur prompt care „se uită la poze și dă verdictul". Împarte în **trei creiere** și lasă codul să facă tot ce e numărare:
 
 | Etapă | Rol | Temperature | De ce |
 |---|---|---|---|
 | **Extractor (vision)** | doar *transcrie* ce se vede: username, bio literal, nr. followers, nr. postări, highlights, grid, CTA, link, primele 9 thumbnails | 0 | Modelele vision halucinează mult mai puțin când li se cere transcriere, nu opinie. Un apel per imagine. |
-| **Strateg (text)** | primește JSON-ul extras + brieful clientului, aplică o rubrică fixă, judecă și scrie | 0.4 | Raționamentul se face pe text structurat, nu pe pixeli. Poți schimba modelul independent și e de ~10x mai ieftin. |
+| **Scorer (text)** | decide DA/NU pe fiecare din cele 20 de criterii de optimizare per platformă, cu dovada din capturi | 0 | Judecată îngustă, fără creativitate. Nu vede urmăritorii și like-urile — sunt scoase din date înainte. |
+| **Cod: Compute Score** | simboluri, scor, potențial, etichete, medii, format; plus criteriile care sunt pure numărători (proporții, date) | — | „Scorul rezultă doar din numărare": aritmetica nu se lasă pe seama unui model. |
+| **Strateg (text)** | primește extracțiile + **checklist-ul deja calculat**, judecă și scrie | 0.4 | Nu are cum să dea alt scor decât cel din prima secțiune: nu i se cere niciun scor. |
 
-Bonus: dacă auditul iese prost, știi exact care creier a greșit.
+Bonus: dacă auditul iese prost, știi exact care etapă a greșit.
 
 ### 1.2 Lanțul de noduri
 
 ```
 Form Trigger  →  Code: Normalize Screenshots  →  OpenAI: Analyze Image  →  Code: Merge Extractions
+    →  Basic LLM Chain "Scorer" (+ Chat Model, temp 0 + Structured Output Parser)
+    →  Code: Compute Score
     →  Basic LLM Chain "Strateg" (+ Chat Model + Structured Output Parser)
-    →  Code: Validate + Render HTML
+    →  Code: Build Document (scor + validări + HTML)
     →  Google Drive: Create Folder  →  HTTP Request: Drive multipart upload (HTML → Google Doc)
     →  Google Sheets: append în `Clienti`
 ```
@@ -114,7 +118,7 @@ return out;
 - Input Type: **Binary File(s)**
 - Input Data Field Name: `data`
 - Text: promptul din [`prompts/01-vision-extractor.md`](prompts/01-vision-extractor.md)
-- Options → **Length of Description (Max Tokens): 1500** (default-ul e 300 → răspuns tăiat, JSON invalid — cauza #1 de eșec aici)
+- Options → **Length of Description (Max Tokens): 3000** (default-ul e 300 → răspuns tăiat, JSON invalid — cauza #1 de eșec aici; extracția acoperă acum toate cele 20 de criterii, deci e mai lungă)
 - Options → Detail: `high` (bio-urile și numerele mici sunt ilizibile pe `low`)
 - Pe nod: **Retry On Fail** = ON, 2 încercări.
 
@@ -148,16 +152,41 @@ if (!extractions.length) throw new Error('Nicio extracție validă. Verifică Ma
 return [{ json: { client: trigger, extractions, failed, screenshotCount: items.length } }];
 ```
 
+#### Nod 4b — **Basic LLM Chain „Scorer"** — scorul de optimizare a profilului
+- Prompt: [`prompts/04-optimization-scorer.md`](prompts/04-optimization-scorer.md) — criteriile tale, cuvânt cu cuvânt, plus `Data de azi: {{ $now.toFormat('dd.MM.yyyy') }}`.
+- Chat Model cu **temperature 0**, Structured Output Parser pe [`schemas/score-output.schema.json`](schemas/score-output.schema.json), Auto-fixing Parser, Retry On Fail × 3.
+- Primește `scoring_extractions`: extracțiile **fără** `metrics` și `engagement_visible`. Regula „urmăritorii nu influențează scorul" e garantată prin date, nu prin rugăminte.
+- Răspunde doar cu DA/NU + dovadă pe fiecare criteriu. Nu calculează nimic.
+
+#### Nod 4c — **Code: Compute Score**
+Tot ce e determinist, în [`src/a1-compute-score.js`](src/a1-compute-score.js):
+- **Denumirile și ordinea** celor 20 de criterii vin dintr-un tabel fix → identice în fiecare raport.
+- **Simbolul** depinde de tipul criteriului (profil → ❌, conținut → ⏳), nu de model.
+- **„Nu apare în capturi" sau DA fără dovadă → NU** (regulile 3 și 4, aplicate mecanic).
+- **Criteriile care sunt numărători se calculează din extracție**: Reels ≥ 1/3, hook ≥ 1/2, prezență umană ≥ 1/2, CTA la majoritatea postărilor, toate video-urile verticale și clare, mix video + foto, Video/Reels prezente, și **Activitate ≤ 30 de zile**, din data literală („3 săpt.", „12 septembrie").
+- Highlights ≥ 4 și postări fixate 2–3 / 1 sunt **condiții necesare**: pot doar coborî un DA, partea de judecată („teme utile", „rol clar") rămâne a modelului.
+- Scor `5 + 0,25 × ✅`, potențial `5 + 0,25 × (✅ + ❌)`, două zecimale, virgulă; scor general (de la 2 platforme) cu o zecimală; etichetă după partea întreagă.
+- Orice corecție față de răspunsul modelului e înregistrată în `score.overrides`.
+
+Tabelul complet „regulă din specificație → unde e implementată → test" e în [`prompts/04-optimization-scorer.md`](prompts/04-optimization-scorer.md).
+
 #### Nod 5 — **Basic LLM Chain „Strateg"**
-- Prompt: `Define below` → promptul din [`prompts/02-strategist-audit.md`](prompts/02-strategist-audit.md), cu `{{ JSON.stringify($json.extractions) }}` injectat.
+- Prompt: `Define below` → promptul din [`prompts/02-strategist-audit.md`](prompts/02-strategist-audit.md), cu checklist-ul calculat (`$json.score.text`) și extracțiile injectate.
+- Primește regulile de coerență: „Ce e bine" doar din ✅, „Ce nu" și sugestiile doar din ❌/⏳, quick wins doar din ❌, fiecare observație cu id-urile criteriilor la care se referă.
 - Sub-nod **Chat Model** (OpenAI/Anthropic), temperature 0.4.
 - Sub-nod **Structured Output Parser** cu schema din [`schemas/audit-output.schema.json`](schemas/audit-output.schema.json).
 - Dacă modelul mai scapă JSON invalid: pune **Auto-fixing Output Parser** între parser și chain (are model propriu care repară ieșirea) — asta rezolvă ~toate eșecurile de parsing.
 
-#### Nod 6 — **Code: Validate + Render HTML**
-Face două lucruri pe care un LLM nu le face de încredere:
-1. **Numără caracterele** fiecărei descrieri propuse și marchează depășirile (LLM-urile numără prost caracterele — nu te baza pe prompt).
-2. Randează raportul în **HTML**, nu Markdown.
+#### Nod 6 — **Code: Build Document**
+Face lucrurile pe care un LLM nu le face de încredere:
+1. Pune **scorul de optimizare ca prima secțiune**, exact în formatul cerut.
+2. **Numără caracterele** fiecărei descrieri propuse și marchează depășirile (LLM-urile numără prost caracterele).
+3. **Verifică raportul** și listează orice problemă într-o secțiune internă, de șters înainte de trimitere:
+   - descrieri fără Ce oferi + CTA + Canal CTA (criteriile declarate **și** detectarea verbului de acțiune și a canalului în text);
+   - **cifre care nu apar în capturi** (ani de experiență, nr. clienți, telefon inventat); placeholderele `[ani experiență]` sunt semnalate pentru completare;
+   - **coerența cu checklist-ul**: laudă pe un ❌/⏳, critică pe un ✅, ❌ fără sugestie, quick win pe un criteriu care nu e ❌;
+   - **tonul**: „slab", „prost", „greșit", „dezastru" și formele lor, cu sau fără diacritice.
+4. Randează raportul în **HTML**, nu Markdown.
 
 Limite pe care le validăm (verificate, sept. 2026 — reconfirmă anual, se schimbă):
 | Platformă | Câmp | Limită sigură |
@@ -169,7 +198,7 @@ Limite pe care le validăm (verificate, sept. 2026 — reconfirmă anual, se sch
 Sunt centralizate în `PLATFORM_LIMITS` la începutul nodului — le schimbi într-un loc.
 
 #### Nod 7 — **Google Drive → Folder → Create**
-- Name: `={{ $('Form Trigger').first().json['Nume client'] }} — Audit {{ $now.format('yyyy-MM-dd') }}`
+- Name: `={{ $('Form Trigger').first().json['Nume client'] }} — Audit {{ $now.toFormat('yyyy-MM-dd') }}`
 - Parent Folder: **By ID** → `={{ $('Form Trigger').first().json['ID folder Drive părinte'] }}`
 
 #### Nod 8 — **HTTP Request: HTML → Google Doc** (partea cea mai importantă tehnic)
@@ -187,7 +216,7 @@ Soluția corectă: **Google Drive API acceptă import cu conversie** — încarc
 Alternativa low-code, dacă nu vrei HTTP Request: **Google Drive → File → Create from text**, cu opțiunea **„Convert to Google Document"**. Merge, dar conținutul e tratat ca text simplu → fără formatare. Bun pentru intern, slab pentru livrabil client.
 
 #### Nod 9 — **Google Sheets → Append** în `Clienti`
-`data, client, nișă, platforme, link folder, link document, nr. screenshot-uri, scor general`. Îți dă istoric și, în timp, un dataset de comparat („scorul mediu la onboarding vs. după 3 luni").
+`data, client, nisa, platforme, scor_general, potential_general, scor_instagram, scor_tiktok, scor_facebook, scor_text, folder_url, document_url, avertismente`. Îți dă istoric și, în timp, un dataset de comparat: **scorul la onboarding vs. după 3 luni** e cel mai convingător argument de vânzare pe care îl poate avea o agenție. `scor_text` e secțiunea de scor ca text simplu, gata de lipit într-un mesaj.
 
 ### 1.3 Cele 3 descrieri per platformă — de ce cere prompt separat
 Nu cere „3 bio-uri" generic. În prompt sunt hardcodate **trei unghiuri diferite** per platformă, ca variantele să nu fie sinonime:
@@ -195,7 +224,7 @@ Nu cere „3 bio-uri" generic. În prompt sunt hardcodate **trei unghiuri diferi
 - **V2 — Beneficiu/Emoțional:** transformarea promisă, în limbajul clientului final.
 - **V3 — Diferențiator/Proof:** cifra, specializarea sau dovada care te separă de concurență.
 
-Fiecare vine cu CTA propriu și motivul alegerii. Pe TikTok se scrie pentru *scroll rece* (cine ești în 3 secunde), pe Instagram pentru *decizie de follow*, pe Facebook pentru *credibilitate locală* (categorie, oraș, program).
+Fiecare bifează criteriile 3–8 ale scorului cât permite limita; **obligatoriu Ce oferi + CTA cu verb de acțiune + canalul** („pe WhatsApp", „din link ⬇️", „în DM"). Unde lipsește o cifră reală, modelul pune un placeholder (`[ani experiență]`), nu inventează. Fiecare vine cu criteriile bifate și motivul alegerii. Pe TikTok se scrie pentru *scroll rece* (cine ești în 3 secunde), pe Instagram pentru *decizie de follow*, pe Facebook pentru *credibilitate locală* (categorie, oraș, program).
 
 ---
 
@@ -397,7 +426,7 @@ Limite de care te lovești real:
 | Problemă | Cauză | Soluție |
 |---|---|---|
 | „Cannot read property of undefined" după upload | numele binary din Form Trigger diferă | Code normalizer (§1.2, Nod 2) |
-| JSON tăiat de la Analyze Image | `Max Tokens` default = 300 | setează 1500 |
+| JSON tăiat de la Analyze Image | `Max Tokens` default = 300 | setează 3000 |
 | Structured Output Parser eșuează random | modelul adaugă text în jurul JSON-ului | **Auto-fixing Output Parser** + `Retry On Fail` |
 | Markdown apare literal în Google Doc | Google Docs `insertText` = text simplu | upload HTML cu conversie via Drive API (§1.2, Nod 8) |
 | Document creat în „My Drive", nu în folder | parent nesetat / shared drive | `supportsAllDrives=true` + `parents:[folderId]` în metadata |
@@ -435,6 +464,7 @@ n8n/
 ├── src/                                   ← codul nodurilor Code, lizibil si testabil
 │   ├── a1-normalize-screenshots.js
 │   ├── a1-merge-extractions.js
+│   ├── a1-compute-score.js                ← scorul de optimizare, determinist
 │   ├── a1-build-document.js
 │   ├── b-build-slice-plan.js
 │   ├── b-flatten-ideas.js
@@ -444,14 +474,16 @@ n8n/
 │   ├── n8n-shim.mjs                       ← rulează nodurile Code în afara n8n
 │   └── llm.mjs                            ← client OpenAI / Anthropic, fără dependințe
 ├── tests/
-│   └── run-tests.mjs                      ← 21 de teste pe logica nodurilor Code
+│   └── run-tests.mjs                      ← 44 de teste pe logica nodurilor Code
 ├── prompts/
 │   ├── 01-vision-extractor.md
 │   ├── 02-strategist-audit.md
-│   └── 03-idea-generator.md
+│   ├── 03-idea-generator.md
+│   └── 04-optimization-scorer.md          ← scorul de optimizare + tabelul regulă → implementare
 ├── schemas/
 │   ├── audit-output.schema.json
-│   └── idea-row.schema.json
+│   ├── idea-row.schema.json
+│   └── score-output.schema.json
 ├── data/
 │   ├── README.md
 │   ├── international-days-seed.csv
@@ -468,7 +500,7 @@ n8n/
 ## Cum lucrezi cu acest folder
 
 ```bash
-node n8n/tests/run-tests.mjs      # 21 de teste pe logica nodurilor Code (fără n8n, fără API)
+node n8n/tests/run-tests.mjs      # 44 de teste pe logica nodurilor Code (fără n8n, fără API)
 node n8n/build-workflows.mjs      # regenerează workflows/*.json din src/ + prompts/ + schemas/
 ```
 

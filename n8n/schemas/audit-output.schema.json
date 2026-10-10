@@ -1,30 +1,81 @@
 {
   "type": "object",
-  "required": ["overall_score", "score_rationale", "platforms", "quick_wins", "content_strategy_30_days", "missing_data"],
+  "required": [
+    "executive_summary",
+    "platforms",
+    "quick_wins",
+    "content_strategy_30_days",
+    "missing_data"
+  ],
   "properties": {
-    "overall_score": { "type": "number", "minimum": 0, "maximum": 100 },
-    "score_rationale": { "type": "string" },
-    "executive_summary": { "type": "string", "description": "3-4 fraze pe care clientul le citeste primele" },
+    "executive_summary": {
+      "type": "string",
+      "description": "3-4 fraze pe care clientul le citeste primele"
+    },
     "platforms": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["platform", "covered", "what_works", "what_doesnt", "improvements", "bio_variants"],
+        "required": [
+          "platform",
+          "covered",
+          "what_works",
+          "what_doesnt",
+          "improvements",
+          "bio_variants"
+        ],
         "properties": {
-          "platform": { "type": "string", "enum": ["tiktok", "instagram", "facebook"] },
-          "covered": { "type": "boolean", "description": "false daca nu s-au primit capturi pentru platforma" },
-          "handle": { "type": "string" },
-          "current_bio": { "type": "string" },
-          "current_bio_chars": { "type": "number" },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "tiktok",
+              "instagram",
+              "facebook"
+            ]
+          },
+          "covered": {
+            "type": "boolean",
+            "description": "false daca nu s-au primit capturi pentru platforma"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "current_bio": {
+            "type": "string"
+          },
+          "current_bio_chars": {
+            "type": "number"
+          },
           "what_works": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["observation", "evidence", "why_it_matters"],
+              "required": [
+                "observation",
+                "evidence",
+                "why_it_matters",
+                "criteria"
+              ],
               "properties": {
-                "observation": { "type": "string" },
-                "evidence": { "type": "string", "description": "citat direct din datele extrase" },
-                "why_it_matters": { "type": "string" }
+                "observation": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string",
+                  "description": "citat direct din datele extrase"
+                },
+                "why_it_matters": {
+                  "type": "string"
+                },
+                "criteria": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "description": "id-urile criteriilor din checklist la care se refera; lista goala daca nu tine de niciun criteriu"
+                }
               }
             }
           },
@@ -32,11 +83,32 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["issue", "evidence", "cost"],
+              "required": [
+                "issue",
+                "evidence",
+                "cost",
+                "criteria"
+              ],
               "properties": {
-                "issue": { "type": "string" },
-                "evidence": { "type": "string" },
-                "cost": { "type": "string", "description": "ce pierde concret clientul din cauza asta" }
+                "issue": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "cost": {
+                  "type": "string",
+                  "description": "ce castiga concret clientul cand rezolva (formulat ca oportunitate, nu ca repros)"
+                },
+                "criteria": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "description": "id-urile criteriilor din checklist la care se refera; lista goala daca nu tine de niciun criteriu"
+                }
               }
             }
           },
@@ -44,13 +116,49 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["action", "how_to", "impact", "effort"],
+              "required": [
+                "action",
+                "how_to",
+                "impact",
+                "effort",
+                "criteria"
+              ],
               "properties": {
-                "action": { "type": "string" },
-                "how_to": { "type": "string", "description": "pasi executabili, nu principii" },
-                "impact": { "type": "string", "enum": ["mare", "mediu", "mic"] },
-                "effort": { "type": "string", "enum": ["mic", "mediu", "mare"] },
-                "expected_result": { "type": "string" }
+                "action": {
+                  "type": "string"
+                },
+                "how_to": {
+                  "type": "string",
+                  "description": "pasi executabili, nu principii"
+                },
+                "impact": {
+                  "type": "string",
+                  "enum": [
+                    "mare",
+                    "mediu",
+                    "mic"
+                  ]
+                },
+                "effort": {
+                  "type": "string",
+                  "enum": [
+                    "mic",
+                    "mediu",
+                    "mare"
+                  ]
+                },
+                "expected_result": {
+                  "type": "string"
+                },
+                "criteria": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20
+                  },
+                  "description": "id-urile criteriilor din checklist la care se refera; lista goala daca nu tine de niciun criteriu"
+                }
               }
             }
           },
@@ -60,14 +168,40 @@
             "maxItems": 3,
             "items": {
               "type": "object",
-              "required": ["angle", "text", "char_count", "cta", "rationale"],
+              "required": [
+                "angle",
+                "text",
+                "criteria_covered",
+                "rationale"
+              ],
               "properties": {
-                "angle": { "type": "string", "enum": ["claritate", "beneficiu", "diferentiator"] },
-                "text": { "type": "string" },
-                "char_count": { "type": "number" },
-                "name_field": { "type": "string", "description": "pentru IG/TikTok: campul Name, max 30 caractere" },
-                "cta": { "type": "string" },
-                "rationale": { "type": "string" }
+                "angle": {
+                  "type": "string",
+                  "enum": [
+                    "claritate",
+                    "beneficiu",
+                    "diferentiator"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "name_field": {
+                  "type": "string",
+                  "description": "pentru IG/TikTok: campul Name, max 30 caractere"
+                },
+                "rationale": {
+                  "type": "string"
+                },
+                "criteria_covered": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 3,
+                    "maximum": 8
+                  },
+                  "description": "criteriile 3-8 bifate efectiv de text; obligatoriu 3, 7 si 8"
+                }
               }
             }
           }
@@ -79,11 +213,30 @@
       "maxItems": 3,
       "items": {
         "type": "object",
-        "required": ["action", "time_needed"],
+        "required": [
+          "action",
+          "time_needed",
+          "criteria"
+        ],
         "properties": {
-          "action": { "type": "string" },
-          "time_needed": { "type": "string" },
-          "platform": { "type": "string" }
+          "action": {
+            "type": "string"
+          },
+          "time_needed": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "description": "doar criterii marcate ❌"
+          }
         }
       }
     },
@@ -91,22 +244,43 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["week", "focus", "post_types"],
+        "required": [
+          "week",
+          "focus",
+          "post_types"
+        ],
         "properties": {
-          "week": { "type": "number" },
-          "focus": { "type": "string" },
-          "post_types": { "type": "array", "items": { "type": "string" } },
-          "goal": { "type": "string" }
+          "week": {
+            "type": "number"
+          },
+          "focus": {
+            "type": "string"
+          },
+          "post_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goal": {
+            "type": "string"
+          }
         }
       }
     },
     "missing_data": {
       "type": "array",
-      "items": { "type": "string", "description": "ce capturi suplimentare sunt necesare si de ce" }
+      "items": {
+        "type": "string",
+        "description": "ce capturi suplimentare sunt necesare si de ce"
+      }
     },
     "red_flags": {
       "type": "array",
-      "items": { "type": "string", "description": "probleme urgente: cont neverificat, link mort, informatii de contact lipsa" }
+      "items": {
+        "type": "string",
+        "description": "probleme urgente: cont neverificat, link mort, informatii de contact lipsa"
+      }
     }
   }
 }

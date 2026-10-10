@@ -242,7 +242,7 @@ const cmdAudit = async () => {
   const dir = String(flag('screens', '')) || die('Lipseste --screens <folder cu capturi de ecran>');
   if (!existsSync(dir)) die(`Folderul "${dir}" nu exista.`);
   const files = readdirSync(dir).filter((f) => IMG[extname(f).toLowerCase()]).map((f) => join(dir, f));
-  if (!files.length && !DRY) die(`Niciun fisier imagine in "${dir}".`);
+  if (!files.length && !DRY && !REPLAY) die(`Niciun fisier imagine in "${dir}".`);
 
   const form = {
     'Nume client': String(flag('client', 'Client')),
@@ -251,64 +251,112 @@ const cmdAudit = async () => {
     'Obiectivul contului': String(flag('goal', 'lead-uri')),
     'Public țintă': String(flag('audience', '')),
   };
+  const todayFlag = flag('today', null) ? String(flag('today')) : null;
+  if (todayFlag && !/^\d{4}-\d{2}-\d{2}$/.test(todayFlag)) die('--today trebuie sa fie in format AAAA-LL-ZZ');
 
   say(`\nAgent A — ${form['Nume client']}`);
-  say(`  capturi: ${files.length}`);
+  if (!REPLAY) say(`  capturi: ${files.length}`);
 
   const client = makeClient({ model: String(flag('model', process.env.LLM_MODEL || 'gpt-4o')), dryRun: DRY || !!REPLAY });
   const visionTpl = loadPrompt('01-vision-extractor.md');
 
+  // 1. Extractie vision, o captura pe rand
   const replayVision = REPLAY ? replayFile('vision.json') : null;
   const raw = replayVision
     ? replayVision.map((v) => ({ json: { content: JSON.stringify(v) } }))
     : DRY
     ? files.map((f, i) => ({ json: { content: JSON.stringify({
         platform: ['instagram', 'tiktok', 'facebook'][i % 3], screen_type: 'profil',
-        account: { username: '@dryrun', display_name: 'Dry Run', bio_text: '[dry-run] bio', bio_char_count: 13, link_in_bio: null, category_or_label: null, verified: false, profile_photo_description: 'logo' },
+        account: { username: '@dryrun', display_name: 'Dry Run', bio_text: '[dry-run] bio', bio_char_count: 13, link_in_bio: null, category_or_label: null, verified: false, profile_photo_description: 'logo', profile_photo_legible_small: true },
+        contact: { buttons_visible: [], phone: null, email: null, website: null, whatsapp: null, address: null, hours: null },
+        highlights: [], highlights_covers_uniform: null, pinned_posts: [], posts_visible: [],
+        visual_style: { grid_consistency_observed: null, dominant_colors: [], text_overlay_style: null },
+        facebook_page: { cover_photo_description: null, cover_text: null, reviews_visible: null, last_post_date_text: null },
         metrics: { followers: '1,2K', following: '300', posts_count: '48', likes_total: null },
-        visual_elements: { highlights_or_pinned: [], grid_first_9: [], grid_consistency_observed: 'paleta constanta', dominant_colors: ['alb'], text_overlay_style: null },
-        engagement_visible: [], cta_elements: { buttons_visible: [], contact_info_visible: [] }, unreadable: [], confidence: 'high',
+        engagement_visible: [], unreadable: [], confidence: 'high',
       }) } }))
     : await mapPool(files, num('concurrency', 3), async (f, i) => {
         const b64 = readFileSync(f).toString('base64');
         const text = await client.complete({
           prompt: visionTpl,
           images: [{ base64: b64, mimeType: IMG[extname(f).toLowerCase()] }],
-          temperature: 0, maxTokens: 1500, json: true, label: basename(f),
+          temperature: 0, maxTokens: 3000, json: true, label: basename(f),
         });
         process.stdout.write(`\r  extras: ${i + 1}/${files.length}`);
         return { json: { content: text } };
       });
-  if (!DRY) say('');
+  if (!DRY && !REPLAY) {
+    say('');
+    // acelasi format pe care il citeste --replay: un singur vision.json cu toate extractiile
+    saveRaw('vision.json', raw.map((r) => parseLooseJson(r.json.content) ?? r.json.content));
+  }
 
   const merged = runNode('a1-merge-extractions.js', { input: raw, nodes: { 'Form Trigger': [{ json: form }] } })[0];
+  if (todayFlag) merged.json.today = todayFlag;
+  const today = merged.json.today;
   say(`  extractii valide: ${merged.json.extractedCount}/${merged.json.screenshotCount} | platforme: ${merged.json.covered.join(', ') || '—'}`);
 
+  // 2. Scorer: modelul decide DA/NU pe fiecare criteriu
+  const replayScorer = REPLAY ? replayFile('scorer.json') : null;
+  if (REPLAY && !replayScorer) die(`Lipseste ${join(REPLAY, 'scorer.json')}`);
+  const scorerOut = replayScorer
+    ? replayScorer
+    : DRY
+    ? { platforms: merged.json.covered.filter((p) => ['instagram', 'tiktok', 'facebook'].includes(p)).map((p) => ({
+        platform: p, last_post_date: null,
+        criteria: Array.from({ length: 20 }, (_, k) => ({ id: k + 1, met: k % 3 === 0, not_in_screenshots: false, evidence: k % 3 === 0 ? '[dry-run]' : '' })),
+      })) }
+    : await completeJson(client, {
+        prompt: renderTemplate(loadPrompt('04-optimization-scorer.md'), merged.json, { today }),
+        temperature: 0, maxTokens: 6000, label: 'scorer',
+      });
+  if (!replayScorer && !DRY) saveRaw('scorer.json', scorerOut);
+
+  // 3. Scorul, calculat determinist
+  const scored = runNode('a1-compute-score.js', {
+    input: [{ json: { output: scorerOut } }],
+    nodes: { 'Merge Extractions': [merged] },
+  })[0];
+  const score = scored.json.score;
+
+  // 4. Strategul, cu checklist-ul calculat in prompt
   const replayAudit = REPLAY ? replayFile('strateg.json') : null;
   const audit = replayAudit
     ? replayAudit
     : DRY
-    ? { overall_score: 0, score_rationale: '[dry-run]', executive_summary: '[dry-run]', quick_wins: [], content_strategy_30_days: [], missing_data: [], red_flags: [],
+    ? { executive_summary: '[dry-run]', quick_wins: [], content_strategy_30_days: [], missing_data: [], red_flags: [],
         platforms: merged.json.covered.map((p) => ({ platform: p, covered: true, what_works: [], what_doesnt: [], improvements: [],
-          bio_variants: [1, 2, 3].map((n) => ({ angle: ['claritate', 'beneficiu', 'diferentiator'][n - 1], text: `[dry-run] varianta ${n}`, cta: '—', rationale: '—' })) })) }
+          bio_variants: [1, 2, 3].map((n) => ({ angle: ['claritate', 'beneficiu', 'diferentiator'][n - 1], text: `[dry-run] varianta ${n}`, criteria_covered: [3, 7, 8], rationale: '—' })) })) }
     : await completeJson(client, {
-        prompt: renderTemplate(loadPrompt('02-strategist-audit.md'), merged.json) +
+        prompt: renderTemplate(loadPrompt('02-strategist-audit.md'), scored.json, { today }) +
           `\n\nRaspunde EXCLUSIV cu un obiect JSON conform acestei scheme:\n${JSON.stringify(loadSchema('audit-output.schema.json'))}`,
         temperature: num('temperature', 0.4), maxTokens: 8000, label: 'strateg',
       });
+  if (!replayAudit && !DRY) saveRaw('strateg.json', audit);
 
+  // 5. Documentul
   const doc = runNode('a1-build-document.js', {
     json: { id: 'local-run' },
-    nodes: { Strateg: [{ json: { output: audit } }], 'Form Trigger': [{ json: form }], 'Merge Extractions': [merged] },
+    nodes: {
+      Strateg: [{ json: { output: audit } }],
+      'Form Trigger': [{ json: form }],
+      'Merge Extractions': [merged],
+      'Compute Score': [scored],
+    },
   })[0].json;
 
   mkdirSync(OUT_DIR, { recursive: true });
   const stem = String(flag('out', join(OUT_DIR, `audit-${form['Nume client'].replace(/\s+/g, '-').toLowerCase()}`)));
   writeFileSync(`${stem}.html`, doc.html);
-  writeFileSync(`${stem}.json`, JSON.stringify(audit, null, 2) + '\n');
-  say(`  scor: ${audit.overall_score}/100`);
-  if (doc.flags.length) { say('  verificari automate:'); doc.flags.forEach((f) => say(`    - ${f}`)); }
+  writeFileSync(`${stem}.json`, JSON.stringify({ score, audit }, null, 2) + '\n');
+  writeFileSync(`${stem}-scor.txt`, score.text + '\n');
+
+  say('');
+  say(score.text.split('\n').map((l) => `  ${l}`).join('\n'));
+  const notes = [...doc.flags, ...score.flags, ...score.overrides.map((o) => `scor ${o.platform} / ${o.id}. ${o.name}: model ${o.model ? 'DA' : 'NU'} → ${o.final ? 'DA' : 'NU'} (${o.reason})`)];
+  if (notes.length) { say('\n  verificari automate:'); notes.forEach((f) => say(`    - ${f}`)); }
   say(`\n  scris: ${stem}.html  (acelasi HTML pe care n8n il incarca in Drive ca Google Doc)`);
+  say(`  scris: ${stem}-scor.txt  (sectiunea de scor ca text simplu, de lipit in mesaj)`);
   say(`  scris: ${stem}.json\n`);
 };
 
@@ -343,7 +391,7 @@ Optiuni comune
   --dry-run              ruleaza tot lantul fara apeluri LLM (verificare de instalare)
   --save-raw             salveaza raspunsurile brute ale modelului in <out-dir>/raw/
   --replay <folder>      reia raspunsuri salvate in loc sa apeleze modelul
-                         ideas: <folder>/slice-<N>.json | audit: vision.json + strateg.json
+                         ideas: <folder>/slice-<N>.json | audit: vision.json + scorer.json + strateg.json
   --model <id>           modelul (implicit: $LLM_MODEL sau gpt-4o)
   --concurrency <n>      apeluri LLM in paralel (implicit 3)
   --out <cale>           prefixul fisierelor de iesire
@@ -361,6 +409,7 @@ ideas
 audit
   --screens <folder>     folderul cu capturi (.png .jpg .webp)
   --client "<nume>"  --niche <nisa>  --goal "<obiectiv>"  --audience "<public>"
+  --today <AAAA-LL-ZZ>   data de referinta pentru criteriul Facebook „Activitate" (implicit azi)
   --temperature <n>      implicit 0.4
 
 Chei API: OPENAI_API_KEY (si optional OPENAI_BASE_URL) sau ANTHROPIC_API_KEY.

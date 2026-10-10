@@ -1,37 +1,38 @@
 {
-"overall_score": 42,
-"score_rationale": "Contul are audiență reală pe trei platforme (1.847 pe Instagram, 3.102 pe Facebook), dar niciuna nu are un drum clar către o programare: pe Instagram link_in_bio este gol, pe Facebook informațiile de contact sunt incomplete în captură. Punctajul e tras în jos de conversie, nu de conținut — pe TikTok există deja dovada că formatul potrivit funcționează.",
-"executive_summary": "Cel mai valoros lucru din acest audit nu e o recomandare, e o cifră pe care o aveți deja: pe TikTok, clipul cu medicul la cameră are 14,2K vizualizări, iar reupload-ul pătrat de pe Instagram are 402. Același cont, aceeași săptămână, de 35 de ori diferență. Restul auditului spune, în esență, să faceți mai mult din primul lucru și să opriți al doilea. În paralel, Instagramul are 1.847 de urmăritori și niciun link în bio — adică nicio cale de a transforma atenția în programare.",
+"executive_summary": "Cel mai valoros lucru din acest audit e o cifră pe care o aveți deja: pe TikTok, clipul cu medicul la cameră are 14,2K vizualizări, iar reupload-ul pătrat de pe Instagram are 402. Formatul care funcționează e găsit — urmează să-l repetați. Cea mai mare oportunitate imediată e Instagramul: 1.847 de urmăritori și nicio cale directă spre programare. Pe Facebook, cea mai mare audiență (3.102) așteaptă doar o pagină completată și o postare nouă.",
 "platforms": [
 {
 "platform": "instagram",
 "covered": true,
 "handle": "@cabinet.aria",
 "current_bio": "Zâmbete frumoase ✨ Programări prin DM",
-"current_bio_chars": 37,
 "what_works": [
-{"observation": "Paleta vizuală e constantă pe tot gridul","evidence": "grid_consistency_observed: „paletă albastră constantă”, dominant_colors: albastru și alb pe toate cele 9 poziții","why_it_matters": "Un profil care arată îngrijit trece primul filtru al vizitatorului. Baza vizuală există deja, nu trebuie construită."},
-{"observation": "Publicul reacționează la conținut real, nu la bannere — și aveți deja proba","evidence": "poziția 6 (fotografie reală, before/after) are 47 de aprecieri și 6 comentarii, față de 12 și 8 aprecieri pe pozițiile 1 și 2, care sunt bannere de ofertă","why_it_matters": "Nu trebuie să ghiciți ce funcționează. Audiența v-a răspuns deja de 4-6 ori mai puternic la conținut real."},
-{"observation": "Există highlight-uri de încredere","evidence": "highlights_or_pinned: „Recenzii”, „Echipa”","why_it_matters": "Sunt exact cele două lucruri pe care le caută cineva care alege un cabinet. Structura e corectă, doar conținutul lor trebuie verificat."}
+{"observation": "Bio-ul spune deja pe ce canal se face programarea","evidence": "„Programări prin DM”","why_it_matters": "Canalul e clar; lipsește doar verbul care îl transformă în îndemn.","criteria": [8]},
+{"observation": "Highlight-urile arată unitar","evidence": "coperte bleu cu iconiță albă, identice; titluri scurte: „Recenzii”, „Echipa”","why_it_matters": "Baza vizuală pentru highlight-urile noi există deja — se adaugă în același stil.","criteria": [15]},
+{"observation": "Publicul răspunde la dovezi reale, iar dovada există deja în grilă","evidence": "poziția 6 (înainte/după) are 47 de aprecieri și 6 comentarii, față de 12 și 8 la bannerele de ofertă","why_it_matters": "Știți deja ce funcționează: rezultate reale, nu bannere.","criteria": [17]}
 ],
 "what_doesnt": [
-{"issue": "Bio-ul folosește 37 din 150 de caractere disponibile și nu spune nici ce faceți, nici unde","evidence": "bio_text: „Zâmbete frumoase ✨ Programări prin DM” — 37 de caractere; nu apare cuvântul „stomatologie”, nici „Cluj”","cost": "113 caractere de spațiu de vânzare rămân nefolosite, iar cineva care caută „stomatolog Cluj” nu are cum să vă găsească: numele contului și bio-ul nu conțin niciunul dintre acești termeni."},
-{"issue": "Nu există link în bio","evidence": "link_in_bio: null pe Instagram, în timp ce pe TikTok există linktr.ee/cabinetaria","cost": "1.847 de oameni nu au niciun buton către programare. Singura cale rămasă e DM-ul, care cere efort și așteptare — pierdeți exact vizitatorii care erau gata să acționeze."},
-{"issue": "Trei din primele nouă poziții sunt bannere de ofertă","evidence": "pozițiile 1, 3 și 7: „OFERTA”, „La multi ani!”, „OFERTA”; poziția 5 „5 SFATURI” pe imagine de stoc","cost": "Primul ecran arată ca un feed de reclame. Bannerele au 12 și 8 aprecieri, deci nici nu vând, nici nu construiesc încredere — ocupă doar spațiul cel mai valoros din profil."},
-{"issue": "Imagine de stoc amestecată cu fotografii reale","evidence": "poziția 8: „imagine de stoc cu model zâmbind”","cost": "Într-un domeniu în care oamenii aleg pe încredere, o față de stoc anulează efectul fotografiilor autentice de lângă ea. Vizitatorul nu poate ști care e cabinetul real."},
-{"issue": "Contrast slab pe textul din bannere","evidence": "text_overlay_style: „font gros, majuscule, contrast slab”","cost": "Pe telefon, la dimensiunea unui thumbnail din grid, textul devine ilizibil — deci bannerele nu comunică nici măcar mesajul pentru care au fost făcute."}
+{"issue": "Bio-ul nu spune ce oferiți și unde","evidence": "„Zâmbete frumoase ✨ Programări prin DM” — 37 din 150 de caractere","cost": "113 caractere libere pentru serviciu, oraș și un îndemn: exact cuvintele după care vă caută pacienții.","criteria": [3, 4, 5, 6, 7]},
+{"issue": "Nu există o cale directă spre programare","evidence": "nu apare link, telefon, WhatsApp sau email","cost": "1.847 de urmăritori primesc un buton direct spre programare.","criteria": [10, 11]},
+{"issue": "Grila amestecă bannere și imagini de stoc cu fotografii reale","evidence": "pozițiile 1 și 7: „OFERTA”; poziția 8: imagine de stoc","cost": "Primul ecran devine o vitrină de dovezi reale, tipul de conținut care strânge deja de 4–6 ori mai multe reacții.","criteria": [16]},
+{"issue": "Niciun reel printre ultimele 9 postări","evidence": "0 reels din 9 postări vizibile","cost": "Formatul care pe TikTok a adus 14,2K vizualizări poate rula și aici.","criteria": [18, 19]}
 ],
 "improvements": [
-{"action": "Rescrie bio-ul și adaugă un link","how_to": "Alege una dintre cele trei variante de mai jos, pune-o în Editare profil, apoi adaugă în câmpul de website fie linktr.ee-ul folosit deja pe TikTok, fie direct un link de WhatsApp. Actualizează și câmpul Name cu varianta propusă — el este indexat în căutarea din Instagram, bio-ul nu.","impact": "mare","effort": "mic","expected_result": "Apariție în căutările pentru „stomatolog Cluj” și o cale de programare pentru cei 1.847 de urmăritori actuali."},
-{"action": "Scoate bannerele de ofertă din primele nouă poziții","how_to": "Arhivează (nu șterge) postările de pe pozițiile 1, 3 și 7. Se face din meniul de pe fiecare postare, în 30 de secunde. Ofertele mută-le în Stories, unde au sens pentru că expiră.","impact": "mare","effort": "mic","expected_result": "Primul ecran devine dovadă, nu reclamă — exact tipul de conținut care a strâns 47 de aprecieri."},
-{"action": "Înlocuiește imaginea de stoc cu o fotografie din cabinet","how_to": "O fotografie făcută cu telefonul, în cabinet, cu un om real din echipă. Nu are nevoie de aparat foto și nici de lumină specială — lumina de la fereastră e suficientă.","impact": "mediu","effort": "mic","expected_result": "Gridul devine coerent ca sursă, nu doar ca paletă de culori."},
-{"action": "Repetă formatul de la poziția 6, care a funcționat","how_to": "Aceeași structură: rezultat real, fără față, cu consimțământ scris obținut înainte. O dată la două săptămâni, nu mai des — altfel devine tot un banner.","impact": "mare","effort": "mediu","expected_result": "Un tipar repetabil bazat pe date proprii, nu pe presupuneri."},
-{"action": "Verifică cele două highlight-uri existente","how_to": "Deschide „Recenzii” și „Echipa” și verifică dacă ultima adăugare e din ultimele 6 luni. Dacă nu, adaugă trei recenzii recente și o fotografie cu fiecare om din echipă, cu nume și rol.","impact": "mediu","effort": "mic","expected_result": "Highlight-urile devin utile pentru cineva care decide, nu doar decorative."}
+{"action": "Rescrie bio-ul cu una dintre variantele de mai jos","how_to": "Editare profil → Bio. Fiecare variantă spune serviciul, orașul și unde se face programarea.","impact": "mare","effort": "mic","expected_result": "Bifează dintr-o dată criteriile 3–7: +1,25 puncte.","criteria": [3, 4, 5, 6, 7]},
+{"action": "Pune serviciul și orașul în câmpul Name","how_to": "Editare profil → Nume: „Cabinet Aria | Stomatolog Cluj” (30 de caractere). Câmpul e indexat în căutarea din Instagram.","impact": "mare","effort": "mic","expected_result": "Apariție la căutarea „stomatolog Cluj”.","criteria": [2]},
+{"action": "Adaugă un link direct spre programare","how_to": "Editare profil → Linkuri → un link wa.me spre WhatsApp-ul cabinetului sau pagina de programare.","impact": "mare","effort": "mic","expected_result": "Cale de contact care duce direct la acțiune.","criteria": [10, 11]},
+{"action": "Afișează categoria și un buton de contact","how_to": "Setări → Instrumente pentru creatori și afaceri → afișează categoria „Dentist” și adaugă butonul Rezervă sau WhatsApp.","impact": "mediu","effort": "mic","expected_result": "Profil de afacere complet.","criteria": [13]},
+{"action": "Simplifică poza de profil","how_to": "Doar simbolul din logo, fără textul mic de dedesubt, pe fundal plin.","impact": "mediu","effort": "mic","expected_result": "Logo recognoscibil la dimensiunea din feed.","criteria": [1]},
+{"action": "Fixează 2–3 postări","how_to": "Prezentarea cabinetului, un rezultat înainte/după cu consimțământ, o postare despre programare. Meniu postare → Fixează pe profil.","impact": "mediu","effort": "mic","expected_result": "Primul lucru văzut de un vizitator e dovada, nu o felicitare.","criteria": [12]},
+{"action": "Completează highlights până la cel puțin 4","how_to": "Pe lângă „Recenzii” și „Echipa”: „Servicii” și „Programare”, în același stil de copertă.","impact": "mediu","effort": "mic","expected_result": "Răspunsurile la întrebările frecvente sunt la un tap distanță.","criteria": [14]},
+{"action": "Arhivează bannerele de ofertă și imaginea de stoc","how_to": "Meniu postare → Arhivează (nu se șterg). Ofertele se mută în Stories.","impact": "mare","effort": "mic","expected_result": "Grilă coerentă, din fotografii reale.","criteria": [16]},
+{"action": "Un reel pe săptămână, cu text pe copertă","how_to": "Același format ca pe TikTok: medicul la cameră. Pe copertă, întrebarea la care răspunde clipul.","impact": "mare","effort": "mediu","expected_result": "Criteriile Reels și Hook pe copertă cresc odată cu conținutul.","criteria": [18, 19]},
+{"action": "O rubrică recurentă","how_to": "„Mit vs. adevăr”, care funcționează deja pe TikTok, cu același titlu în fiecare episod.","impact": "mediu","effort": "mediu","expected_result": "Format recognoscibil, ușor de produs.","criteria": [20]}
 ],
 "bio_variants": [
-{"angle": "claritate","text": "Cabinet stomatologic în Cluj-Napoca, cartier Mărăști. Implant, fațete, ortodonție, urgențe în aceeași zi. Parcare proprie. L-V 9-19, S 9-14. Programări: 0264 000 000","cta": "Programează-te →","rationale": "Conține exact termenii pe care îi caută cineva din Cluj: serviciul, cartierul, urgențele și parcarea.","name_field": "Cabinet Aria | Stomatolog Cluj"},
-{"angle": "beneficiu","text": "Vii cu o problemă amânată de ani. Pleci știind exact ce se face, cât durează și cât costă. Fără grabă și fără reproșuri, în Mărăști.","cta": "Scrie-ne pe WhatsApp","rationale": "Vorbește direct celei mai frecvente dureri din brief — rușinea și amânarea — în locul unei liste de servicii.","name_field": "Cabinet Aria | Stomatolog Cluj"},
-{"angle": "diferentiator","text": "Îți arătăm sala de sterilizare înainte să te așezi pe scaun. Plan de tratament scris, cu costuri, de la prima vizită.","cta": "Vezi cum lucrăm →","rationale": "Transformă în promisiune publică exact cele două dovezi pe care le aveți deja și pe care concurența nu le afișează.","name_field": "Cabinet Aria | Stomatolog Cluj"}
+{"angle": "claritate","text": "Cabinet stomatologic în Cluj-Napoca 🦷 Implant, fațete, ortodonție, urgențe. Programează-te pe WhatsApp ⬇️","criteria_covered": [3, 6, 7, 8],"name_field": "Cabinet Aria | Stomatolog Cluj","rationale": "Conține exact termenii căutați: serviciul, orașul, urgențele."},
+{"angle": "beneficiu","text": "Stomatologie fără grabă, în Cluj. Afli de la prima vizită ce se face și cât costă. Scrie-ne în DM pentru programare","criteria_covered": [3, 4, 6, 7, 8],"name_field": "Cabinet Aria | Stomatolog Cluj","rationale": "Răspunde direct temerii de costuri neclare, prima obiecție din nișă."},
+{"angle": "diferentiator","text": "Cabinet stomatologic în Cluj, [ani experiență] ani de practică. Plan scris de la prima vizită. Programează-te din link ⬇️","criteria_covered": [3, 5, 6, 7, 8],"name_field": "Cabinet Aria | Stomatolog Cluj","rationale": "Dovada de experiență plus planul scris: două motive concrete de încredere."}
 ]
 },
 {
@@ -39,28 +40,29 @@
 "covered": true,
 "handle": "@cabinetaria",
 "current_bio": "Cabinet stomatologic Cluj-Napoca. Implanturi, fatete, albire. Programari la telefon sau pe site.",
-"current_bio_chars": 96,
 "what_works": [
-{"observation": "Aveți deja formatul care funcționează, cu cifre care o demonstrează","evidence": "clipul 1 (medic la cameră, în cabinet): 14,2K vizualizări, 312 aprecieri, 18 comentarii","why_it_matters": "Un singur clip a adus mai multă atenție decât tot Instagramul la un loc. Nu e noroc: e singurul clip filmat nativ, cu un om la cameră."},
-{"observation": "Bio-ul spune ce faceți și unde, spre deosebire de Instagram","evidence": "bio_text conține „Cluj-Napoca”, „Implanturi, fatete, albire”","why_it_matters": "Cineva care ajunge pe profil din FYP înțelege în două secunde despre ce e vorba."},
-{"observation": "Există link în bio","evidence": "link_in_bio: linktr.ee/cabinetaria","why_it_matters": "Platforma cu cei mai puțini urmăritori are singura cale de conversie. Aceeași soluție se poate copia pe Instagram azi."}
+{"observation": "Formatul care funcționează e găsit, cu cifre care o arată","evidence": "clipul 1 (medic la cameră): 14,2K vizualizări; medicul apare în 4 din 6 coperte","why_it_matters": "Nu mai trebuie ghicit ce merge: un om real, vertical, la cameră.","criteria": [17]},
+{"observation": "Există deja o rubrică recurentă","evidence": "„Mit vs. adevăr: albirea”, „Mit vs. adevăr: aparatul dentar”","why_it_matters": "Un titlu care se repetă îi face pe oameni să aștepte episodul următor.","criteria": [16, 14]},
+{"observation": "Numele, username-ul și primul rând spun cine sunteți și unde","evidence": "„Cabinet Aria Cluj”, @cabinetaria, „Cabinet stomatologic Cluj-Napoca.”","why_it_matters": "Cine ajunge pe profil din feed înțelege în două secunde.","criteria": [2, 3, 6, 13]},
+{"observation": "Există link și canal de programare","evidence": "linktr.ee/cabinetaria; „la telefon sau pe site”","why_it_matters": "Calea spre programare există; mai lipsește îndemnul.","criteria": [8, 10]}
 ],
 "what_doesnt": [
-{"issue": "Reupload-urile pătrate ucid distribuția","evidence": "clipul 3 este „reupload de pe Instagram, format pătrat cu bare negre”: 402 vizualizări, față de 14,2K la clipul filmat nativ; 3 din 11 clipuri sunt astfel de reupload-uri","cost": "Un clip din patru pleacă din start cu de 35 de ori mai puțină expunere. Nu e o penalizare ipotetică — e diferența dintre 14.200 și 402 pe același cont."},
-{"issue": "Bio-ul are 96 de caractere, peste limita utilă de 80","evidence": "bio_char_count: 96","cost": "Pe multe dispozitive ultima parte („sau pe site”) e tăiată sau ascunsă după „mai mult”, exact acolo unde stă îndemnul."},
-{"issue": "Ritm foarte redus","evidence": "posts_count: 11 clipuri, față de 94 de postări pe Instagram","cost": "Platforma pe care ați avut cel mai bun rezultat e cea pe care postați cel mai puțin. Efortul merge unde rezultatul e mai slab."},
-{"issue": "Subtitrări automate necorectate","evidence": "text_overlay_style: „subtitrări automate, necorectate”","cost": "Termenii medicali sunt exact cuvintele pe care subtitrarea automată le greșește. Pe un cont de sănătate, o eroare vizibilă în text costă credibilitate."}
+{"issue": "Reupload-urile pătrate de pe Instagram","evidence": "2 din 6 video-uri au bare negre; reupload-ul are 402 vizualizări, față de 14,2K la clipul vertical","cost": "Fiecare clip filmat vertical pornește cu șanse reale de distribuție.","criteria": [19, 15]},
+{"issue": "Bio-ul nu are verb de acțiune și e scris fără diacritice","evidence": "„Programari la telefon sau pe site.”","cost": "Un îndemn clar și un text îngrijit, în locul unei informații.","criteria": [7, 9]},
+{"issue": "Doar un format","evidence": "6 din 6 postări sunt video, niciun carusel foto","cost": "Photo Mode e o a doua cale spre feed, cu efort mic.","criteria": [20]}
 ],
 "improvements": [
-{"action": "Oprește complet reupload-urile pătrate","how_to": "Regulă simplă: dacă are bare negre, nu se urcă pe TikTok. Filmezi nativ, vertical 9:16, chiar dacă e același subiect.","impact": "mare","effort": "mic","expected_result": "Dispare cea mai mare pierdere de distribuție din tot contul, fără niciun cost."},
-{"action": "Scurtează bio-ul sub 80 de caractere","how_to": "Alege una dintre variantele de mai jos și înlocuiește-o în Editare profil.","impact": "mediu","effort": "mic","expected_result": "Îndemnul rămâne vizibil pe toate dispozitivele."},
-{"action": "Corectează subtitrările înainte de publicare","how_to": "În editorul TikTok, deschide subtitrările automate și verifică doar termenii medicali. Durează sub două minute pe clip.","impact": "mediu","effort": "mic","expected_result": "Dispare eroarea vizibilă care contrazice poziția de expert."},
-{"action": "Treci la două clipuri pe săptămână, cu medicul la cameră","how_to": "Filmați două clipuri într-o singură ședință de 30 de minute, în aceeași zi din săptămână. Formatul e cel din clipul 1, care are deja 14,2K.","impact": "mare","effort": "mediu","expected_result": "Mutați efortul pe platforma unde audiența deja răspunde."}
+{"action": "Rescrie bio-ul cu una dintre variantele de mai jos","how_to": "Editare profil → Bio. Toate au sub 80 de caractere, verb de acțiune și canal.","impact": "mare","effort": "mic","expected_result": "Bifează criteriile 4, 7, 9 și 11.","criteria": [4, 5, 7, 9, 11]},
+{"action": "Simplifică poza de profil","how_to": "Același simbol ca pe Instagram, fără text.","impact": "mediu","effort": "mic","expected_result": "Logo recognoscibil.","criteria": [1]},
+{"action": "Fixează 2–3 video-uri","how_to": "Clipul cu 14,2K vizualizări și cele două „Mit vs. adevăr”. Ține apăsat pe video → Fixează.","impact": "mediu","effort": "mic","expected_result": "Vizitatorii nou-veniți văd întâi ce funcționează.","criteria": [12]},
+{"action": "Doar video-uri verticale","how_to": "Regulă simplă: dacă are bare negre, nu se urcă pe TikTok. Același subiect se filmează vertical.","impact": "mare","effort": "mic","expected_result": "Calitate tehnică și stil recognoscibil.","criteria": [19, 15]},
+{"action": "Un carusel Photo Mode pe lună","how_to": "Etapele unui tratament, în 5 fotografii din cabinet.","impact": "mediu","effort": "mic","expected_result": "Mix de formate.","criteria": [20]},
+{"action": "Un clip cu un pacient care povestește, cu acordul lui","how_to": "Fără scenariu, 30 de secunde, consimțământ scris.","impact": "mare","effort": "mediu","expected_result": "Dovadă socială.","criteria": [18]}
 ],
 "bio_variants": [
-{"angle": "claritate","text": "Stomatolog în Cluj. Îți arăt ce se întâmplă de fapt pe scaun.","cta": "Link în bio pentru programări","rationale": "Spune cine ești și ce primește cineva care rămâne, în limbajul unui om care derulează.","name_field": "Cabinet Aria | Cluj"},
-{"angle": "beneficiu","text": "Amâni de ani dentistul? Aici afli ce urmează, pas cu pas.","cta": "Scrie-mi în comentarii","rationale": "Se adresează direct fricii de necunoscut, cea mai frecventă barieră din brief.","name_field": "Cabinet Aria | Cluj"},
-{"angle": "diferentiator","text": "Filmez pe modele, nu pe pacienți. Întreabă orice în comentarii.","cta": "Urmărește pentru răspunsuri","rationale": "Anunță o regulă etică pe care majoritatea conturilor din nișă nu o respectă — devine motivul de follow.","name_field": "Cabinet Aria | Cluj"}
+{"angle": "claritate","text": "Stomatolog în Cluj 🦷 Programări: scrie-ne pe WhatsApp ⬇️","criteria_covered": [3, 6, 7, 8],"name_field": "Cabinet Aria Cluj","rationale": "Ce, unde și cum, în sub 60 de caractere."},
+{"angle": "beneficiu","text": "Dentist în Cluj, explicat pe înțelesul tău. Scrie-ne în DM","criteria_covered": [3, 4, 6, 7, 8],"name_field": "Cabinet Aria Cluj","rationale": "Promite claritate, exact ce caută cine amână dentistul."},
+{"angle": "diferentiator","text": "Stomatologie explicată pe modele, din Cluj. Programează-te din link ⬇️","criteria_covered": [3, 6, 7, 8],"name_field": "Cabinet Aria Cluj","rationale": "Anunță regula care face contul diferit: modele, nu pacienți."}
 ]
 },
 {
@@ -68,49 +70,47 @@
 "covered": true,
 "handle": "Cabinet Stomatologic Aria",
 "current_bio": "",
-"current_bio_chars": 0,
 "what_works": [
-{"observation": "Este cea mai mare audiență a voastră","evidence": "followers: 3.102, likes_total: 2.980 — de 1,7 ori mai mult decât pe Instagram","why_it_matters": "Publicul de 40+ din Cluj, exact segmentul care cumpără implanturi și proteze, e deja adunat aici."},
-{"observation": "Categoria paginii e setată corect","evidence": "category_or_label: „Dentist”","why_it_matters": "Apare în căutările locale de pe Facebook și în recomandările din grupurile de cartier."}
+{"observation": "Numele paginii spune ce faceți","evidence": "„Cabinet Stomatologic Aria”","why_it_matters": "Apare corect în căutările locale.","criteria": [2]}
 ],
 "what_doesnt": [
-{"issue": "Pagina pare abandonată","evidence": "highlights_or_pinned: „postare fixată din 2023”; engagement_visible: 3 aprecieri pe prima postare","cost": "Cineva care verifică dacă mai funcționați găsește un semnal de „închis”. 3.102 oameni sunt adunați în fața unei uși încuiate."},
-{"issue": "Nu există descriere","evidence": "bio_text: null","cost": "Câmpul pe care Facebook îl afișează sub numele paginii e gol, deci pagina nu spune nici ce faceți, nici unde."},
-{"issue": "Informațiile de contact sunt incomplete în captură","evidence": "contact_info_visible: „telefon parțial vizibil: 0264 ...”; în „unreadable”: adresa completă, programul de lucru","cost": "Nu se poate confirma din capturile primite dacă adresa și programul sunt completate. Dacă lipsesc, pierdeți exact publicul care caută un cabinet aproape de casă."}
+{"issue": "Secțiunea Intro e goală","evidence": "Intro necompletat în captură","cost": "101 caractere pentru serviciu, oraș și îndemn, sub numele paginii.","criteria": [3, 4, 5, 6, 7, 8, 9]},
+{"issue": "Informațiile de contact sunt incomplete","evidence": "telefon parțial („0264 ...”), fără adresă, program și site","cost": "Publicul local găsește tot ce îi trebuie ca să sune.","criteria": [10, 11, 13]},
+{"issue": "Ultima postare e din martie 2025","evidence": "„14 martie 2025”","cost": "Cea mai mare audiență (3.102) revine la o pagină activă.","criteria": [18]}
 ],
 "improvements": [
-{"action": "Completează descrierea paginii","how_to": "Folosește una dintre variantele de mai jos, în câmpul Bio/Intro din Editare pagină.","impact": "mare","effort": "mic","expected_result": "Pagina spune ce faceți și unde, în locul unui spațiu gol."},
-{"action": "Înlocuiește postarea fixată din 2023","how_to": "Fixează o postare cu programul actual, adresa, parcarea și numărul de telefon. Se face din meniul cu trei puncte de pe postare.","impact": "mare","effort": "mic","expected_result": "Primul lucru pe care îl vede un vizitator devine informația de care are nevoie ca să sune."},
-{"action": "Verifică adresa, programul și telefonul complet","how_to": "Editare pagină → Informații. Verifică fiecare câmp și deschide pagina de pe alt telefon, ca s-o vezi cum o vede un străin.","impact": "mare","effort": "mic","expected_result": "Apariție corectă în căutările locale și în hărți."},
-{"action": "Postează o dată pe săptămână, text lung și local","how_to": "Reia pe Facebook subiectele care merg pe TikTok, dar scrise: mai mult text, context de cartier, o întrebare la final. Publicul e altul, formatul trebuie să fie altul.","impact": "mediu","effort": "mediu","expected_result": "Reactivarea celei mai mari audiențe pe care o aveți, fără conținut nou."}
+{"action": "Completează Intro cu una dintre variantele de mai jos","how_to": "Editare pagină → Intro.","impact": "mare","effort": "mic","expected_result": "Bifează criteriile 3–9: până la +1,75 puncte.","criteria": [3, 4, 5, 6, 7, 8, 9]},
+{"action": "Completează pagina","how_to": "Editare pagină → Informații: telefon complet, adresă, program, site, plus butonul WhatsApp.","impact": "mare","effort": "mic","expected_result": "Pagină completă, cu contact de conversie.","criteria": [10, 11, 13]},
+{"action": "Cover cu ce oferiți și un îndemn","how_to": "Fotografia fațadei, cu un text scurt: „Stomatologie în Cluj · Programări pe WhatsApp”.","impact": "mediu","effort": "mic","expected_result": "Coperta comunică serviciul și CTA-ul.","criteria": [14]},
+{"action": "Înlocuiește postarea fixată","how_to": "O postare cu programul, adresa și cum se face programarea. Meniu postare → Fixează.","impact": "mare","effort": "mic","expected_result": "Postare fixată cu rol clar.","criteria": [12]},
+{"action": "Simplifică poza de profil","how_to": "Același simbol ca pe Instagram și TikTok.","impact": "mediu","effort": "mic","expected_result": "Identitate unitară pe toate platformele.","criteria": [1, 15]},
+{"action": "O postare pe săptămână, cu video și îndemn","how_to": "Clipurile verticale de pe TikTok, cu un text mai lung, local, și „Scrie-ne pentru programare” la final.","impact": "mare","effort": "mediu","expected_result": "Activitate, Video / Reels și CTA în postări cresc odată cu conținutul.","criteria": [18, 19, 20]},
+{"action": "Cere recenzii pacienților mulțumiți","how_to": "La finalul tratamentului, un link direct spre secțiunea de recenzii, trimis pe WhatsApp.","impact": "mare","effort": "mic","expected_result": "Recenzii vizibile și dovadă socială.","criteria": [16, 17]}
 ],
 "bio_variants": [
-{"angle": "claritate","text": "Cabinet stomatologic în Cluj-Napoca, cartier Mărăști. Urgențe în aceeași zi, parcare proprie. 0264 000 000","cta": "Sună pentru programare","rationale": "Oraș, cartier, urgențe și parcare — cele patru informații după care se alege un cabinet local."},
-{"angle": "beneficiu","text": "Îți spunem ce ai, ce se poate face și cât costă. Înainte să începem ceva.","cta": "Trimite-ne un mesaj","rationale": "Răspunde obiecției „nu am încredere că nu mi se recomandă lucruri inutile”, prima în lista de obiecții a nișei."},
-{"angle": "diferentiator","text": "Sala de sterilizare se poate vedea oricând, la cerere. Plan de tratament scris de la prima vizită.","cta": "Vino să vezi","rationale": "Două promisiuni verificabile, potrivite unui public care alege pe încredere, nu pe estetică."}
+{"angle": "claritate","text": "Cabinet stomatologic în Cluj-Napoca: implant, fațete, urgențe. Sună-ne pentru programare.","criteria_covered": [3, 6, 7, 8],"rationale": "Oraș, servicii și cum se face programarea."},
+{"angle": "beneficiu","text": "Stomatologie în Cluj, explicată pe înțelesul tău. Trimite-ne un mesaj pentru programare.","criteria_covered": [3, 4, 6, 7, 8],"rationale": "Promite claritate unui public care alege pe încredere."},
+{"angle": "diferentiator","text": "Cabinet stomatologic din Cluj, [nr. pacienți] pacienți tratați. Scrie-ne pe WhatsApp.","criteria_covered": [3, 5, 6, 7, 8],"rationale": "O cifră reală de încredere, de completat din evidența cabinetului."}
 ]
 }
 ],
 "quick_wins": [
-{"action": "Adaugă în bio-ul de Instagram link-ul folosit deja pe TikTok și înlocuiește textul cu varianta 1","time_needed": "3 minute","platform": "instagram"},
-{"action": "Arhivează cele trei bannere de ofertă din primele nouă poziții de pe Instagram","time_needed": "2 minute","platform": "instagram"},
-{"action": "Stabilește regula: niciun clip cu bare negre nu se urcă pe TikTok","time_needed": "0 minute, e o decizie","platform": "tiktok"}
+{"action": "Rescrie bio-ul de Instagram și adaugă un link de WhatsApp","time_needed": "3 minute","platform": "instagram","criteria": [3, 6, 7, 10, 11]},
+{"action": "Pune „Stomatolog Cluj” în câmpul Name de pe Instagram","time_needed": "1 minut","platform": "instagram","criteria": [2]},
+{"action": "Completează Intro pe Facebook","time_needed": "2 minute","platform": "facebook","criteria": [3, 6, 7, 8]}
 ],
 "content_strategy_30_days": [
-{"week": 1,"focus": "Reparăm ce oprește conversia, nu producem conținut nou","post_types": ["bio nou pe toate cele trei platforme","link în bio pe Instagram","postare fixată nouă pe Facebook cu program și adresă"],"goal": "Fiecare platformă are o cale clară către o programare"},
-{"week": 2,"focus": "Repetăm formatul care are deja dovada","post_types": ["două clipuri TikTok verticale, medicul la cameră","un carusel Instagram cu protocolul de sterilizare"],"goal": "Al doilea clip care depășește 5.000 de vizualizări"},
-{"week": 3,"focus": "Dovezi și oameni","post_types": ["prezentarea echipei, cu nume și rol","recenzii recente în highlight","postare Facebook lungă despre urgențe"],"goal": "Highlight-urile Recenzii și Echipa devin actuale"},
-{"week": 4,"focus": "Măsurăm și tăiem","post_types": ["comparație între primele trei săptămâni","un clip pe tema cu cele mai multe comentarii"],"goal": "O decizie luată pe cifre proprii, nu pe impresii"}
+{"week": 1,"focus": "Profilurile: tot ce e ❌","post_types": ["bio și Name noi pe toate platformele","link de WhatsApp","Intro și informații complete pe Facebook","postări fixate"],"goal": "Scorul general urcă spre potențialul de 8,8"},
+{"week": 2,"focus": "Repetăm formatul care funcționează","post_types": ["două clipuri verticale cu medicul la cameră","același clip ca reel pe Instagram"],"goal": "Primul reel pe Instagram"},
+{"week": 3,"focus": "Dovezi","post_types": ["un clip cu un pacient, cu acord","un carusel Photo Mode cu etapele unui tratament"],"goal": "Dovadă socială pe TikTok și Facebook"},
+{"week": 4,"focus": "Rubrica „Mit vs. adevăr” pe toate platformele","post_types": ["două episoade noi","o postare Facebook cu îndemn la programare"],"goal": "Format recurent pe Instagram"}
 ],
 "missing_data": [
-"Captura din Instagram Insights → Audiență (orele și zilele active). Fără ea nu pot recomanda un program de postare, doar conținutul.",
-"Fila Despre completă de pe Facebook. Adresa și programul apar ca ilizibile în captură, deci nu pot spune dacă sunt completate sau lipsesc.",
-"Analiza TikTok pentru clipul cu 14,2K vizualizări: retenția pe secunde. Ar arăta exact în ce secundă pierdeți oamenii și e cea mai utilă cifră pe care o aveți.",
-"O captură cu o postare deschisă și comentariile ei, ca să pot evalua cum răspundeți publicului."
+"Fila Despre completă de pe Facebook: telefonul, adresa și programul apar doar parțial în captură.",
+"Secțiunea de recenzii de pe Facebook: nu apare în capturi.",
+"O captură cu postările fixate de pe TikTok, dacă există."
 ],
 "red_flags": [
-"Instagram nu are niciun link în bio, deși are 1.847 de urmăritori: platforma cu cea mai mare audiență activă nu are nicio cale de conversie.",
-"Postarea fixată de pe Facebook e din 2023 și are 3 aprecieri: pentru un vizitator, pagina pare închisă.",
-"Bio-ul de TikTok depășește limita utilă de 80 de caractere, deci îndemnul e probabil tăiat pe telefon."
+"Instagram, cea mai activă audiență, nu are nicio cale directă spre programare."
 ]
 }
