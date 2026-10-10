@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GEO, heightAt, forestCode } from './data.js';
 import { heightToNormalCanvas } from '../textures.js';
 import { valueNoise2 } from './trees.js';
+import { SNOW } from '../rain.js';
 
 // Canopy shell: beyond the ring of individual trees the forests are a lumpy roof of crowns at the stand's
 // height (from the same age noise as the trees), coloured by Sentinel-2 and dropping to the ground at the
@@ -41,7 +42,7 @@ export function buildCanopy(scene, gt, Q) {
   if (!GEO.forestBits || !Q || !gt.orthoW) return null;
   const E = GEO.worldExt, step = 20, n = Math.round(2 * E / step) + 1;
   // coverage and needle share per node from the 5 m stand raster (4 x 4 samples)
-  const cov = new Float32Array(n * n), top = new Float32Array(n * n);
+  const cov = new Float32Array(n * n), top = new Float32Array(n * n), ndl = new Float32Array(n * n);
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
     const x = -E + i * step, z = -E + j * step;
     let c = 0, nd = 0;
@@ -50,19 +51,20 @@ export function buildCanopy(scene, gt, Q) {
       if (f) { c++; nd += f === 3 ? 0.9 : f === 2 ? 0.45 : 0.04; }
     }
     const k = j * n + i;
-    cov[k] = c / 16;
+    cov[k] = c / 16; ndl[k] = c ? nd / c : 0;
     if (c) top[k] = (20 + 2.5 * nd / c) * (0.68 + 0.45 * valueNoise2(x, z, 110, 9)) * 0.93 + 1.6 * (valueNoise2(x, z, 23, 31) - 0.5);
   }
   const { map, nrm } = crownTexture();
   const mat = new THREE.MeshStandardMaterial({ map, normalMap: nrm, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0 });
-  const uni = { uOrtho: { value: gt.orthoW }, uExt: { value: E }, uFade: { value: Q.imp * 0.72 }, uFadeLen: { value: Q.imp * 0.26 } };
+  mat.userData.noSnow = true;                    // (its own winter look below)
+  const uni = { uOrtho: { value: gt.orthoW }, uExt: { value: E }, uFade: { value: Q.imp * 0.72 }, uFadeLen: { value: Q.imp * 0.26 }, uWinter: { value: 0 }, uCanSnow: SNOW.uSnow };   // (uSnow itself is declared by rain.js)
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;')
-      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvCanW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;\nattribute float aNeedle;\nvarying float vNeedle;')
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvCanW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNeedle = aNeedle;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;\nuniform sampler2D uOrtho;\nuniform float uExt, uFade, uFadeLen;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;\nvarying float vNeedle;\nuniform sampler2D uOrtho;\nuniform float uExt, uFade, uFadeLen, uWinter, uCanSnow;')
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
   { float dd = distance(vCanW.xz, cameraPosition.xz);
     float hh = fract(sin(dot(floor(vCanW.xz * 0.3), vec2(12.9898, 78.233))) * 43758.5453);
@@ -70,12 +72,17 @@ export function buildCanopy(scene, gt, Q) {
       .replace('#include <map_fragment>', `
   vec3 orth = texture2D(uOrtho, (vCanW.xz + uExt) / (2.0 * uExt)).rgb;
   float crown = texture2D(map, vMapUv).r;
+  // winter: bare broadleaf crowns read from afar as a grey-brown haze over the snow between the trunks; the conifers
+  // keep their green under white tops
+  vec3 bare = mix(vec3(0.3, 0.27, 0.25), vec3(0.6, 0.6, 0.62), uCanSnow * 0.7);
+  vec3 ever = mix(orth, vec3(0.86, 0.89, 0.93), uCanSnow * 0.45 * smoothstep(0.45, 0.9, crown));
+  orth = mix(orth, mix(ever, bare, 1.0 - vNeedle), uWinter);
   diffuseColor.rgb *= orth * (0.5 + 0.85 * crown) * 1.08;`);
   };
   mat.customProgramCacheKey = () => 'geoCanopy';
   const CH = 100, nc = (n - 1) / CH, meshes = [];
   for (let cj = 0; cj < nc; cj++) for (let ci = 0; ci < nc; ci++) {
-    const pos = [], uv = [], idx = [], vid = new Map();
+    const pos = [], uv = [], ndv = [], idx = [], vid = new Map();
     const vert = (i, j) => {
       const k = j * n + i;
       let v = vid.get(k);
@@ -85,6 +92,7 @@ export function buildCanopy(scene, gt, Q) {
       v = pos.length / 3;
       pos.push(x, heightAt(x, z) + t, z);
       uv.push(x / 34, z / 34);
+      ndv.push(ndl[k]);
       vid.set(k, v);
       return v;
     };
@@ -98,6 +106,7 @@ export function buildCanopy(scene, gt, Q) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('aNeedle', new THREE.Float32BufferAttribute(ndv, 1));
     g.setIndex(idx);
     g.computeVertexNormals();
     g.computeBoundingSphere();
@@ -109,5 +118,5 @@ export function buildCanopy(scene, gt, Q) {
     scene.add(m);
     meshes.push(m);
   }
-  return { meshes, material: mat };
+  return { meshes, material: mat, setWinter(on) { uni.uWinter.value = on ? 1 : 0; } };
 }

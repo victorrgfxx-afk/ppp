@@ -15,6 +15,16 @@ export const RAIN = {
   uOccOn: { value: 0 },
 };
 
+// snow (the same hook as the rain: every patched material can be covered)
+export const SNOW = {
+  uSnow: { value: 0 },         // how much snow lies on the surfaces (0..1: a dusting on the level ones .. everything that faces up)
+  uSnowFall: { value: 0 },     // how hard it snows now (0..1)
+  uSnowLight: { value: 1 },    // daylight on the snow (the sparkle of its crystals)
+};
+// low plants that go under a cover deeper than a dusting (meadow grass, flowers, ferns, weeds): their materials are
+// hidden then (main.js)
+export const UNDER_SNOW = new Set();
+
 // the height map look-up, shared by the surface, streak and splash shaders (top surface height or -1e5 outside)
 const OCC_GLSL = /* glsl */`
 float rainTop(vec2 xz) {
@@ -28,7 +38,7 @@ float rainHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45
 
 // ------------------------------------------------------------------ wet surfaces
 const WET_PARS = /* glsl */`
-uniform float uWet, uRain, uRainTime, uOccOn;
+uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 varying vec3 vWetP;
@@ -135,11 +145,53 @@ if (uWet > 0.001) {
 }
 `;
 
-function injectWet(sh, kind, opaque) {
+// ------------------------------------------------------------------ snow cover
+// Snow settles on what faces the sky (not on walls, not under roofs or eaves: the same height map as the rain), first
+// in patches on the level surfaces, then over everything up to ~50 deg of slope. It hides the texture under a smooth,
+// lumpy white with a few glinting crystals; on the roads it is driven into grey slush and wet asphalt shows between.
+const SNOW_MAIN = /* glsl */`
+#ifndef SNOW_SKIP
+if (uSnow > 0.001) {
+  vec3 sp = vWetP;
+  float sUp = smoothstep(0.32, 0.78, wetGeoN.y);
+  float sOpen = wetOpen(sp);
+  float sn = wetNoise(sp.xz * 0.7) * 0.55 + wetNoise(sp.xz * 2.9 + 7.1) * 0.3 + wetNoise(sp.xz * 11.0 + 3.3) * 0.15;
+  float sVal = sUp * sOpen * (0.62 + 0.38 * sn) * SNOW_K;
+  float sTh = 1.0 - uSnow;
+  float sc = smoothstep(sTh, sTh + 0.12, sVal) * min(1.0, SNOW_K * 1.6);
+#ifdef WET_ROAD
+  // wheels, feet and the plough: slush in patches (at most ~4/5 cover), wet dark asphalt between
+  sc *= 0.2 + 0.6 * smoothstep(0.35, 0.75, wetNoise(sp.xz * 0.45 + 4.0));
+  diffuseColor.rgb *= 1.0 - 0.3 * uSnow * sOpen;
+  roughnessFactor *= 1.0 - 0.45 * uSnow * sOpen;
+#endif
+  if (sc > 0.002) {
+    vec3 snowCol = vec3(0.87, 0.9, 0.94) * (0.93 + 0.07 * sn);
+#ifdef WET_ROAD
+    snowCol = mix(vec3(0.5, 0.51, 0.52), snowCol, smoothstep(0.35, 0.8, sn));
+#endif
+    diffuseColor.rgb = mix(diffuseColor.rgb, snowCol, sc);
+    roughnessFactor = mix(roughnessFactor, 0.82, sc);
+    metalnessFactor = mix(metalnessFactor, 0.0, sc);
+    // smoother than what it covers, lumpy at the decimetre scale
+    vec2 sg = vec2(wetNoise(sp.xz * 4.0 + 0.5) - wetNoise(sp.xz * 4.0 - 0.5), wetNoise(sp.zx * 4.0 + 0.5) - wetNoise(sp.zx * 4.0 - 0.5)) * 0.3;
+    normal = normalize(mix(normal, normalize((viewMatrix * vec4(sg.x, 1.0, sg.y, 0.0)).xyz), sc * 0.75 * sUp));
+#if !defined(WET_LEAF) && !defined(WET_ROAD)
+    // crystals catching the light on the fresh cover (not on the trodden slush), twinkling as you move
+    float sd = length(sp - cameraPosition);
+    float tw = rainHash(floor(sp.xz * 55.0) + floor(cameraPosition.xz * 3.0 + cameraPosition.y * 5.0));
+    totalEmissiveRadiance += vec3(step(0.9975, tw)) * smoothstep(0.6, 1.0, sc) * sUp * uSnowLight * 1.2 * (1.0 - smoothstep(5.0, 16.0, sd));
+#endif
+  }
+}
+#endif
+`;
+
+function injectWet(sh, kind, opaque, snowK, snowSkip) {
   const v = sh.vertexShader, f = sh.fragmentShader;
   if (v.includes('vWetP')) return;                 // already in (a material cloned from a patched one keeps its hook)
   if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>')) return;
-  Object.assign(sh.uniforms, RAIN);
+  Object.assign(sh.uniforms, RAIN, SNOW);
   sh.vertexShader = v.replace('#include <common>', '#include <common>\nvarying vec3 vWetP;').replace('#include <project_vertex>', `#include <project_vertex>
   { vec4 wetW = vec4(transformed, 1.0);
 #ifdef USE_BATCHING
@@ -149,10 +201,11 @@ function injectWet(sh, kind, opaque) {
     wetW = instanceMatrix * wetW;
 #endif
     vWetP = (modelMatrix * wetW).xyz; }`);
-  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : '') + (opaque ? '#define WET_OUT\n' : '');
+  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
+    `#define SNOW_K ${snowK.toFixed(3)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '');
   sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS)
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
-    .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN)
+    .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN + SNOW_MAIN)
     // opaque surfaces write their reflectivity into the (otherwise always 1) alpha of the scene buffer
     .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef WET_OUT\n  gl_FragColor.a = 1.0 - wetReflOut;\n#endif');
 }
@@ -165,11 +218,13 @@ export function wetMaterial(m) {
   patched.add(m);
   if (!m.isMeshStandardMaterial || m.userData.noWet) return;
   const kind = m.userData.wet === 'road' ? 'road' : (m.alphaTest > 0 || m.transparent) ? 'leaf' : 'solid';
+  // userData.snow: how much of it gets covered (leaf cards and the trees' far billboards only partly); noSnow: never
+  const snowK = m.userData.snow ?? (kind === 'leaf' ? 0.45 : 1), snowSkip = !!m.userData.noSnow;
   const key0 = m.customProgramCacheKey();
   const prev = m.onBeforeCompile;
   const opaque = !m.transparent;
-  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque); };
-  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '');
+  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip); };
+  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '');
   m.needsUpdate = true;
 }
 export function wetScene(root) {
@@ -209,8 +264,9 @@ export class RainOcclusion {
     this.frame = 0;
   }
 
-  // re-rendered when the camera has moved 6 m, else every 30 frames (cars and dogs move)
-  update(renderer, scene, camPos, groundY, hide) {
+  // re-rendered when the camera has moved 6 m, else every 30 frames (cars and dogs move); skip(mesh): left out too
+  // (in winter the bare broadleaf crowns let the snow through)
+  update(renderer, scene, camPos, groundY, hide, skip) {
     this.frame++;
     if (Math.hypot(camPos.x - this.last.x, camPos.z - this.last.y) < 6 && this.frame % 30) return;
     const cx = Math.round(camPos.x / 2) * 2, cz = Math.round(camPos.z / 2) * 2;
@@ -220,6 +276,7 @@ export class RainOcclusion {
     this.mat.uniforms.uRef.value = groundY;
     const rt0 = renderer.getRenderTarget(), bg = scene.background, ov = scene.overrideMaterial, sm = renderer.shadowMap.autoUpdate;
     renderer.getClearColor(_cc); const ca = renderer.getClearAlpha();
+    if (skip) scene.traverse((o) => { if (o.isMesh && o.visible && skip(o)) hide = [...hide, o]; });
     const vis = hide.map(o => o.visible);
     for (const o of hide) o.visible = false;
     scene.background = null; scene.overrideMaterial = this.mat; renderer.shadowMap.autoUpdate = false;
@@ -388,6 +445,85 @@ export class RainFX {
   }
 }
 const _tint = new THREE.Color(0.97, 1, 1.05);
+
+// ------------------------------------------------------------------ falling snow
+// Flakes fall at ~1 m/s (big wet ones a little faster), drift with the wind and each swings on its own small circle as
+// it tumbles; world-anchored like the drops (they keep their place when you move) and gone where they land.
+const FLAKE_VERT = /* glsl */`
+attribute vec2 corner;
+attribute vec4 aSeed;
+uniform float uSnowFall, uRainTime, uOccOn, uRadius, uHeight, uSize, uOpacity;
+uniform sampler2D uOcc;
+uniform vec4 uOccBox;
+uniform vec2 uWind;
+uniform vec3 uCam;
+uniform vec4 uTorch, uTorchDir;
+varying float vA, vLit;
+varying vec2 vC;
+${OCC_GLSL}
+void main() {
+  vC = corner; vA = 0.0; vLit = 0.0;
+  gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+  if (aSeed.w > uSnowFall) return;
+  float sz = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
+  float t = uRainTime, ph = aSeed.z * 6.2832;
+  vec3 vel = vec3(uWind.x, -(0.75 + 0.6 * sz), uWind.y);
+  vec3 box = vec3(2.0 * uRadius, uHeight, 2.0 * uRadius);
+  vec3 org = uCam - vec3(uRadius, uHeight * 0.4, uRadius);
+  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vel * t - org, box);
+  p += vec3(sin(t * (1.1 + sz) + ph), 0.0, cos(t * (0.8 + 0.7 * sz) + ph * 1.3)) * (0.15 + 0.25 * sz);
+  if (p.y < rainTop(p.xz)) return;                            // landed
+  vec3 toCam = uCam - p;
+  float dist = length(toCam);
+  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)), up = normalize(cross(toCam, right));
+  float real = uSize * (0.6 + 0.8 * sz), s = max(real, dist * 0.0017);       // at least ~1.5 px across
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + (right * corner.x + up * corner.y) * s, 1.0);
+  vA = uOpacity * (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.2, 0.7, dist) * min(1.0, 1.5 * real / s);
+  vec3 tp = p - uTorch.xyz; float tl = length(tp);
+  vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
+}`;
+const FLAKE_FRAG = /* glsl */`
+uniform vec3 uColor;
+varying float vA, vLit;
+varying vec2 vC;
+void main() {
+  float a = vA * (1.0 - smoothstep(0.35, 1.0, length(vC)));
+  if (a < 0.004) discard;
+  gl_FragColor = vec4(uColor + vec3(0.9, 0.92, 1.0) * vLit * 1.2, min(a, 1.0));
+}`;
+
+export class SnowFX {
+  constructor(scene) {
+    this.group = new THREE.Group();
+    this.group.userData.ueSkip = 'rain';
+    this.group.visible = false;
+    scene.add(this.group);
+    this.cam = { value: new THREE.Vector3() };
+    this.color = { value: new THREE.Color(1, 1, 1) };
+    this.wind = { value: new THREE.Vector2(0.5, 0.2) };
+    this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
+    const common = { uSnowFall: SNOW.uSnowFall, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uCam: this.cam, uColor: this.color, uWind: this.wind, uTorch: this.torch, uTorchDir: this.torchDir };
+    const quad = [-1, -1, 1, -1, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
+    const add = (n, u) => {
+      const m = new THREE.Mesh(cloud(n, quad, qi), new THREE.ShaderMaterial({ vertexShader: FLAKE_VERT, fragmentShader: FLAKE_FRAG, uniforms: { ...common, ...u }, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+      m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5;
+      this.group.add(m);
+    };
+    // big flakes close by (the ones you see tumbling), and the fall further out that greys the view
+    add(16000, { uRadius: { value: 7 }, uHeight: { value: 9 }, uSize: { value: 0.01 }, uOpacity: { value: 0.95 } });
+    add(40000, { uRadius: { value: 30 }, uHeight: { value: 22 }, uSize: { value: 0.011 }, uOpacity: { value: 0.75 } });
+  }
+
+  update(camera, light, torch) {
+    this.group.visible = SNOW.uSnowFall.value > 0.002;
+    if (!this.group.visible) return;
+    if (torch?.on) { this.torch.value.set(torch.pos.x, torch.pos.y, torch.pos.z, 1); this.torchDir.value.set(torch.dir.x, torch.dir.y, torch.dir.z, 0.93); } else this.torch.value.w = 0;
+    this.cam.value.copy(camera.position);
+    this.color.value.setRGB(0.93, 0.95, 1).multiplyScalar(Math.max(0.06, light));
+    const t = RAIN.uRainTime.value;
+    this.wind.value.set(0.5 + 0.45 * Math.sin(t * 0.21), 0.2 + 0.3 * Math.sin(t * 0.17 + 2));   // a light, gusting breeze
+  }
+}
 
 // ------------------------------------------------------------------ spray thrown up by the tyres on a wet road
 const SPRAY_VERT = /* glsl */`

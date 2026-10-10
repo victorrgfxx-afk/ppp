@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, forestCode, inPoly, polyDist } from './data.js';
 import { M, addWind } from '../materials.js';
+import { UNDER_SNOW } from '../rain.js';
 import { canvas, tex } from './pitigaia.js';
 import { valueNoise2 } from './trees.js';
 import { hillOpen, HILL_BOX, trackAt, trackPoint, drapelSpots } from './drapel.js';
@@ -281,6 +282,7 @@ export function buildHillwood(scene, world, quality) {
     litter: new THREE.MeshStandardMaterial({ map: litterTexture(), alphaTest: 0.35, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     branch: M.bark,
   };
+  for (const k of ['grass', 'flower', 'fern']) UNDER_SNOW.add(Mt[k]);           // (the brambles keep their canes)
   const G = { grass: starGeo(1), flower: starGeo(0.6), fern: fernGeo(), bramble: starGeo(1.4), litter: new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), branch: branchGeo() };
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qy = new THREE.Quaternion(), p = new THREE.Vector3(), sv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), nv = new THREE.Vector3(), col = new THREE.Color();
   const tiles = new Map();

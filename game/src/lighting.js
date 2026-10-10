@@ -141,7 +141,22 @@ WEATHER.ploaie = {
   sun: 0.35, sunColor: [0.85, 0.88, 0.95], hemi: 0.5, hemiSky: [0.62, 0.66, 0.72], hemiGround: [0.2, 0.2, 0.19],
   env: 0.9, envGround: [0.2, 0.2, 0.19], fog: [0.33, 0.35, 0.38], fogDensity: 1 / 520, exposure: 1.3, shadow: 0.45, rain: 1,
 };
-export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie'];
+// snowing (rain.js: falling flakes, a cover that builds up): an even, bright grey deck, soft light thrown back by the
+// snow, a white haze (visibility ~2 km)
+WEATHER.ninsoare = {
+  label: 'Ninsoare', cover: 0.96, cumulus: 0, zenith: [0.46, 0.49, 0.54], horizon: [0.7, 0.72, 0.75], bright: 1.05,
+  cloudLit: [0.8, 0.82, 0.85], cloudDark: [0.52, 0.55, 0.6],
+  sun: 0.7, sunColor: [0.93, 0.95, 1], hemi: 0.62, hemiSky: [0.8, 0.84, 0.9], hemiGround: [0.62, 0.64, 0.67],
+  env: 1.0, envGround: [0.62, 0.64, 0.68], fog: [0.69, 0.71, 0.74], fogDensity: 1 / 750, exposure: 0.95, shadow: 0.35, snow: 1, winter: true,
+};
+// the day after: deep blue sky, low winter sun, the snow lies everywhere and throws the light back up
+WEATHER.zapada = {
+  label: 'Zăpadă, senin', cover: 0.25, cumulus: 1, zenith: [0.025, 0.1, 0.42], horizon: [0.52, 0.64, 0.82], bright: 1,
+  cloudLit: [1.25, 1.24, 1.22], cloudDark: [0.5, 0.56, 0.66],
+  sun: 3.6, sunColor: [1, 0.95, 0.88], hemi: 0.5, hemiSky: [0.78, 0.84, 0.96], hemiGround: [0.74, 0.76, 0.8],
+  env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], fogDensity: 1 / 7000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,
+};
+export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'ninsoare', 'zapada'];
 
 // ------------------------------------------------------------------ time of day
 // Direct sunlight through the atmosphere: Kasten-Young air mass and per-channel optical depths (Rayleigh at

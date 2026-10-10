@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, forestCode, inHole, speciesAt, speciesCompanion } from './data.js';
 import { M, addWind } from '../materials.js';
+import { TEX } from '../textures.js';
 import { rng } from '../util.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
@@ -329,9 +330,28 @@ export function buildTrees(scene, world, renderer, quality) {
   }
   const nearList = [...near.values()];
   const forest = buildForest(scene, world, quality, { models, impGeo, withSwitch, setInst });
+  // the far billboards keep only part of a snow cover (rain.js), the near crowns' cards their default share
+  for (const m of [...impMat, ...(forest.impMat || [])]) if (m) m.userData.snow = 0.35;
+  // winter (the snow modes): the broadleaves stand bare. Their leaf cards draw twigs (main.js swaps the maps of every
+  // leaf material); their far billboards are baked again once, from the same models with twigs and no inner crown
+  // volume. Spruces and pines keep their needles.
+  let winterImp = null;
+  const setWinter = (on) => {
+    if (on && !winterImp) {
+      const twig = new THREE.MeshStandardMaterial({ map: TEX.twigs, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.92, color: 0xc2b8ab });
+      winterImp = models.map(({ t, parts, imp }) => !imp || t.conifer || t.pine ? null
+        : bakeImpostor(renderer, parts.filter(([, m]) => !m.userData.core).map(([g, m]) => [g, m.userData.bark ? m : twig]), t));
+    }
+    models.forEach((mo, ty) => {
+      const w = winterImp?.[ty];
+      if (!w) return;
+      for (const m of [impMat[ty], forest.impMat?.[ty]]) if (m) m.map = on ? w.tex : mo.imp.tex;
+    });
+  };
   return {
     count,
     forest,
+    setWinter,
     // everything the Unreal export needs (tools/export-unreal.mjs): the models and every mapped tree as placed here
     exportData: { TYPES, models, count, X, Y, Z, R, S, V, TY },
     update(camPos) {
@@ -500,6 +520,7 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
   let last = null;
   return {
     Q,
+    impMat,
     count: () => live,
     update(cam) {
       // a jump (photo views, tests, respawn) builds everything at once; walking/driving spreads the work

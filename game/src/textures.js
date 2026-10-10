@@ -404,6 +404,34 @@ function genLeaves(kind = 'broad') {
   TEX[kind === 'broad' ? 'leaves' : kind === 'autumn' ? 'leavesAutumn' : kind === 'dense' ? 'leavesDense' : 'leavesSmall'] = t;
 }
 
+function genTwigs() {
+  // Bare winter crown card: twigs forking out from the card's middle, thinning to fine shoots, grey-brown bark
+  // (the deciduous trees in the snow modes, rain.js / main.js: the leaf cards switch to this)
+  const n = 512, r = rng(431);
+  const c = document.createElement('canvas'); c.width = c.height = n;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, n, n);
+  ctx.lineCap = 'round';
+  const branch = (x, y, a, len, w, depth) => {
+    const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len;
+    const mx = (x + x1) / 2 + (r() - 0.5) * len * 0.25, my = (y + y1) / 2 + (r() - 0.5) * len * 0.25;
+    const v = 52 + r() * 30;
+    // no hair-thin strokes and no buds: in the smaller mip levels those fall under the alpha test and leave only dots
+    ctx.strokeStyle = `rgb(${v | 0},${(v * 0.9) | 0},${(v * 0.8) | 0})`; ctx.lineWidth = Math.max(1.6, w);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke();
+    if (depth >= 5) return;
+    const k = 2 + (r() < 0.35 ? 1 : 0);
+    for (let i = 0; i < k; i++) {
+      const da = (i - (k - 1) / 2) * (0.5 + r() * 0.35) + (r() - 0.5) * 0.3;
+      branch(x1, y1, a + da, len * (0.62 + r() * 0.18), w * 0.66, depth + 1);
+    }
+  };
+  for (let i = 0; i < 5; i++) branch(n / 2 + (r() - 0.5) * 30, n / 2 + (r() - 0.5) * 30, i / 5 * Math.PI * 2 + r() * 0.8, 50 + r() * 14, 7, 0);
+  const t = tex(c, { repeat: false });
+  t.premultiplyAlpha = false;
+  TEX.twigs = t;
+}
+
 function genPinnate() {
   // Black locust (Robinia pseudoacacia) foliage card: pinnate leaves (a rachis with 4-6 pairs of elliptic, round-tipped
   // leaflets and an end leaflet), light yellow-green, the airy but full crown of the trees along DN1 at Cornu
@@ -759,7 +787,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); }], ['brad', genFirBranch], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); }], ['brad', genFirBranch], ['scoarță', genBark],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

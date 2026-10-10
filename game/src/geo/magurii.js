@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GEO, heightAt, gridHeight, addHole, addFineZone } from './data.js';
 import { Acc } from './bridge.js';
 import { M, addWind } from '../materials.js';
+import { UNDER_SNOW } from '../rain.js';
 import { normalFromCanvas } from '../textures.js';
 import { rng } from '../util.js';
 import { frame, canvas, tex, grain, blobs, crackSmall, boxAt, cyl, tube, drape, tuft, merged, pairs, road, hash, clamp01 } from './pitigaia.js';
@@ -213,6 +214,7 @@ function mats() {
     weeds: addWind(std({ map: tex(weeds), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.95 }), 0.12, 1.6),
     grass: off(std({ map: M.grassGround.map, normalMap: M.grassGround.normalMap, roughness: 1, color: 0xd9e2b4 }), -4),
   };
+  UNDER_SNOW.add(MT.weeds);
   return MT;
 }
 

@@ -86,7 +86,10 @@ export class Audio {
   }
   step(surface, intensity = 0.5) {
     const k = 0.5 + intensity * 0.6;
+    if ((this.snowCover ?? 0) > 0.45 && surface !== 'tiles') surface = 'snow';     // (the porch tiles stay under the roof)
     switch (surface) {
+      // fresh snow: a muffled thud and the squeak-crunch of the crystals packing under the sole
+      case 'snow': this.burst({ f: 220, q: 0.8, dur: 0.09, gain: 0.08 * k }); for (let i = 0; i < 5; i++) this.burst({ f: 700 + Math.random() * 1300, q: 3, dur: 0.035, gain: 0.05 * k, delay: 0.015 + i * 0.022 }); break;
       case 'grass': this.burst({ f: 900, q: 0.7, dur: 0.12, gain: 0.08 * k }); this.burst({ f: 3000, q: 1, dur: 0.06, gain: 0.03 * k, delay: 0.02 }); break;
       case 'gravel': for (let i = 0; i < 4; i++) this.burst({ f: 2200 + Math.random() * 2000, q: 2, dur: 0.05, gain: 0.07 * k, delay: i * 0.018 }); break;
       case 'tiles': this.burst({ f: 1900, q: 3, dur: 0.05, gain: 0.14 * k }); this.burst({ f: 300, q: 1, dur: 0.05, gain: 0.1 * k }); break;
@@ -181,11 +184,12 @@ export class Audio {
     this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41), now, 0.5);
     this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0), now, 0.3);
     const rain = st.rain ?? 0;
+    this.snowCover = st.snowCover ?? 0;
     this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0), now, 1.5);
     this.howlF.frequency.setTargetAtTime(220 + 120 * Math.sin(this.t * 0.17) + 60 * Math.sin(this.t * 0.53), now, 0.8);
     this.rainGain.gain.setTargetAtTime(0.34 * rain * (0.55 + 0.45 * (st.rainOpen ?? 1)), now, 0.6);
     this.nextBird -= dt;
-    if (this.nextBird <= 0) { if (rain < 0.2 && !(st.night > 0.5)) this.chirp(Math.random() * 2 - 1); this.nextBird = 1.5 + Math.random() * 6; }   // (no birdsong in a downpour or at night)
+    if (this.nextBird <= 0) { if (rain < 0.2 && !(st.snow > 0.2) && !(st.night > 0.5)) this.chirp(Math.random() * 2 - 1); this.nextBird = (st.snowCover > 0.5 ? 6 : 1.5) + Math.random() * 6; }   // (no birdsong in a downpour, while it snows or at night; little in winter)
     const e = this.eng;
     if (st.driving) {
       const f = st.rpm / 60 * 2;
@@ -194,7 +198,7 @@ export class Audio {
       e.o3.frequency.setTargetAtTime(f * 2.02, now, 0.03);
       e.lp.frequency.setTargetAtTime(350 + st.rpm * 0.28 + Math.abs(st.throttle) * 900, now, 0.05);   // (braking / reverse: the pedal is -1; a negative cutoff silenced the engine)
       e.out.gain.setTargetAtTime(0.06 + Math.abs(st.throttle) * 0.1 + st.rpm / 60000, now, 0.08);
-      this.squeal.gain.setTargetAtTime(Math.max(0, Math.min(0.25, (Math.abs(st.slip) - 2.5) * 0.05)), now, 0.05);
+      this.squeal.gain.setTargetAtTime(Math.max(0, Math.min(0.25, (Math.abs(st.slip) - 2.5) * 0.05)) * (1 - 0.85 * this.snowCover), now, 0.05);   // (no squeal on snow)
       this.horn.gain.setTargetAtTime(st.horn ? 0.12 : 0, now, 0.01);
     } else {
       e.out.gain.setTargetAtTime(0, now, 0.2);

@@ -9,6 +9,10 @@ const GEARS = [3.6, 2.2, 1.5, 1.12, 0.9];
 const tmp = [];
 // 'hyper' tune (the user's Peugeot 508): 1400 W/kg with a 1.43 g traction limit, drag for a natural 580 km/h,
 // electronic limiter at 500 km/h -> 0-100 km/h 2.0 s, 0-300 6.4 s, 0-500 14 s (tools/../README); 8-speed box
+// grip of the road under the tyres, relative to dry asphalt (main.js: ~0.3 on snow): on snow the longitudinal and
+// lateral acceleration stay within mu * g (the hyper tune's 1.43 g of traction scaled the same way)
+export const TRACTION = { mu: 1 };
+
 const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505],
   // cornering: 3.2 g of mechanical grip plus aero downforce growing with v^2 (+1.6 g at 500 km/h);
   // progressive steering: full lock in 0.16 s (50 km/h) to 0.35 s (300+ km/h), back to centre in 0.15 s; tyre scrub 4 %
@@ -113,6 +117,9 @@ export class Vehicle {
       this.throttle = 0;
       hand = true;
     }
+    // the tyres cannot push or brake harder than the road lets them (snow: wheelspin, long stops)
+    const mu = TRACTION.mu;
+    if (mu < 0.999) { const aMax = (this.hyper ? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
     // rolling resistance + aero drag + engine braking
     const cd = this.hyper ? this.hyper.cd : 0.0012;
     const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * (ctl && ctl.throttle ? 0.15 : 0.55);
@@ -136,14 +143,16 @@ export class Vehicle {
       const rate = maxSteer / (building ? tIn : Hs.steerOut);
       this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
     } else this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
-    const yawRate = -vF * Math.tan(this.steer) / this.wheelbase;
+    // on a slippery road the car turns only as tightly as the tyres hold (lateral mu * g): it runs wide
+    let yawRate = -vF * Math.tan(this.steer) / this.wheelbase;
+    if (mu < 0.999 && Math.abs(vF) > 1) { const lim = 9.81 * mu * 1.05 / Math.abs(vF); yawRate = clamp(yawRate, -lim, lim); }
     const slip = hand && Math.abs(vF) > 4 ? 1.55 : 1;
     this.h += yawRate * dt * slip;
     // tyre scrub: cornering hard costs a little speed
     if (Hs) vF -= Math.sign(vF) * Math.abs(vF * yawRate) * Hs.scrub * dt;
 
     // lateral grip (handbrake lets the rear slide)
-    const grip = hand && Math.abs(vF) > 3 ? 1.4 : 11;
+    const grip = (hand && Math.abs(vF) > 3 ? 1.4 : 11) * (0.25 + 0.75 * mu);
     vR *= Math.exp(-grip * dt);
     this.lastLat = vR;
     const nfX = -Math.sin(this.h), nfZ = -Math.cos(this.h);

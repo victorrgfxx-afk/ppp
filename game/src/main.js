@@ -4,7 +4,7 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
-import { RAIN, wetScene, RainOcclusion, RainFX, Spray } from './rain.js';
+import { RAIN, SNOW, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, Spray } from './rain.js';
 import { MoonBeam, Flashlight, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
@@ -15,7 +15,7 @@ import { SCENE_SPOT } from './geo/hillwood.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
-import { Vehicle } from './vehicle.js';
+import { Vehicle, TRACTION } from './vehicle.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
@@ -34,8 +34,9 @@ THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
 // one sun, several shadow maps (fine near, coarse far): patched into the light loop before any shader compiles
 installCascadedShadows();
 // Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina. The hour can be
-// changed in the menu (O); local summer time is UTC+3.
-const sunTime = (hour) => new Date(Date.UTC(2026, 8, 26) + (hour - 3) * 3600e3);
+// changed in the menu (O); local summer time is UTC+3. The snow modes are on 1 February 2026 (UTC+2): a low sun, 26 deg
+// at 11:30, up from ~7:40 to 17:25, and that night's full moon (the "snow moon", 22:09 UTC) high over the snow.
+const sunTime = (hour, winter) => winter ? new Date(Date.UTC(2026, 1, 1) + (hour - 2) * 3600e3) : new Date(Date.UTC(2026, 8, 26) + (hour - 3) * 3600e3);
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -107,7 +108,7 @@ async function main() {
   scene.add(sky);
   const sunDir = sky.material.uniforms.uSunDir.value;
   let hour = HOURS.includes(store.get('hour', 11.5)) ? store.get('hour', 11.5) : 11.5;
-  let sunInfo = sunDirection(sunTime(hour));
+  let sunInfo = sunDirection(sunTime(hour, WEATHER[store.get('weather', 'senin')]?.winter));
   sunDir.copy(sunInfo.dir);
   const { sun } = createLights(scene, sunDir);
   sun.shadow.mapSize.set(Q.shadowMap, Q.shadowMap);
@@ -120,6 +121,7 @@ async function main() {
   let weatherKey = WEATHER[store.get('weather', 'senin')] ? store.get('weather', 'senin') : 'senin';
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
+  let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
   let moonBeam = null, flashlight = null, bear = null, gradeU = null;         // (made once the map is built)
   const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   // night palettes: a clear moonlit sky, or the low deck of a night storm
@@ -129,12 +131,14 @@ async function main() {
   };
   const applyWeather = (key, h = hour) => {
     weatherKey = key; hour = h;
-    const date = sunTime(hour);
+    const date = sunTime(hour, WEATHER[key].winter);
     sunInfo = sunDirection(date); moonInfo = moonDirection(date);
     const w = WEATHER[key], L = sunlightAt(sunInfo.el), d = L.day, warm = L.color.map(c => THREE.MathUtils.lerp(c, 1, d));
     night = 1 - THREE.MathUtils.smoothstep(sunInfo.el, -12, -3);           // 0 by day, 1 after nautical dusk
     const moonUp = THREE.MathUtils.smoothstep(moonInfo.el, -1, 5) * moonInfo.illum, overcast = w.cover > 0.6;
     rainTarget = w.rain ?? 0;
+    snowFall = w.snow ?? 0; snowCover = w.snowCover ?? 0;
+    if (!!w.winter !== winter) { winter = !!w.winter; setWinter?.(winter); }
     horror = night > 0.5 && rainTarget > 0 ? 1 : 0;                         // a night storm: the bear is out
     rainLight = (0.3 + 0.7 * d) * (1 - 0.75 * night);
     // the light (and its cascaded shadows) comes from the moon at night
@@ -337,7 +341,25 @@ async function main() {
   player.update(0, input, null, 0);
   // rain: every lit material learns to get wet (before compiling, so switching to rain recompiles nothing)
   wetScene(scene);
-  const rainFX = new RainFX(scene), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise);
+  const rainFX = new RainFX(scene), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise), snowFX = new SnowFX(scene);
+  // left out of the rain's height map: the sky, the falling rain and snow, and the far forests' canopy shell (a lid at
+  // crown height over the whole stand, roads through the wood included; near the camera the real trees stand in for it)
+  const occHide = [sky, rainFX.group, snowFX.group, ...(geoWorld.canopy?.meshes ?? [])];
+  // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
+  // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
+  const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
+  // winter (the snow modes): the broadleaves stand bare - every leaf texture shows twigs (one image swap reaches every
+  // material and clone that uses it), and the far billboards and forest roof go bare too (geo/trees.js, canopy.js)
+  const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn].filter(Boolean);
+  const summerImg = new Map(leafTex.map(t => [t, t.image]));
+  setWinter = (on) => {
+    for (const t of leafTex) { t.image = on ? TEX.twigs.image : summerImg.get(t); t.needsUpdate = true; }
+    geoWorld.setWinter(on);
+  };
+  if (winter) setWinter(true);
+  // a game started in the snow finds it already lying and falling
+  if (snowCover > 0 || snowFall > 0) SNOW.uSnow.value = 1;
+  SNOW.uSnowFall.value = snowFall;
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   shareInstancedDepth(scene);
   renderer.compile(scene, camera);
@@ -787,7 +809,6 @@ async function main() {
     if (!paused) hikers.update(dt, { ok: clipTime(), px: pos0().x, pz: pos0().z, camera });
     sky.position.copy(camera.position);
     // grass only near the camera (distance culling per 16 m chunk)
-    if ((frameNo & 127) === 0) wetScene(scene);            // materials streamed in since
     // the 8 nearest street lamps, for their reflections in a wet road
     if (post.ssr && (frameNo & 7) === 4) {
       const cp = camera.position, near = [];
@@ -796,10 +817,13 @@ async function main() {
       post.ssr.setLamps(near.slice(0, 8).map(e => e[1]), M.lampGlass.emissiveIntensity);
     }
     if ((frameNo++ & 7) === 0) {
-      for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60;
+      const buried = SNOW.uSnow.value >= 0.45;          // the grass under the snow
+      for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60 && !buried;
+      for (const m of UNDER_SNOW) m.visible = !buried;
       geoWorld.update(camera.position);
       shareInstancedDepth(scene);                         // (the trees and ground cover streamed in since)
       forest.near(camera.position);
+      wetScene(scene);                                    // the materials streamed in since: rain and snow on them too
       roadName = roadNameAt(pos0().x, pos0().z);
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
@@ -817,7 +841,7 @@ async function main() {
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`),
     });
-    audio.update(dt, { rain: RAIN.uRain.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    audio.update(dt, { rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
     if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
@@ -829,7 +853,14 @@ async function main() {
     RAIN.uRain.value = damp(RAIN.uRain.value, rainTarget, 1.2, dt);
     RAIN.uWet.value = RAIN.uWet.value < rainTarget ? Math.min(rainTarget, RAIN.uWet.value + dt / 10) : Math.max(rainTarget, RAIN.uWet.value - dt / 60);
     RAIN.uRainTime.value = t;
-    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, [sky, rainFX.group]);
+    // snow: it starts / stops in ~3 s; while it snows the cover builds up in ~1 min (a time-lapse of hours), on the
+    // clear day after it is simply there; any other weather melts it in ~40 s (a downpour in ~15 s). The wheels feel it.
+    SNOW.uSnowFall.value = damp(SNOW.uSnowFall.value, snowFall, 0.8, dt);
+    const sc = SNOW.uSnow.value;
+    SNOW.uSnow.value = snowCover > 0 ? Math.min(1, sc + dt / 4) : snowFall > 0 ? Math.min(1, sc + dt * SNOW.uSnowFall.value / 60) : Math.max(0, sc - dt / (rainTarget > 0 ? 15 : 40));
+    SNOW.uSnowLight.value = rainLight;
+    TRACTION.mu = 1 - 0.68 * Math.min(1, SNOW.uSnow.value * 1.4);   // ~0.3 on snow (packed snow 0.2-0.3, dry asphalt 0.8-1)
+    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip);
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
     const flash = lightning.update(dt, horror === 1 && !paused);
     sky.material.uniforms.uFlash.value = flash;
@@ -839,6 +870,7 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
+    snowFX.update(camera, rainLight, flashlight.info);
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
     if (post.ssr) post.ssr.enabled = RAIN.uWet.value > 0.01 && !window.__game?.noSSR;   // reflections in wet ground only when there is any
     if (!paused) {
@@ -864,7 +896,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

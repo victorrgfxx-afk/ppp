@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, gridHeight, addHole, addFineZone } from './data.js';
 import { Acc } from './bridge.js';
 import { M, addWind } from '../materials.js';
+import { UNDER_SNOW } from '../rain.js';
 import { normalFromCanvas } from '../textures.js';
 import { rng } from '../util.js';
 
@@ -297,6 +298,7 @@ function mats() {
   const off = (m, u) => Object.assign(m, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: u });
   const plainT = tex(plain, { repeat: true }), plainN = tex(normalFromCanvas(plain, 1.2, 512), { repeat: true, srgb: false });
   const weedMat = addWind(std({ map: tex(weeds), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.95 }), 0.12, 1.6);
+  UNDER_SNOW.add(weedMat);
   MT = {
     slab: off(std({ map: tex(slab), normalMap: tex(normalFromCanvas(hmap, 3.5, 2048), { srgb: false }), roughness: 0.9, color: 0xb9b8b3 }), -8),
     plain: off(std({ map: plainT, normalMap: plainN, roughness: 0.9, color: 0xb9b8b3 }), -7),
