@@ -11,7 +11,8 @@ const tmp = [];
 // electronic limiter at 500 km/h -> 0-100 km/h 2.0 s, 0-300 6.4 s, 0-500 14 s (tools/../README); 8-speed box
 // grip of the road under the tyres, relative to dry asphalt (main.js: ~0.3 on snow): on snow the longitudinal and
 // lateral acceleration stay within mu * g (the hyper tune's 1.43 g of traction scaled the same way)
-export const TRACTION = { mu: 1 };
+// sink: how deep the snow lies under the wheels off the roads (m): it holds the car back
+export const TRACTION = { mu: 1, sink: 0 };
 
 const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505],
   // cornering: 3.2 g of mechanical grip plus aero downforce growing with v^2 (+1.6 g at 500 km/h);
@@ -122,7 +123,7 @@ export class Vehicle {
     if (mu < 0.999) { const aMax = (this.hyper ? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
     // rolling resistance + aero drag + engine braking
     const cd = this.hyper ? this.hyper.cd : 0.0012;
-    const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * (ctl && ctl.throttle ? 0.15 : 0.55);
+    const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * Math.min(1, TRACTION.sink / 0.3));
     if (Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle)) { vF *= Math.exp(-6 * dt); }
     else vF -= drag * dt;
     if (hand) vF *= Math.exp(-(ctl ? 1.2 : 5) * dt);

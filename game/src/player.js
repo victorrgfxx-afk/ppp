@@ -81,7 +81,7 @@ export class Player {
     const ax = input.axis();
     const run = input.down('ShiftLeft') || input.down('ShiftRight') || input.touchRun;
     const crouch = input.down('KeyC') || input.down('ControlLeft');
-    const speed = crouch ? 1.3 : run ? 6.2 : 2.5;
+    const speed = (crouch ? 1.3 : run ? 6.2 : 2.5) * (this.slow ?? 1);     // (slow: wading through deep snow, main.js)
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const want = new THREE.Vector3().addScaledVector(fwd, -ax.y * speed).addScaledVector(right, ax.x * speed);

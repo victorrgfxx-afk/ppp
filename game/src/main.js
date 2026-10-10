@@ -4,7 +4,7 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
-import { RAIN, SNOW, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, Spray } from './rain.js';
+import { RAIN, SNOW, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, snowRoads, Spray } from './rain.js';
 import { MoonBeam, Flashlight, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
@@ -344,7 +344,10 @@ async function main() {
   const rainFX = new RainFX(scene), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise), snowFX = new SnowFX(scene);
   // left out of the rain's height map: the sky, the falling rain and snow, and the far forests' canopy shell (a lid at
   // crown height over the whole stand, roads through the wood included; near the camera the real trees stand in for it)
-  const occHide = [sky, rainFX.group, snowFX.group, ...(geoWorld.canopy?.meshes ?? [])];
+  // the lying snow: a blanket over the ground near the camera, shaped from the height maps and the roads (rain.js)
+  const blanket = new SnowBlanket(scene);
+  rainOcc.roads = snowRoads(GEO.roads);
+  const occHide = [sky, rainFX.group, snowFX.group, blanket.mesh, ...(geoWorld.canopy?.meshes ?? [])];
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
@@ -357,9 +360,11 @@ async function main() {
     geoWorld.setWinter(on);
   };
   if (winter) setWinter(true);
-  // a game started in the snow finds it already lying and falling
+  // a game started in the snow finds it already lying (a few cm while it snows, 25 cm the clear day after) and falling
   if (snowCover > 0 || snowFall > 0) SNOW.uSnow.value = 1;
+  SNOW.uSnowDepth.value = snowCover > 0 ? 0.25 : snowFall > 0 ? 0.05 : 0;
   SNOW.uSnowFall.value = snowFall;
+  let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   shareInstancedDepth(scene);
   renderer.compile(scene, camera);
@@ -825,6 +830,7 @@ async function main() {
       forest.near(camera.position);
       wetScene(scene);                                    // the materials streamed in since: rain and snow on them too
       roadName = roadNameAt(pos0().x, pos0().z);
+      offRoad = SNOW.uSnowDepth.value > 0.03 && !rainOcc.onRoad(pos0().x, pos0().z);
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
       if (egg && Math.hypot(pos0().x - egg.x, pos0().z - egg.z) < egg.r) { hillEggFound = true; hud.toast('Easter egg: ai găsit scheletul din pădurea de pe dealul crucii!', 6); }
@@ -839,7 +845,8 @@ async function main() {
       prompt, driving: mode === 'car', kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
-      location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`),
+      location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
+        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : ''),
     });
     audio.update(dt, { rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
@@ -853,14 +860,21 @@ async function main() {
     RAIN.uRain.value = damp(RAIN.uRain.value, rainTarget, 1.2, dt);
     RAIN.uWet.value = RAIN.uWet.value < rainTarget ? Math.min(rainTarget, RAIN.uWet.value + dt / 10) : Math.max(rainTarget, RAIN.uWet.value - dt / 60);
     RAIN.uRainTime.value = t;
-    // snow: it starts / stops in ~3 s; while it snows the cover builds up in ~1 min (a time-lapse of hours), on the
-    // clear day after it is simply there; any other weather melts it in ~40 s (a downpour in ~15 s). The wheels feel it.
+    // snow: it starts / stops in ~3 s; while it snows the cover builds up in ~1 min and then gets deeper by ~8 cm a
+    // minute, up to 60 cm (a time-lapse: a heavy snowfall brings 2-8 cm an hour); the clear day after keeps at least
+    // 25 cm; any other weather melts it, ~1 cm/s (a downpour 2.5 cm/s), then the last of the cover in ~40 s (~15 s).
+    // The wheels and feet feel it.
     SNOW.uSnowFall.value = damp(SNOW.uSnowFall.value, snowFall, 0.8, dt);
-    const sc = SNOW.uSnow.value;
-    SNOW.uSnow.value = snowCover > 0 ? Math.min(1, sc + dt / 4) : snowFall > 0 ? Math.min(1, sc + dt * SNOW.uSnowFall.value / 60) : Math.max(0, sc - dt / (rainTarget > 0 ? 15 : 40));
+    const sc = SNOW.uSnow.value, dep = SNOW.uSnowDepth;
+    if (snowFall > 0) dep.value = Math.min(0.6, dep.value + dt * SNOW.uSnowFall.value * sc * 0.08 / 60);
+    else if (snowCover > 0) dep.value = Math.min(Math.max(dep.value, 0.25), dep.value + dt * 0.1);
+    else dep.value = Math.max(0, dep.value - dt * (rainTarget > 0 ? 0.025 : 0.01));
+    SNOW.uSnow.value = snowCover > 0 ? Math.min(1, sc + dt / 4) : snowFall > 0 ? Math.min(1, sc + dt * SNOW.uSnowFall.value / 60) : dep.value > 0.03 ? sc : Math.max(0, sc - dt / (rainTarget > 0 ? 15 : 40));
     SNOW.uSnowLight.value = rainLight;
     TRACTION.mu = 1 - 0.68 * Math.min(1, SNOW.uSnow.value * 1.4);   // ~0.3 on snow (packed snow 0.2-0.3, dry asphalt 0.8-1)
-    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip);
+    TRACTION.sink = offRoad ? dep.value : 0;                            // (deep snow off the roads holds the wheels back)
+    player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
+    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0);
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
     const flash = lightning.update(dt, horror === 1 && !paused);
     sky.material.uniforms.uFlash.value = flash;
@@ -871,6 +885,9 @@ async function main() {
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
     snowFX.update(camera, rainLight, flashlight.info);
+    if (mode === 'car' && active) { SNOW.uSnowCar.value.set(active.x, active.z, active.h, 1); SNOW.uSnowCarSize.value.set(active.car.half.w, active.car.half.l); }
+    else SNOW.uSnowCar.value.w = 0;
+    blanket.update();
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
     if (post.ssr) post.ssr.enabled = RAIN.uWet.value > 0.01 && !window.__game?.noSSR;   // reflections in wet ground only when there is any
     if (!paused) {

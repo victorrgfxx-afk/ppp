@@ -20,6 +20,10 @@ export const SNOW = {
   uSnow: { value: 0 },         // how much snow lies on the surfaces (0..1: a dusting on the level ones .. everything that faces up)
   uSnowFall: { value: 0 },     // how hard it snows now (0..1)
   uSnowLight: { value: 1 },    // daylight on the snow (the sparkle of its crystals)
+  uSnowDepth: { value: 0 },    // how deep it lies in the open, in metres (it builds up while it snows: main.js)
+  uSnowField: { value: null }, // the lying snow's shape around the camera (RainOcclusion)
+  uSnowCar: { value: new THREE.Vector4() },        // the driven car: x, z, heading, 1 when driving (it ploughs through)
+  uSnowCarSize: { value: new THREE.Vector2(1, 2.4) },   // its half width and half length (m)
 };
 // low plants that go under a cover deeper than a dusting (meadow grass, flowers, ferns, weeds): their materials are
 // hidden then (main.js)
@@ -251,10 +255,86 @@ const OCC_FRAG = /* glsl */`
 varying float vH;
 void main() { gl_FragColor = vec4(vH, 0.0, 0.0, 1.0); }`;
 
+// The snow's shape (the lying snow, SnowBlanket): baked from the height maps seen from above and from below (the
+// ground under everything) and the roads, every time those are re-rendered. Per texel: R the surface the snow lies on
+// (relative height, as the maps), G how much of the depth lies there (x SNOW.uSnowDepth), B the open surface around
+// averaged over ~2 m (where a deep cover lies: it fills the steps).
+const BAKE_VERT = /* glsl */`
+varying vec2 vUv;
+void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+const BAKE_FRAG = /* glsl */`
+uniform sampler2D uTop, uLow, uRoad;
+uniform vec4 uOccBox;
+uniform vec2 uWind;
+varying vec2 vUv;
+float bHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float bNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(bHash(i), bHash(i + vec2(1.0, 0.0)), f.x), mix(bHash(i + vec2(0.0, 1.0)), bHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+vec2 at(vec2 d) { return vUv + vec2(d.x, -d.y) / (2.0 * uOccBox.z); }          // the texel d metres (x, z) away
+float topH(vec2 uv) { return texture2D(uTop, uv).r; }
+float lowH(vec2 uv) { return texture2D(uLow, vec2(uv.x, 1.0 - uv.y)).r; }    // (seen from below: mirrored)
+// an obstacle the wind blows the snow against: 0.35-3 m over the ground (fences, walls, cars, hedges, shrubs)
+float obstacle(vec2 uv) { float r = topH(uv) - lowH(uv); return smoothstep(0.35, 1.0, r) * (1.0 - smoothstep(2.8, 4.0, r)); }
+void main() {
+  vec2 p = uOccBox.xy + vec2(vUv.x - 0.5, 0.5 - vUv.y) * 2.0 * uOccBox.z;
+  float h = topH(vUv), g = lowH(vUv);
+  // open to the sky down to (nearly) the ground: not under a roof, eaves, a car, a bridge deck, a spruce. The snow lies
+  // on the top surface there (ground, road, kerb, step); where it does not, on the open surface next to it.
+  float open = 0.0, baseSum = 0.0;
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 uv = at(vec2(float(i), float(j)) * 0.35);
+    float t = topH(uv), o = step(t - lowH(uv), 0.6);
+    open += o; baseSum += o * t;
+  }
+  float base = h - g < 0.6 ? h : open > 0.0 ? baseSum / open : g;
+  // ... and the open surface around, averaged over ~2 m: a deep cover fills the steps (kerbs, plinths, ditches) and
+  // rounds them over instead of following them
+  float wide = 0.0, wn = 0.0;
+  for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
+    vec2 uv = at(vec2(float(i), float(j)) * 0.45);
+    float t = topH(uv), o = step(t - lowH(uv), 0.6) * (1.0 - 0.12 * float(i * i + j * j));
+    wide += o * t; wn += o;
+  }
+  wide = wn > 0.0 ? wide / wn : base;
+  open /= 9.0;
+  // the wind's work: dunes across it (~3 m apart, ~10 m long), lumps, and rounded mounds over what lies buried
+  // (tussocks, stones, low shrubs)
+  vec2 w = uWind, wp = vec2(dot(p, w), dot(p, vec2(-w.y, w.x)));
+  float f = 1.0 + 0.6 * (bNoise(vec2(wp.x * 0.33, wp.y * 0.1)) - 0.5) + 0.5 * (bNoise(p * 0.5 + 3.1) - 0.5) + 0.2 * (bNoise(p * 1.7 + 7.7) - 0.5);
+  vec2 cell = floor(p * 0.62);
+  for (int j = 0; j <= 1; j++) for (int i = 0; i <= 1; i++) {
+    vec2 c = cell + vec2(float(i), float(j)) - 0.5, r = vec2(bHash(c + 0.7), bHash(c + 5.3));
+    vec2 m = (c + 0.2 + 0.6 * r) / 0.62;
+    float rad = 0.35 + 0.5 * bHash(c + 9.1), q = clamp(1.0 - dot(p - m, p - m) / (rad * rad), 0.0, 1.0);
+    f += step(0.6, bHash(c + 2.9)) * (0.25 + 0.4 * r.x) * q * q;
+  }
+  // drifts in the lee of the obstacles (the snow the wind carries settles behind them), scoured on their windward side
+  float lee = 0.0, scour = 0.0;
+  for (int k = 1; k <= 7; k++) lee = max(lee, obstacle(at(-w * float(k) * 0.45)) * (1.0 - float(k) / 8.5));
+  for (int k = 1; k <= 2; k++) scour = max(scour, obstacle(at(w * float(k) * 0.35)));
+  f += 1.2 * lee - 0.45 * scour;
+  // roads: the wheels pack it to a thin layer (the slush of the cover shows), ploughed up into low banks along the
+  // edges that slope down to the asphalt over ~1 m (the road mask blurred over ±1.1 m)
+  float road = 0.0, rw = 0.0;
+  for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {
+    float k = 1.0 - 0.1 * float(i * i + j * j);
+    road += k * texture2D(uRoad, at(vec2(float(i), float(j)) * 0.55)).r; rw += k;
+  }
+  road /= rw;
+  float core = smoothstep(0.2, 0.85, road), bank = smoothstep(0.0, 0.18, road) * (1.0 - smoothstep(0.18, 0.5, road));
+  f = f * (1.0 - core) + 0.3 * bank * (1.0 - core);
+  f *= smoothstep(0.15, 0.85, open);                                             // thinning into the shelter
+  gl_FragColor = vec4(base, max(f, 0.0), wide, 1.0);
+}`;
+// the snow's wind (downwind, world x / z: the flakes drift the same way)
+const SNOW_WIND = new THREE.Vector2(0.93, 0.37).normalize();
+
 const _cc = new THREE.Color();
 export class RainOcclusion {
   constructor(size = 512, half = 48) {
-    this.half = half;
+    this.half = half; this.size = size;
     this.rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: true });
     this.cam = new THREE.OrthographicCamera(-half, half, half, -half, 1, 1500);
     this.cam.rotation.set(-Math.PI / 2, 0, 0);                 // looking straight down: screen right = +x, up = -z
@@ -262,18 +342,59 @@ export class RainOcclusion {
     RAIN.uOcc.value = this.rt.texture;
     this.last = new THREE.Vector2(1e9, 1e9);
     this.frame = 0;
+    this.snow = null; this.snowOn = false;
+    this.roads = [];                                             // (main.js: the map's roads, for the snow)
+  }
+
+  // the snow's maps (made with the first snow): the lowest surface seen from below (the ground under everything), the
+  // roads near the camera, and the lying snow's shape baked from them
+  initSnow() {
+    const { size, half } = this;
+    const rt = (depth) => new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: depth });
+    const camLow = new THREE.OrthographicCamera(-half, half, half, -half, 1, 1500);
+    camLow.rotation.set(Math.PI / 2, 0, 0);                      // looking straight up: screen right = +x, up = +z
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const roadTex = new THREE.CanvasTexture(canvas);
+    roadTex.colorSpace = THREE.NoColorSpace; roadTex.generateMipmaps = false; roadTex.minFilter = THREE.LinearFilter;
+    const low = rt(true), field = rt(false);
+    const bake = new THREE.ShaderMaterial({ vertexShader: BAKE_VERT, fragmentShader: BAKE_FRAG, depthTest: false, depthWrite: false,
+      uniforms: { uTop: { value: this.rt.texture }, uLow: { value: low.texture }, uRoad: { value: roadTex }, uOccBox: RAIN.uOccBox, uWind: { value: SNOW_WIND } } });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bake); quad.frustumCulled = false;
+    const qs = new THREE.Scene(); qs.add(quad);
+    this.snow = { low, field, camLow, canvas, ctx: canvas.getContext('2d'), roadTex, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+    SNOW.uSnowField.value = field.texture;
+  }
+
+  // the roads around (cx, cz), white on black, as wide as they are (the snow's bake blurs the edges)
+  drawRoads(cx, cz) {
+    const S = this.snow, n = S.canvas.width, k = n / (2 * this.half), g = S.ctx;
+    const x0 = cx - this.half, z0 = cz - this.half, x1 = cx + this.half, z1 = cz + this.half;
+    g.fillStyle = '#000'; g.fillRect(0, 0, n, n);
+    g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const r of this.roads) {
+      if (r.x1 < x0 - r.w || r.x0 > x1 + r.w || r.z1 < z0 - r.w || r.z0 > z1 + r.w) continue;
+      g.lineWidth = r.w * k;
+      g.beginPath();
+      for (let i = 0; i < r.p.length; i += 2) { const px = (r.p[i] - x0) * k, py = (r.p[i + 1] - z0) * k; if (i) g.lineTo(px, py); else g.moveTo(px, py); }
+      g.stroke();
+    }
+    S.roadTex.needsUpdate = true;
   }
 
   // re-rendered when the camera has moved 6 m, else every 30 frames (cars and dogs move); skip(mesh): left out too
-  // (in winter the bare broadleaf crowns let the snow through)
-  update(renderer, scene, camPos, groundY, hide, skip) {
+  // (in winter the bare broadleaf crowns let the snow through). snow: the lying snow's maps too (and at once when it
+  // begins)
+  update(renderer, scene, camPos, groundY, hide, skip, snow = false) {
     this.frame++;
-    if (Math.hypot(camPos.x - this.last.x, camPos.z - this.last.y) < 6 && this.frame % 30) return;
+    const fresh = snow && !this.snowOn;
+    this.snowOn = snow;
+    if (!fresh && Math.hypot(camPos.x - this.last.x, camPos.z - this.last.y) < 6 && this.frame % 30) return;
     const cx = Math.round(camPos.x / 2) * 2, cz = Math.round(camPos.z / 2) * 2;
     this.last.set(camPos.x, camPos.z);
     this.cam.position.set(cx, Math.max(camPos.y, groundY) + 600, cz);
     this.cam.updateMatrixWorld();
     this.mat.uniforms.uRef.value = groundY;
+    RAIN.uOccBox.value.set(cx, cz, this.half, groundY);
     const rt0 = renderer.getRenderTarget(), bg = scene.background, ov = scene.overrideMaterial, sm = renderer.shadowMap.autoUpdate;
     renderer.getClearColor(_cc); const ca = renderer.getClearAlpha();
     if (skip) scene.traverse((o) => { if (o.isMesh && o.visible && skip(o)) hide = [...hide, o]; });
@@ -285,13 +406,52 @@ export class RainOcclusion {
     renderer.clear();
     scene.updateMatrixWorld();                                    // (the scene does not update itself: main.js)
     renderer.render(scene, this.cam);
+    if (snow) {
+      if (!this.snow) this.initSnow();
+      const S = this.snow;
+      S.camLow.position.set(cx, groundY - 600, cz);
+      S.camLow.updateMatrixWorld();
+      renderer.setRenderTarget(S.low);
+      renderer.clear();
+      renderer.render(scene, S.camLow);
+      scene.overrideMaterial = ov;
+      this.drawRoads(cx, cz);
+      renderer.setRenderTarget(S.field);
+      renderer.render(S.qs, S.qc);
+    }
     renderer.setRenderTarget(rt0);
     renderer.setClearColor(_cc, ca);
     scene.background = bg; scene.overrideMaterial = ov; renderer.shadowMap.autoUpdate = sm;
     hide.forEach((o, i) => { o.visible = vis[i]; });
-    RAIN.uOccBox.value.set(cx, cz, this.half, groundY);
     RAIN.uOccOn.value = 1;
   }
+
+  // is (x, z) on a road (within its width)? For the wheels and feet in deep snow (main.js)
+  onRoad(x, z) {
+    for (const r of this.roads) {
+      const hw = r.w / 2;
+      if (x < r.x0 - hw || x > r.x1 + hw || z < r.z0 - hw || z > r.z1 + hw) continue;
+      const P = r.p;
+      for (let i = 0; i < P.length - 2; i += 2) {
+        const ax = P[i], az = P[i + 1], dx = P[i + 2] - ax, dz = P[i + 3] - az, L2 = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        if (Math.hypot(x - ax - t * dx, z - az - t * dz) < hw) return true;
+      }
+    }
+    return false;
+  }
+}
+
+// the map's roads for the snow (geo GEO.roads: flat x, z lists and widths; not the tunnels)
+export function snowRoads(roads) {
+  const out = [];
+  for (const r of roads || []) {
+    if (r.tu || !r.p || r.p.length < 4) continue;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < r.p.length; i += 2) { x0 = Math.min(x0, r.p[i]); x1 = Math.max(x1, r.p[i]); z0 = Math.min(z0, r.p[i + 1]); z1 = Math.max(z1, r.p[i + 1]); }
+    out.push({ p: r.p, w: r.w || 5, x0, z0, x1, z1 });
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ falling rain and splashes
@@ -523,6 +683,106 @@ export class SnowFX {
     const t = RAIN.uRainTime.value;
     this.wind.value.set(0.5 + 0.45 * Math.sin(t * 0.21), 0.2 + 0.3 * Math.sin(t * 0.17 + 2));   // a light, gusting breeze
   }
+}
+
+// ------------------------------------------------------------------ the lying snow
+// A blanket of snow over the ground around the camera (±48 m, a vertex every 0.4 m, on the world's grid so it does not
+// swim): it lies on the surface baked by RainOcclusion, as deep as SNOW.uSnowDepth times the local shape (drifts behind
+// fences and walls, dunes, mounds, thin on the roads with banks along them, none under roofs and cars), and it thins
+// out where it ends. Further away the cover of rain.js (white surfaces) carries on.
+const BLANKET_PARS = /* glsl */`
+uniform sampler2D uSnowField;
+uniform vec4 uOccBox, uSnowCar;
+uniform vec2 uSnowCarSize;
+uniform float uSnowDepth;
+float snowAt(vec2 xz, out float d) {
+  vec2 uv = vec2(0.5 + (xz.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (xz.y - uOccBox.y) / (2.0 * uOccBox.z));
+  vec4 s = texture2D(uSnowField, uv);
+  vec2 e = abs(uv - 0.5) * 2.0;
+  d = uSnowDepth * s.g * (1.0 - smoothstep(0.78, 0.97, max(e.x, e.y)));
+  // the car you drive pushes the snow aside (the maps follow it only every few metres)
+  vec2 dc = xz - uSnowCar.xy, cs = vec2(cos(uSnowCar.z), sin(uSnowCar.z));
+  vec2 q = abs(vec2(dot(dc, vec2(cs.x, -cs.y)), dot(dc, -cs.yx))) - uSnowCarSize;
+  d *= 1.0 - uSnowCar.w * (1.0 - smoothstep(-0.2, 0.25, max(q.x, q.y)));
+  // the deeper it lies, the more it smooths what is under it: it fills the low side of a step up to the step's
+  // average (never below the surface it lies on)
+  float b = mix(s.r, max(s.r, s.b), smoothstep(0.03, 0.35, d));
+  return b + uOccBox.w + d;
+}`;
+const BLANKET_POS = /* glsl */`
+  vec2 sxz = position.xz + uOccBox.xy;
+  float sd;
+  float sy = snowAt(sxz, sd);`;
+
+export class SnowBlanket {
+  constructor(scene) {
+    const g = new THREE.PlaneGeometry(96, 96, 240, 240).rotateX(-Math.PI / 2);
+    g.deleteAttribute('normal'); g.deleteAttribute('uv');
+    const uni = { uSnowField: SNOW.uSnowField, uOccBox: RAIN.uOccBox, uSnowDepth: SNOW.uSnowDepth, uSnowLight: SNOW.uSnowLight, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize };
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
+    mat.color.setRGB(0.87, 0.9, 0.94);                         // (the cover's snow colour, rain.js)
+    mat.userData.noWet = true;
+    mat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, uni);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\n' + BLANKET_PARS + '\nvarying vec3 vSnowP;')
+        // (the normal is worked out per pixel)
+        .replace('#include <beginnormal_vertex>', BLANKET_POS + `
+  vec3 objectNormal = vec3(0.0, 1.0, 0.0);
+  vSnowP = vec3(sxz.x, sy, sxz.y);`)
+        .replace('#include <begin_vertex>', 'vec3 transformed = vec3(sxz.x, sy, sxz.y);');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+${BLANKET_PARS}
+uniform float uSnowLight;
+varying vec3 vSnowP;
+float sFd, sFn;
+float bnHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float bnNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(bnHash(i), bnHash(i + vec2(1.0, 0.0)), f.x), mix(bnHash(i + vec2(0.0, 1.0)), bnHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}`)
+        // where it ends and how it is lit, per pixel from the snow's shape (not from the 0.4 m triangles)
+        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+  snowAt(vSnowP.xz, sFd);
+  if (sFd < 0.012) discard;`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+  diffuseColor.rgb *= 0.95 + 0.05 * bnNoise(vSnowP.xz * 0.8);`)
+        // lumps at the decimetre and centimetre scale (finer than the vertices)
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  float shx = snowAt(vSnowP.xz + vec2(0.2, 0.0), sFn) - snowAt(vSnowP.xz - vec2(0.2, 0.0), sFn);
+  float shz = snowAt(vSnowP.xz + vec2(0.0, 0.2), sFn) - snowAt(vSnowP.xz - vec2(0.0, 0.2), sFn);
+  normal = normalize((viewMatrix * vec4(-shx, 0.4, -shz, 0.0)).xyz);
+  vec2 bq = vSnowP.xz * 3.0, bq2 = vSnowP.xz * 11.0;
+  vec2 bg = vec2(bnNoise(bq + vec2(0.5, 0.0)) - bnNoise(bq - vec2(0.5, 0.0)), bnNoise(bq + vec2(0.0, 0.5)) - bnNoise(bq - vec2(0.0, 0.5))) * 0.35
+          + vec2(bnNoise(bq2 + vec2(0.5, 0.0)) - bnNoise(bq2 - vec2(0.5, 0.0)), bnNoise(bq2 + vec2(0.0, 0.5)) - bnNoise(bq2 - vec2(0.0, 0.5))) * 0.12;
+  normal = normalize(normal - (viewMatrix * vec4(bg.x, 0.0, bg.y, 0.0)).xyz);`)
+        // crystals catching the light, twinkling as you move
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  { float sd = length(vSnowP - cameraPosition);
+    float tw = bnHash(floor(vSnowP.xz * 55.0) + floor(cameraPosition.xz * 3.0 + cameraPosition.y * 5.0));
+    totalEmissiveRadiance += vec3(step(0.9975, tw)) * uSnowLight * 1.2 * (1.0 - smoothstep(5.0, 16.0, sd)); }`);
+    };
+    mat.customProgramCacheKey = () => 'snowBlanket';
+    // its own shadow (the low winter sun picks out the drifts)
+    const depth = new THREE.MeshDepthMaterial();
+    depth.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, uni);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\n' + BLANKET_PARS)
+        .replace('#include <begin_vertex>', BLANKET_POS + '\nvec3 transformed = vec3(sxz.x, sy - (sd < 0.012 ? 0.05 : 0.0), sxz.y);');
+    };
+    depth.customProgramCacheKey = () => 'snowBlanketDepth';
+    this.mesh = new THREE.Mesh(g, mat);
+    this.mesh.customDepthMaterial = depth;
+    this.mesh.frustumCulled = false; this.mesh.castShadow = true; this.mesh.receiveShadow = true;
+    this.mesh.matrixAutoUpdate = false;
+    this.mesh.userData.noAO = true; this.mesh.userData.ueSkip = 'rain';
+    this.mesh.visible = false;
+    scene.add(this.mesh);
+  }
+
+  update() { this.mesh.visible = SNOW.uSnowDepth.value > 0.012 && !!SNOW.uSnowField.value && RAIN.uOccOn.value > 0.5; }
 }
 
 // ------------------------------------------------------------------ spray thrown up by the tyres on a wet road
