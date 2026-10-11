@@ -11,8 +11,8 @@ const tmp = [];
 // electronic limiter at 500 km/h -> 0-100 km/h 2.0 s, 0-300 6.4 s, 0-500 14 s (tools/../README); 8-speed box
 // grip of the road under the tyres, relative to dry asphalt (main.js: ~0.3 on snow): on snow the longitudinal and
 // lateral acceleration stay within mu * g (the hyper tune's 1.43 g of traction scaled the same way)
-// sink: how deep the snow lies under the wheels off the roads (m): it holds the car back
-export const TRACTION = { mu: 1, sink: 0 };
+// sink: how deep the snow lies under the wheels off the roads (m): it holds the car back; wind: a gale's push (m/s)
+export const TRACTION = { mu: 1, sink: 0, wind: null };
 
 const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505],
   // cornering: 3.2 g of mechanical grip plus aero downforce growing with v^2 (+1.6 g at 500 km/h);
@@ -87,6 +87,10 @@ export class Vehicle {
       this.impact = imp;
       return;
     }
+    // a gale pushes the car you drive (side force ~ 0.5 rho v^2 A Cy / m: ~0.9 m/s^2 at 20 m/s): it drifts across the
+    // lane unless you steer against it
+    const wv = TRACTION.wind;
+    if (ctl && wv) { const ws = Math.hypot(wv.x, wv.z); if (ws > 3) { this.vx += wv.x * 0.0022 * ws * dt; this.vz += wv.z * 0.0022 * ws * dt; } }
     const fwdX = -Math.sin(this.h), fwdZ = -Math.cos(this.h);
     const rtX = Math.cos(this.h), rtZ = -Math.sin(this.h);
     let vF = this.vx * fwdX + this.vz * fwdZ;

@@ -34,6 +34,15 @@ export class Audio {
     this.rainGain = ctx.createGain(); this.rainGain.gain.value = 0;
     ra.connect(rh).connect(rl).connect(this.rainGain); rb.connect(rbf).connect(this.rainGain);
     this.rainGain.connect(this.master); ra.start(); rb.start();
+    // the gale of a blizzard: a howl (resonant, sweeping with the gusts) and the hiss of the driven snow, silent until then
+    const hn = ctx.createBufferSource(); hn.buffer = this.noise; hn.loop = true; hn.playbackRate.value = 0.8;
+    this.galeF = ctx.createBiquadFilter(); this.galeF.type = 'bandpass'; this.galeF.frequency.value = 600; this.galeF.Q.value = 7;
+    this.galeGain = ctx.createGain(); this.galeGain.gain.value = 0;
+    hn.connect(this.galeF).connect(this.galeGain).connect(this.master); hn.start();
+    const sn = ctx.createBufferSource(); sn.buffer = this.noise; sn.loop = true;
+    const sf2 = ctx.createBiquadFilter(); sf2.type = 'highpass'; sf2.frequency.value = 3800;
+    this.hissGain = ctx.createGain(); this.hissGain.gain.value = 0;
+    sn.connect(sf2).connect(this.hissGain).connect(this.master); sn.start();
     // night storm: a low uneasy drone (two detuned tones and a hollow wind), silent until then
     this.drone = ctx.createGain(); this.drone.gain.value = 0; this.drone.connect(this.master);
     for (const f of [41.2, 43.6, 61.7]) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.value = 0.35; o.connect(g).connect(this.drone); o.start(); }
@@ -187,8 +196,13 @@ export class Audio {
     if (!this.ctx || this.ctx.state !== 'running') return;
     this.t += dt;
     const now = this.ctx.currentTime;
-    this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41), now, 0.5);
-    this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0), now, 0.3);
+    // the wind: a breeze, or in a blizzard a roar that rises and falls with the gusts, whistling at its peaks
+    const storm = st.storm ?? 0, gust = st.gust ?? 1;
+    this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41) + storm * (250 + 700 * gust), now, 0.4);
+    this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0) + storm * (0.12 + 0.2 * gust), now, 0.3);
+    this.galeF.frequency.setTargetAtTime(420 + 650 * gust + 120 * Math.sin(this.t * 0.9), now, 0.35);
+    this.galeGain.gain.setTargetAtTime(storm * 0.11 * gust * gust, now, 0.3);
+    this.hissGain.gain.setTargetAtTime(storm * 0.035 * gust, now, 0.3);
     const rain = st.rain ?? 0;
     this.snowCover = st.snowCover ?? 0;
     this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0), now, 1.5);

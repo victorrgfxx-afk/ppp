@@ -24,6 +24,8 @@ export const SNOW = {
   uSnowField: { value: null }, // the lying snow's shape around the camera (RainOcclusion)
   uSnowCar: { value: new THREE.Vector4() },        // the driven car: x, z, heading, 1 when driving (it ploughs through)
   uSnowCarSize: { value: new THREE.Vector2(1, 2.4) },   // its half width and half length (m)
+  uSnowPlaster: { value: 0 },  // a blizzard's snow plastered on the windward faces (0..1, builds up in ~1.5 min)
+  uSnowWindDir: { value: new THREE.Vector2(0.052, -0.9986).normalize() },   // the prevailing wind (downwind: the crivăț, from the NE)
 };
 // low plants that go under a cover deeper than a dusting (meadow grass, flowers, ferns, weeds): their materials are
 // hidden then (main.js)
@@ -42,7 +44,8 @@ float rainHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45
 
 // ------------------------------------------------------------------ wet surfaces
 const WET_PARS = /* glsl */`
-uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight;
+uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight, uSnowPlaster;
+uniform vec2 uSnowWindDir;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 varying vec3 vWetP;
@@ -166,6 +169,15 @@ if (uSnow > 0.001) {
   float sVal = sUp * sOpen * (0.62 + 0.38 * sn) * SNOW_K;
   float sTh = 1.0 - uSnow;
   float sc = smoothstep(sTh, sTh + 0.12, sVal) * min(1.0, SNOW_K * 1.6);
+#ifndef WET_ROAD
+  // a blizzard plasters snow on the faces turned to the wind: trunks, poles, walls, fences, windows, in streaks
+  if (uSnowPlaster > 0.001) {
+    float wf = dot(wetGeoN.xz, -uSnowWindDir) * (1.0 - abs(wetGeoN.y));
+    float pn = wetNoise(vec2(dot(sp.xz, vec2(-uSnowWindDir.y, uSnowWindDir.x)) * 3.0, sp.y * 1.2)) * 0.6 + wetNoise(sp.xz * 7.0 + sp.y * 5.0) * 0.4;
+    float pl = smoothstep(0.15, 0.7, wf) * (0.4 + 0.6 * pn) * min(1.0, SNOW_K * 1.6);
+    sc = max(sc, smoothstep(1.0 - uSnowPlaster, 1.12 - uSnowPlaster, pl) * 0.95);
+  }
+#endif
 #ifdef WET_ROAD
   // wheels, feet and the plough: slush in patches (at most ~4/5 cover), wet dark asphalt between
   sc *= 0.2 + 0.6 * smoothstep(0.35, 0.75, wetNoise(sp.xz * 0.45 + 4.0));
@@ -269,6 +281,7 @@ const BAKE_FRAG = /* glsl */`
 uniform sampler2D uTop, uLow, uRoad;
 uniform vec4 uOccBox;
 uniform vec2 uWind;
+uniform float uSnowPlaster;                                       // (how much of a blizzard has blown: bigger drifts)
 varying vec2 vUv;
 float bHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float bNoise(vec2 p) {
@@ -306,7 +319,8 @@ void main() {
   // the wind's work: dunes across it (~3 m apart, ~10 m long), lumps, and rounded mounds over what lies buried
   // (tussocks, stones, low shrubs)
   vec2 w = uWind, wp = vec2(dot(p, w), dot(p, vec2(-w.y, w.x)));
-  float f = 1.0 + 0.6 * (bNoise(vec2(wp.x * 0.33, wp.y * 0.1)) - 0.5) + 0.5 * (bNoise(p * 0.5 + 3.1) - 0.5) + 0.2 * (bNoise(p * 1.7 + 7.7) - 0.5);
+  float gale = 1.0 + 1.3 * uSnowPlaster;
+  float f = 1.0 + 0.6 * gale * (bNoise(vec2(wp.x * 0.33, wp.y * 0.1)) - 0.5) + 0.5 * (bNoise(p * 0.5 + 3.1) - 0.5) + 0.2 * (bNoise(p * 1.7 + 7.7) - 0.5);
   vec2 cell = floor(p * 0.62);
   for (int j = 0; j <= 1; j++) for (int i = 0; i <= 1; i++) {
     vec2 c = cell + vec2(float(i), float(j)) - 0.5, r = vec2(bHash(c + 0.7), bHash(c + 5.3));
@@ -318,7 +332,7 @@ void main() {
   float lee = 0.0, scour = 0.0;
   for (int k = 1; k <= 7; k++) lee = max(lee, obstacle(at(-w * float(k) * 0.45)) * (1.0 - float(k) / 8.5));
   for (int k = 1; k <= 2; k++) scour = max(scour, obstacle(at(w * float(k) * 0.35)));
-  f += 1.2 * lee - 0.45 * scour;
+  f += 1.2 * gale * lee - 0.45 * gale * scour;
   // roads: the wheels pack it to a thin layer (the slush of the cover shows), ploughed up into low banks along the
   // edges that slope down to the asphalt over ~1 m (the road mask blurred over ±1.1 m)
   float road = 0.0, rw = 0.0;
@@ -332,8 +346,9 @@ void main() {
   f *= smoothstep(0.15, 0.85, open);                                             // thinning into the shelter
   gl_FragColor = vec4(base, max(f, 0.0), wide, 1.0);
 }`;
-// the snow's wind (downwind, world x / z: the flakes drift the same way)
-const SNOW_WIND = new THREE.Vector2(0.93, 0.37).normalize();
+// the snow's wind (downwind, world x / z: the flakes drift the same way): the crivăț from the north-east, which
+// brings the blizzards of Muntenia (the map is turned 42 deg: north-east to south-west is world -z)
+const SNOW_WIND = new THREE.Vector2(0.052, -0.9986).normalize();
 
 const _cc = new THREE.Color();
 export class RainOcclusion {
@@ -362,7 +377,7 @@ export class RainOcclusion {
     roadTex.colorSpace = THREE.NoColorSpace; roadTex.generateMipmaps = false; roadTex.minFilter = THREE.LinearFilter;
     const low = rt(true), field = rt(false);
     const bake = new THREE.ShaderMaterial({ vertexShader: BAKE_VERT, fragmentShader: BAKE_FRAG, depthTest: false, depthWrite: false,
-      uniforms: { uTop: { value: this.rt.texture }, uLow: { value: low.texture }, uRoad: { value: roadTex }, uOccBox: RAIN.uOccBox, uWind: { value: SNOW_WIND } } });
+      uniforms: { uTop: { value: this.rt.texture }, uLow: { value: low.texture }, uRoad: { value: roadTex }, uOccBox: RAIN.uOccBox, uWind: { value: SNOW_WIND }, uSnowPlaster: SNOW.uSnowPlaster } });
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bake); quad.frustumCulled = false;
     const qs = new THREE.Scene(); qs.add(quad);
     this.snow = { low, field, camLow, canvas, ctx: canvas.getContext('2d'), roadTex, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
@@ -465,7 +480,7 @@ attribute vec4 aSeed;
 uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth, uCurtain;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
-uniform vec2 uWind;
+uniform vec2 uWind, uWindOff;        // the wind now and how far it has carried the air so far (no jumps when it changes)
 uniform vec3 uCam;
 uniform vec4 uTorch, uTorchDir;      // torch position (w: on) and direction (w: cos of the cone)
 uniform vec4 uBeam, uBeamDir;        // the moon's shaft: a point on its axis (w: radius) and the axis (w: on)
@@ -483,7 +498,7 @@ void main() {
   vec3 box = vec3(2.0 * uRadius, uHeight, 2.0 * uRadius);
   vec3 org = uCam - vec3(uRadius, uHeight * 0.4, uRadius);
   // world-anchored drops wrapped into a box around the camera (they keep their place when you move)
-  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vel * uRainTime - org, box);
+  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vec3(uWindOff.x, -fall * uRainTime, uWindOff.y) - org, box);
   if (p.y < rainTop(p.xz)) return;                            // landed: on a crown, a roof or the ground
   vec3 dir = normalize(vel), toCam = uCam - p;
   float dist = length(toCam);
@@ -584,10 +599,10 @@ export class RainFX {
     const common = { uRain: RAIN.uRain, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn };
     this.cam = { value: new THREE.Vector3() };
     this.color = { value: new THREE.Color(0.6, 0.63, 0.67) };
-    this.wind = { value: new THREE.Vector2(1.6, 0.7) };
+    this.wind = { value: new THREE.Vector2(1.6, 0.7) }; this.windOff = { value: new THREE.Vector2() }; this.lastT = null;
     this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
     this.beam = { value: new THREE.Vector4() }; this.beamDir = { value: new THREE.Vector4(0, 1, 0, 0) };
-    const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
+    const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uWindOff: this.windOff, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
       transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });   // (the quads face either way)
     const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5; this.group.add(m); return m; };
     // two layers of streaks: close ones (a few metres, the ones you read as drops) and the curtain further out
@@ -604,57 +619,129 @@ export class RainFX {
     if (beam?.on) { this.beam.value.set(beam.pos.x, beam.pos.y, beam.pos.z, beam.r); this.beamDir.value.set(beam.dir.x, beam.dir.y, beam.dir.z, 1); } else this.beamDir.value.w = 0;
     this.cam.value.copy(camera.position);
     this.color.value.setScalar(0.32 * light).multiply(_tint);         // (added on top of the scene)
-    const t = RAIN.uRainTime.value;
+    const t = RAIN.uRainTime.value, dt = this.lastT === null ? 0 : Math.min(0.1, Math.max(0, t - this.lastT));
+    this.lastT = t;
     this.wind.value.set(1.6 + 0.8 * Math.sin(t * 0.37), 0.7 + 0.5 * Math.sin(t * 0.23 + 1));   // gusts
+    this.windOff.value.addScaledVector(this.wind.value, dt);
   }
 }
 const _tint = new THREE.Color(0.97, 1, 1.05);
 
 // ------------------------------------------------------------------ falling snow
-// Flakes fall at ~1 m/s (big wet ones a little faster), drift with the wind and each swings on its own small circle as
-// it tumbles; world-anchored like the drops (they keep their place when you move) and gone where they land.
+// Flakes fall at ~1 m/s (big wet ones a little faster), ride the wind and each swings on its own small circle as it
+// tumbles; world-anchored like the drops (they keep their place when you move) and gone where they land. In a blizzard
+// (STORM) they fly almost level at 10-20 m/s, as streaks, in three more layers (one right at your face), only where
+// the open side lets them in, and the snow lying on the ground streams along it (DRIFT).
 const FLAKE_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
-uniform float uSnowFall, uRainTime, uOccOn, uRadius, uHeight, uSize, uOpacity;
+uniform float uSnowFall, uStorm, uStormLayer, uRainTime, uOccOn, uRadius, uHeight, uSize, uOpacity;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
-uniform vec2 uWind;
+uniform vec2 uWind, uWindOff;        // the wind now (m/s, world x / z) and how far it has carried the air so far (m)
 uniform vec3 uCam;
-uniform vec4 uTorch, uTorchDir;
+uniform vec4 uTorch, uTorchDir, uCarL, uCarLDir;
+uniform vec4 uLamps[6];
 varying float vA, vLit;
+varying vec3 vLamp;
 varying vec2 vC;
 ${OCC_GLSL}
 void main() {
-  vC = corner; vA = 0.0; vLit = 0.0;
+  vC = corner; vA = 0.0; vLit = 0.0; vLamp = vec3(0.0);
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
-  if (aSeed.w > uSnowFall) return;
+  if (aSeed.w > (uStormLayer > 0.5 ? uStorm : uSnowFall)) return;
   float sz = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
-  float t = uRainTime, ph = aSeed.z * 6.2832;
-  vec3 vel = vec3(uWind.x, -(0.75 + 0.6 * sz), uWind.y);
+  float t = uRainTime, ph = aSeed.z * 6.2832, fall = 0.75 + 0.6 * sz;
   vec3 box = vec3(2.0 * uRadius, uHeight, 2.0 * uRadius);
   vec3 org = uCam - vec3(uRadius, uHeight * 0.4, uRadius);
-  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vel * t - org, box);
-  p += vec3(sin(t * (1.1 + sz) + ph), 0.0, cos(t * (0.8 + 0.7 * sz) + ph * 1.3)) * (0.15 + 0.25 * sz);
-  if (p.y < rainTop(p.xz)) return;                            // landed
+  // carried by the air (its travel so far: a change of wind moves nothing at once) and tossed by the turbulence
+  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vec3(uWindOff.x, -fall * t, uWindOff.y) - org, box);
+  float turb = 0.15 + 0.25 * sz + 0.9 * uStorm;
+  float w1 = t * (1.1 + sz) + ph, w2 = t * (0.8 + 0.7 * sz) + ph * 1.3;
+  p += vec3(sin(w1), 0.35 * uStorm * sin(t * 2.3 + ph * 1.9), cos(w2)) * turb;
+  // landed, or in the lee: sheltered by what stands upwind of it at its height (a gale blows the snow in under the
+  // eaves from the open side, never into the lee of a wall)
+  float wsp = length(uWind);
+  vec2 wd = uWind / max(wsp, 1e-3);
+  if (p.y < rainTop(p.xz - wd * min(6.0, wsp / fall * 0.5)) || (uStorm < 0.5 && p.y < rainTop(p.xz))) return;
   vec3 toCam = uCam - p;
   float dist = length(toCam);
-  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam)), up = normalize(cross(toCam, right));
+  vec3 vd = toCam / max(dist, 1e-3);
+  // moving fast across the view it is a streak (its travel in ~1/80 s)
+  vec3 vel = vec3(uWind.x, -fall, uWind.y) + vec3(cos(w1) * (1.1 + sz), 0.0, -sin(w2) * (0.8 + 0.7 * sz)) * turb;
+  vec3 vp = vel - vd * dot(vel, vd);
+  float vl = length(vp);
+  vec3 along = vl > 1e-3 ? vp / vl : vec3(0.0, 1.0, 0.0), side = normalize(cross(along, vd));
   float real = uSize * (0.6 + 0.8 * sz), s = max(real, dist * 0.0017);       // at least ~1.5 px across
-  gl_Position = projectionMatrix * viewMatrix * vec4(p + (right * corner.x + up * corner.y) * s, 1.0);
-  vA = uOpacity * (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.2, 0.7, dist) * min(1.0, 1.5 * real / s);
+  float len = s + vl * 0.0125;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + side * corner.x * s + along * corner.y * len, 1.0);
+  vA = uOpacity * (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.35, 1.1, dist) * min(1.0, 1.5 * real / s) * mix(1.0, s / len, 0.6);
+  // lit by the torch, the headlights of the car you drive, the street lamps (the snow swirling in their light)
   vec3 tp = p - uTorch.xyz; float tl = length(tp);
   vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
+  vec3 cp = p - uCarL.xyz; float cl = length(cp);
+  vLit += 1.4 * uCarL.w * smoothstep(uCarLDir.w, uCarLDir.w + 0.05, dot(cp / max(cl, 1e-3), uCarLDir.xyz)) * (1.0 - smoothstep(3.0, 38.0, cl));
+  for (int i = 0; i < 6; i++) {
+    vec4 L = uLamps[i];
+    if (L.w > 0.0) { vec3 q = p - L.xyz; float d2 = dot(q, q); vLamp += vec3(1.0, 0.78, 0.5) * L.w * (q.y < 0.3 ? 1.0 : 0.3) / (1.0 + d2 * 0.12) * (1.0 - smoothstep(25.0, 64.0, d2)); }
+  }
 }`;
 const FLAKE_FRAG = /* glsl */`
 uniform vec3 uColor;
 varying float vA, vLit;
+varying vec3 vLamp;
 varying vec2 vC;
 void main() {
   float a = vA * (1.0 - smoothstep(0.35, 1.0, length(vC)));
   if (a < 0.004) discard;
-  gl_FragColor = vec4(uColor + vec3(0.9, 0.92, 1.0) * vLit * 1.2, min(a, 1.0));
+  gl_FragColor = vec4(uColor + vec3(0.9, 0.92, 1.0) * vLit * 0.85 + vLamp * 0.5, min(a, 1.0));
 }`;
+// the snow the gale lifts off the ground: streamers racing along the surface, most of it below the knees, some to
+// head height, in wavy ribbons
+const DRIFT_VERT = /* glsl */`
+attribute vec2 corner;
+attribute vec4 aSeed;
+uniform float uStorm, uSnowCover, uRainTime, uOccOn, uRadius;
+uniform sampler2D uOcc;
+uniform vec4 uOccBox;
+uniform vec2 uWind, uWindOff;
+uniform vec3 uCam;
+varying float vA;
+varying vec2 vC;
+${OCC_GLSL}
+void main() {
+  vC = corner; vA = 0.0;
+  gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+  if (aSeed.w > uStorm * smoothstep(0.3, 0.8, uSnowCover)) return;
+  float h = min(2.2, -log(max(1e-3, fract(aSeed.w * 13.7 + aSeed.z * 5.1))) * 0.28);
+  float spd = 0.45 + 0.35 * fract(aSeed.x * 5.3) + 0.12 * h;                     // (slower near the ground)
+  vec2 box = vec2(2.0 * uRadius), org = uCam.xz - uRadius;
+  vec2 q = org + mod(aSeed.xy * box + uWindOff * spd - org, box);
+  float wsp = length(uWind);
+  vec2 wd = uWind / max(wsp, 1e-3), wn = vec2(-wd.y, wd.x);
+  q += wn * sin(dot(q, wd) * 0.55 + aSeed.z * 6.28 + uRainTime * 1.7) * 0.4;
+  float g = rainTop(q);
+  if (g < -1e4) return;
+  vec3 p = vec3(q.x, g + 0.03 + h, q.y);
+  vec3 toCam = uCam - p;
+  float dist = length(toCam);
+  vec3 along = vec3(wd.x, 0.0, wd.y), side = normalize(cross(along, toCam / max(dist, 1e-3)));
+  float len = (0.35 + 0.9 * fract(aSeed.z * 3.1)) * clamp(wsp / 14.0, 0.3, 1.5), wid = 0.05 + 0.1 * h;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + along * corner.y * len + side * corner.x * wid, 1.0);
+  vA = (0.07 + 0.1 * fract(aSeed.y * 9.7)) * (1.0 - smoothstep(uRadius * 0.6, uRadius, length(toCam.xz))) * smoothstep(0.3, 1.2, dist) * (1.0 - 0.5 * smoothstep(0.5, 2.2, h));
+}`;
+const DRIFT_FRAG = /* glsl */`
+uniform vec3 uColor;
+varying float vA;
+varying vec2 vC;
+void main() {
+  float a = vA * exp(-2.5 * dot(vC, vC));
+  if (a < 0.003) discard;
+  gl_FragColor = vec4(uColor, a);
+}`;
+
+// the wind (main.js): now (m/s, world x / z), the air's travel so far, how stormy (0..1)
+export const STORM = { uStorm: { value: 0 }, uWind: { value: new THREE.Vector2(0.03, -0.55) }, uWindOff: { value: new THREE.Vector2() }, gust: 1 };
 
 export class SnowFX {
   constructor(scene) {
@@ -664,28 +751,38 @@ export class SnowFX {
     scene.add(this.group);
     this.cam = { value: new THREE.Vector3() };
     this.color = { value: new THREE.Color(1, 1, 1) };
-    this.wind = { value: new THREE.Vector2(0.5, 0.2) };
     this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
-    const common = { uSnowFall: SNOW.uSnowFall, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uCam: this.cam, uColor: this.color, uWind: this.wind, uTorch: this.torch, uTorchDir: this.torchDir };
+    this.carL = { value: new THREE.Vector4() }; this.carLDir = { value: new THREE.Vector4(0, 0, -1, 0.9) };
+    this.lamps = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
+    const common = { uSnowFall: SNOW.uSnowFall, uStorm: STORM.uStorm, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uCam: this.cam, uColor: this.color,
+      uWind: STORM.uWind, uWindOff: STORM.uWindOff, uTorch: this.torch, uTorchDir: this.torchDir, uCarL: this.carL, uCarLDir: this.carLDir, uLamps: this.lamps };
     const quad = [-1, -1, 1, -1, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
-    const add = (n, u) => {
-      const m = new THREE.Mesh(cloud(n, quad, qi), new THREE.ShaderMaterial({ vertexShader: FLAKE_VERT, fragmentShader: FLAKE_FRAG, uniforms: { ...common, ...u }, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    const add = (n, u, vs = FLAKE_VERT, fs = FLAKE_FRAG) => {
+      const m = new THREE.Mesh(cloud(n, quad, qi), new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, ...u }, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
       m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5;
       this.group.add(m);
+      return m;
     };
     // big flakes close by (the ones you see tumbling), and the fall further out that greys the view
-    add(16000, { uRadius: { value: 7 }, uHeight: { value: 9 }, uSize: { value: 0.01 }, uOpacity: { value: 0.95 } });
-    add(40000, { uRadius: { value: 30 }, uHeight: { value: 22 }, uSize: { value: 0.011 }, uOpacity: { value: 0.75 } });
+    add(16000, { uRadius: { value: 7 }, uHeight: { value: 9 }, uSize: { value: 0.01 }, uOpacity: { value: 0.95 }, uStormLayer: { value: 0 } });
+    add(40000, { uRadius: { value: 30 }, uHeight: { value: 22 }, uSize: { value: 0.011 }, uOpacity: { value: 0.75 }, uStormLayer: { value: 0 } });
+    // the blizzard: flakes right at your face, a dense fall close by and further out
+    add(1500, { uRadius: { value: 2.6 }, uHeight: { value: 4 }, uSize: { value: 0.012 }, uOpacity: { value: 0.35 }, uStormLayer: { value: 1 } });
+    add(22000, { uRadius: { value: 8 }, uHeight: { value: 9 }, uSize: { value: 0.01 }, uOpacity: { value: 0.55 }, uStormLayer: { value: 1 } });
+    add(40000, { uRadius: { value: 32 }, uHeight: { value: 22 }, uSize: { value: 0.011 }, uOpacity: { value: 0.42 }, uStormLayer: { value: 1 } });
+    this.drift = add(30000, { uRadius: { value: 24 }, uSnowCover: SNOW.uSnow }, DRIFT_VERT, DRIFT_FRAG);
   }
 
-  update(camera, light, torch) {
-    this.group.visible = SNOW.uSnowFall.value > 0.002;
+  // torch, car: { on, pos, dir }; lamps: the lamp heads near you (Vector3), level: how bright they burn
+  update(camera, light, torch, car, lamps = [], level = 0) {
+    this.group.visible = SNOW.uSnowFall.value > 0.002 || STORM.uStorm.value > 0.002;
     if (!this.group.visible) return;
+    this.drift.visible = STORM.uStorm.value > 0.02 && SNOW.uSnow.value > 0.3;
     if (torch?.on) { this.torch.value.set(torch.pos.x, torch.pos.y, torch.pos.z, 1); this.torchDir.value.set(torch.dir.x, torch.dir.y, torch.dir.z, 0.93); } else this.torch.value.w = 0;
+    if (car?.on) { this.carL.value.set(car.pos.x, car.pos.y, car.pos.z, 1); this.carLDir.value.set(car.dir.x, car.dir.y, car.dir.z, 0.9); } else this.carL.value.w = 0;
+    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * 0.25); else v.w = 0; });
     this.cam.value.copy(camera.position);
     this.color.value.setRGB(0.93, 0.95, 1).multiplyScalar(Math.max(0.06, light));
-    const t = RAIN.uRainTime.value;
-    this.wind.value.set(0.5 + 0.45 * Math.sin(t * 0.21), 0.2 + 0.3 * Math.sin(t * 0.17 + 2));   // a light, gusting breeze
   }
 }
 

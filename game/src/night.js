@@ -105,6 +105,27 @@ export class Flashlight {
   }
 }
 
+// The headlights of the car you drive: a wide warm beam from the front of the car, a little down onto the road (no
+// shadows). The snow and rain show up in it (rain.js).
+export class Headlights {
+  constructor(scene) {
+    const l = this.light = new THREE.SpotLight(0xfff2e2, 0, 75, 0.48, 0.45, 1.5);
+    l.castShadow = false;
+    scene.add(l, l.target);
+    this.on = false;
+  }
+  set(on) { if (on === this.on) return; this.on = on; this.light.intensity = on ? 40 : 0; }
+  get info() { const l = this.light; return { on: this.on, pos: l.position, dir: l.target.position.clone().sub(l.position).normalize() }; }
+  // v: the vehicle (x, z, h, car.group, car.half)
+  update(v) {
+    if (!this.on || !v) return;
+    const fx = -Math.sin(v.h), fz = -Math.cos(v.h), y = v.car.group.position.y + 0.7, f = v.car.half.l + 0.1;
+    this.light.position.set(v.x + fx * f, y, v.z + fz * f);
+    this.light.target.position.set(v.x + fx * (f + 20), y - 1.4, v.z + fz * (f + 20));
+    this.light.target.updateMatrixWorld();
+  }
+}
+
 // Lightning in a night storm: a strike every 6-22 s, 2-4 flickers, thunder after the sound has travelled.
 export class Lightning {
   constructor(onThunder) { this.next = 4; this.t = 0; this.seq = []; this.onThunder = onThunder; this.level = 0; }

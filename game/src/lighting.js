@@ -156,7 +156,15 @@ WEATHER.zapada = {
   sun: 3.6, sunColor: [1, 0.95, 0.88], hemi: 0.5, hemiSky: [0.78, 0.84, 0.96], hemiGround: [0.74, 0.76, 0.8],
   env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], fogDensity: 1 / 7000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,
 };
-export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'ninsoare', 'zapada'];
+// a blizzard (viscol): a gale of ~15 m/s gusting to ~75 km/h drives the snow almost level and lifts it off the ground;
+// a white-out under a bright, even deck, no shadows, visibility ~250 m that closes in with every gust (main.js)
+WEATHER.viscol = {
+  label: 'Viscol', cover: 1, cumulus: 0, zenith: [0.62, 0.65, 0.69], horizon: [0.76, 0.78, 0.8], bright: 1.05,
+  cloudLit: [0.82, 0.84, 0.86], cloudDark: [0.64, 0.66, 0.7],
+  sun: 0.25, sunColor: [0.93, 0.95, 1], hemi: 0.72, hemiSky: [0.84, 0.87, 0.92], hemiGround: [0.7, 0.72, 0.76],
+  env: 1.0, envGround: [0.7, 0.72, 0.76], fog: [0.67, 0.7, 0.74], fogDensity: 1 / 85, exposure: 0.92, shadow: 0.12, snow: 1, storm: 1, winter: true,
+};
+export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'ninsoare', 'viscol', 'zapada'];
 
 // ------------------------------------------------------------------ time of day
 // Direct sunlight through the atmosphere: Kasten-Young air mass and per-channel optical depths (Rayleigh at

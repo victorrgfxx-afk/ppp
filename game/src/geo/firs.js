@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { M } from '../materials.js';
 import { TEX } from '../textures.js';
 import { WIND, rng } from '../util.js';
-import { SNOW } from '../rain.js';
+import { SNOW, STORM } from '../rain.js';
 import { heightAt } from './data.js';
 
 // Detailed near spruces (Picea abies) and how they react to you.
@@ -368,7 +368,8 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
     }
     // now and then a branch lets its load go by itself
     if (capK > 0.3 && this.pool.size && (this.nextDrop -= dt) <= 0) {
-      this.nextDrop = 4 + Math.random() * 9;
+      const gale = STORM.uStorm.value * STORM.gust;               // (a blizzard's gusts shake loads off every few seconds)
+      this.nextDrop = (4 + Math.random() * 9) / (1 + 3 * gale);
       const list = [...this.pool].filter(r => Math.hypot(r.x - cam.x, r.z - cam.z) < 28);
       const rec = list[Math.floor(Math.random() * list.length)];
       if (rec) {

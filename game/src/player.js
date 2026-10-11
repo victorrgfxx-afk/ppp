@@ -85,6 +85,14 @@ export class Player {
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const want = new THREE.Vector3().addScaledVector(fwd, -ax.y * speed).addScaledVector(right, ax.x * speed);
+    // a gale (main.js: wind, m/s): walking into it is slow (15 m/s takes a third off), with it a little quicker, and it
+    // pushes you about
+    const wv = this.wind;
+    if (wv && this.onGround) {
+      const wl = Math.hypot(want.x, want.z);
+      if (wl > 0.1) want.multiplyScalar(1 + Math.max(-0.4, Math.min(0.15, (want.x * wv.x + want.z * wv.z) / wl * 0.025)));
+      want.x += wv.x * 0.02; want.z += wv.z * 0.02;
+    }
     const accel = this.onGround ? 11 : 2.5;
     this.vel.x = damp(this.vel.x, want.x, accel, dt);
     this.vel.z = damp(this.vel.z, want.z, accel, dt);

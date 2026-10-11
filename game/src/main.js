@@ -4,8 +4,8 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
-import { RAIN, SNOW, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, snowRoads, Spray } from './rain.js';
-import { MoonBeam, Flashlight, Lightning } from './night.js';
+import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, snowRoads, Spray } from './rain.js';
+import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
 import { ForestScene } from './forest.js';
@@ -38,6 +38,9 @@ installCascadedShadows();
 // changed in the menu (O); local summer time is UTC+3. The snow modes are on 1 February 2026 (UTC+2): a low sun, 26 deg
 // at 11:30, up from ~7:40 to 17:25, and that night's full moon (the "snow moon", 22:09 UTC) high over the snow.
 const sunTime = (hour, winter) => winter ? new Date(Date.UTC(2026, 1, 1) + (hour - 2) * 3600e3) : new Date(Date.UTC(2026, 8, 26) + (hour - 3) * 3600e3);
+
+// smooth 1-D value noise (0..1): the gusts of the wind
+const vn1 = (x) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f), h = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); }; return h(i) * (1 - u) + h(i + 1) * u; };
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -123,7 +126,8 @@ async function main() {
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
   let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
-  let moonBeam = null, flashlight = null, bear = null, gradeU = null;         // (made once the map is built)
+  let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a blizzard: viscol)
+  let moonBeam = null, flashlight = null, headlights = null, bear = null, gradeU = null;   // (made once the map is built)
   const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   // night palettes: a clear moonlit sky, or the low deck of a night storm
   const NIGHT = {
@@ -158,7 +162,8 @@ async function main() {
     hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night));
     hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), 0.25, night);
     fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
-    scene.fog.density = w.fogDensity * (horror ? 1.3 : 1);
+    scene.fog.density = baseFog = w.fogDensity * (horror ? 1.3 : 1);
+    stormTarget = w.storm ?? 0;
     renderer.toneMappingExposure = THREE.MathUtils.lerp(w.exposure * (1 + 0.7 * (1 - d)), 2.6, night);   // like a camera: it opens up when the light is low
     scene.environment?.dispose();
     scene.environment = buildEnvironment(renderer, sky);
@@ -296,6 +301,7 @@ async function main() {
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
   flashlight = new Flashlight(scene);
+  headlights = new Headlights(scene);
   // the forest scene of the user's two clips, live in the clearing of the wood by the cross (+z of its stage points back
   // towards the cross); its carpet of dry leaves is always there
   const forest = new ForestScene(scene, { x: SCENE_SPOT.x, z: SCENE_SPOT.z, y: geoGround(SCENE_SPOT.x, SCENE_SPOT.z), yaw: 1.178, ground: geoGround, world });
@@ -373,8 +379,10 @@ async function main() {
   if (snowCover > 0 || snowFall > 0) SNOW.uSnow.value = 1;
   SNOW.uSnowDepth.value = snowCover > 0 ? 0.25 : snowFall > 0 ? 0.05 : 0;
   SNOW.uSnowFall.value = snowFall;
+  storm = stormTarget; if (storm > 0) { SNOW.uSnowDepth.value = 0.2; SNOW.uSnowPlaster.value = 0.7; }   // (and a blizzard already blowing)
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
+  let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
   shareInstancedDepth(scene);
   renderer.compile(scene, camera);
   post.composer.render(0);
@@ -668,6 +676,7 @@ async function main() {
   };
   const enterCar = (v) => {
     mode = 'car'; active = v;
+    if ((night > 0.5 || storm > 0.3) && !v.lightsOn) v.setLights(true);   // (headlights on at night and in a blizzard)
     audio.door();
     orbit.yaw = 0; orbit.pitch = 0.18;
     cockpitLook.yaw = 0; cockpitLook.pitch = 0;
@@ -727,6 +736,19 @@ async function main() {
     const dt = Math.min(0.05, clock.getDelta());
     t += dt;
     WIND.time.value = t;
+    // the wind: a breeze, or in a blizzard the crivăț from the north-east, ~15 m/s gusting between ~8 and ~22 m/s (to
+    // ~80 km/h) and veering a little; the air's travel is summed up frame by frame (the flakes ride it, rain.js)
+    storm = damp(storm, stormTarget, 0.5, dt);
+    gust = 0.55 + 0.6 * vn1(t * 0.35) + 0.3 * vn1(t * 1.4 + 17);
+    {
+      const ang = Math.atan2(-0.9986, 0.052) + (vn1(t * 0.12 + 5) - 0.5) * 0.5 * storm;   // (downwind: world -z = south-west)
+      windSpeed = (1 - storm) * 0.55 * (0.6 + 0.8 * vn1(t * 0.2 + 3)) + storm * 15 * gust;
+      STORM.uWind.value.set(Math.cos(ang) * windSpeed, Math.sin(ang) * windSpeed);
+      STORM.uWindOff.value.addScaledVector(STORM.uWind.value, dt);
+      STORM.uStorm.value = storm; STORM.gust = storm > 0.01 ? gust : 1;
+      WIND.strength.value = 1 + storm * 1.3 * gust;                    // (the trees sway harder)
+      if (baseFog) scene.fog.density = baseFog * (1 + storm * (gust - 1) * 0.6);   // (white curtains with every gust)
+    }
     sky.material.uniforms.uTime.value = t;
 
     let prompt = '';
@@ -817,6 +839,11 @@ async function main() {
       camera.position.y += (Math.random() - 0.5) * shake * 0.2;
       shake = damp(shake, 0, 5, dt);
     }
+    // a gale buffets you: the view shudders with the gusts (on foot more than behind the wheel)
+    if (storm > 0.05) {
+      const k = storm * gust * (mode === 'car' ? 0.4 : 1);
+      camera.rotation.z += (vn1(t * 6.1) - 0.5) * 0.012 * k; camera.rotation.x += (vn1(t * 4.7 + 9) - 0.5) * 0.008 * k;
+    }
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = damp(camera.fov, fov, 6, dt); camera.updateProjectionMatrix(); }
 
     if (!paused) forest.update(dt, { ok: sceneTime(), px: pos0().x, pz: pos0().z, camera, sound: forestSound });
@@ -840,6 +867,10 @@ async function main() {
       wetScene(scene);                                    // the materials streamed in since: rain and snow on them too
       roadName = roadNameAt(pos0().x, pos0().z);
       offRoad = SNOW.uSnowDepth.value > 0.03 && !rainOcc.onRoad(pos0().x, pos0().z);
+      if (SNOW.uSnowFall.value > 0.01 && M.lampGlass.emissiveIntensity > 0.2) {
+        const cp = camera.position;
+        snowLamps = allLamps.filter(l => Math.abs(l.x - cp.x) < 45 && Math.abs(l.z - cp.z) < 45).sort((a, b) => ((a.x - cp.x) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.z - cp.z) ** 2)).slice(0, 6);
+      } else snowLamps = [];
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
       if (egg && Math.hypot(pos0().x - egg.x, pos0().z - egg.z) < egg.r) { hillEggFound = true; hud.toast('Easter egg: ai găsit scheletul din pădurea de pe dealul crucii!', 6); }
@@ -855,9 +886,9 @@ async function main() {
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
-        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : ''),
+        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * 3.6)} km/h` : ''),
     });
-    audio.update(dt, { rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    audio.update(dt, { rain: RAIN.uRain.value, storm, gust, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
     if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
@@ -875,13 +906,17 @@ async function main() {
     // The wheels and feet feel it.
     SNOW.uSnowFall.value = damp(SNOW.uSnowFall.value, snowFall, 0.8, dt);
     const sc = SNOW.uSnow.value, dep = SNOW.uSnowDepth;
-    if (snowFall > 0) dep.value = Math.min(0.6, dep.value + dt * SNOW.uSnowFall.value * sc * 0.08 / 60);
+    if (snowFall > 0) dep.value = Math.min(0.6, dep.value + dt * SNOW.uSnowFall.value * sc * 0.08 / 60 * (1 + 0.5 * storm));
     else if (snowCover > 0) dep.value = Math.min(Math.max(dep.value, 0.25), dep.value + dt * 0.1);
     else dep.value = Math.max(0, dep.value - dt * (rainTarget > 0 ? 0.025 : 0.01));
+    // a blizzard plasters the windward faces in ~1.5 min; it stays until the snow melts
+    SNOW.uSnowPlaster.value = storm > 0.3 ? Math.min(1, SNOW.uSnowPlaster.value + dt / 90) : SNOW.uSnow.value < 0.3 ? Math.max(0, SNOW.uSnowPlaster.value - dt / 40) : SNOW.uSnowPlaster.value;
     SNOW.uSnow.value = snowCover > 0 ? Math.min(1, sc + dt / 4) : snowFall > 0 ? Math.min(1, sc + dt * SNOW.uSnowFall.value / 60) : dep.value > 0.03 ? sc : Math.max(0, sc - dt / (rainTarget > 0 ? 15 : 40));
     SNOW.uSnowLight.value = rainLight;
     TRACTION.mu = 1 - 0.68 * Math.min(1, SNOW.uSnow.value * 1.4);   // ~0.3 on snow (packed snow 0.2-0.3, dry asphalt 0.8-1)
     TRACTION.sink = offRoad ? dep.value : 0;                            // (deep snow off the roads holds the wheels back)
+    TRACTION.wind = storm > 0.05 ? STORM.uWind.value : null;             // (a gale pushes the car and you)
+    player.wind = storm > 0.05 ? { x: STORM.uWind.value.x, z: STORM.uWind.value.y } : null;
     player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
     if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0);
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
@@ -893,7 +928,8 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
-    snowFX.update(camera, rainLight, flashlight.info);
+    headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
+    snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
     if (mode === 'car' && active) { SNOW.uSnowCar.value.set(active.x, active.z, active.h, 1); SNOW.uSnowCarSize.value.set(active.car.half.w, active.car.half.l); }
     else SNOW.uSnowCar.value.w = 0;
     blanket.update();
