@@ -111,7 +111,7 @@ export class Player {
     this.pos.y += this.vel.y * dt;
     const gh = this.world.groundHeight(this.pos.x, this.pos.z, this.pos.y);
     if (this.pos.y <= gh + 0.001) {
-      if (!this.onGround && this.vel.y < -3) { this.landShake = Math.min(0.08, -this.vel.y * 0.012); audio?.land(this.surface()); }
+      if (!this.onGround && this.vel.y < -3) { this.landShake = Math.min(0.08, -this.vel.y * 0.012); audio?.land(this.surface()); this.onLand?.(); }
       this.pos.y = gh; this.vel.y = 0; this.onGround = true;
     } else if (this.onGround && this.pos.y - gh < 0.32 && this.vel.y <= 0) {
       this.pos.y = gh; this.vel.y = 0;        // walk down steps/curbs
@@ -125,7 +125,10 @@ export class Player {
     this.bobAmt = damp(this.bobAmt, this.onGround ? Math.min(1, hs / 6) : 0, 8, dt);
     const prev = this.bobPhase;
     this.bobPhase += dt * (hs > 0.2 ? 1.85 + hs * 0.55 : 0) * Math.PI;
-    if (Math.floor(prev / Math.PI) !== Math.floor(this.bobPhase / Math.PI) && this.onGround && hs > 0.5) audio?.step(this.surface(), hs / 6);
+    if (Math.floor(prev / Math.PI) !== Math.floor(this.bobPhase / Math.PI) && this.onGround && hs > 0.5) {
+      audio?.step(this.surface(), hs / 6);
+      this.onStep?.(Math.floor(this.bobPhase / Math.PI) & 1 ? 1 : -1, hs);    // (the footprints in the snow: main.js)
+    }
     const bobY = Math.abs(Math.sin(this.bobPhase)) * 0.055 * this.bobAmt - 0.03 * this.bobAmt;
     const bobX = Math.cos(this.bobPhase) * 0.025 * this.bobAmt;
     this.landShake = damp(this.landShake, 0, 6, dt);

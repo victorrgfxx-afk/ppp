@@ -4,7 +4,8 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
-import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, snowRoads, Spray } from './rain.js';
+import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray } from './rain.js';
+import { SnowTrail } from './snowtrail.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
@@ -352,8 +353,14 @@ async function main() {
   // left out of the rain's height map: the sky, the falling rain and snow, and the far forests' canopy shell (a lid at
   // crown height over the whole stand, roads through the wood included; near the camera the real trees stand in for it)
   // the lying snow: a blanket over the ground near the camera, shaped from the height maps and the roads (rain.js)
-  const blanket = new SnowBlanket(scene);
+  const lowQ = qKey === 'low' || qKey === 'medium';
+  const blanket = new SnowBlanket(scene, lowQ ? 192 : 384);
   rainOcc.roads = snowRoads(GEO.roads);
+  // your footprints and the tyre tracks in it (snowtrail.js), and the snow's flight seen from upwind: nothing it
+  // cannot blow through lets it pass (rain.js)
+  const trail = new SnowTrail(lowQ ? 1024 : 2048, 24), snowLee = new SnowLee(lowQ ? 512 : 1024, lowQ ? 256 : 512);
+  player.onStep = (foot, hs) => { if (SNOW.uSnow.value > 0.05) trail.step(player.pos, player.yaw, foot, hs > 4, SNOW.uSnowDepth.value); };
+  player.onLand = () => { if (SNOW.uSnow.value > 0.05) trail.land(player.pos, player.yaw); };
   // the spruces near you in detail: the branches you push through, the snow that falls off them (geo/firs.js)
   const firs = new FirDetail(scene, { cap: { 'Scăzută': 12, 'Medie': 24, 'Înaltă': 40 }[Q.label] ?? 56, audio });
   firs.addSource(geoWorld.trees.firSource);
@@ -362,10 +369,17 @@ async function main() {
       ...built.forest.firRecords('spruceB', { key: 'yard10', H: 10, crown: 2.2, low: 1.0, seed: 12 })];
     firs.addSource((x, z, Rr, out) => { for (const r of yard) if (Math.abs(r.x - x) < Rr && Math.abs(r.z - z) < Rr) out.push(r); });
   }
-  const occHide = [sky, rainFX.group, snowFX.group, blanket.mesh, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
+  const occHide = [sky, rainFX.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
+  // the flying snow blows through leaves, needles, a crown's dense core, the snow on the branches, chain-link and
+  // lattice (all cut out of cards), and through lines and glows; it does not through the rest. (The ground and the
+  // water are left out too: the map keeps nothing that low anyway.)
+  const leeMatSkip = (m) => m.depthWrite === false || m.alphaTest > 0 || m.userData.core || m.userData.leeSkip ||
+    m.userData.ue?.kind === 'terrain' || m.userData.ue?.kind === 'water' || (winter && leafTex.includes(m.map));
+  const leeSkip = (o) => o.isLine || o.isPoints || o.isSprite || o.userData.ue?.kind === 'far' ||
+    (o.isMesh && !!o.material && (Array.isArray(o.material) ? o.material.every(leeMatSkip) : leeMatSkip(o.material)));
   // winter (the snow modes): the broadleaves stand bare - every leaf texture shows twigs (one image swap reaches every
   // material and clone that uses it), and the far billboards and forest roof go bare too (geo/trees.js, canopy.js)
   const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn].filter(Boolean);
@@ -919,6 +933,8 @@ async function main() {
     player.wind = storm > 0.05 ? { x: STORM.uWind.value.x, z: STORM.uWind.value.y } : null;
     player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
     if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0);
+    if ((SNOW.uSnowFall.value > 0.002 || STORM.uStorm.value > 0.002) && rainOcc.snow) snowLee.update(renderer, scene, camera.position, occHide, leeSkip, rainOcc.snow.low.texture, dt);
+    else snowLee.off();
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
     const flash = lightning.update(dt, horror === 1 && !paused);
     sky.material.uniforms.uFlash.value = flash;
@@ -930,9 +946,21 @@ async function main() {
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
-    if (mode === 'car' && active) { SNOW.uSnowCar.value.set(active.x, active.z, active.h, 1); SNOW.uSnowCarSize.value.set(active.car.half.w, active.car.half.l); }
-    else SNOW.uSnowCar.value.w = 0;
-    blanket.update();
+    if (mode === 'car' && active) {
+      SNOW.uSnowCar.value.set(active.x, active.z, active.h, 1); SNOW.uSnowCarSize.value.set(active.car.half.w, active.car.half.l);
+      SNOW.uSnowCarY.value.set(active.car.group.position.y, active.m.roofH ??= Math.max(...active.m.roof.map(p => p[1])));
+    } else SNOW.uSnowCar.value.w = 0;
+    // the prints: the car's tyres (yours on foot come with each step: player.onStep), the villager's steps; they fill in
+    // while it snows (in ~2.5 min, a blizzard's drift in ~1)
+    if (SNOW.uSnow.value > 0.05) {
+      if (mode === 'car' && active) trail.car(active, SNOW.uSnowDepth.value);
+      for (const w of walkers) {
+        const k = Math.floor(w.phase / Math.PI);
+        if (w.down <= 0 && k !== w.stepK) { if (w.stepK !== undefined) trail.step({ x: w.x, z: w.z }, w.h + Math.PI, k & 1 ? 1 : -1, false, SNOW.uSnowDepth.value, w.feet ??= {}); w.stepK = k; }
+      }
+    }
+    trail.update(renderer, camera.position, dt, SNOW.uSnowFall.value * (1 + 1.5 * storm) / 150);
+    blanket.update(camera);
     // who pushes through the spruces: you on foot (a 1.75 m capsule) or the car you drive (its front and back)
     const firBodies = [];
     if (mode === 'car' && active) {
@@ -965,7 +993,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, firs, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, firs, trail, snowLee, blanket, leeSkip, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

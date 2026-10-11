@@ -239,6 +239,7 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
     };
     this.mats.needle.userData.snow = 0.8;                       // (rain.js: the needles' tops whiten too)
     this.mats.snow.userData.noWet = true;
+    this.mats.snow.userData.leeSkip = true;                      // (rain.js SnowLee: the flying snow blows through a crown)
     this.fall = new SnowFall(scene);
     this.nextDrop = 6;
   }

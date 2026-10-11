@@ -94,9 +94,32 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * **Iarna, foioasele stau goale**: stejarii, fagii, carpenii, salcâmii, pomii și tufele au doar crengi și rămurele, cu zăpadă pe ele. Copacii îndepărtați și pădurile de pe dealuri trec la crengi gri-maronii, iar molizii și pinii rămân verzi. Iarba nu se mai vede sub zăpadă, iar sub foioasele goale ninge până la sol.
   * **Mașina alunecă**: pe zăpadă aderența scade la ~1/3 din cea pe asfalt uscat (pe zăpadă bătătorită μ ≈ 0,2–0,3, pe asfalt uscat 0,8–1). Accelerația și frânarea rămân sub ~0,33 g (la 508-ul hyper ~0,46 g). Frânarea de la 50 km/h ține 27,8 m în loc de 9,8 m, iar 0–50 km/h ia 4,7 s în loc de 3,4 s (testat pe modelul mașinii). Mașina nu poate vira mai strâns decât țin cauciucurile (~0,34 g lateral față de ~1,7 g pe uscat) și iese din curbă dacă intri prea repede. La ploaie condusul rămâne ca înainte. În afara drumului zăpada adâncă ține mașina în loc: la 45 cm ajunge la 30 km/h abia în ~16 s și nu trece de ~37 km/h. Tot acolo, pe jos, mergi mai încet: la 50 cm, de 2 ori mai încet.
   * Pașii scârțâie în zăpadă, păsările tac cât ninge (și sunt mai rare cât stă zăpada), iar cauciucurile aproape nu mai scârțâie în viraje.
+  * **Urme în zăpadă.** Fiecare pas lasă urma bocancului: o talpă de ~29 cm, cu toc și cu crampoane.
+    * Zăpada proaspătă e presată până la ~un sfert din grosime, cu pereți puțin surpați și o bordură împinsă în jur (cel mult ~6 cm).
+    * Din zăpada de peste ~20 cm picioarele nu se mai ridică de tot: între urme rămâne un șanț târât.
+    * Când alergi, urmele sunt mai lungi. Când aterizezi dintr-o săritură, rămân amândouă tălpile.
+    * Și trecătorul de pe Strada Gării lasă urme.
+    * **Roțile mașinii lasă făgașe** cu modelul anvelopei, care stă pe loc. În zăpada mai adâncă decât garda la sol (~17 cm), burta mașinii ară un șanț lat între ele.
+    * Pe stratul subțire și pe drumuri, urmele apar ca zăpadă bătătorită, mai închisă, prin care se vede pământul sau asfaltul ud.
+    * Cât ninge, urmele se umplu la loc: în ~2,5 minute, iar pe viscol în ~1 minut.
+    * Harta urmelor acoperă ±24 m în jurul tău, cu 2,3 cm pe pixel (4,7 cm pe grafica scăzută și medie).
+    * Ca să se vadă forma urmelor, cu umbrele lor, zăpada din fața ta (12,8 × 12,8 m) are un vârf la fiecare 3,3 cm. Marginea acestei zone urmează exact triunghiurile stratului mare, ca să nu apară crăpături.
+  * **Zăpada arată mai real.**
+    * Cristalele sclipesc doar unde le bate soarele sau luna și doar sub unghiul potrivit. Sclipirile se mută când te miști și dispar în umbră.
+    * Lumina pătrunde puțin în zăpadă și iese alături. De aceea, partea umbrită a fiecărei movile și pereții urmelor sunt ușor luminați, albăstrui.
+    * Vântul lasă riduri scurte, la 15–30 cm, cu panta lină spre vânt și cea abruptă în partea opusă, întrerupte și pe petice. Sunt clare după viscol și abia se văd după o ninsoare liniștită.
+    * Zgomotul care dă forma troienelor, a movilelor și a ridurilor rămâne corect și la kilometri de centrul hărții. Înainte se netezea pe dealul crucii, din cauza preciziei calculelor.
 * **Viscol** (între *Ninsoare* și *Zăpadă, senin* în **T**): o furtună de zăpadă. Bate crivățul, dinspre nord-est (vântul care aduce viscolele în Muntenia; aici în lungul Străzii Gării), cu ~15 m/s și are rafale între ~8 și ~22 m/s (până la ~80 km/h). Direcția se rotește puțin, iar viteza apare lângă hartă („vânt 60 km/h”).
-  * **Fulgii zboară aproape orizontal**, ca dâre de mișcare (cât parcurg în ~1/50 s), în trei straturi în plus față de ninsoare: unul chiar la fața ta, unul des aproape și unul mai departe. Sunt aruncați de turbulență în sus și în jos. Nu intră în spatele zidurilor și caselor față de vânt, dar pătrund sub streșini din partea deschisă.
-  * **Zăpada de pe jos e spulberată**: șuvițe care curg peste drum, peste curți și peste mașini, mai încet decât vântul de sus și în panglici șerpuite. Majoritatea curge sub genunchi, puțină ajunge la înălțimea capului.
+  * **Fulgii zboară aproape orizontal**, ca dâre de mișcare (cât parcurg în ~1/50 s), în trei straturi în plus față de ninsoare: unul chiar la fața ta, unul des aproape și unul mai departe. Sunt aruncați de turbulență în sus și în jos.
+  * **Viscolul nu trece prin nimic.** O hartă de adâncime privește exact din direcția din care zboară fulgii (vântul plus căderea lor, ~4° sub orizontală la 15 m/s). Ea vede tot ce le stă în cale: case, ziduri, garduri pline, mașini, trunchiuri, stâlpi, stânci.
+    * Un fulg aflat în spatele unui obstacol, de-a lungul zborului lui, nu apare. La fel unul aflat în interiorul unei case sau sub un acoperiș cu partea deschisă spre adăpost.
+    * În spatele obstacolelor, vârtejurile aduc zăpada înapoi abia după 3–14 m, și doar sub cerul liber.
+    * Prin frunze, ace, gardul de sârmă, grilaje și zăpada de pe crengi vântul trece.
+    * Relieful nu contează, pentru că aerul urmează dealurile.
+    * Harta se reface când te muți cu 3 m sau când rafalele rotesc zborul cu 1,5°.
+    * În mașina pe care o conduci nu intră niciun fulg.
+    * Pe ninsoare liniștită e la fel, dar zăpada cade aproape vertical.
+  * **Zăpada de pe jos e spulberată**: șuvițe care curg pe suprafața zăpezii (nu peste acoperișuri), mai încet decât vântul de sus, în panglici șerpuite. Majoritatea curge sub genunchi, puțină ajunge la înălțimea capului. Șuvițele se opresc în ziduri, garduri și mașini și nu ajung sub ele.
   * **Vizibilitatea scade la ~250 m** și se închide cu fiecare rafală ca o perdea albă, apoi se deschide la loc. Lumina e plată, fără umbre, sub un plafon alb-cenușiu.
   * **Zăpada se lipește pe partea dinspre vânt** a trunchiurilor, stâlpilor, zidurilor, gardurilor și geamurilor, în dungi. Rămâne și după viscol, până se topește.
   * Troienele din spatele obstacolelor și valurile de vânt de pe zăpadă devin de ~2 ori mai mari. Stratul crește cu ~12 cm pe minut.
@@ -448,6 +471,8 @@ src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridi
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
+src/rain.js           ploaia și zăpada: suprafețe ude / acoperite, fulgii, viscolul și harta lui văzută din vânt, stratul de zăpadă
+src/snowtrail.js      urmele de pași și de roți în zăpadă (harta lor, ștampilele, umplerea cât ninge)
 src/castgeo.js        personajele (pădurea, clipul IMG_0725): geometria (sculptate SDF, ponderile scheletului), fără three.js
 src/castworker.js     le construiește într-un worker, ca jocul să nu se oprească
 src/cast.js           plasele cu schelet și pozarea (cinematică inversă)

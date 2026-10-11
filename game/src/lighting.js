@@ -11,6 +11,7 @@ const DIR_START = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
 const DIR_CASCADED = /* glsl */`#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )
 	DirectionalLight directionalLight;
 	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
+	#define CSM_SHADOW
 	DirectionalLightShadow directionalLightShadow;
 	float csmShadow = 0.0;
 	float csmLeft = 1.0;

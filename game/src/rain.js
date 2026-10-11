@@ -26,10 +26,41 @@ export const SNOW = {
   uSnowCarSize: { value: new THREE.Vector2(1, 2.4) },   // its half width and half length (m)
   uSnowPlaster: { value: 0 },  // a blizzard's snow plastered on the windward faces (0..1, builds up in ~1.5 min)
   uSnowWindDir: { value: new THREE.Vector2(0.052, -0.9986).normalize() },   // the prevailing wind (downwind: the crivăț, from the NE)
+  uSnowCarY: { value: new THREE.Vector2(0, 1.5) },  // the driven car: the ground under it and its height (no flakes inside it)
+  // the snow's flight seen from upwind (SnowLee): what it cannot blow through, as far along the flight as it stands
+  uLee: { value: null },
+  uLeeVP: { value: new THREE.Matrix4() },
+  uLeeOrg: { value: new THREE.Vector3() },
+  uLeeDir: { value: new THREE.Vector3(0, -1, 0) },
+  uLeeOn: { value: 0 },
+  // the footprints and tyre tracks (snowtrail.js): how much of the depth they pressed out, around uTrailBox (x, z, half
+  // size, on)
+  uTrail: { value: null },
+  uTrailBox: { value: new THREE.Vector4(0, 0, 24, 0) },
+  uSnowFine: { value: new THREE.Vector4(0, 0, 6.4, 0) },   // the fine blanket near you: centre x, z, half size, on
 };
 // low plants that go under a cover deeper than a dusting (meadow grass, flowers, ferns, weeds): their materials are
 // hidden then (main.js)
 export const UNDER_SNOW = new Set();
+
+// the footprints and tyre tracks (snowtrail.js): R how much of the depth is pressed out, G the rim pushed up around,
+// B the tread on the floor of the print (0 outside the map, fading out at its edge)
+const TRAIL_GLSL = /* glsl */`
+vec4 trailAt(vec2 xz) {
+  if (uTrailBox.w < 0.5) return vec4(0.0);
+  vec2 uv = vec2(0.5 + (xz.x - uTrailBox.x) / (2.0 * uTrailBox.z), 0.5 - (xz.y - uTrailBox.y) / (2.0 * uTrailBox.z));
+  vec2 e = abs(uv - 0.5) * 2.0;
+  return texture2D(uTrail, uv) * (1.0 - smoothstep(0.9, 1.0, max(e.x, e.y)));
+}`;
+// a crystal's glint (shared by the cover and the blanket): ~1.4 cm crystals with facets turned every way, a few of
+// which mirror the sun (or the moon) into the eye; sharp, and gone as you move
+const GLINT_GLSL = /* glsl */`
+float snowGlint(vec3 wp, vec3 n, vec3 l, vec3 v) {
+  vec2 c = floor(wp.xz * 70.0 + wp.y * 13.0);
+  vec3 r = vec3(rainHash(c), rainHash(c + 3.7), rainHash(c + 8.3)) * 2.0 - 1.0;
+  vec3 f = normalize(n + (viewMatrix * vec4(r * 1.6, 0.0)).xyz);
+  return pow(max(dot(f, normalize(l + v)), 0.0), 1400.0) * step(0.4, rainHash(c + 1.9)) * step(0.0, dot(n, l));
+}`;
 
 // the height map look-up, shared by the surface, streak and splash shaders (top surface height or -1e5 outside)
 const OCC_GLSL = /* glsl */`
@@ -39,18 +70,22 @@ float rainTop(vec2 xz) {
   if (any(lessThan(uv, vec2(0.004))) || any(greaterThan(uv, vec2(0.996)))) return -1e5;
   return texture2D(uOcc, uv).r + uOccBox.w;
 }
-float rainHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+// (world cells run to 10^5 and more a few km out: brought into a small range first, or float precision leaves the hash
+// with a handful of values and every pattern built on it flat)
+float rainHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 `;
 
 // ------------------------------------------------------------------ wet surfaces
 const WET_PARS = /* glsl */`
 uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight, uSnowPlaster;
 uniform vec2 uSnowWindDir;
-uniform sampler2D uOcc;
-uniform vec4 uOccBox;
+uniform sampler2D uOcc, uTrail;
+uniform vec4 uOccBox, uTrailBox;
 varying vec3 vWetP;
 float wetReflOut = 0.0;                              // how much this point mirrors the scene (screen-space reflections, post.js)
+float snowGlintK = 0.0;                              // fresh snow here: its crystals glint in the sun (after the lights)
 ${OCC_GLSL}
+${TRAIL_GLSL}
 float wetNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
@@ -184,8 +219,11 @@ if (uSnow > 0.001) {
   diffuseColor.rgb *= 1.0 - 0.3 * uSnow * sOpen;
   roughnessFactor *= 1.0 - 0.45 * uSnow * sOpen;
 #endif
+  // footprints and tyre tracks: pressed into a thin, packed layer (a thin cover lets the ground show through them)
+  vec4 sTr = trailAt(sp.xz) * sUp;
+  sc *= 1.0 - 0.6 * sTr.r;
   if (sc > 0.002) {
-    vec3 snowCol = vec3(0.87, 0.9, 0.94) * (0.93 + 0.07 * sn);
+    vec3 snowCol = vec3(0.87, 0.9, 0.94) * (0.93 + 0.07 * sn) * (1.0 - 0.1 * sTr.r);
 #ifdef WET_ROAD
     snowCol = mix(vec3(0.5, 0.51, 0.52), snowCol, smoothstep(0.35, 0.8, sn));
 #endif
@@ -196,12 +234,23 @@ if (uSnow > 0.001) {
     vec2 sg = vec2(wetNoise(sp.xz * 4.0 + 0.5) - wetNoise(sp.xz * 4.0 - 0.5), wetNoise(sp.zx * 4.0 + 0.5) - wetNoise(sp.zx * 4.0 - 0.5)) * 0.3;
     normal = normalize(mix(normal, normalize((viewMatrix * vec4(sg.x, 1.0, sg.y, 0.0)).xyz), sc * 0.75 * sUp));
 #if !defined(WET_LEAF) && !defined(WET_ROAD)
-    // crystals catching the light on the fresh cover (not on the trodden slush), twinkling as you move
-    float sd = length(sp - cameraPosition);
-    float tw = rainHash(floor(sp.xz * 55.0) + floor(cameraPosition.xz * 3.0 + cameraPosition.y * 5.0));
-    totalEmissiveRadiance += vec3(step(0.9975, tw)) * smoothstep(0.6, 1.0, sc) * sUp * uSnowLight * 1.2 * (1.0 - smoothstep(5.0, 16.0, sd));
+    // crystals glinting on the fresh cover (not on the trodden slush): after the lights, where the sun reaches
+    snowGlintK = smoothstep(0.6, 1.0, sc) * sUp * (1.0 - sTr.r) * (1.0 - smoothstep(6.0, 18.0, length(sp - cameraPosition)));
 #endif
   }
+}
+#endif
+`;
+
+// the glints, lit by the sun (or the moon) where its shadow lets it through (lighting.js: CSM_SHADOW)
+const GLINT_MAIN = /* glsl */`
+#if NUM_DIR_LIGHTS > 0
+if (snowGlintK > 0.001) {
+  float gSh = 1.0;
+#ifdef CSM_SHADOW
+  gSh = receiveShadow ? csmShadow : 1.0;
+#endif
+  reflectedLight.directSpecular += directionalLights[0].color * (gSh * snowGlintK * 6.0 * snowGlint(vWetP, normal, directionalLights[0].direction, normalize(-vViewPosition)));
 }
 #endif
 `;
@@ -209,7 +258,7 @@ if (uSnow > 0.001) {
 function injectWet(sh, kind, opaque, snowK, snowSkip) {
   const v = sh.vertexShader, f = sh.fragmentShader;
   if (v.includes('vWetP')) return;                 // already in (a material cloned from a patched one keeps its hook)
-  if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>')) return;
+  if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>') || !f.includes('#include <lights_fragment_end>')) return;
   Object.assign(sh.uniforms, RAIN, SNOW);
   sh.vertexShader = v.replace('#include <common>', '#include <common>\nvarying vec3 vWetP;').replace('#include <project_vertex>', `#include <project_vertex>
   { vec4 wetW = vec4(transformed, 1.0);
@@ -222,9 +271,10 @@ function injectWet(sh, kind, opaque, snowK, snowSkip) {
     vWetP = (modelMatrix * wetW).xyz; }`);
   const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
     `#define SNOW_K ${snowK.toFixed(3)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '');
-  sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS)
+  sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS + GLINT_GLSL)
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
     .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN + SNOW_MAIN)
+    .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + GLINT_MAIN)
     // opaque surfaces write their reflectivity into the (otherwise always 1) alpha of the scene buffer
     .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef WET_OUT\n  gl_FragColor.a = 1.0 - wetReflOut;\n#endif');
 }
@@ -283,7 +333,7 @@ uniform vec4 uOccBox;
 uniform vec2 uWind;
 uniform float uSnowPlaster;                                       // (how much of a blizzard has blown: bigger drifts)
 varying vec2 vUv;
-float bHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float bHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }   // (as rainHash)
 float bNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(bHash(i), bHash(i + vec2(1.0, 0.0)), f.x), mix(bHash(i + vec2(0.0, 1.0)), bHash(i + vec2(1.0, 1.0)), f.x), f.y);
@@ -473,6 +523,112 @@ export function snowRoads(roads) {
   return out;
 }
 
+// ------------------------------------------------------------------ the snow's flight seen from upwind
+// An orthographic map looking the way the flakes fly (the wind and their ~1 m/s fall), of what stands in their way:
+// walls, roofs, fences, cars, trunks, rocks. Not the ground (the air follows it over the hills), nor the leaves, the
+// needles, a chain-link fence (it blows through them). Per texel: how far along the flight the first of them stands.
+// A flake further along than that is behind it (the flake and drift shaders, LEE_GLSL).
+const LEE_VERT = /* glsl */`
+uniform sampler2D uLow;
+uniform vec4 uOccBox;
+uniform vec3 uLeeOrg, uLeeDir;
+varying float vD, vH;
+void main() {
+  vec4 p = vec4(position, 1.0);
+#ifdef USE_INSTANCING
+  p = instanceMatrix * p;
+#endif
+  p = modelMatrix * p;
+  vD = dot(p.xyz - uLeeOrg, uLeeDir);
+  // its height over the ground (the map seen from below); off that map nothing counts
+  vec2 uv = vec2(0.5 + (p.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (p.z - uOccBox.y) / (2.0 * uOccBox.z));
+  vH = all(greaterThan(uv, vec2(0.0))) && all(lessThan(uv, vec2(1.0))) ? p.y - uOccBox.w - texture2D(uLow, vec2(uv.x, 1.0 - uv.y)).r : -1.0;
+  gl_Position = projectionMatrix * viewMatrix * p;
+}`;
+const LEE_FRAG = /* glsl */`
+varying float vD, vH;
+void main() {
+  if (vH < 0.12) discard;                                     // (the ground, the roads, what lies flat on them)
+  gl_FragColor = vec4(vD, 0.0, 0.0, 1.0);
+}`;
+const _lv = new THREE.Vector3(), _lr = new THREE.Vector3(), _lu = new THREE.Vector3(), _lc = new THREE.Vector3(), _ls = new THREE.Sphere();
+export class SnowLee {
+  constructor(w = 1024, h = 512) {
+    this.rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.FloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false, depthBuffer: true });
+    this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
+    this.mat = new THREE.ShaderMaterial({ vertexShader: LEE_VERT, fragmentShader: LEE_FRAG, uniforms: { uLow: { value: null }, uOccBox: RAIN.uOccBox, uLeeOrg: SNOW.uLeeOrg, uLeeDir: SNOW.uLeeDir }, side: THREE.DoubleSide });
+    SNOW.uLee.value = this.rt.texture;
+    this.dir = new THREE.Vector3(0, -1, 0);
+    this.last = new THREE.Vector3(1e9, 0, 0); this.lastDir = new THREE.Vector3(); this.frame = 0;
+  }
+
+  // made again when you have moved 3 m or the flight has turned 1.5 deg (the gusts), else every 40 frames (the cars
+  // come and go); hide: left out always, skip(object): left out too; low: the ground seen from below (RainOcclusion)
+  update(renderer, scene, camPos, hide, skip, low, dt) {
+    const w = STORM.uWind.value;
+    _lv.set(w.x, -1, w.y).normalize();
+    this.dir.lerp(_lv, SNOW.uLeeOn.value ? 1 - Math.exp(-dt / 2) : 1).normalize();     // (over ~2 s: the flakes' own past flight)
+    this.frame++;
+    if (SNOW.uLeeOn.value && camPos.distanceTo(this.last) < 3 && this.dir.angleTo(this.lastDir) < 0.026 && this.frame % 40) return;
+    this.last.copy(camPos); this.lastDir.copy(this.dir);
+    // the box the flakes fill (SnowFX: up to 34 m around you, 10 m under the eye to 14 m over it), seen along the flight
+    const f = this.dir;
+    _lr.crossVectors(f, THREE.Object3D.DEFAULT_UP);
+    if (_lr.lengthSq() < 1e-6) _lr.set(1, 0, 0); else _lr.normalize();
+    _lu.crossVectors(_lr, f);
+    let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, f0 = Infinity, f1 = -Infinity;
+    for (let i = 0; i < 8; i++) {
+      _lc.set(i & 1 ? 34 : -34, i & 2 ? 14 : -10, i & 4 ? 34 : -34);
+      const a = _lc.dot(_lr), b = _lc.dot(_lu), c = _lc.dot(f);
+      r0 = Math.min(r0, a); r1 = Math.max(r1, a); u0 = Math.min(u0, b); u1 = Math.max(u1, b); f0 = Math.min(f0, c); f1 = Math.max(f1, c);
+    }
+    // from 16 m further upwind (what stands there shelters the near side of the box; further out the ground under it is
+    // off the map seen from below, so nothing there would count)
+    const cam = this.cam;
+    cam.position.copy(camPos).addScaledVector(f, f0 - 16);
+    cam.up.copy(_lu);
+    _lc.copy(cam.position).add(f);
+    cam.lookAt(_lc);
+    Object.assign(cam, { left: r0, right: r1, bottom: u0, top: u1, near: 0.1, far: f1 - f0 + 18 });
+    cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+    SNOW.uLeeOrg.value.copy(cam.position); SNOW.uLeeDir.value.copy(f);
+    SNOW.uLeeVP.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this.mat.uniforms.uLow.value = low;
+    const rt0 = renderer.getRenderTarget(), bg = scene.background, ov = scene.overrideMaterial, sm = renderer.shadowMap.autoUpdate;
+    renderer.getClearColor(_cc); const ca = renderer.getClearAlpha();
+    // (and what stands off that map altogether: it would only be drawn to be thrown away)
+    const off = [...hide], ob = RAIN.uOccBox.value;
+    scene.traverse((o) => {
+      if (!o.visible) return;
+      if (skip(o)) { off.push(o); return; }
+      if (o.isMesh && !o.isInstancedMesh && o.geometry) {
+        if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        _ls.copy(o.geometry.boundingSphere).applyMatrix4(o.matrixWorld);
+        if (Math.abs(_ls.center.x - ob.x) > ob.z + _ls.radius || Math.abs(_ls.center.z - ob.y) > ob.z + _ls.radius) off.push(o);
+      }
+    });
+    const vis = off.map(o => o.visible);
+    for (const o of off) o.visible = false;
+    scene.background = null; renderer.shadowMap.autoUpdate = false;
+    const ac = renderer.autoClear; renderer.autoClear = false;
+    renderer.setRenderTarget(this.rt);
+    renderer.setClearColor(0x000000, 1); renderer.clear();
+    this.clearQuad ??= (() => { const m = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({ vertexShader: BAKE_VERT, fragmentShader: 'void main() { gl_FragColor = vec4(1e4, 0.0, 0.0, 1.0); }', depthTest: false, depthWrite: false })); m.frustumCulled = false; const sc = new THREE.Scene(); sc.add(m); return sc; })();
+    renderer.render(this.clearQuad, cam);                       // (nothing in the way: far)
+    scene.overrideMaterial = this.mat;
+    renderer.render(scene, cam);
+    this.stats = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };    // (what a refresh draws)
+    renderer.autoClear = ac;
+    renderer.setRenderTarget(rt0);
+    renderer.setClearColor(_cc, ca);
+    scene.background = bg; scene.overrideMaterial = ov; renderer.shadowMap.autoUpdate = sm;
+    off.forEach((o, i) => { o.visible = vis[i]; });
+    SNOW.uLeeOn.value = 1;
+  }
+
+  off() { SNOW.uLeeOn.value = 0; }
+}
+
 // ------------------------------------------------------------------ falling rain and splashes
 const STREAK_VERT = /* glsl */`
 attribute vec2 corner;
@@ -632,6 +788,28 @@ const _tint = new THREE.Color(0.97, 1, 1.05);
 // tumbles; world-anchored like the drops (they keep their place when you move) and gone where they land. In a blizzard
 // (STORM) they fly almost level at 10-20 m/s, as streaks, in three more layers (one right at your face), only where
 // the open side lets them in, and the snow lying on the ground streams along it (DRIFT).
+// what keeps the flying snow off (the flakes and the drift): SnowLee's map of the things in its way, seen along its
+// flight, and the car you drive
+const LEE_GLSL = /* glsl */`
+uniform sampler2D uLee;
+uniform mat4 uLeeVP;
+uniform vec3 uLeeOrg, uLeeDir;
+uniform float uLeeOn;
+uniform vec4 uSnowCar;
+uniform vec2 uSnowCarSize, uSnowCarY;
+// how far (m along the flight) p lies behind the first thing upwind of it that the snow cannot blow through; < 0 open
+float leeGap(vec3 p) {
+  if (uLeeOn < 0.5) return -1.0;
+  vec2 uv = (uLeeVP * vec4(p, 1.0)).xy * 0.5 + 0.5;
+  if (any(lessThan(uv, vec2(0.002))) || any(greaterThan(uv, vec2(0.998)))) return -1.0;
+  return dot(p - uLeeOrg, uLeeDir) - texture2D(uLee, uv).r;
+}
+bool inCar(vec3 p) {
+  if (uSnowCar.w < 0.5) return false;
+  vec2 dc = p.xz - uSnowCar.xy, cs = vec2(cos(uSnowCar.z), sin(uSnowCar.z));
+  vec2 q = abs(vec2(dot(dc, vec2(cs.x, -cs.y)), dot(dc, cs.yx))) - uSnowCarSize - 0.04;
+  return max(q.x, q.y) < 0.0 && p.y > uSnowCarY.x - 0.1 && p.y < uSnowCarY.x + uSnowCarY.y + 0.04;
+}`;
 const FLAKE_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
@@ -646,6 +824,7 @@ varying float vA, vLit;
 varying vec3 vLamp;
 varying vec2 vC;
 ${OCC_GLSL}
+${LEE_GLSL}
 void main() {
   vC = corner; vA = 0.0; vLit = 0.0; vLamp = vec3(0.0);
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
@@ -659,11 +838,17 @@ void main() {
   float turb = 0.15 + 0.25 * sz + 0.9 * uStorm;
   float w1 = t * (1.1 + sz) + ph, w2 = t * (0.8 + 0.7 * sz) + ph * 1.3;
   p += vec3(sin(w1), 0.35 * uStorm * sin(t * 2.3 + ph * 1.9), cos(w2)) * turb;
-  // landed, or in the lee: sheltered by what stands upwind of it at its height (a gale blows the snow in under the
-  // eaves from the open side, never into the lee of a wall)
+  // nothing passes through anything: a flake behind a wall, a fence, a car, a trunk (along its flight) is in the lee,
+  // and so is one inside a house or under a roof whose open side faces away from the wind; the eddies behind an
+  // obstacle carry some in again 3-14 m further back, under the open sky. A gale blows the snow in under the eaves
+  // from the open side. Gently falling snow does not reach under a roof or a crown at all.
   float wsp = length(uWind);
   vec2 wd = uWind / max(wsp, 1e-3);
-  if (p.y < rainTop(p.xz - wd * min(6.0, wsp / fall * 0.5)) || (uStorm < 0.5 && p.y < rainTop(p.xz))) return;
+  float top = rainTop(p.xz), gap = leeGap(p);
+  if (gap > 0.08 && (gap < mix(3.0, 14.0, fract(aSeed.x * 17.3 + aSeed.y * 31.7)) || (p.y < top && top - p.y < 10.0))) return;
+  if (uStorm < 0.5 && p.y < top) return;
+  if (uLeeOn < 0.5 && p.y < rainTop(p.xz - wd * min(6.0, wsp / fall * 0.5))) return;      // (before the map is made)
+  if (inCar(p)) return;
   vec3 toCam = uCam - p;
   float dist = length(toCam);
   vec3 vd = toCam / max(dist, 1e-3);
@@ -701,14 +886,15 @@ void main() {
 const DRIFT_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
-uniform float uStorm, uSnowCover, uRainTime, uOccOn, uRadius;
-uniform sampler2D uOcc;
+uniform float uStorm, uSnowCover, uRainTime, uOccOn, uRadius, uSnowDepth;
+uniform sampler2D uOcc, uSnowField;
 uniform vec4 uOccBox;
 uniform vec2 uWind, uWindOff;
 uniform vec3 uCam;
 varying float vA;
 varying vec2 vC;
 ${OCC_GLSL}
+${LEE_GLSL}
 void main() {
   vC = corner; vA = 0.0;
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
@@ -720,9 +906,16 @@ void main() {
   float wsp = length(uWind);
   vec2 wd = uWind / max(wsp, 1e-3), wn = vec2(-wd.y, wd.x);
   q += wn * sin(dot(q, wd) * 0.55 + aSeed.z * 6.28 + uRainTime * 1.7) * 0.4;
-  float g = rainTop(q);
-  if (g < -1e4) return;
+  // along the lying snow's surface (not over the roofs and the car roofs)
+  float top = rainTop(q);
+  if (top < -1e4) return;
+  vec2 fuv = vec2(0.5 + (q.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (q.y - uOccBox.y) / (2.0 * uOccBox.z));
+  vec4 sf = texture2D(uSnowField, fuv);
+  float g = sf.r + uOccBox.w + max(sf.g, 0.0) * uSnowDepth;
   vec3 p = vec3(q.x, g + 0.03 + h, q.y);
+  // never through a wall, a fence or a car, nor under a roof
+  float gap = leeGap(p);
+  if ((gap > 0.08 && gap < mix(1.5, 8.0, fract(aSeed.y * 23.1))) || (p.y < top - 0.3 && top - p.y < 10.0) || inCar(p)) return;
   vec3 toCam = uCam - p;
   float dist = length(toCam);
   vec3 along = vec3(wd.x, 0.0, wd.y), side = normalize(cross(along, toCam / max(dist, 1e-3)));
@@ -755,7 +948,9 @@ export class SnowFX {
     this.carL = { value: new THREE.Vector4() }; this.carLDir = { value: new THREE.Vector4(0, 0, -1, 0.9) };
     this.lamps = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
     const common = { uSnowFall: SNOW.uSnowFall, uStorm: STORM.uStorm, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uCam: this.cam, uColor: this.color,
-      uWind: STORM.uWind, uWindOff: STORM.uWindOff, uTorch: this.torch, uTorchDir: this.torchDir, uCarL: this.carL, uCarLDir: this.carLDir, uLamps: this.lamps };
+      uWind: STORM.uWind, uWindOff: STORM.uWindOff, uTorch: this.torch, uTorchDir: this.torchDir, uCarL: this.carL, uCarLDir: this.carLDir, uLamps: this.lamps,
+      uLee: SNOW.uLee, uLeeVP: SNOW.uLeeVP, uLeeOrg: SNOW.uLeeOrg, uLeeDir: SNOW.uLeeDir, uLeeOn: SNOW.uLeeOn, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize, uSnowCarY: SNOW.uSnowCarY,
+      uSnowField: SNOW.uSnowField, uSnowDepth: SNOW.uSnowDepth };
     const quad = [-1, -1, 1, -1, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
     const add = (n, u, vs = FLAKE_VERT, fs = FLAKE_FRAG) => {
       const m = new THREE.Mesh(cloud(n, quad, qi), new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, ...u }, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
@@ -790,100 +985,192 @@ export class SnowFX {
 // A blanket of snow over the ground around the camera (±48 m, a vertex every 0.4 m, on the world's grid so it does not
 // swim): it lies on the surface baked by RainOcclusion, as deep as SNOW.uSnowDepth times the local shape (drifts behind
 // fences and walls, dunes, mounds, thin on the roads with banks along them, none under roofs and cars), and it thins
-// out where it ends. Further away the cover of rain.js (white surfaces) carries on.
+// out where it ends. Further away the cover of rain.js (white surfaces) carries on. Near you a finer one takes over (a
+// vertex every 3.3 cm over 12.8 m, ahead of you): it carries the footprints and the tyre tracks (snowtrail.js) down to
+// the tread; along its edge it runs straight between the coarse vertices, so the two meet without a crack.
 const BLANKET_PARS = /* glsl */`
-uniform sampler2D uSnowField;
-uniform vec4 uOccBox, uSnowCar;
+uniform sampler2D uSnowField, uTrail;
+uniform vec4 uOccBox, uSnowCar, uTrailBox, uSnowFine;
 uniform vec2 uSnowCarSize;
 uniform float uSnowDepth;
-float snowAt(vec2 xz, out float d) {
+${TRAIL_GLSL}
+// the surface the snow lies on at xz (returned), and how deep it lies there before anyone walked through it (d0)
+float snowBase(vec2 xz, out float d0) {
   vec2 uv = vec2(0.5 + (xz.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (xz.y - uOccBox.y) / (2.0 * uOccBox.z));
   vec4 s = texture2D(uSnowField, uv);
   vec2 e = abs(uv - 0.5) * 2.0;
-  d = uSnowDepth * s.g * (1.0 - smoothstep(0.78, 0.97, max(e.x, e.y)));
+  d0 = uSnowDepth * s.g * (1.0 - smoothstep(0.78, 0.97, max(e.x, e.y)));
   // the car you drive pushes the snow aside (the maps follow it only every few metres)
   vec2 dc = xz - uSnowCar.xy, cs = vec2(cos(uSnowCar.z), sin(uSnowCar.z));
   vec2 q = abs(vec2(dot(dc, vec2(cs.x, -cs.y)), dot(dc, -cs.yx))) - uSnowCarSize;
-  d *= 1.0 - uSnowCar.w * (1.0 - smoothstep(-0.2, 0.25, max(q.x, q.y)));
+  d0 *= 1.0 - uSnowCar.w * (1.0 - smoothstep(-0.2, 0.25, max(q.x, q.y)));
   // the deeper it lies, the more it smooths what is under it: it fills the low side of a step up to the step's
   // average (never below the surface it lies on)
-  float b = mix(s.r, max(s.r, s.b), smoothstep(0.03, 0.35, d));
-  return b + uOccBox.w + d;
+  return mix(s.r, max(s.r, s.b), smoothstep(0.03, 0.35, d0)) + uOccBox.w;
+}
+// the prints in a cover d0 deep: a boot or a tyre packs fresh snow to about a quarter of its depth, pushes up a rim
+// around (at most ~6 cm) and leaves its tread on the floor
+float trailDh(vec2 xz, float d0) {
+  vec4 t = trailAt(xz);
+  return -0.75 * d0 * t.r + 0.4 * min(d0, 0.15) * t.g * (1.0 - t.r) - 0.12 * min(d0, 0.05) * t.b;
+}
+float snowAt(vec2 xz, out float d) {
+  float d0, b = snowBase(xz, d0);
+  d = d0 + trailDh(xz, d0);
+  return b + d;
 }`;
 const BLANKET_POS = /* glsl */`
+#ifdef SNOW_FINE
+  vec2 sxz = position.xz + uSnowFine.xy;
+#else
   vec2 sxz = position.xz + uOccBox.xy;
+#endif
   float sd;
-  float sy = snowAt(sxz, sd);`;
+  float sy = snowAt(sxz, sd);
+#ifdef SNOW_FINE
+  // its edge runs straight between the coarse vertices (0.4 m apart), as the coarse triangles' edges do
+  { vec2 fe = uSnowFine.z - abs(position.xz);
+    if (fe.x < 0.002 || fe.y < 0.002) {
+      bool alongZ = fe.x < 0.002;
+      float c = alongZ ? sxz.y : sxz.x, c0 = floor(c / 0.4 + 0.001) * 0.4, k = clamp((c - c0) / 0.4, 0.0, 1.0), s0, s1;
+      vec2 p0 = alongZ ? vec2(sxz.x, c0) : vec2(c0, sxz.y), p1 = alongZ ? vec2(sxz.x, c0 + 0.4) : vec2(c0 + 0.4, sxz.y);
+      sy = mix(snowAt(p0, s0), snowAt(p1, s1), k);
+    } }
+#else
+  // under the fine blanket it goes down out of the way
+  { vec2 fq = abs(sxz - uSnowFine.xy); if (uSnowFine.w > 0.5 && max(fq.x, fq.y) < uSnowFine.z - 0.05) sy -= 3.0; }
+#endif`;
 
-export class SnowBlanket {
-  constructor(scene) {
-    const g = new THREE.PlaneGeometry(96, 96, 240, 240).rotateX(-Math.PI / 2);
-    g.deleteAttribute('normal'); g.deleteAttribute('uv');
-    const uni = { uSnowField: SNOW.uSnowField, uOccBox: RAIN.uOccBox, uSnowDepth: SNOW.uSnowDepth, uSnowLight: SNOW.uSnowLight, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize };
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
-    mat.color.setRGB(0.87, 0.9, 0.94);                         // (the cover's snow colour, rain.js)
-    mat.userData.noWet = true;
-    mat.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, uni);
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\n' + BLANKET_PARS + '\nvarying vec3 vSnowP;')
-        // (the normal is worked out per pixel)
-        .replace('#include <beginnormal_vertex>', BLANKET_POS + `
+function blanketMaterials(fine) {
+  const uni = { uSnowField: SNOW.uSnowField, uOccBox: RAIN.uOccBox, uSnowDepth: SNOW.uSnowDepth, uSnowLight: SNOW.uSnowLight, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize,
+    uTrail: SNOW.uTrail, uTrailBox: SNOW.uTrailBox, uSnowFine: SNOW.uSnowFine, uSnowPlaster: SNOW.uSnowPlaster, uSnowFall: SNOW.uSnowFall, uSnowWindDir: SNOW.uSnowWindDir };
+  const def = (fine ? '#define SNOW_FINE\n' : '') + `#define SNOW_TE ${fine ? '0.03' : '0.06'}\n`;
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
+  mat.color.setRGB(0.87, 0.9, 0.94);                         // (the cover's snow colour)
+  mat.userData.noWet = true;
+  mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uni);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + def + BLANKET_PARS + '\nvarying vec3 vSnowP;')
+      // (the normal is worked out per pixel)
+      .replace('#include <beginnormal_vertex>', BLANKET_POS + `
   vec3 objectNormal = vec3(0.0, 1.0, 0.0);
   vSnowP = vec3(sxz.x, sy, sxz.y);`)
-        .replace('#include <begin_vertex>', 'vec3 transformed = vec3(sxz.x, sy, sxz.y);');
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', `#include <common>
-${BLANKET_PARS}
-uniform float uSnowLight;
+      .replace('#include <begin_vertex>', 'vec3 transformed = vec3(sxz.x, sy, sxz.y);');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+${def}${BLANKET_PARS}
+uniform float uSnowLight, uSnowPlaster, uSnowFall;
+uniform vec2 uSnowWindDir;
 varying vec3 vSnowP;
-float sFd, sFn;
-float bnHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float sFd, sFd0;
+// (world cells run to 10^5 and more a few km out: brought into a small range first, or float precision leaves the hash
+// with a handful of values and every pattern built on it flat)
+float rainHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float bnNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(bnHash(i), bnHash(i + vec2(1.0, 0.0)), f.x), mix(bnHash(i + vec2(0.0, 1.0)), bnHash(i + vec2(1.0, 1.0)), f.x), f.y);
-}`)
-        // where it ends and how it is lit, per pixel from the snow's shape (not from the 0.4 m triangles)
-        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-  snowAt(vSnowP.xz, sFd);
-  if (sFd < 0.012) discard;`)
-        .replace('#include <color_fragment>', `#include <color_fragment>
-  diffuseColor.rgb *= 0.95 + 0.05 * bnNoise(vSnowP.xz * 0.8);`)
-        // lumps at the decimetre and centimetre scale (finer than the vertices)
-        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-  float shx = snowAt(vSnowP.xz + vec2(0.2, 0.0), sFn) - snowAt(vSnowP.xz - vec2(0.2, 0.0), sFn);
-  float shz = snowAt(vSnowP.xz + vec2(0.0, 0.2), sFn) - snowAt(vSnowP.xz - vec2(0.0, 0.2), sFn);
-  normal = normalize((viewMatrix * vec4(-shx, 0.4, -shz, 0.0)).xyz);
-  vec2 bq = vSnowP.xz * 3.0, bq2 = vSnowP.xz * 11.0;
-  vec2 bg = vec2(bnNoise(bq + vec2(0.5, 0.0)) - bnNoise(bq - vec2(0.5, 0.0)), bnNoise(bq + vec2(0.0, 0.5)) - bnNoise(bq - vec2(0.0, 0.5))) * 0.35
-          + vec2(bnNoise(bq2 + vec2(0.5, 0.0)) - bnNoise(bq2 - vec2(0.5, 0.0)), bnNoise(bq2 + vec2(0.0, 0.5)) - bnNoise(bq2 - vec2(0.0, 0.5))) * 0.12;
-  normal = normalize(normal - (viewMatrix * vec4(bg.x, 0.0, bg.y, 0.0)).xyz);`)
-        // crystals catching the light, twinkling as you move
-        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-  { float sd = length(vSnowP - cameraPosition);
-    float tw = bnHash(floor(vSnowP.xz * 55.0) + floor(cameraPosition.xz * 3.0 + cameraPosition.y * 5.0));
-    totalEmissiveRadiance += vec3(step(0.9975, tw)) * uSnowLight * 1.2 * (1.0 - smoothstep(5.0, 16.0, sd)); }`);
+  return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fieldH(vec2 xz) { float d0, b = snowBase(xz, d0); return b + d0; }
+${GLINT_GLSL}`)
+      // where it ends, per pixel from the snow's shape and the prints (not from the triangles)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+  snowBase(vSnowP.xz, sFd0);
+  sFd = sFd0 + trailDh(vSnowP.xz, sFd0);
+  if (sFd < 0.012) discard;
+  vec4 sTr = trailAt(vSnowP.xz);`)
+      // packed snow is a little greyer
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  diffuseColor.rgb *= (0.95 + 0.05 * bnNoise(vSnowP.xz * 0.8)) * (1.0 - 0.07 * sTr.r);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  {
+    // the shape, per pixel: the drifts' at 0.2 m, the prints' at 3 cm (6 further out)
+    vec2 sp = vSnowP.xz, te = vec2(SNOW_TE, 0.0);
+    vec2 G = vec2(fieldH(sp + vec2(0.2, 0.0)) - fieldH(sp - vec2(0.2, 0.0)), fieldH(sp + vec2(0.0, 0.2)) - fieldH(sp - vec2(0.0, 0.2))) / 0.4
+           + vec2(trailDh(sp + te.xy, sFd0) - trailDh(sp - te.xy, sFd0), trailDh(sp + te.yx, sFd0) - trailDh(sp - te.yx, sFd0)) / (2.0 * SNOW_TE);
+    float sDist = length(vSnowP - cameraPosition);
+    // lumps at the decimetre and centimetre scale
+    vec2 bq = sp * 3.0, bq2 = sp * 11.0;
+    G += vec2(bnNoise(bq + vec2(0.5, 0.0)) - bnNoise(bq - vec2(0.5, 0.0)), bnNoise(bq + vec2(0.0, 0.5)) - bnNoise(bq - vec2(0.0, 0.5))) * 0.35 * (1.0 - sTr.r)
+       + vec2(bnNoise(bq2 + vec2(0.5, 0.0)) - bnNoise(bq2 - vec2(0.5, 0.0)), bnNoise(bq2 + vec2(0.0, 0.5)) - bnNoise(bq2 - vec2(0.0, 0.5))) * 0.12;
+    // the wind's ripples: short crests across it, 15-30 cm apart, wavering and breaking off, a long gentle windward
+    // slope and a short steep lee face, in patches; clear after a blizzard, faint after a calm fall, none in the prints
+    vec2 wd = uSnowWindDir, wn = vec2(-wd.y, wd.x);
+    float rk = smoothstep(0.45, 0.75, bnNoise(sp * 0.3 + 11.0)) * max(uSnowPlaster, 0.3 * (1.0 - uSnowFall)) * (1.0 - smoothstep(8.0, 24.0, sDist)) * (1.0 - sTr.r);
+    if (rk > 0.001) {
+      for (int k = 0; k < 2; k++) {
+        float fk = float(k), ang = fk * 0.4 - 0.2;
+        vec2 dk = normalize(wd + wn * ang);
+        float al = dot(sp, dk), ac = dot(sp, vec2(-dk.y, dk.x));
+        float ph = al * (4.0 + 2.2 * fk) + bnNoise(vec2(ac * 1.6, al * 0.5) + fk * 7.0) * 2.5 + bnNoise(vec2(ac * 5.0, al * 1.5) + fk * 3.0) * 0.8;
+        // (a smooth skewed profile, h = sin + 0.35 sin 2x: its slope, steeper on the lee side; each crest breaks off)
+        float x = ph * 6.2832, crest = smoothstep(0.3, 0.6, bnNoise(vec2(ac * 3.0, floor(ph) * 0.7) + fk * 5.0));
+        G += dk * (cos(x) + 0.7 * cos(2.0 * x)) * 0.045 * crest * rk * (1.0 - 0.4 * fk);
+      }
+    }
+    normal = normalize((viewMatrix * vec4(-G.x, 1.0, -G.y, 0.0)).xyz);
+  }`)
+      // the sun (or the moon) on it: what goes into the snow and comes out a little further on (the turned-away side
+      // of every lump and the walls of the prints glow softly, bluish: ice takes the red), and its crystals' glints
+      .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+#if NUM_DIR_LIGHTS > 0
+  {
+    float gSh = 1.0;
+#ifdef CSM_SHADOW
+    gSh = csmShadow;
+#endif
+    vec3 sL = directionalLights[0].direction, sC = directionalLights[0].color * gSh;
+    float ndl = dot(normal, sL);
+    reflectedLight.directDiffuse += sC * diffuseColor.rgb * vec3(0.6, 0.82, 1.0) * (0.3 * RECIPROCAL_PI) * (clamp((ndl + 0.5) / 1.5, 0.0, 1.0) - clamp(ndl, 0.0, 1.0));
+    reflectedLight.directSpecular += sC * (6.0 * (1.0 - sTr.r) * (1.0 - smoothstep(6.0, 18.0, length(vSnowP - cameraPosition))) * snowGlint(vSnowP, normal, sL, normalize(-vViewPosition)));
+  }
+#endif`);
+  };
+  mat.customProgramCacheKey = () => fine ? 'snowBlanketFine' : 'snowBlanket';
+  // its own shadow (the low winter sun picks out the drifts and the prints)
+  const depth = new THREE.MeshDepthMaterial();
+  depth.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uni);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + def + BLANKET_PARS)
+      .replace('#include <begin_vertex>', BLANKET_POS + '\nvec3 transformed = vec3(sxz.x, sy - (sd < 0.012 ? 0.05 : 0.0), sxz.y);');
+  };
+  depth.customProgramCacheKey = () => fine ? 'snowBlanketFineDepth' : 'snowBlanketDepth';
+  return { mat, depth };
+}
+
+export class SnowBlanket {
+  // fineSegs: the fine blanket's vertices along a side (384: 3.3 cm apart)
+  constructor(scene, fineSegs = 384) {
+    const mk = (size, segs, fine) => {
+      const g = new THREE.PlaneGeometry(size, size, segs, segs).rotateX(-Math.PI / 2);
+      g.deleteAttribute('normal'); g.deleteAttribute('uv');
+      const { mat, depth } = blanketMaterials(fine);
+      const m = new THREE.Mesh(g, mat);
+      m.customDepthMaterial = depth;
+      m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true;
+      m.matrixAutoUpdate = false;
+      m.userData.noAO = true; m.userData.ueSkip = 'rain';
+      m.visible = false;
+      scene.add(m);
+      return m;
     };
-    mat.customProgramCacheKey = () => 'snowBlanket';
-    // its own shadow (the low winter sun picks out the drifts)
-    const depth = new THREE.MeshDepthMaterial();
-    depth.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, uni);
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\n' + BLANKET_PARS)
-        .replace('#include <begin_vertex>', BLANKET_POS + '\nvec3 transformed = vec3(sxz.x, sy - (sd < 0.012 ? 0.05 : 0.0), sxz.y);');
-    };
-    depth.customProgramCacheKey = () => 'snowBlanketDepth';
-    this.mesh = new THREE.Mesh(g, mat);
-    this.mesh.customDepthMaterial = depth;
-    this.mesh.frustumCulled = false; this.mesh.castShadow = true; this.mesh.receiveShadow = true;
-    this.mesh.matrixAutoUpdate = false;
-    this.mesh.userData.noAO = true; this.mesh.userData.ueSkip = 'rain';
-    this.mesh.visible = false;
-    scene.add(this.mesh);
+    this.mesh = mk(96, 240, false);
+    this.fine = mk(2 * SNOW.uSnowFine.value.z, fineSegs, true);
   }
 
-  update() { this.mesh.visible = SNOW.uSnowDepth.value > 0.012 && !!SNOW.uSnowField.value && RAIN.uOccOn.value > 0.5; }
+  // the fine one follows you, 3.5 m ahead (on the coarse vertices' 0.4 m lattice, so it never swims)
+  update(camera) {
+    const on = SNOW.uSnowDepth.value > 0.012 && !!SNOW.uSnowField.value && RAIN.uOccOn.value > 0.5;
+    this.mesh.visible = on;
+    const f = SNOW.uSnowFine.value;
+    this.fine.visible = on && !!camera;
+    f.w = this.fine.visible ? 1 : 0;
+    if (!this.fine.visible) return;
+    const yaw = camera.rotation.y;
+    f.x = Math.round((camera.position.x - Math.sin(yaw) * 3.5) / 0.4) * 0.4;
+    f.y = Math.round((camera.position.z - Math.cos(yaw) * 3.5) / 0.4) * 0.4;
+  }
 }
 
 // ------------------------------------------------------------------ spray thrown up by the tyres on a wet road
