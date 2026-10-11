@@ -514,6 +514,39 @@ function genFirBranch() {
   TEX.fir = t;
 }
 
+// Black pine (Pinus nigra) foliage: a clump of tufts at the twig ends, each a dense burst of long stiff needles (8-14
+// cm, in pairs), dark green with lighter tips; the pines' crowns are built of these (geo/trees.js pineModel)
+function genPineTuft() {
+  const w = 256, h = 256;
+  const r = rng(419);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.lineCap = 'round';
+  const tufts = [];
+  for (let i = 0; i < 14; i++) {
+    const a = r() * Math.PI * 2, d = Math.sqrt(r()) * 78;
+    tufts.push([w / 2 + Math.cos(a) * d, h / 2 + Math.sin(a) * d * 0.8, 20 + r() * 16]);
+  }
+  // the twigs from the middle to each tuft
+  ctx.strokeStyle = '#4a3a2a';
+  for (const [x, y] of tufts) { ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(w / 2, h / 2); ctx.lineTo(x, y); ctx.stroke(); }
+  // the needles: dense near the twig end, spreading out and a little forward
+  for (const [x, y, R] of tufts) {
+    const lean = Math.atan2(y - h / 2, x - w / 2);
+    for (let k = 0; k < 85; k++) {
+      const a = lean + (r() - 0.5) * Math.PI * 2, L = R * (0.4 + 0.6 * r());     // (spiky: needles of every length)
+      const g = 40 + r() * 40, tip = 0.25 + r() * 0.2;
+      const x1 = x + Math.cos(a) * L, y1 = y + Math.sin(a) * L, xm = x + Math.cos(a) * L * (1 - tip), ym = y + Math.sin(a) * L * (1 - tip);
+      ctx.lineWidth = 1.05;
+      ctx.strokeStyle = `rgb(${(g * 0.42) | 0},${(g * 0.9) | 0},${(g * 0.48) | 0})`;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(xm, ym); ctx.stroke();
+      ctx.strokeStyle = `rgb(${(g * 0.62) | 0},${(g * 1.15) | 0},${(g * 0.6) | 0})`;
+      ctx.beginPath(); ctx.moveTo(xm, ym); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+  }
+  TEX.pineTuft = tex(c, { repeat: false });
+}
+
 // Norway spruce foliage atlas for the detailed near spruces (geo/firs.js), 512 x 1024:
 //  top half: a branch spray seen from above (base at the bottom, tip at the top): the axis and its side shoots, each a
 //  bottle-brush of 1-2 cm needles pointing forward, dark green with lighter new growth at the tips;
@@ -854,7 +887,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); }], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', genBark],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

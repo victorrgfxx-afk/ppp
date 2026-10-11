@@ -128,6 +128,36 @@ async function main() {
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
   let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
   let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a blizzard: viscol)
+  // shelter from the wind where you are (0 in the open .. 0.9 right behind a wall): what stands upwind within a few of
+  // its heights takes most of the wind off (behind a wall or a house ~10 % of it gets through close by, about half ~4
+  // heights back, all of it ~6 heights back); a trunk or a pole only by how wide it is across the wind; among the
+  // trees of a forest it drops by up to ~60 %
+  let shelter = 0;
+  const shQ = [], shWind = new THREE.Vector2();
+  const shelterAt = (x, y, z, wx, wz) => {
+    const L = 16;
+    world.query(x - wx * L / 2, z - wz * L / 2, L / 2 + 0.5, shQ);
+    let best = 0, trees = 0;
+    for (let i = 0; i < shQ.length; i++) {
+      const b = shQ[i];
+      if (b.y1 < y + 0.7 || b.y0 > y + 1.4 || b.tag === 'npc' || b === active?.box) continue;
+      // the ray from (x, z) upwind, in the box's frame: where it enters the box
+      const dx = x - b.x, dz = z - b.z, ox = dx * b.c - dz * b.s, oz = dx * b.s + dz * b.c;
+      const rx = -wx * b.c + wz * b.s, rz = -wx * b.s - wz * b.c;
+      let t0 = 0, t1 = L;
+      for (const [o, r, h] of [[ox, rx, b.hw], [oz, rz, b.hd]]) {
+        if (Math.abs(r) < 1e-6) { if (Math.abs(o) > h) { t0 = 1e9; break; } continue; }
+        const ta = (-h - o) / r, tb = (h - o) / r;
+        t0 = Math.max(t0, Math.min(ta, tb)); t1 = Math.min(t1, Math.max(ta, tb));
+      }
+      if (b.tag === 'tree' && Math.hypot(b.x - x, b.z - z) < 9) trees++;
+      if (t0 > t1) continue;
+      const H = Math.min(6, b.y1 - y), across = b.hw * Math.abs(-wz * b.c - wx * b.s) + b.hd * Math.abs(-wz * b.s + wx * b.c);
+      const reach = Math.max(2, 6 * H);
+      best = Math.max(best, (1 - THREE.MathUtils.smoothstep(t0, 0.3 * reach, reach)) * THREE.MathUtils.smoothstep(across, 0.1, 0.9));
+    }
+    return Math.max(0.9 * best, Math.min(0.6, trees * 0.05));
+  };
   let moonBeam = null, flashlight = null, headlights = null, bear = null, gradeU = null;   // (made once the map is built)
   const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   // night palettes: a clear moonlit sky, or the low deck of a night storm
@@ -376,10 +406,13 @@ async function main() {
   // the flying snow blows through leaves, needles, a crown's dense core, the snow on the branches, chain-link and
   // lattice (all cut out of cards), and through lines and glows; it does not through the rest. (The ground and the
   // water are left out too: the map keeps nothing that low anyway.)
-  const leeMatSkip = (m) => m.depthWrite === false || m.alphaTest > 0 || m.userData.core || m.userData.leeSkip ||
-    m.userData.ue?.kind === 'terrain' || m.userData.ue?.kind === 'water' || (winter && leafTex.includes(m.map));
+  const softMat = (m) => m.depthWrite === false || m.alphaTest > 0 || m.userData.core || m.userData.leeSkip || (winter && leafTex.includes(m.map));
+  const leeMatSkip = (m) => softMat(m) || m.userData.ue?.kind === 'terrain' || m.userData.ue?.kind === 'water';
   const leeSkip = (o) => o.isLine || o.isPoints || o.isSprite || o.userData.ue?.kind === 'far' ||
     (o.isMesh && !!o.material && (Array.isArray(o.material) ? o.material.every(leeMatSkip) : leeMatSkip(o.material)));
+  // ...and the lying snow neither lies on them in a layer nor piles up against them (rain.js RainOcclusion: the shape
+  // is baked from what is solid: never a sapling's or a shrub's branches)
+  const softSkip = (o) => o.isLine || o.isPoints || o.isSprite || (o.isMesh && !!o.material && (Array.isArray(o.material) ? o.material.every(softMat) : softMat(o.material)));
   // winter (the snow modes): the broadleaves stand bare - every leaf texture shows twigs (one image swap reaches every
   // material and clone that uses it), and the far billboards and forest roof go bare too (geo/trees.js, canopy.js)
   const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn].filter(Boolean);
@@ -394,6 +427,7 @@ async function main() {
   SNOW.uSnowDepth.value = snowCover > 0 ? 0.25 : snowFall > 0 ? 0.05 : 0;
   SNOW.uSnowFall.value = snowFall;
   storm = stormTarget; if (storm > 0) { SNOW.uSnowDepth.value = 0.2; SNOW.uSnowPlaster.value = 0.7; }   // (and a blizzard already blowing)
+  else if (snowCover > 0) SNOW.uSnowPlaster.value = 0.5;                                               // (the trunks white on one side)
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
@@ -855,7 +889,7 @@ async function main() {
     }
     // a gale buffets you: the view shudders with the gusts (on foot more than behind the wheel)
     if (storm > 0.05) {
-      const k = storm * gust * (mode === 'car' ? 0.4 : 1);
+      const k = storm * gust * (mode === 'car' ? 0.4 : 1) * (1 - 0.85 * shelter);
       camera.rotation.z += (vn1(t * 6.1) - 0.5) * 0.012 * k; camera.rotation.x += (vn1(t * 4.7 + 9) - 0.5) * 0.008 * k;
     }
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = damp(camera.fov, fov, 6, dt); camera.updateProjectionMatrix(); }
@@ -900,9 +934,9 @@ async function main() {
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
-        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * 3.6)} km/h` : ''),
+        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
-    audio.update(dt, { rain: RAIN.uRain.value, storm, gust, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    audio.update(dt, { rain: RAIN.uRain.value, storm, gust, shelter, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
     if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
@@ -923,16 +957,27 @@ async function main() {
     if (snowFall > 0) dep.value = Math.min(0.6, dep.value + dt * SNOW.uSnowFall.value * sc * 0.08 / 60 * (1 + 0.5 * storm));
     else if (snowCover > 0) dep.value = Math.min(Math.max(dep.value, 0.25), dep.value + dt * 0.1);
     else dep.value = Math.max(0, dep.value - dt * (rainTarget > 0 ? 0.025 : 0.01));
-    // a blizzard plasters the windward faces in ~1.5 min; it stays until the snow melts
-    SNOW.uSnowPlaster.value = storm > 0.3 ? Math.min(1, SNOW.uSnowPlaster.value + dt / 90) : SNOW.uSnow.value < 0.3 ? Math.max(0, SNOW.uSnowPlaster.value - dt / 40) : SNOW.uSnowPlaster.value;
+    // the snow sticks to the windward faces (trunks, poles, walls): a blizzard plasters them in ~1.5 min, a snowfall
+    // with its breeze streaks them, and the clear day after finds the trunks of a wood white on one side; it stays
+    // until the snow melts
+    const plTo = storm > 0.3 ? 1 : snowFall > 0 ? 0.35 : snowCover > 0 ? 0.5 : 0;
+    SNOW.uSnowPlaster.value = SNOW.uSnow.value < 0.3 ? Math.max(0, SNOW.uSnowPlaster.value - dt / 40) : Math.max(SNOW.uSnowPlaster.value, Math.min(plTo, SNOW.uSnowPlaster.value + dt / 90));
     SNOW.uSnow.value = snowCover > 0 ? Math.min(1, sc + dt / 4) : snowFall > 0 ? Math.min(1, sc + dt * SNOW.uSnowFall.value / 60) : dep.value > 0.03 ? sc : Math.max(0, sc - dt / (rainTarget > 0 ? 15 : 40));
     SNOW.uSnowLight.value = rainLight;
     TRACTION.mu = 1 - 0.68 * Math.min(1, SNOW.uSnow.value * 1.4);   // ~0.3 on snow (packed snow 0.2-0.3, dry asphalt 0.8-1)
     TRACTION.sink = offRoad ? dep.value : 0;                            // (deep snow off the roads holds the wheels back)
-    TRACTION.wind = storm > 0.05 ? STORM.uWind.value : null;             // (a gale pushes the car and you)
-    player.wind = storm > 0.05 ? { x: STORM.uWind.value.x, z: STORM.uWind.value.y } : null;
+    // a gale pushes the car and you, less in the lee of what stands upwind (shelter, above)
+    if (storm > 0.05) {
+      if ((frameNo % 3) === 0) {
+        const w = STORM.uWind.value, wl = Math.hypot(w.x, w.y) || 1, p = mode === 'car' && active ? { x: active.x, y: active.car.group.position.y, z: active.z } : pos0();
+        shelter = damp(shelter, shelterAt(p.x, p.y ?? player.pos.y, p.z, w.x / wl, w.y / wl), 6, dt * 3);
+      }
+    } else shelter = 0;
+    shWind.copy(STORM.uWind.value).multiplyScalar(1 - shelter);
+    TRACTION.wind = storm > 0.05 ? shWind : null;
+    player.wind = storm > 0.05 ? { x: shWind.x, z: shWind.y } : null;
     player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
-    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0);
+    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip);
     if ((SNOW.uSnowFall.value > 0.002 || STORM.uStorm.value > 0.002) && rainOcc.snow) snowLee.update(renderer, scene, camera.position, occHide, leeSkip, rainOcc.snow.low.texture, dt);
     else snowLee.off();
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
@@ -993,7 +1038,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, firs, trail, snowLee, blanket, leeSkip, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

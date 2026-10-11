@@ -317,8 +317,9 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
     this.U.uCapK.value = capK;
     for (const k of this.kinds.values()) k.meshes.snow.visible = capK > 0.01;
     if (capK < 0.01) this.sheds.length = 0;
-    // it re-covers the bare branches while it snows (~90 s)
-    if (SNOW.uSnowFall.value > 0.3) this.sheds = this.sheds.filter(s => this.t - s.t < 90);
+    // the branches you shook bare carry their load again after a while (~90 s while it snows, ~3 min after): the
+    // spruces keep their shape and their snow, as a winter wood does
+    this.sheds = this.sheds.filter(s => this.t - s.t < (SNOW.uSnowFall.value > 0.3 ? 90 : 180));
     // contacts: who is inside which crown, at what height
     for (const c of this.contacts) c.held = false;
     for (const b of bodies) {
@@ -367,15 +368,19 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
       this.U.uShed.value[i].set(s ? s.x : 0, s ? s.y : 0, s ? s.z : 0, s ? s.R : 0);
       this.U.uShedTop.value[i] = s ? s.top : 0;
     }
-    // now and then a branch lets its load go by itself
+    // now and then a little snow sifts off a branch tip by itself (a puff of powder and a clump or two: the load stays)
     if (capK > 0.3 && this.pool.size && (this.nextDrop -= dt) <= 0) {
-      const gale = STORM.uStorm.value * STORM.gust;               // (a blizzard's gusts shake loads off every few seconds)
+      const gale = STORM.uStorm.value * STORM.gust;               // (a blizzard's gusts shake it off every few seconds)
       this.nextDrop = (4 + Math.random() * 9) / (1 + 3 * gale);
       const list = [...this.pool].filter(r => Math.hypot(r.x - cam.x, r.z - cam.z) < 28);
       const rec = list[Math.floor(Math.random() * list.length)];
       if (rec) {
         const hy = rec.y + rec.spec.H * rec.s * (0.4 + 0.45 * Math.random()), R = FirDetail.crownAt(rec, hy - rec.y), a = Math.random() * 6.283;
-        if (R > 0) this.shed(rec.x + Math.cos(a) * R * 0.6, hy, rec.z + Math.sin(a) * R * 0.6, 0.8, 1.2, rec, Math.round(10 * capK));
+        if (R > 0) {
+          const n = Math.round(8 * capK), x = rec.x + Math.cos(a) * R * 0.85, z = rec.z + Math.sin(a) * R * 0.85;
+          if (SNOW.uSnow.value > 0.2) this.fall.spawn(rec, x, hy, z, 0.5, 0.8, n);
+          if (this.audio && n > 0) this.audio.snowDrop(Math.min(1, n / 30) * this.vol(x, z), false);
+        }
       }
     }
     this.fall.update(dt, SNOW.uSnowLight.value);

@@ -148,6 +148,9 @@ export function buildMaterials() {
   leaf('leavesAutumn', TEX.leavesAutumn, 0xffffff, 0.035);                 // the lane up to the cross in mid-October
   leaf('leavesPinnate', TEX.leavesPinnate, 0xffffff, 0.045);                // black locust
   leaf('fir', TEX.fir, 0x9fb59a, 0.018);
+  M.fir.userData.snow = 0.8;                       // (rain.js: in the snow the conifers' boughs carry a load, as the spruces' do)
+  leaf('pine', TEX.pineTuft ?? TEX.fir, 0xb4c4a4, 0.014);   // black pine needle tufts (geo/trees.js)
+  M.pine.userData.snow = 0.8;
   leaf('sumac', TEX.fir, 0xd8e0a0, 0.05);
   leaf('flowers', TEX.flowers, 0xffffff, 0.03);           // pinnate sumac fronds (photo 7, across the street)
   M.yucca = addWind(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }), 0.05, 1.5);

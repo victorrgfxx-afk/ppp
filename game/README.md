@@ -104,6 +104,20 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
     * Cât ninge, urmele se umplu la loc: în ~2,5 minute, iar pe viscol în ~1 minut.
     * Harta urmelor acoperă ±24 m în jurul tău, cu 2,3 cm pe pixel (4,7 cm pe grafica scăzută și medie).
     * Ca să se vadă forma urmelor, cu umbrele lor, zăpada din fața ta (12,8 × 12,8 m) are un vârf la fiecare 3,3 cm. Marginea acestei zone urmează exact triunghiurile stratului mare, ca să nu apară crăpături.
+  * **Zăpada e opacă și rotunjită.**
+    * Unde zăpada acoperă doar în parte (la început, pe drumuri, sub coroane), stă în fulgi și pete albe, cu pământul între ele. Nu mai e o peliculă albă prin care se vede ce e dedesubt.
+    * Un strat adevărat (~10 cm și peste) acoperă orice pantă până la ~60°.
+    * Forma stratului se calculează doar din ce e solid: pământ, borduri, ziduri, mașini, pietre. Pe crengile puieților și ale tufelor zăpada nu mai stă în strat și nu mai face vârfuri ascuțite.
+    * Troienele din spatele obstacolelor sunt cozi lungi și rotunde: urcă până la creastă la ~1,5 m și se sting la ~5 m.
+    * Toată forma e netezită pe ~±1 m și citită cu o interpolare cubică. Movilele, malurile și troienele ies rotunde, fără muchii și colțuri.
+    * Sub crengile joase ajunge totuși puțină zăpadă, în pete.
+    * Zăpada lipită pe partea dinspre vânt e o crustă în dungi și pete.
+      * Pe scoarța copacilor se prinde cel mai bine: după ninsoare și în ziua senină de după, trunchiurile din pădure sunt albe pe o parte, ca în pozele de iarnă.
+      * Pe un gard vopsit sau pe un zid se prinde doar pe viscol adevărat.
+  * **Pădurea de iarnă.**
+    * Pinii negri nu mai au în coroană bila de umplutură care iarna arăta ca o acadea cu căciulă de zăpadă. Coroana e din smocuri de ace, mai dese, ca la un pin adevărat.
+    * Pe ramurile tuturor coniferelor stă mai multă zăpadă.
+    * Molizii își păstrează forma și încărcătura: zăpada care cade singură e doar o pulbere de pe vârful unei ramuri. Ramurile scuturate de tine se încarcă la loc după ~3 minute (~1,5 minute cât ninge).
   * **Zăpada arată mai real.**
     * Cristalele sclipesc doar unde le bate soarele sau luna și doar sub unghiul potrivit. Sclipirile se mută când te miști și dispar în umbră.
     * Lumina pătrunde puțin în zăpadă și iese alături. De aceea, partea umbrită a fiecărei movile și pereții urmelor sunt ușor luminați, albăstrui.
@@ -119,6 +133,12 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
     * Harta se reface când te muți cu 3 m sau când rafalele rotesc zborul cu 1,5°.
     * În mașina pe care o conduci nu intră niciun fulg.
     * Pe ninsoare liniștită e la fel, dar zăpada cade aproape vertical.
+  * **La adăpost nici vântul nu te mai împinge.** Se caută în direcția din care bate vântul ce stă între el și tine.
+    * În spatele unui zid sau al unei case trece ~10% din rafală aproape de obstacol și jumătate la ~4 înălțimi de el. La ~6 înălțimi bate din nou din plin.
+    * Un trunchi sau un stâlp te adăpostește doar cât e de lat. În pădure vântul scade cu până la ~60%.
+    * Același adăpost oprește împingerea, încetinirea când mergi contra vântului, zgâlțâiala camerei și împingerea laterală a mașinii.
+    * Vuietul se aude înăbușit, iar sâsâitul zăpezii dispare.
+    * Lângă hartă scrie vântul de unde ești, cu „(la adăpost)” când e cazul. Măsurat: 0 în stradă, 0,9 în spatele casei și al mașinii.
   * **Zăpada de pe jos e spulberată**: șuvițe care curg pe suprafața zăpezii (nu peste acoperișuri), mai încet decât vântul de sus, în panglici șerpuite. Majoritatea curge sub genunchi, puțină ajunge la înălțimea capului. Șuvițele se opresc în ziduri, garduri și mașini și nu ajung sub ele.
   * **Vizibilitatea scade la ~250 m** și se închide cu fiecare rafală ca o perdea albă, apoi se deschide la loc. Lumina e plată, fără umbre, sub un plafon alb-cenușiu.
   * **Zăpada se lipește pe partea dinspre vânt** a trunchiurilor, stâlpilor, zidurilor, gardurilor și geamurilor, în dungi. Rămâne și după viscol, până se topește.

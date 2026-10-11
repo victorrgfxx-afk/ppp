@@ -157,17 +157,17 @@ function pineModel(t, seed) {
   const base = t.H * 0.6;
   wood.push(cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.96, 0), 0.27, 0.07, 6));
   const clumps = [];
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 16; i++) {
     const a = i * 2.4 + r() * 0.8, k = r();
     const y = base + 0.8 + k * (t.H - base - 1.6);
-    const rad = t.crown * (0.35 + 0.65 * r()) * (1 - 0.45 * k);
+    const rad = t.crown * (0.3 + 0.7 * r()) * (1 - 0.45 * k);
     const p = new THREE.Vector3(Math.cos(a) * rad, y, Math.sin(a) * rad);
     clumps.push(p);
     wood.push(cyl(new THREE.Vector3(0, y - 0.9, 0), p, 0.07, 0.03, 4));
-    for (let q = 0; q < 6; q++) {
-      const s = 1.5 + r() * 0.9;
+    for (let q = 0; q < 9; q++) {
+      const s = 1.1 + r() * 0.7;
       const g = new THREE.PlaneGeometry(s * 1.3, s);
-      g.rotateX(-Math.PI / 2 + (r() - 0.5) * 1.1);
+      g.rotateX(-Math.PI / 2 + (r() - 0.5) * 1.9);         // (tilted every way: a clump reads full from the side too)
       g.rotateY(r() * Math.PI * 2);
       g.translate(p.x + (r() - 0.5) * 0.8, p.y + (r() - 0.3) * 0.5, p.z + (r() - 0.5) * 0.8);
       const nrm = g.attributes.normal, pos = g.attributes.position;
@@ -181,7 +181,9 @@ function pineModel(t, seed) {
   const core = new THREE.SphereGeometry(1, 8, 5);
   const cp = core.attributes.position;
   for (let k = 0; k < cp.count; k++) cp.setXYZ(k, cp.getX(k) * t.crown * 0.62, cp.getY(k) * (t.H - base) * 0.3 + base + (t.H - base) * 0.55, cp.getZ(k) * t.crown * 0.62);
-  return [[mergeGeometries(wood.map(clean)), 'bark'], [clean(core), 'core'], [mergeGeometries(cards), 'fir']];
+  // (the dark inner volume fills the crown of the far impostors only: near, a solid ball in the needle clumps would show,
+  // and under snow it would read as a white-capped lollipop)
+  return [[mergeGeometries(wood.map(clean)), 'bark'], [clean(core), 'pineCore'], [mergeGeometries(cards), 'pine']];
 }
 
 // ---- distance switch in the vertex shader (per instance) ----
@@ -232,13 +234,13 @@ export function buildTrees(scene, world, renderer, quality) {
   const density = quality.label === 'Scăzută' ? 0.35 : quality.label === 'Medie' ? 0.65 : 1;
   const nearR = { 'Scăzută': 110, 'Medie': 150, 'Înaltă': 200 }[quality.label] ?? 260;
   const mats = {
-    bark: M.bark, core: M.firCore, fir: M.fir,
+    bark: M.bark, core: M.firCore, fir: M.fir, pine: M.pine, pineCore: M.firCore.clone(),
     crown: new THREE.MeshStandardMaterial({ color: 0x3a4b2c, roughness: 1 }),
     barkLight: M.bark.clone(),
   };
   mats.barkLight.color = new THREE.Color(0xc9c4ba);             // smooth grey beech bark
   M.bark.userData.bark = mats.barkLight.userData.bark = true;
-  mats.crown.userData.core = true;
+  mats.crown.userData.core = mats.pineCore.userData.core = true;
   const models = TYPES.map((t, i) => {
     const parts = t.pine ? pineModel(t, 50 + i) : t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
     const leaf = M[t.leaf] ?? M.leaves;

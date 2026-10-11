@@ -197,12 +197,12 @@ export class Audio {
     this.t += dt;
     const now = this.ctx.currentTime;
     // the wind: a breeze, or in a blizzard a roar that rises and falls with the gusts, whistling at its peaks
-    const storm = st.storm ?? 0, gust = st.gust ?? 1;
-    this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41) + storm * (250 + 700 * gust), now, 0.4);
+    const storm = st.storm ?? 0, gust = st.gust ?? 1, lee = st.shelter ?? 0;   // (in the lee the roar is overhead: duller, the hiss gone)
+    this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41) + storm * (250 + 700 * gust) * (1 - 0.6 * lee), now, 0.4);
     this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0) + storm * (0.12 + 0.2 * gust), now, 0.3);
     this.galeF.frequency.setTargetAtTime(420 + 650 * gust + 120 * Math.sin(this.t * 0.9), now, 0.35);
-    this.galeGain.gain.setTargetAtTime(storm * 0.11 * gust * gust, now, 0.3);
-    this.hissGain.gain.setTargetAtTime(storm * 0.035 * gust, now, 0.3);
+    this.galeGain.gain.setTargetAtTime(storm * 0.11 * gust * gust * (1 - 0.55 * lee), now, 0.3);
+    this.hissGain.gain.setTargetAtTime(storm * 0.035 * gust * (1 - 0.85 * lee), now, 0.3);
     const rain = st.rain ?? 0;
     this.snowCover = st.snowCover ?? 0;
     this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0), now, 1.5);
