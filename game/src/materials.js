@@ -49,6 +49,8 @@ export function buildMaterials() {
   std('gravel', { map: TEX.gravel, normalMap: TEX.gravelN, normalScale: n(0, 1.2), roughness: 0.97 });
   std('grassGround', { map: TEX.grass, normalMap: TEX.grassN, roughness: 0.98 });
   std('soil', { map: TEX.soil, normalMap: TEX.soilN, roughness: 0.98 });
+  // the bare ground: the water that runs off it in a downpour is muddy (rain.js)
+  for (const k of ['gravel', 'grassGround', 'soil']) M[k].userData.wet = 'ground';
   std('tiles', { map: TEX.tiles, normalMap: TEX.tilesN, roughness: 0.55 });
   std('plinthTile', { map: TEX.plinth, normalMap: TEX.plinthN, roughness: 0.6 });
   std('rustStrip', { map: TEX.rust_strip, normalMap: TEX.rust_stripN, roughness: 0.75, metalness: 0.3 });

@@ -13,6 +13,9 @@ export const RAIN = {
   uOcc: { value: null },
   uOccBox: { value: new THREE.Vector4(0, 0, 48, 0) },   // centre x, z, half size (m), reference height
   uOccOn: { value: 0 },
+  uGale: { value: 0 },         // a squall's gale (0..1): the rain driven along the wind, kept off by what stands upwind
+  uFlow: { value: null },      // the running water (runoff.js): depth, velocity, the surface it runs on
+  uFlowBox: { value: new THREE.Vector4(0, 0, 48, 0) },   // centre x, z, half size, on
 };
 
 // snow (the same hook as the rain: every patched material can be covered)
@@ -75,17 +78,42 @@ float rainTop(vec2 xz) {
 float rainHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 `;
 
+// what keeps the flying snow off (the flakes and the drift): SnowLee's map of the things in its way, seen along its
+// flight, and the car you drive
+const LEE_GLSL = /* glsl */`
+uniform sampler2D uLee;
+uniform mat4 uLeeVP;
+uniform vec3 uLeeOrg, uLeeDir;
+uniform float uLeeOn;
+uniform vec4 uSnowCar;
+uniform vec2 uSnowCarSize, uSnowCarY;
+// how far (m along the flight) p lies behind the first thing upwind of it that the snow cannot blow through; < 0 open
+float leeGap(vec3 p) {
+  if (uLeeOn < 0.5) return -1.0;
+  vec2 uv = (uLeeVP * vec4(p, 1.0)).xy * 0.5 + 0.5;
+  if (any(lessThan(uv, vec2(0.002))) || any(greaterThan(uv, vec2(0.998)))) return -1.0;
+  return dot(p - uLeeOrg, uLeeDir) - texture2D(uLee, uv).r;
+}
+bool inCar(vec3 p) {
+  if (uSnowCar.w < 0.5) return false;
+  vec2 dc = p.xz - uSnowCar.xy, cs = vec2(cos(uSnowCar.z), sin(uSnowCar.z));
+  vec2 q = abs(vec2(dot(dc, vec2(cs.x, -cs.y)), dot(dc, cs.yx))) - uSnowCarSize - 0.04;
+  return max(q.x, q.y) < 0.0 && p.y > uSnowCarY.x - 0.1 && p.y < uSnowCarY.x + uSnowCarY.y + 0.04;
+}`;
+
 // ------------------------------------------------------------------ wet surfaces
 const WET_PARS = /* glsl */`
 uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight, uSnowPlaster, uSnowDepth;
 uniform vec2 uSnowWindDir;
-uniform sampler2D uOcc, uTrail;
-uniform vec4 uOccBox, uTrailBox;
+uniform sampler2D uOcc, uTrail, uFlow;
+uniform vec4 uOccBox, uTrailBox, uFlowBox;
+uniform float uGale;
 varying vec3 vWetP;
 float wetReflOut = 0.0;                              // how much this point mirrors the scene (screen-space reflections, post.js)
 float snowGlintK = 0.0;                              // fresh snow here: its crystals glint in the sun (after the lights)
 ${OCC_GLSL}
 ${TRAIL_GLSL}
+${LEE_GLSL}
 float wetNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
@@ -106,9 +134,58 @@ vec2 wetRipples(vec2 p, float t) {
   }
   return g;
 }
+// how open p is to the driven rain (0 behind something along its flight .. 1): five taps across the flight, soft (a
+// map texel is ~7 cm: a hard edge would be a staircase)
+float leeOpen(vec3 p) {
+  vec3 a = normalize(cross(uLeeDir, vec3(0.0, 1.0, 0.0)) + vec3(1e-4)), b = cross(a, uLeeDir);
+  float e = 0.0;
+  for (int k = 0; k < 5; k++) {
+    vec2 o = k == 0 ? vec2(0.0) : vec2(k == 1 ? 1.0 : k == 2 ? -1.0 : 0.0, k == 3 ? 1.0 : k == 4 ? -1.0 : 0.0) * 0.14;
+    e += 1.0 - smoothstep(0.1, 0.45, leeGap(p + a * o.x + b * o.y));
+  }
+  return e / 5.0;
+}
 float wetOpen(vec3 wp) {
   float top = rainTop(wp.xz);
   return top < -1e4 ? 1.0 : 1.0 - smoothstep(0.3, 0.9, top - wp.y);
+}
+// the running water (runoff.js): how deep (m) and how fast (m/s, world x / z) it runs here, only on the surface it was
+// worked out on (not on a wall below the eaves, nor on a floor under a roof); w: 1 inside the box it covers
+vec4 flowAt(vec3 wp) {
+  if (uFlowBox.w < 0.5) return vec4(0.0);
+  vec2 uv = vec2(0.5 + (wp.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (wp.z - uFlowBox.y) / (2.0 * uFlowBox.z));
+  vec2 e = abs(uv - 0.5) * 2.0;
+  float inBox = 1.0 - smoothstep(0.88, 0.99, max(e.x, e.y));
+  if (inBox <= 0.0) return vec4(0.0);
+  vec4 f = texture2D(uFlow, uv);
+  return vec4(f.xyz * inBox * (1.0 - smoothstep(0.1, 0.25, abs(wp.y - f.w - uOccBox.w))), inBox);
+}
+// carried along with the water (a flow map: two layers of the same pattern, each carried for one period and faded in
+// and out in turn): its little waves, stretched across the flow (the riffles stand across a stream), as a slope
+// (world x / z), and the foam it carries in streaks
+vec3 flowSurface(vec2 p, vec2 vel, float t, float aa) {
+  float sp = length(vel);
+  vec2 fd = sp > 1e-3 ? vel / sp : vec2(1.0, 0.0), fa = vec2(-fd.y, fd.x);
+  vec3 g = vec3(0.0);
+  for (int k = 0; k < 2; k++) {
+    float ph = fract(t * 0.8 + float(k) * 0.5), wk = 1.0 - abs(2.0 * ph - 1.0);
+    vec2 q = p - vel * ph * 1.25 + float(k) * vec2(3.7, 7.1);
+    float ac = dot(q, fa), al = dot(q, fd);
+    // the riffles (~15-25 cm), and finer ones on them where the pixels can still show them
+    vec2 r = vec2(ac * 2.2, al * (4.0 + 3.0 * min(sp, 2.0)));
+    float n0 = wetNoise(r), nx = wetNoise(r + vec2(0.25, 0.0)), ny = wetNoise(r + vec2(0.0, 0.25));
+    vec2 d = fa * (nx - n0) + fd * (ny - n0);
+    if (aa > 0.0) {
+      vec2 r2 = r * 2.7 + 5.3;
+      float m0 = wetNoise(r2), mx = wetNoise(r2 + vec2(0.25, 0.0)), my = wetNoise(r2 + vec2(0.0, 0.25));
+      d += (fa * (mx - m0) + fd * (my - m0)) * 0.45 * aa;
+    }
+    g.xy += d * wk;
+    // the foam: little clusters of bubbles riding on it, thinning out
+    float fb = wetNoise(vec2(ac * 7.0 + 11.0, al * 3.5)) * wetNoise(vec2(ac * 1.8 + 3.0, al * 0.9 + 7.0));
+    g.z += mix(0.12, smoothstep(0.36, 0.58, fb), aa) * wk;
+  }
+  return g;
 }
 `;
 
@@ -117,7 +194,18 @@ if (uWet > 0.001) {
   vec3 wp = vWetP;
   float upF = smoothstep(0.6, 0.92, wetGeoN.y);
   float open = wetOpen(wp);
-  float wet = uWet * mix(0.3, 1.0, open);
+  // a squall's driven rain wets what faces it (walls, trunks, fences: the windward side of everything) right down, and
+  // misses what stands behind something along its flight (the ground in the lee of a house stays without drops)
+  // (hit: where the drops land now - their rings and bursts; the ground in the lee is as wet as the rest)
+  float drv = 0.0, hit = open;
+#ifndef WET_LEAF
+  if (uGale > 0.05 && uLeeOn > 0.5) {
+    float exposed = leeOpen(wp + wetGeoN * 0.15);
+    drv = uGale * exposed * smoothstep(-0.05, 0.4, -dot(wetGeoN, uLeeDir));
+    hit *= mix(1.0, exposed, 0.5 * uGale * upF);
+  }
+#endif
+  float wet = uWet * max(mix(0.3, 1.0, open), mix(0.3, 1.0, drv));
   float rough0 = roughnessFactor;
   float dist = length(wp - cameraPosition);
   // porous things darken when soaked (soil, plaster, asphalt), metal and paint hardly; everything gets glossier
@@ -127,7 +215,19 @@ if (uWet > 0.001) {
 #endif
   roughnessFactor = mix(roughnessFactor, roughnessFactor * mix(0.7, 0.32, upF), wet);
   vec2 slopeW = vec2(0.0);
-  float water = 0.0;
+  float water = 0.0, flowFoam = 0.0, flowRough = 0.0, drown = 0.0;
+  vec4 fl = flowAt(wp);
+#ifndef WET_LEAF
+  // and the water streams down the faces it drives against, in rivulets that run, join and part
+  if (drv > 0.01 && upF < 0.5) {
+    vec2 tw = normalize(vec2(-wetGeoN.z, wetGeoN.x) + 1e-5);
+    float along = dot(wp.xz, tw);
+    float rv = wetNoise(vec2(along * 9.0, wp.y * 1.6 + uRainTime * 2.4)) * 0.6 + wetNoise(vec2(along * 3.1 + 7.0, wp.y * 0.5 + uRainTime * 1.1)) * 0.4;
+    float riv = smoothstep(0.5, 0.68, rv) * drv * uWet * (1.0 - upF) * (1.0 - smoothstep(10.0, 30.0, dist));
+    diffuseColor.rgb *= 1.0 - 0.22 * riv * por;
+    roughnessFactor = mix(roughnessFactor, 0.05, riv);
+  }
+#endif
 #ifdef WET_ROAD
   {
     // the real tilt of the surface (the road ribbons carry flat normals): puddles on the level, a running film downhill
@@ -144,7 +244,8 @@ if (uWet > 0.001) {
     float s1 = wetNoise(vec2(ac * 3.0, al * 0.7 - uRainTime * sp));
     float s2 = wetNoise(vec2(ac * 7.5 + 3.1, al * 1.6 - uRainTime * sp * 2.1));
     float flowing = smoothstep(0.025, 0.05, sl);
-    float sheet = flowing * (0.55 + 0.45 * smoothstep(0.35, 0.7, s1 * 0.65 + s2 * 0.35 + 0.08));   // a continuous film, thicker in rills
+    // (where the running water is worked out, it is drawn from that instead: below)
+    float sheet = flowing * (0.55 + 0.45 * smoothstep(0.35, 0.7, s1 * 0.65 + s2 * 0.35 + 0.08)) * (1.0 - fl.w);   // a continuous film, thicker in rills
     water = max(pud, sheet) * open * upF * uWet;
     // wavelets of the running film, drawn out along the flow
     float s3 = wetNoise(vec2((ac + 0.12) * 7.5 + 3.1, al * 1.6 - uRainTime * sp * 2.1));
@@ -152,15 +253,52 @@ if (uWet > 0.001) {
     slopeW += (fa * (s3 - s2) + fd * (s4 - s2) * 0.5) * 0.9 * sheet * open * upF * uWet;
   }
 #endif
+#ifndef WET_LEAF
+  // the running water: a film where the rain sheets off, streams along the kerbs and down the slopes, the hollows
+  // standing full; little waves and foam carried along with it, muddy where it runs off the bare ground
+  float fh = fl.x * smoothstep(0.35, 0.8, wetGeoN.y);
+  if (fh > 5e-5) {
+    // (on the ground a thin sheet runs in among the grass and the crumbs of soil: only a stream or a puddle shows)
+#ifdef WET_GROUND
+    float film = smoothstep(0.004, 0.012, fh);
+#else
+    float film = smoothstep(0.0006, 0.0025, fh);          // (the asphalt's grit shows through a film thinner than ~2 mm)
+#endif
+    float deep = smoothstep(0.002, 0.025, fh);
+    vec2 vel = fl.yz; float sp = length(vel);
+    float near = 1.0 - smoothstep(18.0, 40.0, dist);
+    if (near > 0.0) {
+      // (the finer detail only where a pixel is small enough for it: no glitter further off)
+      float aa = 1.0 - smoothstep(0.003, 0.012, length(fwidth(wp.xz)));
+      vec3 fs = flowSurface(wp.xz, vel, uRainTime, aa);
+      slopeW += fs.xy * near * film * (0.18 + 0.4 * smoothstep(0.1, 1.0, sp)) * mix(0.5, 1.0, deep);
+      flowFoam = fs.z * near * smoothstep(0.2, 0.9, sp) * smoothstep(0.002, 0.008, fh);
+    }
+    // a stream carries what it washes off: muddy off the bare ground, a turbid grey-brown off the road (lighter than the
+    // black wet asphalt under it)
+#ifdef WET_GROUND
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.15, 0.115, 0.08), deep * 0.7);
+#else
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.18, 0.15), deep * smoothstep(0.1, 0.6, sp) * 0.55);
+#endif
+    diffuseColor.rgb *= 1.0 - 0.2 * deep;                // (a stream a few cm deep: some of the light goes into it)
+    water = max(water, film);
+    drown = smoothstep(0.001, 0.008, fh);                 // (under a few mm of water the grit and the joints are gone)
+    flowRough = film * smoothstep(0.15, 1.0, sp);          // (a running surface is never quite a mirror)
+  }
+#endif
   diffuseColor.rgb *= 1.0 - 0.3 * water;
   roughnessFactor = mix(roughnessFactor, 0.05, water);
+  roughnessFactor = max(roughnessFactor, 0.11 * flowRough);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.78, 0.75), flowFoam * 0.75);
+  roughnessFactor = mix(roughnessFactor, 0.5, flowFoam);
   // raindrop rings only on standing water; beyond ~25 m they are below a pixel
-  float rip = uRain * open * upF * (1.0 - smoothstep(12.0, 26.0, dist)) * smoothstep(0.25, 0.7, water);
-  if (rip > 0.01) slopeW += wetRipples(wp.xz, uRainTime) * rip * 0.24;
+  float rip = uRain * hit * upF * (1.0 - smoothstep(12.0, 26.0, dist)) * smoothstep(0.25, 0.7, water);
+  if (rip > 0.01) slopeW += wetRipples(wp.xz, uRainTime) * rip * (0.24 + 0.22 * drown);   // (a smooth sheet of water shows every ring)
 #ifndef WET_LEAF
   // the impacts: in a downpour hard ground 'boils' with tiny crowns of spray (~4 cm), each lasting ~0.08 s, about
   // 140 at a time on every square metre (~3000 drops/m2/s at 50 mm/h)
-  float imp = uRain * open * upF * (1.0 - smoothstep(5.0, 13.0, dist));
+  float imp = uRain * hit * upF * (1.0 - smoothstep(5.0, 13.0, dist));
   if (imp > 0.01) {
     float sp = 0.0;
     for (int k = 0; k < 2; k++) {
@@ -176,6 +314,7 @@ if (uWet > 0.001) {
     roughnessFactor = mix(roughnessFactor, 0.45, sp);
   }
 #endif
+  normal = normalize(mix(normal, (viewMatrix * vec4(wetGeoN, 0.0)).xyz, drown));
   normal = normalize(normal - (viewMatrix * vec4(slopeW.x, 0.0, slopeW.y, 0.0)).xyz);
   // for the screen-space reflections: standing and running water mirror, a wet road film a little, other level hard
   // surfaces (roofs, slabs, car roofs) a little; leaves and rough ground not
@@ -183,6 +322,9 @@ if (uWet > 0.001) {
   wetReflOut = max(water, 0.5 * wet * upF * open);
 #elif !defined(WET_LEAF)
   wetReflOut = wet * upF * open * 0.25 * (1.0 - smoothstep(0.55, 0.85, rough0));
+#endif
+#ifndef WET_LEAF
+  wetReflOut = max(wetReflOut, water * (1.0 - flowFoam));
 #endif
 }
 `;
@@ -281,7 +423,7 @@ function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK) {
     wetW = instanceMatrix * wetW;
 #endif
     vWetP = (modelMatrix * wetW).xyz; }`);
-  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
+  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : kind === 'ground' ? '#define WET_GROUND\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
     `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '');
   sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS + GLINT_GLSL)
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
@@ -298,7 +440,7 @@ export function wetMaterial(m) {
   if (!m || patched.has(m)) return;
   patched.add(m);
   if (!m.isMeshStandardMaterial || m.userData.noWet) return;
-  const kind = m.userData.wet === 'road' ? 'road' : (m.alphaTest > 0 || m.transparent) ? 'leaf' : 'solid';
+  const kind = m.userData.wet === 'road' ? 'road' : (m.alphaTest > 0 || m.transparent) ? 'leaf' : m.userData.wet === 'ground' ? 'ground' : 'solid';
   // userData.snow: how much of it gets covered (leaf cards and the trees' far billboards only partly); noSnow: never
   const snowK = m.userData.snow ?? (kind === 'leaf' ? 0.45 : 1), snowSkip = !!m.userData.noSnow;
   const plasterK = m.userData.bark ? 1 : 0.45;                 // (how well a blizzard's snow sticks: bark best)
@@ -486,13 +628,16 @@ export class RainOcclusion {
 
   // re-rendered when the camera has moved 6 m, else every 30 frames (cars and dogs move); skip(mesh): left out too
   // (in winter the bare broadleaf crowns let the snow through). snow: the lying snow's maps too (and at once when it
-  // begins); soft(object): what the snow does not lie on in a layer nor pile against (leaves, needles, twigs, cards)
-  update(renderer, scene, camPos, groundY, hide, skip, snow = false, soft = null) {
+  // begins); soft(object): what the snow does not lie on in a layer nor pile against (leaves, needles, twigs, cards);
+  // maps: the maps seen from below and of the solid surfaces without the snow's (the running water, runoff.js; the
+  // driven rain's lee). The box moves in steps of 16 texels (3 m), so what is worked out on it can be carried over.
+  // Returns true when re-rendered.
+  update(renderer, scene, camPos, groundY, hide, skip, snow = false, soft = null, maps = false) {
     this.frame++;
-    const fresh = snow && !this.snowOn;
-    this.snowOn = snow;
-    if (!fresh && Math.hypot(camPos.x - this.last.x, camPos.z - this.last.y) < 6 && this.frame % 30) return;
-    const cx = Math.round(camPos.x / 2) * 2, cz = Math.round(camPos.z / 2) * 2;
+    const want = snow || maps, fresh = (snow && !this.snowOn) || (want && !this.mapsOn);
+    this.snowOn = snow; this.mapsOn = want;
+    if (!fresh && Math.hypot(camPos.x - this.last.x, camPos.z - this.last.y) < 6 && this.frame % 30) return false;
+    const snap = 32 * this.half / this.size, cx = Math.round(camPos.x / snap) * snap, cz = Math.round(camPos.z / snap) * snap;
     this.last.set(camPos.x, camPos.z);
     this.cam.position.set(cx, Math.max(camPos.y, groundY) + 600, cz);
     this.cam.updateMatrixWorld();
@@ -509,7 +654,7 @@ export class RainOcclusion {
     renderer.clear();
     scene.updateMatrixWorld();                                    // (the scene does not update itself: main.js)
     renderer.render(scene, this.cam);
-    if (snow) {
+    if (want) {
       if (!this.snow) this.initSnow();
       const S = this.snow;
       S.camLow.position.set(cx, groundY - 600, cz);
@@ -527,6 +672,9 @@ export class RainOcclusion {
       for (const o of off) o.visible = true;
       scene.overrideMaterial = ov;
       this.drawRoads(cx, cz);
+    }
+    if (snow) {
+      const S = this.snow;
       renderer.setRenderTarget(S.field);
       renderer.render(S.qs, S.qc);
       // smoothed: across, then along (~0.28 m a tap, 9 taps)
@@ -541,6 +689,7 @@ export class RainOcclusion {
     scene.background = bg; scene.overrideMaterial = ov; renderer.shadowMap.autoUpdate = sm;
     hide.forEach((o, i) => { o.visible = vis[i]; });
     RAIN.uOccOn.value = 1;
+    return true;
   }
 
   // is (x, z) on a road (within its width)? For the wheels and feet in deep snow (main.js)
@@ -611,22 +760,26 @@ export class SnowLee {
   }
 
   // made again when you have moved 3 m or the flight has turned 1.5 deg (the gusts), else every 40 frames (the cars
-  // come and go); hide: left out always, skip(object): left out too; low: the ground seen from below (RainOcclusion)
-  update(renderer, scene, camPos, hide, skip, low, dt) {
+  // come and go); hide: left out always, skip(object): left out too; low: the ground seen from below (RainOcclusion);
+  // fall: how fast what flies falls (m/s: the flakes ~1, the drops ~7)
+  update(renderer, scene, camPos, hide, skip, low, dt, fall = 1) {
     const w = STORM.uWind.value;
-    _lv.set(w.x, -1, w.y).normalize();
-    this.dir.lerp(_lv, SNOW.uLeeOn.value ? 1 - Math.exp(-dt / 2) : 1).normalize();     // (over ~2 s: the flakes' own past flight)
+    _lv.set(w.x, -fall, w.y).normalize();
+    // (over ~2 s: the flakes' own past flight; the heavy drops follow the gusts within ~0.7 s)
+    this.dir.lerp(_lv, SNOW.uLeeOn.value && this.fall === fall ? 1 - Math.exp(-dt / (fall > 2 ? 0.7 : 2)) : 1).normalize();
+    this.fall = fall;
     this.frame++;
     if (SNOW.uLeeOn.value && camPos.distanceTo(this.last) < 3 && this.dir.angleTo(this.lastDir) < 0.026 && this.frame % 40) return;
     this.last.copy(camPos); this.lastDir.copy(this.dir);
-    // the box the flakes fill (SnowFX: up to 34 m around you, 10 m under the eye to 14 m over it), seen along the flight
+    // the box the flakes and the drops fill (SnowFX, RainFX: up to 34 m around you, ~10 m under the eye to 16 m over
+    // it), seen along the flight
     const f = this.dir;
     _lr.crossVectors(f, THREE.Object3D.DEFAULT_UP);
     if (_lr.lengthSq() < 1e-6) _lr.set(1, 0, 0); else _lr.normalize();
     _lu.crossVectors(_lr, f);
     let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, f0 = Infinity, f1 = -Infinity;
     for (let i = 0; i < 8; i++) {
-      _lc.set(i & 1 ? 34 : -34, i & 2 ? 14 : -10, i & 4 ? 34 : -34);
+      _lc.set(i & 1 ? 34 : -34, i & 2 ? 16 : -10.5, i & 4 ? 34 : -34);
       const a = _lc.dot(_lr), b = _lc.dot(_lu), c = _lc.dot(f);
       r0 = Math.min(r0, a); r1 = Math.max(r1, a); u0 = Math.min(u0, b); u1 = Math.max(u1, b); f0 = Math.min(f0, c); f1 = Math.max(f1, c);
     }
@@ -681,7 +834,7 @@ export class SnowLee {
 const STREAK_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
-uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth, uCurtain;
+uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth, uCurtain, uGale;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 uniform vec2 uWind, uWindOff;        // the wind now and how far it has carried the air so far (no jumps when it changes)
@@ -691,6 +844,7 @@ uniform vec4 uBeam, uBeamDir;        // the moon's shaft: a point on its axis (w
 varying float vA, vLit, vB;
 varying vec2 vC;
 ${OCC_GLSL}
+${LEE_GLSL}
 void main() {
   vC = corner; vA = 0.0; vLit = 0.0; vB = 0.0;
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);                       // (culled unless placed below)
@@ -698,23 +852,34 @@ void main() {
   // drop size: big drops fall faster (~9 m/s for 3 mm, ~6 m/s for 1 mm), leave longer, wider, brighter streaks
   float sz = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
   float fall = uSpeed * (0.66 + 0.36 * sz);
-  vec3 vel = vec3(uWind.x, -fall, uWind.y);
+  // in a gale each drop rides the gusty air at its own slant (the eddies toss the small ones about)
+  vec2 tw = (vec2(fract(aSeed.z * 13.7), fract(aSeed.x * 29.3)) - 0.5) * (1.2 - 0.6 * sz) * 0.35 * length(uWind) * uGale;
+  vec3 vel = vec3(uWind.x + tw.x, -fall, uWind.y + tw.y);
   vec3 box = vec3(2.0 * uRadius, uHeight, 2.0 * uRadius);
   vec3 org = uCam - vec3(uRadius, uHeight * 0.4, uRadius);
   // world-anchored drops wrapped into a box around the camera (they keep their place when you move)
-  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vec3(uWindOff.x, -fall * uRainTime, uWindOff.y) - org, box);
-  if (p.y < rainTop(p.xz)) return;                            // landed: on a crown, a roof or the ground
+  vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vec3(uWindOff.x + tw.x * uRainTime, -fall * uRainTime, uWindOff.y + tw.y * uRainTime) - org, box);
+  // landed: on a crown, a roof or the ground. Driven by a gale: wherever the wind cannot carry it, behind (along its
+  // flight) a wall, a house, a fence, a car; under a roof or a crown only some, blown in from the open side or dripping
+  float top = rainTop(p.xz);
+  if (uGale > 0.05 && uLeeOn > 0.5) {
+    if (leeGap(p) > 0.06 || (p.y < top && top - p.y < 10.0 && fract(aSeed.y * 41.3) < 0.55)) return;
+  } else if (p.y < top) return;
+  if (inCar(p)) return;
   vec3 dir = normalize(vel), toCam = uCam - p;
   float dist = length(toCam);
   vec3 side = normalize(cross(dir, toCam));
   float w = (0.0025 + dist * 0.0011) * (0.7 + 0.6 * sz) * uWidth;   // ~1 px wide at any distance
-  vec3 pos = p - dir * uLen * (0.45 + 0.8 * sz) * corner.y + side * w * corner.x;
-  vA = (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.5, 1.5, dist);
-  vB = 0.55 + 0.45 * sz;
-  // gusts drive denser sheets of rain across the view (curtains), drifting with the wind
-  vec2 wd = normalize(uWind + vec2(1e-4));
-  float cur = 0.5 + 0.5 * sin(dot(p.xz, wd) * 0.09 - uRainTime * 1.3) * cos(dot(p.xz, vec2(-wd.y, wd.x)) * 0.05 + uRainTime * 0.37);
-  vA *= mix(1.0, 0.2 + 0.8 * cur, uCurtain);
+  // (its travel in the camera's exposure: longer the faster it flies)
+  float stretch = clamp(sqrt(length(vel) / fall), 1.0, 1.5);
+  vec3 pos = p - dir * uLen * (0.45 + 0.8 * sz) * stretch * corner.y + side * w * corner.x;
+  vA = (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(1.0, 2.6, dist) * mix(0.45, 1.0, smoothstep(2.0, 5.0, dist));
+  vB = (0.55 + 0.45 * sz) / stretch;
+  // the rain comes in sheets (curtains) carried along by the air, denser and sparser bands across the wind some tens of
+  // metres apart; in a squall they sweep past with every gust
+  vec2 wd = normalize(uWind + vec2(1e-4)), wn = vec2(-wd.y, wd.x), ap = p.xz - uWindOff;
+  float cur = 0.5 + 0.5 * sin(dot(ap, wd) * 0.09 + 1.6 * sin(dot(ap, wn) * 0.035 + 1.3)) * cos(dot(ap, wn) * 0.05 + uRainTime * 0.37 * (1.0 - uGale));
+  vA *= mix(1.0, 0.2 + 0.8 * cur, max(uCurtain, uGale * 0.85));
   // drops caught in the torch's cone or in the moon's shaft light up
   vec3 tp = p - uTorch.xyz; float tl = length(tp);
   vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
@@ -738,13 +903,14 @@ void main() {
 const SPLASH_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
-uniform float uRain, uRainTime, uOccOn, uRadius;
+uniform float uRain, uRainTime, uOccOn, uRadius, uGale;
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 uniform vec3 uCam;
 varying vec2 vC;
 varying float vA, vPh;
 ${OCC_GLSL}
+${LEE_GLSL}
 void main() {
   vC = corner; vA = 0.0; vPh = 0.0;
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
@@ -758,6 +924,7 @@ void main() {
   float top = rainTop(xz);
   if (top < -1e4) return;
   vec3 c = vec3(xz.x, top + 0.005, xz.y);
+  if (uGale > 0.05 && leeGap(c + vec3(0.0, 0.3, 0.0)) > 0.06) return;     // (the driven rain does not reach it)
   vec3 toCam = uCam - c;
   float dist = length(toCam);
   vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
@@ -782,6 +949,56 @@ void main() {
   gl_FragColor = vec4(uColor, min(a, 1.0));
 }`;
 
+// the spray of a downpour: the drops burst on the hard ground into a fine mist that hangs over it, mostly within a hand
+// or two of it; a squall's gusts tear it off and drive it along the street in smoky veils, never through what stands in
+// their way
+const MIST_VERT = /* glsl */`
+attribute vec2 corner;
+attribute vec4 aSeed;
+uniform float uRain, uRainTime, uOccOn, uRadius, uGale, uGust;
+uniform sampler2D uOcc, uFlow;
+uniform vec4 uOccBox, uFlowBox;
+uniform vec2 uWind, uWindOff;
+uniform vec3 uCam;
+varying float vA;
+varying vec2 vC;
+${OCC_GLSL}
+${LEE_GLSL}
+void main() {
+  vC = corner; vA = 0.0;
+  gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+  if (aSeed.w > uRain * (0.35 + 0.65 * uGale * clamp(uGust - 0.45, 0.0, 1.5))) return;
+  float h = min(1.0, -log(max(1e-3, fract(aSeed.w * 13.7 + aSeed.z * 5.1))) * (0.07 + 0.12 * uGale));
+  float spd = 0.55 + 0.35 * fract(aSeed.x * 5.3);
+  vec2 box = vec2(2.0 * uRadius), org = uCam.xz - uRadius;
+  vec2 q = org + mod(aSeed.xy * box + uWindOff * spd - org, box);
+  float top = rainTop(q);
+  if (top < -1e4) return;
+  // (only off the hard, streaming surfaces: where the water runs in a film - not off the grass)
+  vec2 fuv = vec2(0.5 + (q.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (q.y - uFlowBox.y) / (2.0 * uFlowBox.z));
+  if (uFlowBox.w > 0.5 && texture2D(uFlow, fuv).r < 3e-4) return;
+  vec3 p = vec3(q.x, top + 0.04 + h, q.y);
+  if (leeGap(p) > 0.06 || inCar(p)) return;
+  float life = fract(uRainTime * (0.5 + 0.3 * fract(aSeed.y * 3.3)) + aSeed.z);   // (each puff swells and thins out)
+  vec3 toCam = uCam - p;
+  float dist = length(toCam);
+  vec2 wd = normalize(uWind + vec2(1e-4));
+  vec3 along = vec3(wd.x, 0.0, wd.y), side = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
+  float s = (0.25 + 0.5 * fract(aSeed.y * 7.1)) * (0.6 + 0.8 * life) * (1.0 + 0.8 * h);
+  vec3 ax = normalize(mix(side, along, 0.5 * uGale));
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + ax * corner.x * s * (1.3 + 1.2 * uGale) + vec3(0.0, 1.0, 0.0) * corner.y * s * 0.45, 1.0);
+  vA = (0.01 + 0.018 * uGale) * sin(life * 3.14159) * (1.0 - smoothstep(uRadius * 0.6, uRadius, length(toCam.xz))) * smoothstep(0.6, 2.5, dist) * (1.0 - 0.6 * smoothstep(0.1, 0.8, h));
+}`;
+const MIST_FRAG = /* glsl */`
+uniform vec3 uColor;
+varying float vA;
+varying vec2 vC;
+void main() {
+  float a = vA * exp(-2.2 * dot(vC, vC));
+  if (a < 0.002) discard;
+  gl_FragColor = vec4(uColor, a);
+}`;
+
 function cloud(n, corners, idx) {
   const g = new THREE.InstancedBufferGeometry();
   g.setAttribute('corner', new THREE.Float32BufferAttribute(corners, 2));
@@ -800,7 +1017,8 @@ export class RainFX {
     this.group.userData.ueSkip = 'rain';
     this.group.visible = false;
     scene.add(this.group);
-    const common = { uRain: RAIN.uRain, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn };
+    const common = { uRain: RAIN.uRain, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uGale: RAIN.uGale,
+      uLee: SNOW.uLee, uLeeVP: SNOW.uLeeVP, uLeeOrg: SNOW.uLeeOrg, uLeeDir: SNOW.uLeeDir, uLeeOn: SNOW.uLeeOn, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize, uSnowCarY: SNOW.uSnowCarY };
     this.cam = { value: new THREE.Vector3() };
     this.color = { value: new THREE.Color(0.6, 0.63, 0.67) };
     this.wind = { value: new THREE.Vector2(1.6, 0.7) }; this.windOff = { value: new THREE.Vector2() }; this.lastT = null;
@@ -814,6 +1032,11 @@ export class RainFX {
     add(cloud(10000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uLen: { value: 0.42 }, uOpacity: { value: 0.9 }, uWidth: { value: 1 }, uCurtain: { value: 0.3 } }));
     add(cloud(30000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uLen: { value: 0.55 }, uOpacity: { value: 0.62 }, uWidth: { value: 1 }, uCurtain: { value: 1 } }));
     add(cloud(2600, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mk(SPLASH_VERT, SPLASH_FRAG, { uRadius: { value: 12 }, uOpacity: { value: 0.55 } }));
+    // the spray mist over the ground (not added on: it veils what is behind it)
+    this.gust = { value: 1 }; this.mistColor = { value: new THREE.Color() };
+    const mist = mk(MIST_VERT, MIST_FRAG, { uRadius: { value: 22 }, uGust: this.gust, uColor: this.mistColor, uFlow: RAIN.uFlow, uFlowBox: RAIN.uFlowBox });
+    mist.blending = THREE.NormalBlending;
+    add(cloud(4000, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mist);
   }
 
   // torch: { on, pos, dir } ; beam: { on, pos, dir, r } (the moon's shaft)
@@ -823,10 +1046,15 @@ export class RainFX {
     if (beam?.on) { this.beam.value.set(beam.pos.x, beam.pos.y, beam.pos.z, beam.r); this.beamDir.value.set(beam.dir.x, beam.dir.y, beam.dir.z, 1); } else this.beamDir.value.w = 0;
     this.cam.value.copy(camera.position);
     this.color.value.setScalar(0.32 * light).multiply(_tint);         // (added on top of the scene)
+    this.mistColor.value.setScalar(0.62 * light).multiply(_tint);
+    this.gust.value = STORM.gust;
     const t = RAIN.uRainTime.value, dt = this.lastT === null ? 0 : Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
-    this.wind.value.set(1.6 + 0.8 * Math.sin(t * 0.37), 0.7 + 0.5 * Math.sin(t * 0.23 + 1));   // gusts
+    // gusts; in a squall the gale's own wind (main.js)
+    const g = STORM.gale, W = STORM.uWind.value;
+    this.wind.value.set(1.6 + 0.8 * Math.sin(t * 0.37), 0.7 + 0.5 * Math.sin(t * 0.23 + 1)).multiplyScalar(1 - g).addScaledVector(W, g);
     this.windOff.value.addScaledVector(this.wind.value, dt);
+    RAIN.uGale.value = g;
   }
 }
 const _tint = new THREE.Color(0.97, 1, 1.05);
@@ -836,28 +1064,6 @@ const _tint = new THREE.Color(0.97, 1, 1.05);
 // tumbles; world-anchored like the drops (they keep their place when you move) and gone where they land. In a blizzard
 // (STORM) they fly almost level at 10-20 m/s, as streaks, in three more layers (one right at your face), only where
 // the open side lets them in, and the snow lying on the ground streams along it (DRIFT).
-// what keeps the flying snow off (the flakes and the drift): SnowLee's map of the things in its way, seen along its
-// flight, and the car you drive
-const LEE_GLSL = /* glsl */`
-uniform sampler2D uLee;
-uniform mat4 uLeeVP;
-uniform vec3 uLeeOrg, uLeeDir;
-uniform float uLeeOn;
-uniform vec4 uSnowCar;
-uniform vec2 uSnowCarSize, uSnowCarY;
-// how far (m along the flight) p lies behind the first thing upwind of it that the snow cannot blow through; < 0 open
-float leeGap(vec3 p) {
-  if (uLeeOn < 0.5) return -1.0;
-  vec2 uv = (uLeeVP * vec4(p, 1.0)).xy * 0.5 + 0.5;
-  if (any(lessThan(uv, vec2(0.002))) || any(greaterThan(uv, vec2(0.998)))) return -1.0;
-  return dot(p - uLeeOrg, uLeeDir) - texture2D(uLee, uv).r;
-}
-bool inCar(vec3 p) {
-  if (uSnowCar.w < 0.5) return false;
-  vec2 dc = p.xz - uSnowCar.xy, cs = vec2(cos(uSnowCar.z), sin(uSnowCar.z));
-  vec2 q = abs(vec2(dot(dc, vec2(cs.x, -cs.y)), dot(dc, cs.yx))) - uSnowCarSize - 0.04;
-  return max(q.x, q.y) < 0.0 && p.y > uSnowCarY.x - 0.1 && p.y < uSnowCarY.x + uSnowCarY.y + 0.04;
-}`;
 const FLAKE_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
@@ -982,7 +1188,7 @@ void main() {
 }`;
 
 // the wind (main.js): now (m/s, world x / z), the air's travel so far, how stormy (0..1)
-export const STORM = { uStorm: { value: 0 }, uWind: { value: new THREE.Vector2(0.03, -0.55) }, uWindOff: { value: new THREE.Vector2() }, gust: 1 };
+export const STORM = { uStorm: { value: 0 }, uWind: { value: new THREE.Vector2(0.03, -0.55) }, uWindOff: { value: new THREE.Vector2() }, gust: 1, gale: 0, burst: 0 };
 
 export class SnowFX {
   constructor(scene) {

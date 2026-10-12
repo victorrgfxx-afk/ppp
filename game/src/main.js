@@ -5,6 +5,7 @@ import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
 import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray } from './rain.js';
+import { Runoff, EaveStreams } from './runoff.js';
 import { SnowTrail } from './snowtrail.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
@@ -127,7 +128,10 @@ async function main() {
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
   let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
-  let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a blizzard: viscol)
+  let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a gale: the blizzard or the squall)
+  // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
+  // the gale with the snow flying in it (STORM.uStorm: the flakes, the drift, the plastered snow)
+  let galeBase = 15, galeAng = Math.atan2(-0.9986, 0.052), squall = false, blizzard = 0;
   // shelter from the wind where you are (0 in the open .. 0.9 right behind a wall): what stands upwind within a few of
   // its heights takes most of the wind off (behind a wall or a house ~10 % of it gets through close by, about half ~4
   // heights back, all of it ~6 heights back); a trunk or a pole only by how wide it is across the wind; among the
@@ -195,6 +199,11 @@ async function main() {
     fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
     scene.fog.density = baseFog = w.fogDensity * (horror ? 1.3 : 1);
     stormTarget = w.storm ?? 0;
+    galeBase = w.gale ?? 15; squall = !!w.squall;
+    if (w.galeFrom !== undefined) {                                           // (a compass bearing: where it comes from)
+      const b = (w.galeFrom + 180) * Math.PI / 180, th = GEO.meta.origin.bearing * Math.PI / 180, e = Math.sin(b), nn = Math.cos(b);
+      galeAng = Math.atan2(e * Math.sin(th) + nn * Math.cos(th), -e * Math.cos(th) + nn * Math.sin(th));
+    } else galeAng = Math.atan2(-0.9986, 0.052);
     renderer.toneMappingExposure = THREE.MathUtils.lerp(w.exposure * (1 + 0.7 * (1 - d)), 2.6, night);   // like a camera: it opens up when the light is low
     scene.environment?.dispose();
     scene.environment = buildEnvironment(renderer, sky);
@@ -386,6 +395,7 @@ async function main() {
   const lowQ = qKey === 'low' || qKey === 'medium';
   const blanket = new SnowBlanket(scene, lowQ ? 192 : 384);
   rainOcc.roads = snowRoads(GEO.roads);
+  const runoff = new Runoff(rainOcc), eaves = new EaveStreams(scene, runoff);
   // your footprints and the tyre tracks in it (snowtrail.js), and the snow's flight seen from upwind: nothing it
   // cannot blow through lets it pass (rain.js)
   const trail = new SnowTrail(lowQ ? 1024 : 2048, 24), snowLee = new SnowLee(lowQ ? 512 : 1024, lowQ ? 256 : 512);
@@ -399,7 +409,7 @@ async function main() {
       ...built.forest.firRecords('spruceB', { key: 'yard10', H: 10, crown: 2.2, low: 1.0, seed: 12 })];
     firs.addSource((x, z, Rr, out) => { for (const r of yard) if (Math.abs(r.x - x) < Rr && Math.abs(r.z - z) < Rr) out.push(r); });
   }
-  const occHide = [sky, rainFX.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
+  const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
@@ -426,7 +436,8 @@ async function main() {
   if (snowCover > 0 || snowFall > 0) SNOW.uSnow.value = 1;
   SNOW.uSnowDepth.value = snowCover > 0 ? 0.25 : snowFall > 0 ? 0.05 : 0;
   SNOW.uSnowFall.value = snowFall;
-  storm = stormTarget; if (storm > 0) { SNOW.uSnowDepth.value = 0.2; SNOW.uSnowPlaster.value = 0.7; }   // (and a blizzard already blowing)
+  storm = stormTarget; blizzard = snowFall > 0 ? storm : 0;
+  if (blizzard > 0) { SNOW.uSnowDepth.value = 0.2; SNOW.uSnowPlaster.value = 0.7; }                     // (and a blizzard already blowing)
   else if (snowCover > 0) SNOW.uSnowPlaster.value = 0.5;                                               // (the trunks white on one side)
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
@@ -724,7 +735,7 @@ async function main() {
   };
   const enterCar = (v) => {
     mode = 'car'; active = v;
-    if ((night > 0.5 || storm > 0.3) && !v.lightsOn) v.setLights(true);   // (headlights on at night and in a blizzard)
+    if ((night > 0.5 || storm > 0.3) && !v.lightsOn) v.setLights(true);   // (headlights on at night and in a gale)
     audio.door();
     orbit.yaw = 0; orbit.pitch = 0.18;
     cockpitLook.yaw = 0; cockpitLook.pitch = 0;
@@ -785,16 +796,23 @@ async function main() {
     t += dt;
     WIND.time.value = t;
     // the wind: a breeze, or in a blizzard the crivăț from the north-east, ~15 m/s gusting between ~8 and ~22 m/s (to
-    // ~80 km/h) and veering a little; the air's travel is summed up frame by frame (the flakes ride it, rain.js)
+    // ~80 km/h) and veering a little; in a squall (rafale) ~6-9 m/s between bursts that come every half minute or so,
+    // rise in a couple of seconds to ~20-23 m/s (~80 km/h) and blow for 5-10 s, veering with them, the heaviest rain
+    // riding in on them. The air's travel is summed up frame by frame (the flakes and the drops ride it, rain.js)
     storm = damp(storm, stormTarget, 0.5, dt);
-    gust = 0.55 + 0.6 * vn1(t * 0.35) + 0.3 * vn1(t * 1.4 + 17);
+    blizzard = damp(blizzard, snowFall > 0 ? stormTarget : 0, 0.5, dt);
+    let burst = 0;
+    if (squall) {
+      burst = THREE.MathUtils.smoothstep(vn1(t * 0.085 + 9), 0.42, 0.8);
+      gust = 0.55 + 1.25 * burst + 0.2 * vn1(t * 1.2 + 7) + 0.12 * vn1(t * 3.1 + 2);
+    } else gust = 0.55 + 0.6 * vn1(t * 0.35) + 0.3 * vn1(t * 1.4 + 17);
     {
-      const ang = Math.atan2(-0.9986, 0.052) + (vn1(t * 0.12 + 5) - 0.5) * 0.5 * storm;   // (downwind: world -z = south-west)
-      windSpeed = (1 - storm) * 0.55 * (0.6 + 0.8 * vn1(t * 0.2 + 3)) + storm * 15 * gust;
+      const ang = galeAng + (vn1(t * 0.12 + 5) - 0.5) * 0.5 * storm + (squall ? (vn1(t * 0.3 + 11) - 0.5) * 0.5 * burst : 0);   // (blizzard: world -z = south-west)
+      windSpeed = (1 - storm) * 0.55 * (0.6 + 0.8 * vn1(t * 0.2 + 3)) + storm * galeBase * gust;
       STORM.uWind.value.set(Math.cos(ang) * windSpeed, Math.sin(ang) * windSpeed);
       STORM.uWindOff.value.addScaledVector(STORM.uWind.value, dt);
-      STORM.uStorm.value = storm; STORM.gust = storm > 0.01 ? gust : 1;
-      WIND.strength.value = 1 + storm * 1.3 * gust;                    // (the trees sway harder)
+      STORM.uStorm.value = blizzard; STORM.gust = storm > 0.01 ? gust : 1; STORM.gale = squall ? storm : 0; STORM.burst = burst;
+      WIND.strength.value = 1 + storm * 1.3 * Math.min(gust, 1.7);      // (the trees sway harder)
       if (baseFog) scene.fog.density = baseFog * (1 + storm * (gust - 1) * 0.6);   // (white curtains with every gust)
     }
     sky.material.uniforms.uTime.value = t;
@@ -936,7 +954,7 @@ async function main() {
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
         (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
-    audio.update(dt, { rain: RAIN.uRain.value, storm, gust, shelter, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    audio.update(dt, { rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
     const fc = window.__game?.cam;
     if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
@@ -945,7 +963,7 @@ async function main() {
     cascades.update(camera, camGround);
     // rain: it starts / stops in ~2 s, the surfaces soak in ~10 s and dry in ~1 min; where it lands comes from the
     // height map seen from above (crowns, roofs, car roofs), refreshed as you move
-    RAIN.uRain.value = damp(RAIN.uRain.value, rainTarget, 1.2, dt);
+    RAIN.uRain.value = damp(RAIN.uRain.value, rainTarget * (squall ? 0.6 + 0.4 * STORM.burst : 1), 1.2, dt);   // (a squall's rain: heaviest in the bursts)
     RAIN.uWet.value = RAIN.uWet.value < rainTarget ? Math.min(rainTarget, RAIN.uWet.value + dt / 10) : Math.max(rainTarget, RAIN.uWet.value - dt / 60);
     RAIN.uRainTime.value = t;
     // snow: it starts / stops in ~3 s; while it snows the cover builds up in ~1 min and then gets deeper by ~8 cm a
@@ -960,7 +978,7 @@ async function main() {
     // the snow sticks to the windward faces (trunks, poles, walls): a blizzard plasters them in ~1.5 min, a snowfall
     // with its breeze streaks them, and the clear day after finds the trunks of a wood white on one side; it stays
     // until the snow melts
-    const plTo = storm > 0.3 ? 1 : snowFall > 0 ? 0.35 : snowCover > 0 ? 0.5 : 0;
+    const plTo = blizzard > 0.3 ? 1 : snowFall > 0 ? 0.35 : snowCover > 0 ? 0.5 : 0;
     SNOW.uSnowPlaster.value = SNOW.uSnow.value < 0.3 ? Math.max(0, SNOW.uSnowPlaster.value - dt / 40) : Math.max(SNOW.uSnowPlaster.value, Math.min(plTo, SNOW.uSnowPlaster.value + dt / 90));
     SNOW.uSnow.value = snowCover > 0 ? Math.min(1, sc + dt / 4) : snowFall > 0 ? Math.min(1, sc + dt * SNOW.uSnowFall.value / 60) : dep.value > 0.03 ? sc : Math.max(0, sc - dt / (rainTarget > 0 ? 15 : 40));
     SNOW.uSnowLight.value = rainLight;
@@ -977,11 +995,24 @@ async function main() {
     TRACTION.wind = storm > 0.05 ? shWind : null;
     player.wind = storm > 0.05 ? { x: shWind.x, z: shWind.y } : null;
     player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
-    if (RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip);
-    if ((SNOW.uSnowFall.value > 0.002 || STORM.uStorm.value > 0.002) && rainOcc.snow) snowLee.update(renderer, scene, camera.position, occHide, leeSkip, rainOcc.snow.low.texture, dt);
+    const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002;
+    let occNew = false;
+    if (wetNow || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) occNew = rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip, wetNow);
+    // the water running off everything (runoff.js): ~100 mm/h in a downpour, ~250 mm/h in a squall's bursts (a summer
+    // thunderstorm's), its catchment taken ~3x the box around you (what runs in from further up the street); the
+    // hollows fill as the ground soaks
+    if (wetNow && SNOW.uSnow.value < 0.3) {
+      if (occNew) runoff.refresh(renderer);
+      const mmh = squall ? 250 : 100;
+      if (!lowQ || (frameNo & 1) === 0 || occNew) runoff.step(renderer, RAIN.uRain.value * mmh / 3.6e6 * 3, RAIN.uWet.value);   // (every other frame on the low settings)
+    } else runoff.off();
+    // what keeps the flying snow off, or in a squall the driven rain
+    const driven = STORM.gale > 0.05 && RAIN.uRain.value > 0.002;
+    if ((SNOW.uSnowFall.value > 0.002 || STORM.uStorm.value > 0.002 || driven) && rainOcc.snow) snowLee.update(renderer, scene, camera.position, occHide, leeSkip, rainOcc.snow.low.texture, dt, driven && SNOW.uSnowFall.value < 0.002 ? 7 : 1);
     else snowLee.off();
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
-    const flash = lightning.update(dt, horror === 1 && !paused);
+    // (and in a squall by day: a flash under the deck, less to it in the daylight)
+    const flash = lightning.update(dt, (horror === 1 || squall) && !paused) * (horror === 1 ? 1 : 0.3 + 0.7 * night);
     sky.material.uniforms.uFlash.value = flash;
     hemi.intensity = baseHemi + flash * 2.2; scene.environmentIntensity = baseEnv + flash * 1.4;
     moonBeam?.update(t, camera);
@@ -989,6 +1020,7 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
+    eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
     if (mode === 'car' && active) {
@@ -1038,7 +1070,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, rainOcc, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

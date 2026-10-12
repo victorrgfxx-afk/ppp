@@ -71,6 +71,7 @@ uniform float uExt;`)
   };
   m.customProgramCacheKey = () => 'geoTerrain';
   m.userData.ue = { kind: 'terrain', ortho, splat, ext };        // (the Unreal export rebuilds this shader)
+  m.userData.wet = 'ground';                                      // (muddy where the water runs off it: rain.js)
   return m;
 }
 

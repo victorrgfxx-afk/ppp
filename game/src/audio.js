@@ -43,6 +43,17 @@ export class Audio {
     const sf2 = ctx.createBiquadFilter(); sf2.type = 'highpass'; sf2.frequency.value = 3800;
     this.hissGain = ctx.createGain(); this.hissGain.gain.value = 0;
     sn.connect(sf2).connect(this.hissGain).connect(this.master); sn.start();
+    // running water: the gurgle of a stream in the gutter at your feet, and the splatter of the water pouring off the
+    // eaves around (runoff.js), silent until then
+    const bn = ctx.createBufferSource(); bn.buffer = this.noise; bn.loop = true; bn.playbackRate.value = 1.15;
+    this.brookF = ctx.createBiquadFilter(); this.brookF.type = 'bandpass'; this.brookF.frequency.value = 700; this.brookF.Q.value = 2.2;
+    this.brookGain = ctx.createGain(); this.brookGain.gain.value = 0;
+    bn.connect(this.brookF).connect(this.brookGain).connect(this.master); bn.start();
+    const pn = ctx.createBufferSource(); pn.buffer = this.noise; pn.loop = true; pn.playbackRate.value = 1.4;
+    const pf = ctx.createBiquadFilter(); pf.type = 'bandpass'; pf.frequency.value = 2300; pf.Q.value = 0.8;
+    this.pourGain = ctx.createGain(); this.pourGain.gain.value = 0;
+    pn.connect(pf).connect(this.pourGain).connect(this.master); pn.start();
+    this.gurgle = 700;
     // night storm: a low uneasy drone (two detuned tones and a hollow wind), silent until then
     this.drone = ctx.createGain(); this.drone.gain.value = 0; this.drone.connect(this.master);
     for (const f of [41.2, 43.6, 61.7]) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.value = 0.35; o.connect(g).connect(this.drone); o.start(); }
@@ -208,6 +219,11 @@ export class Audio {
     this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0), now, 1.5);
     this.howlF.frequency.setTargetAtTime(220 + 120 * Math.sin(this.t * 0.17) + 60 * Math.sin(this.t * 0.53), now, 0.8);
     this.rainGain.gain.setTargetAtTime(0.34 * rain * (0.55 + 0.45 * (st.rainOpen ?? 1)), now, 0.6);
+    // the stream's bubbles: its pitch wanders quickly (each bubble rings at its own note), its level with the flow
+    this.gurgle += (Math.random() - 0.5) * 420 * Math.min(1, dt * 30); this.gurgle += (720 - this.gurgle) * Math.min(1, dt * 4);
+    this.brookF.frequency.setTargetAtTime(Math.max(350, this.gurgle), now, 0.02);
+    this.brookGain.gain.setTargetAtTime(0.16 * (st.brook ?? 0) * (0.7 + 0.3 * Math.random()), now, 0.08);
+    this.pourGain.gain.setTargetAtTime(0.09 * (st.pour ?? 0), now, 0.3);
     this.nextBird -= dt;
     if (this.nextBird <= 0) { if (rain < 0.2 && !(st.snow > 0.2) && !(st.night > 0.5)) this.chirp(Math.random() * 2 - 1); this.nextBird = (st.snowCover > 0.5 ? 6 : 1.5) + Math.random() * 6; }   // (no birdsong in a downpour, while it snows or at night; little in winter)
     const e = this.eng;

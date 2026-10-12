@@ -142,6 +142,17 @@ WEATHER.ploaie = {
   sun: 0.35, sunColor: [0.85, 0.88, 0.95], hemi: 0.5, hemiSky: [0.62, 0.66, 0.72], hemiGround: [0.2, 0.2, 0.19],
   env: 0.9, envGround: [0.2, 0.2, 0.19], fog: [0.33, 0.35, 0.38], fogDensity: 1 / 520, exposure: 1.3, shadow: 0.45, rain: 1,
 };
+// a summer squall (ploaie în rafale): the gust front of a thunderstorm come over the hills from the west-north-west. A
+// wind of ~8 m/s with squalls every half minute or so to ~22 m/s (~80 km/h) drives the heaviest rain almost level, in
+// sheets that sweep across the street; the water runs off everything (runoff.js). A low, torn, greenish-grey deck,
+// the light gone dull, visibility closing in with every squall, lightning (main.js)
+WEATHER.rafale = {
+  label: 'Ploaie în rafale', cover: 1, cumulus: 0, zenith: [0.15, 0.165, 0.17], horizon: [0.31, 0.34, 0.34], bright: 0.85,
+  cloudLit: [0.39, 0.42, 0.42], cloudDark: [0.15, 0.165, 0.17],
+  sun: 0.25, sunColor: [0.82, 0.88, 0.9], hemi: 0.5, hemiSky: [0.58, 0.64, 0.66], hemiGround: [0.18, 0.19, 0.17],
+  env: 0.8, envGround: [0.18, 0.19, 0.17], fog: [0.25, 0.28, 0.29], fogDensity: 1 / 420, exposure: 1.15, shadow: 0.35, rain: 1,
+  storm: 1, gale: 11, galeFrom: 295, squall: true,
+};
 // snowing (rain.js: falling flakes, a cover that builds up): an even, bright grey deck, soft light thrown back by the
 // snow, a white haze (visibility ~2 km)
 WEATHER.ninsoare = {
@@ -165,7 +176,7 @@ WEATHER.viscol = {
   sun: 0.25, sunColor: [0.93, 0.95, 1], hemi: 0.72, hemiSky: [0.84, 0.87, 0.92], hemiGround: [0.7, 0.72, 0.76],
   env: 1.0, envGround: [0.7, 0.72, 0.76], fog: [0.67, 0.7, 0.74], fogDensity: 1 / 85, exposure: 0.92, shadow: 0.12, snow: 1, storm: 1, winter: true,
 };
-export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'ninsoare', 'viscol', 'zapada'];
+export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'rafale', 'ninsoare', 'viscol', 'zapada'];
 
 // ------------------------------------------------------------------ time of day
 // Direct sunlight through the atmosphere: Kasten-Young air mass and per-channel optical depths (Rayleigh at
