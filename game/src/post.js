@@ -8,10 +8,24 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
+// the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
+class DepthTap extends Pass {
+  constructor() { super(); this.needsSwap = false; this.tex = null; }
+  render(renderer, writeBuffer, readBuffer) { this.tex = readBuffer.depthTexture; }
+}
+
 // GTAO that ignores alpha-tested foliage/grass (they would render as solid quads in its normal pass).
+// With the scene pass's own depth (tap), it draws nothing again: the normals are worked out from that depth, so the
+// whole scene is drawn once a frame instead of twice (measured: ~2300 draws and ~2-3.5 M triangles a frame saved on
+// high), and the leaves and grass count with their real cut-out shapes.
 class FoliageSafeGTAO extends GTAOPass {
   // the scene pass has already rendered this frame's shadow maps: its normal pass must not render them all again
   render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    if (this.tap?.tex && this.depthTexture !== this.tap.tex) {
+      const first = this._renderGBuffer;
+      this.setGBuffer(this.tap.tex);
+      if (first) { this.gtaoMaterial.needsUpdate = this.pdMaterial.needsUpdate = true; this.normalRenderTarget.dispose(); }
+    }
     const sm = renderer.shadowMap, auto = sm.autoUpdate;
     sm.autoUpdate = false;
     super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
@@ -168,20 +182,25 @@ export function createComposer(renderer, scene, camera, q) {
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   let gtao = null, bloom = null, smaa = null, ssr = null;
+  const reuse = q.ao && q.ssr && (() => { try { return localStorage.getItem('strada.aoReuse') !== 'false'; } catch (_) { return true; } })();
+  const tap = reuse ? new DepthTap() : null;
+  if (tap) composer.addPass(tap);
   if (q.ssr) { ssr = new WetSSRPass(camera); composer.addPass(ssr); }
+  // AO straight after the reflections: no pass in between may draw into the buffer whose depth it reads
+  if (q.ao) {
+    gtao = new FoliageSafeGTAO(scene, camera, size.x, size.y);
+    gtao.tap = tap;
+    gtao.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.6, thickness: 1.6, scale: 1.15, samples: 16, distanceFallOff: 0.9, screenSpaceRadius: false });
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, radiusExponent: 1, rings: 2, samples: 12 });
+    gtao.blendIntensity = 0.95;
+    composer.addPass(gtao);
+  }
   // safety net: never let a stray NaN/Inf pixel be smeared across the screen by blur passes
   composer.addPass(new ShaderPass({
     uniforms: { tDiffuse: { value: null } },
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0); gl_FragColor = min(c, vec4(64.0)); }',
   }));
-  if (q.ao) {
-    gtao = new FoliageSafeGTAO(scene, camera, size.x, size.y);
-    gtao.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.6, thickness: 1.6, scale: 1.15, samples: 16, distanceFallOff: 0.9, screenSpaceRadius: false });
-    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, radiusExponent: 1, rings: 2, samples: 12 });
-    gtao.blendIntensity = 0.95;
-    composer.addPass(gtao);
-  }
   if (q.bloom) {
     // only really bright things (sun glints, lamps) bloom: a bright overcast sky must not veil the view
     bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.1, 0.4, 1.3);

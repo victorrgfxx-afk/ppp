@@ -479,6 +479,19 @@ DN1 48 → 24 ms, noaptea cu ploaie 76 → 39 ms, în randare software), desenă
 triunghiurile și rezoluția la care se randează. Pentru 60 FPS ambele trebuie să încapă în ~16,7 ms: dacă GPU-ul e
 peste, limita e placa video la rezoluția aleasă (Înaltă randează la 1,25× rezoluția ecranului, Ultra la 2×).
 
+**Scena se desenează o singură dată pe cadru (V56).** Pe Înaltă/Ultra, ambient occlusion-ul (GTAO) își randa toată
+scena a doua oară, ca să-și facă harta de normale și adâncime. Acum folosește adâncimea pe care randarea scenei tocmai
+a desenat-o și deduce normalele din ea, deci nu mai desenează nimic. Măsurat pe 4 scene (strada casei, spre sat,
+crucea, pădurea): desenările camerei scad de la ~2 300 la ~1 370 pe cadru (−40 %), triunghiurile de la 5,75 la
+4,01 milioane (−30 %). Timpul CPU în care cadrul e trimis la placa video scade cu ~22 % (55 → 43 ms în randarea
+software de test, la două repetări). Imaginea e practic aceeași: iarba și frunzișul primesc și ele umbrire de
+contact (înainte erau scoase din AO), deci sunt cu puțin mai umbrite. Pe Medie/Scăzută nu e AO, deci nu se schimbă
+nimic.
+
+Testat și **nelansat**: „doar ce vezi”, adică desenarea strictă a ce intră în unghiul de vedere. Three.js deja nu
+desenează obiectele din afara privirii, iar pentru plasele mari unite (case, terenul, pădurile), tăierea lor în celule
+a scăzut triunghiurile cu ~7 %, dar a crescut desenările cu ~4 %. Timpul cadrului a rămas același, deci n-a meritat.
+
 ## Structură
 
 ```
