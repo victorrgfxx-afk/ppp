@@ -251,9 +251,16 @@ export function holeFlag(x, z, key) {
   for (const h of GEO.holes || []) if (h[key] && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
   return false;
 }
-// lawns: the terrain splat (forest floor / farmland / gravel weights) is cleared to plain grass under them
+// ground painted as forest floor (last year's leaves) without clearing anything: a road's verges in the wood
+export function addFloorPoly(P) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, z] of P) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  (GEO.floors ??= []).push({ x0, x1, z0, z1, test: (x, z) => inPoly(P, x, z), floor: true });
+}
+// lawns: the terrain splat (forest floor / farmland / gravel weights) is cleared to plain grass under them; the
+// floors (addFloorPoly) are painted as forest floor
 export function paintLawns(splat, E = GEO.ext) {
-  const L = (GEO.holes || []).filter(h => h.lawn && h.x1 > -E && h.x0 < E && h.z1 > -E && h.z0 < E);
+  const L = [...(GEO.holes || []).filter(h => h.lawn), ...(GEO.floors || [])].filter(h => h.x1 > -E && h.x0 < E && h.z1 > -E && h.z0 < E);
   const img = splat && splat.image;
   if (!L.length || !img || !img.width) return 0;
   const W = img.width, H = img.height;
@@ -269,7 +276,7 @@ export function paintLawns(splat, E = GEO.ext) {
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
       if (!h.test(-E + (i + 0.5) * 2 * E / W, -E + (j + 0.5) * 2 * E / H)) continue;
       const k = ((j - j0) * (i1 - i0 + 1) + (i - i0)) * 4;
-      d.data[k] = d.data[k + 1] = d.data[k + 2] = 0; n++;
+      d.data[k] = h.floor ? 255 : 0; d.data[k + 1] = d.data[k + 2] = 0; n++;
     }
     g.putImageData(d, i0, j0);
   }

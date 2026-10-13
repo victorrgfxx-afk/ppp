@@ -25,6 +25,7 @@ import { buildViteazul } from './viteazul.js';
 import { buildUzinei } from './uzinei.js';
 import { buildBiserica } from './biserica.js';
 import { buildUrcus } from './urcus.js';
+import { buildSonda } from './sonda.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -144,6 +145,8 @@ export function buildLandmarks(B, world) {
   const bi = buildBiserica(B, world);                 // photos 73-76: the painted church, its gate tower, the cemetery, the school yard
   if (bi) out.push(bi);
   buildUrcus(B, world);                               // the clip IMG_0725: the lane up to the cross, its brambles and the concrete block
+  const so = buildSonda(B, world);                    // photos 84-86: the oil wells in the wood, the gravel road to them
+  if (so) out.push(so);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

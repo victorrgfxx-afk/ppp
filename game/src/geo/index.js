@@ -31,6 +31,7 @@ import { prepareViteazul } from './viteazul.js';
 import { prepareUzinei } from './uzinei.js';
 import { prepareBiserica } from './biserica.js';
 import { prepareUrcus } from './urcus.js';
+import { prepareSonda } from './sonda.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
 
@@ -74,12 +75,16 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareUzinei();                                      // Str. Uzinei and Strada Bisericii by the STOP junction: onto the aerial, the works measured
   prepareBiserica();                                    // the painted church, its precinct and the cemetery: no forest there, the school's colours
   prepareUrcus();                                       // the lane up to the cross (the user's clip): its real width, the trees by its first bend
+  prepareSonda();                                       // the oil wells in the wood (photos 84-86): the pad levelled, no forest on it
   const terrain = buildTerrain(scene, gt, quality);
   buildFarTerrain(scene, gt);
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
   const landmarks = buildLandmarks(B, world);
+  // the landmarks' moving parts (the pumping units' beams and cranks): their own meshes, animated by tick()
+  const moving = landmarks.filter(l => l && l.animate);
+  for (const l of moving) for (const g of l.groups || []) scene.add(g);
   log('clădiri ' + stats.n, performance.now() - t0);
   paintLawns(gt.splat);
   if (GEO.W && gt.splatW) paintLawns(gt.splatW, GEO.W.ext);        // the lots in the world grid too (Strada Mihai Viteazul)
@@ -112,6 +117,10 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
     fronts, info, terrain, landmarks, forest: trees.forest, trees, canopy,
     // the snow modes: bare broadleaves near and far (trees.js, canopy.js)
     setWinter(on) { trees.setWinter(on); canopy?.setWinter(on); },
+    // every frame: the moving parts near the camera (t: seconds)
+    tick(t, camPos) { for (const l of moving) l.animate(t, camPos); },
+    // a still mirror near the camera (the wells' puddle): the screen-space reflections stay on in dry weather
+    mirrorNear(camPos) { return moving.some(l => l.mirrorNear?.(camPos)); },
     update(camPos) {
       trees.update(camPos);
       hill.update(camPos);

@@ -424,7 +424,7 @@ export function valueNoise2(x, z, cell, s) {
 
 const SP = 5.2, GT = 280, ST = 70, SSP = 7.5;
 // places that set their own stand composition (urcus.js: the wood around the clip IMG_0725):
-// fn(x, z, type, edge, code, h1, h2) -> type, with h1 and h2 two hashes of the tree's cell
+// fn(x, z, type, edge, code, h1, h2) -> type (< 0: no tree there), with h1 and h2 two hashes of the tree's cell
 const MIX = [];
 export function addForestMix(fn) { MIX.push(fn); }
 // every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
@@ -456,6 +456,7 @@ function eachForestTree(x0, z0, x1, z1, cb) {
       else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.55 ? T_BEECH : b < 0.75 ? T_HORN : T_OAK; }
     }
     for (const f of MIX) ty = f(x, z, ty, edge, code, hash3(i, j, 12), hash3(i, j, 13));
+    if (ty < 0) continue;                                                   // (a place keeps that spot free)
     // age classes: whole stands younger or older
     const s = (0.68 + 0.45 * valueNoise2(x, z, 110, 9)) * (0.88 + 0.24 * hash3(i, j, 7));
     cb(x, z, ty, s, hash3(i, j, 8) * Math.PI * 2, 0.82 + 0.3 * hash3(i, j, 9));

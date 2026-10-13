@@ -288,6 +288,9 @@ async function main() {
   // the dark blue saloon on the restaurant's lot by DN1 (photo 66)
   const ppLm = geoWorld.landmarks?.find(l => l.type === 'popas');
   if (ppLm) for (const c of ppLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.65, rough: 0.3, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
+  // photo 85: the red Kangoo on the oil wells' pad
+  const soLm = geoWorld.landmarks?.find(l => l.type === 'sonda');
+  if (soLm) for (const c of soLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.2, rough: 0.33, dusty: 0.35 }), 'plateB', c.x, c.z, c.h, {});
   // the cars along Str. Uzinei, in the works' parking area and the lot behind the fence, the red Kangoo (photos 78-83)
   const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
   if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
@@ -699,6 +702,11 @@ async function main() {
   if (uzLm?.views && !PHOTO_VIEWS.some(v => v.uzinei)) {
     for (const v of uzLm.views) PHOTO_VIEWS.push({ uzinei: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
   }
+  // photos 84-86 (the user's, summer morning): the oil wells in the wood (ultra-wide lens, fov 59), the gravel road to
+  // them (main lens, from the car)
+  if (soLm?.views && !PHOTO_VIEWS.some(v => v.sonda)) {
+    for (const v of soLm.views) PHOTO_VIEWS.push({ sonda: v.n, x: v.from[0], z: v.from[1], yaw: Math.atan2(-(v.to[0] - v.from[0]), -(v.to[1] - v.from[1])), pitch: v.pitch, fov: v.fov, label: v.label });
+  }
   // the user's clip IMG_0725 (an iPhone's 3x lens, 27.5 deg on its long side): the lane through the wood above the meadow,
   // 1 km from Strada Măgurii, the man 15 m ahead, the three ~80 m on (fitted to their places in its first frame,
   // geo/urcus.js); it also sets the clip's hour and sky and its moment (hikers.js)
@@ -795,6 +803,7 @@ async function main() {
     const dt = Math.min(0.05, clock.getDelta());
     t += dt;
     WIND.time.value = t;
+    geoWorld.tick(t, camera.position);                     // the landmarks' moving parts (the oil wells' pumping units)
     // the wind: a breeze, or in a blizzard the crivăț from the north-east, ~15 m/s gusting between ~8 and ~22 m/s (to
     // ~80 km/h) and veering a little; in a squall (rafale) ~6-9 m/s between bursts that come every half minute or so,
     // rise in a couple of seconds to ~20-23 m/s (~80 km/h) and blow for 5-10 s, veering with them, the heaviest rain
@@ -955,9 +964,12 @@ async function main() {
         (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
     audio.update(dt, { rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
-    // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch})
+    // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
-    if (fc) { camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position); }
+    if (fc) {
+      camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position);
+      if (fc.fov && camera.fov !== fc.fov) { camera.fov = fc.fov; camera.updateProjectionMatrix(); }   // (a lens of its own)
+    }
     // the sun's shadow cascades follow the view, ahead of the camera, texel-snapped
     const camGround = world.groundHeight(camera.position.x, camera.position.z);
     cascades.update(camera, camGround);
@@ -1046,7 +1058,8 @@ async function main() {
     } else firBodies.push({ id: 0, x: player.pos.x, z: player.pos.z, y0: player.pos.y, y1: player.pos.y + 1.75, r: 0.3, speed: Math.hypot(player.vel.x, player.vel.z) });
     firs.update(dt, camera.position, firBodies);
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
-    if (post.ssr) post.ssr.enabled = RAIN.uWet.value > 0.01 && !window.__game?.noSSR;   // reflections in wet ground only when there is any
+    // reflections in wet ground only when there is any (or a still puddle near: the oil wells' pad)
+    if (post.ssr) post.ssr.enabled = (RAIN.uWet.value > 0.01 || geoWorld.mirrorNear(camera.position)) && !window.__game?.noSSR;
     if (!paused) {
       const pp = mode === 'car' && active ? active.car.group.position : player.pos;
       bear?.update(dt, t, { active: horror === 1, px: pp.x, pz: pp.z, inCar: mode === 'car', torch: flashlight.on, camX: camera.position.x, camZ: camera.position.z });

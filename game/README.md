@@ -465,6 +465,35 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * cerul e cel din joc;
     * în joc, ochiul e la 1,6 m, nu la 2,5 m ca în Street View.
   * Mașinile generate la întâmplare nu mai apar la mai puțin de 60 m de camerele pozelor (în poze sunt doar mașinile reale).
+* **Sondele din pădure și drumul de pietriș spre ele (pozele 84–86, pozele tale, „45.1044027, 25.7210507”)** (`src/geo/sonda.js`).
+  * **Locul**: drumul de pietriș din OSM (way 338364635) se termină la coordonată; de acolo un drumeag duce ~30 m spre sud, în luminișul de pe culme (în relief, o terasă aproape plană; platforma e nivelată). Unitățile nu sunt în OSM: mijlocul liniei lor e pus pe petele deschise din ortofoto (Esri, z18), ~35 m la sud de capătul drumului.
+  * **Așezarea, din poze**:
+    * ambele balansiere se văd din profil, cu capetele de cal spre exterior, pe aceeași linie (azimut ~195°): Vulcanul la nord-nord-est, unitatea ruginită la sud-sud-vest;
+    * în poza 85 soarele (sus, ~50–55°, dimineața) e în mijlocul cadrului, deci camera privește spre ~130°; de aici iese direcția liniei;
+    * scara vine din Kangoo (1,8 m înălțime): orizontul, apoi înălțimea pivoților deasupra lui. Pivotul Vulcanului e la ~7,5 m, al unității ruginite la ~6,2 m; ~17–18 m între ei;
+    * dulapurile sunt între garduri; stâlpul cu proiector e la ~2 m în spatele lor (în poza 85 apare în stânga dulapului înalt, în poza 84 în dreapta lui).
+  * **Unitățile** (balansiere convenționale), animate cum lucrează mecanismul real (patrulater articulat):
+    * manivela învârte contragreutățile, bielele trag coada balansierului;
+    * capul de cal e un arc de cerc cu centrul în pivot, așa că dispozitivul de suspendare cu cabluri atârnă mereu vertical, de la înălțimea pivotului, și urcă și coboară tija lustruită prin presetupă;
+    * Vulcanul face ~6 curse pe minut, cealaltă ~7.
+  * **Vulcanul**: postament albastru cu scară verticală și cușcă de protecție până la platforma cu balustradă din jurul lagărului; balansier albastru cu sigla „Vulcan”; biele, manivele și contragreutăți galbene; carcasa galbenă a curelelor coboară spre motor.
+  * **Unitatea ruginită**: balansierul și capul de cal ruginite, cutia galbenă de la coadă, bielele albastre, roata de curea galbenă cu spițe (neacoperită), capul de erupție cu presetupa, robinetele și conducta.
+  * **Restul**:
+    * gardurile din plasă sudată, cu stâlpi albaștri și indicatoare de securitate;
+    * dulapurile electrice albe (unul pe picioare), cutia gri, stâlpul de beton perforat cu proiector;
+    * dalele vechi crăpate, pietrișul cu buruieni și pete umede;
+    * fâșia de iarbă uscată de la garduri, iarba înaltă cu morcov sălbatic în garduri și în pajiștea de la sud;
+    * Kangoo-ul roșu.
+  * **Balta** e o oglindă pe orice vreme: reflexiile din ecran (până acum doar pe ploaie) pornesc când ești la mai puțin de 70 m de ea. Sub zăpadă dispare.
+  * **Drumul prin pădure (poza 86)**:
+    * pietriș gri-maroniu de ~3,6 m, cu două făgașe și frunze uscate pe margini;
+    * harta pădurilor lăsa în jurul lui un culoar de iarbă de ~15 m; acum pădurea (fagi, carpeni, stejari crescuți în masiv, cu trunchi drept) vine până la 3 m de axul drumului, iar solul de pe margini e acoperit de frunzele de anul trecut;
+    * stâlpii de sat generați de-a lungul lui au dispărut: nu e nicio casă și nicio linie electrică cartată acolo, iar în poză nu apar.
+  * **Aproximat**:
+    * pozițiile exacte se pot abate cu 1–3 m: camerele, liniile și distanțele sunt reconstituite din poze, cu o eroare de câțiva metri;
+    * modelele sunt făcute după poze, nu după planurile fabricantului;
+    * cerul e cel din joc;
+    * în joc, ochiul e la 1,6 m (în poza 86 era la ~1,25 m, din mașină).
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 
