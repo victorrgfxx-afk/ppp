@@ -175,12 +175,41 @@ class WetSSRPass extends Pass {
   dispose() { this.material.dispose(); this.quad.dispose(); }
 }
 
-export function createComposer(renderer, scene, camera, q) {
+// The far relief and the sky (terrain.js FAR): drawn first into the frame with a camera of their own (the street's
+// view, 30 m to 260 km), so the mountains 40-100 km away keep a depth precision of metres; the map is drawn over them
+// after the depth is cleared (the RenderPass). Nothing of the map lies beyond the far relief along any view ray (the
+// rings surround the map's square), so the order is right everywhere.
+class FarPass extends Pass {
+  constructor(scene, camera) {
+    super();
+    this.scene = scene; this.camera = camera; this.needsSwap = false;
+    this.cam = new THREE.PerspectiveCamera(70, 1, 30, 260000);
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    const c = this.cam, m = this.camera;
+    c.position.copy(m.position); c.quaternion.copy(m.quaternion);
+    if (c.fov !== m.fov || c.aspect !== m.aspect || c.zoom !== m.zoom) { c.fov = m.fov; c.aspect = m.aspect; c.zoom = m.zoom; c.updateProjectionMatrix(); }
+    c.updateMatrixWorld();
+    const ac = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
+    renderer.clear();
+    renderer.render(this.scene, c);
+    renderer.autoClear = ac;
+  }
+}
+
+export function createComposer(renderer, scene, camera, q, farScene = null) {
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   // (with a depth texture: the wet-ground reflections march through it)
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ssr ? new THREE.DepthTexture(size.x, size.y) : null });
   const composer = new EffectComposer(renderer, rt);
-  composer.addPass(new RenderPass(scene, camera));
+  if (farScene) {
+    composer.addPass(new FarPass(farScene, camera));
+    const rp = new RenderPass(scene, camera);
+    rp.clear = false; rp.clearDepth = true;              // (over the far relief)
+    composer.addPass(rp);
+  } else composer.addPass(new RenderPass(scene, camera));
   let gtao = null, bloom = null, smaa = null, ssr = null;
   const reuse = q.ao && q.ssr && (() => { try { return localStorage.getItem('strada.aoReuse') !== 'false'; } catch (_) { return true; } })();
   const tap = reuse ? new DepthTap() : null;

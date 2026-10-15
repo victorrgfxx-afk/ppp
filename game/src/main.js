@@ -17,6 +17,7 @@ import { SCENE_SPOT } from './geo/hillwood.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
+import { buildATV } from './atv.js';
 import { Vehicle, TRACTION } from './vehicle.js';
 import { FirDetail } from './geo/firs.js';
 import { Player } from './player.js';
@@ -29,7 +30,7 @@ import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
-import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight } from './geo/index.js';
+import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR } from './geo/index.js';
 
 // Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
@@ -107,11 +108,13 @@ async function main() {
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.56, 0.60, 0.65);
   scene.fog = new THREE.FogExp2(fogColor, 1 / 4000);
-  scene.background = fogColor;
-  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 17000);
+  // the sky and the far relief (to 100 km) are drawn first, in a pass of their own (post.js FarPass), the map over them:
+  // no background colour here (three.js would clear the frame with it)
+  const farScene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 26000);   // (the map's far corner)
 
   const sky = createSky();
-  scene.add(sky);
+  farScene.add(sky);
   const sunDir = sky.material.uniforms.uSunDir.value;
   let hour = HOURS.includes(store.get('hour', 11.5)) ? store.get('hour', 11.5) : 11.5;
   let sunInfo = sunDirection(sunTime(hour, WEATHER[store.get('weather', 'senin')]?.winter));
@@ -208,6 +211,7 @@ async function main() {
     scene.environment?.dispose();
     scene.environment = buildEnvironment(renderer, sky);
     scene.environmentIntensity = baseEnv = w.env * (0.35 + 0.65 * d);
+    FAR.uAmb.value.fromArray(mixA(w.zenith, w.horizon, 0.6)).multiplyScalar(baseEnv * 1.6 * (1 - 0.85 * night)); FAR.uWinter.value = w.winter ? 1 : 0;
     // street lamps on at night; the moon's shaft on the hill of the cross; the bear's eyes catch the light
     M.lampGlass.emissive.setRGB(1, 0.78, 0.5); M.lampGlass.emissiveIntensity = 4 * (1 - THREE.MathUtils.smoothstep(sunInfo.el, -6, 1));
     moonBeam?.set(night > 0.5 && moonUp > 0.1, moonInfo.dir, 0.45 * moonUp, rainTarget > 0 ? 1 : overcast ? 0.6 : 0.3, scene.fog.density);
@@ -222,6 +226,8 @@ async function main() {
   world.terrainFn = geoGround;
   world.streetZ = [GEO.meta.street.z0, GEO.meta.street.z1];
   const geoWorld = buildGeoWorld(scene, world, Q, renderer, gt, (label, ms) => console.log('[geo]', label, Math.round(ms), 'ms'));
+  for (const m of geoWorld.far) farScene.add(m);
+  FAR.uH0.value = GEO.meta.origin.h0;
   const built = buildWorld(scene, world, Q, { geo: true, street: world.streetZ, fronts: geoWorld.fronts, blocked: footprintIndex() });
   const dogs = buildDogs(scene, world);
 
@@ -338,11 +344,34 @@ async function main() {
   const input = new Input(canvas);
   const audio = new Audio();
   const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
-  const post = createComposer(renderer, scene, camera, Q);
+  const post = createComposer(renderer, scene, camera, Q, farScene);
   gradeU = post.grade.uniforms;
   // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
+  // the ATV of the hill of the cross (atv.js): on open, nearly level ground a few metres from the cross's slab, its
+  // nose away from it; built for the snow (knobby tyres, 4x4), the blizzard's ride
+  let atv = null;
+  if (crossAt) {
+    const q = [];
+    let best = null;
+    for (let k = 0; k < 64 && !best; k++) {
+      const r = 8 + (k >> 4) * 3, a = (k % 16) / 16 * Math.PI * 2 + (k >> 4) * 0.2;
+      const x = crossAt.x + Math.cos(a) * r, z = crossAt.z + Math.sin(a) * r, y = world.groundHeight(x, z);
+      const slope = Math.max(...[[1.4, 0], [-1.4, 0], [0, 1.4], [0, -1.4]].map(([dx, dz]) => Math.abs(world.groundHeight(x + dx, z + dz) - y) / 1.4));
+      if (slope > 0.18) continue;
+      if (world.query(x, z, 3, q).some(b => b.y1 > y + 0.3 && b.y0 < y + 2 && Math.hypot(b.x - x, b.z - z) < 2.3 + Math.max(b.hw, b.hd))) continue;
+      best = { x, z, a };
+    }
+    if (best) {
+      const car = buildATV(0xa3201a);
+      scene.add(car.group);
+      atv = new Vehicle(car, world, best.x, best.z, Math.atan2(-Math.cos(best.a), -Math.sin(best.a)), { power: 1.25, vmax: 22 });
+      atv.name = car.model.name;
+      vehicles.push(atv);
+      atv.update(0.016, null);
+    }
+  }
   flashlight = new Flashlight(scene);
   headlights = new Headlights(scene);
   // the forest scene of the user's two clips, live in the clearing of the wood by the cross (+z of its stage points back
@@ -714,6 +743,11 @@ async function main() {
     const c = laneAt(...CLIP.cam), m = laneAt(...CLIP.man), y = world.groundHeight(c.x, c.z) + CLIP.eye, ym = world.groundHeight(m.x, m.z);
     PHOTO_VIEWS.push({ clip: true, x: c.x, z: c.z, yaw: Math.atan2(-(m.x - c.x), -(m.z - c.z)) - 0.003, pitch: Math.atan2(ym - y, Math.hypot(m.x - c.x, m.z - c.z)) + 4.15 * Math.PI / 180, fov: 27.5, label: 'Clipul IMG_0725 — ulița prin pădure, 16:11' });
   }
+  // the ATV of the hill of the cross: standing beside it (F to get on)
+  if (atv && !PHOTO_VIEWS.some(v => v.atv)) {
+    const d = atv.doorPos(-1), bx = d.x + Math.sin(atv.h) * 2.2, bz = d.z + Math.cos(atv.h) * 2.2;
+    PHOTO_VIEWS.push({ atv: true, x: bx, z: bz, yaw: Math.atan2(-(atv.x - bx), -(atv.z - bz)), pitch: -0.12, fov: 70, label: 'ATV — ATV-ul de pe dealul crucii (F: urcă)' });
+  }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
     const i = e.target.dataset.view; if (i === undefined) return;
@@ -762,6 +796,7 @@ async function main() {
     audio.door();
     active.vx *= 0.2; active.vz *= 0.2;
     active.car.glass.opacity = 0.86;
+    if (active.car.rider) active.car.rider.visible = false;
     mode = 'foot'; active = null;
   };
 
@@ -793,7 +828,9 @@ async function main() {
   const clock = new THREE.Timer();
   let roadName = null;
   const pos0 = () => (mode === 'car' && active ? active.car.group.position : player.pos);
-  geoWorld.update(camera.position);
+  // how far one sees (Koschmieder: 2 % contrast) in the weather's haze, without its gusts
+  const visibility = () => (baseFog > 0 ? 3.912 / baseFog : Infinity);
+  geoWorld.update(camera.position, visibility());
   let t = 0, frameNo = 0;
   const focus = new THREE.Vector3();
   const tmpV = new THREE.Vector3();
@@ -804,6 +841,10 @@ async function main() {
     t += dt;
     WIND.time.value = t;
     geoWorld.tick(t, camera.position);                     // the landmarks' moving parts (the oil wells' pumping units)
+    // the far relief (terrain.js FAR) in the map's light and haze
+    FAR.uSunDir.value.copy(sunDir); FAR.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity);
+    FAR.uSky.value.copy(hemi.color).multiplyScalar(hemi.intensity); FAR.uGround.value.copy(hemi.groundColor).multiplyScalar(hemi.intensity);
+    FAR.uFogCol.value.copy(scene.fog.color); FAR.uFogDensity.value = scene.fog.density; FAR.uSnow.value = SNOW.uSnow.value;
     // the wind: a breeze, or in a blizzard the crivăț from the north-east, ~15 m/s gusting between ~8 and ~22 m/s (to
     // ~80 km/h) and veering a little; in a squall (rafale) ~6-9 m/s between bursts that come every half minute or so,
     // rise in a couple of seconds to ~20-23 m/s (~80 km/h) and blow for 5-10 s, veering with them, the heaviest rain
@@ -883,16 +924,18 @@ async function main() {
         if (m.x || m.y) { orbit.yaw -= m.x * sens(); orbit.pitch = clamp(orbit.pitch + m.y * sens(), -0.1, 0.9); orbit.idle = 0; }
         else { orbit.idle += dt; if (orbit.idle > 1.5) { orbit.yaw = damp(orbit.yaw, 0, 2, dt); orbit.pitch = damp(orbit.pitch, 0.18, 2, dt); } }
         const cy = active.h + orbit.yaw;
-        const dist = 6.3 + sp * 0.03;
+        const [cd, ch] = active.m.chase ?? [6.3, 1.3];        // (an ATV: closer, lower)
+        const dist = cd + sp * 0.03;
         const g = active.car.group.position;
-        const want = tmpV.set(g.x + Math.sin(cy) * dist * Math.cos(orbit.pitch), g.y + 1.3 + Math.sin(orbit.pitch) * dist, g.z + Math.cos(cy) * dist * Math.cos(orbit.pitch));
+        const want = tmpV.set(g.x + Math.sin(cy) * dist * Math.cos(orbit.pitch), g.y + ch + Math.sin(orbit.pitch) * dist, g.z + Math.cos(cy) * dist * Math.cos(orbit.pitch));
         const minY = world.groundHeight(want.x, want.z, g.y) + 0.4;
         want.y = Math.max(want.y, minY);
         const ck = 10 + sp * 0.25;                      // stiffer follow at speed: no 15 m lag at 500 km/h
         camera.position.x = damp(camera.position.x, want.x, ck, dt);
         camera.position.y = damp(camera.position.y, want.y, ck, dt);
         camera.position.z = damp(camera.position.z, want.z, ck, dt);
-        focus.set(g.x - Math.sin(active.h) * 1.5, g.y + 1.05, g.z - Math.cos(active.h) * 1.5);
+        focus.set(g.x - Math.sin(active.h) * 1.5, g.y + (active.m.atv ? 0.95 : 1.05), g.z - Math.cos(active.h) * 1.5);
+        if (active.car.rider) active.car.rider.visible = true;
         camera.lookAt(focus);
         fov = 62 + Math.min(14, sp * 0.3) + Math.max(0, Math.min(14, (sp - 50) * 0.16));
         active.car.glass.opacity = 0.86;
@@ -902,7 +945,9 @@ async function main() {
         if (!m.x && !m.y) cockpitLook.yaw = damp(cockpitLook.yaw, 0, 0.8, dt);
         camera.position.copy(active.headPos());
         active.car.glass.opacity = 0.12;
-        camera.rotation.set(cockpitLook.pitch - 0.06 + active.pitch + active.car.group.rotation.x, active.h + cockpitLook.yaw, -active.roll * 0.6, 'YXZ');
+        if (active.car.rider) active.car.rider.visible = false;
+        // (on an ATV the rider watches the trail just ahead: the bars in the lower edge of the view)
+        camera.rotation.set(cockpitLook.pitch - (active.m.atv ? 0.28 : 0.06) + active.pitch + active.car.group.rotation.x, active.h + cockpitLook.yaw, -active.roll * 0.6, 'YXZ');
         fov = 72;
       }
     } else {
@@ -936,7 +981,7 @@ async function main() {
       const buried = SNOW.uSnow.value >= 0.45;          // the grass under the snow
       for (const gm of built.grass) gm.visible = Math.abs(gm.userData.cz - camera.position.z) < 56 && Math.abs(camera.position.x) < 60 && !buried;
       for (const m of UNDER_SNOW) m.visible = !buried;
-      geoWorld.update(camera.position);
+      geoWorld.update(camera.position, visibility());
       shareInstancedDepth(scene);                         // (the trees and ground cover streamed in since)
       forest.near(camera.position);
       wetScene(scene);                                    // the materials streamed in since: rain and snow on them too
@@ -967,7 +1012,7 @@ async function main() {
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
-      camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position);
+      camera.position.set(fc.x, fc.y, fc.z); camera.rotation.set(fc.pitch, fc.yaw, 0, 'YXZ'); sky.position.copy(camera.position); geoWorld.update(camera.position, visibility());
       if (fc.fov && camera.fov !== fc.fov) { camera.fov = fc.fov; camera.updateProjectionMatrix(); }   // (a lens of its own)
     }
     // the sun's shadow cascades follow the view, ahead of the camera, texel-snapped
@@ -1057,7 +1102,8 @@ async function main() {
       for (const k of [1.3, -1.3]) firBodies.push({ id: k, x: active.x + fx * k, z: active.z + fz * k, y0: gy, y1: gy + 1.5, r, speed: Math.abs(active.speed), car: true, impact: active.impact });
     } else firBodies.push({ id: 0, x: player.pos.x, z: player.pos.z, y0: player.pos.y, y1: player.pos.y + 1.75, r: 0.3, speed: Math.hypot(player.vel.x, player.vel.z) });
     firs.update(dt, camera.position, firBodies);
-    spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, RAIN.uWet.value, rainLight + flash * 0.6, camera.position);
+    // the wheels throw up spray on a wet road, powder off a snowy one
+    spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, Math.max(RAIN.uWet.value, SNOW.uSnow.value > 0.4 ? 0.85 : 0), rainLight + flash * 0.6, camera.position);
     // reflections in wet ground only when there is any (or a still puddle near: the oil wells' pad)
     if (post.ssr) post.ssr.enabled = (RAIN.uWet.value > 0.01 || geoWorld.mirrorNear(camera.position)) && !window.__game?.noSSR;
     if (!paused) {
@@ -1083,7 +1129,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

@@ -6,7 +6,7 @@ import { WIND } from '../util.js';
 import { riverCellKept } from './bridge.js';
 
 // Near terrain (+-3 km, 5 m grid) and world terrain (+-8 km, 10 m grid) in LOD chunks,
-// far ring (+-20 km Copernicus DEM), water surfaces.
+// the far relief (the far ring to 20 km, the horizon ring to 100 km), water surfaces.
 
 function loadTex(url, srgb = true) {
   return new Promise((res, rej) => new THREE.TextureLoader().load(url, (t) => {
@@ -20,9 +20,9 @@ function loadTex(url, srgb = true) {
 }
 
 export async function loadGeoTextures(base) {
-  const [ortho, orthoFar, splat, orthoW, splatW] = await Promise.all([loadTex(base + 'ortho.jpg'), loadTex(base + 'ortho_far.jpg'), loadTex(base + 'splat.png', false),
-    GEO.W ? loadTex(base + 'ortho_w.jpg') : null, GEO.W ? loadTex(base + 'splat_w.png', false) : null]);
-  return { ortho, orthoFar, splat, orthoW, splatW };
+  const [ortho, orthoFar, splat, orthoW, splatW, horizon] = await Promise.all([loadTex(base + 'ortho.jpg'), loadTex(base + 'ortho_far.jpg'), loadTex(base + 'splat.png', false),
+    GEO.W ? loadTex(base + 'ortho_w.jpg') : null, GEO.W ? loadTex(base + 'splat_w.png', false) : null, GEO.Hz ? loadTex(base + 'horizon.jpg').catch(() => null) : null]);
+  return { ortho, orthoFar, splat, orthoW, splatW, horizon };
 }
 
 function terrainMaterial(ortho, splat, ext) {
@@ -180,8 +180,71 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
   return { lods, material: mat };
 }
 
-// Real surroundings out to 20 km (Copernicus DEM + Sentinel-2): valley sides and ridges on the horizon.
-export function buildFarTerrain(scene, gt) {
+// ------------------------------------------------------------------ the far relief (drawn in a pass of its own)
+// The real surroundings beyond the map: the far ring to 20 km (Copernicus DEM + Sentinel-2) and the horizon ring from
+// 20 to 100 km (geo/build_horizon.py: the Subcarpathian hills, the Bucegi, Baiului, Ciucaș and Leaota mountains, the
+// plain). They are drawn first, with a camera of their own (post.js FarPass: 30 m to 260 km, a few metres of depth
+// precision at 100 km where the street's camera would have kilometres), then the map over them.
+// Their shader: the Earth's curvature seen from the camera (with the usual refraction, k = 0.13: R' = R / (1 - k);
+// ~110 m down at 40 km, ~440 m at 80 km), the colour of the ground lit by the sun and the sky, the snow of the winter
+// modes (open ground white, the woods grey; the mountains white above ~900 m), and the aerial perspective: the
+// weather's haze (main.js: its density is the real visibility), brighter towards the sun (forward scattering).
+export const FAR = {
+  uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
+  uSky: { value: new THREE.Color(0.5, 0.55, 0.6) }, uGround: { value: new THREE.Color(0.3, 0.28, 0.25) }, uAmb: { value: new THREE.Color(0.3, 0.33, 0.38) },
+  uFogCol: { value: new THREE.Color(0.6, 0.66, 0.74) }, uFogDensity: { value: 1 / 14000 }, uSunHaze: { value: 0.8 },
+  uSnow: { value: 0 }, uWinter: { value: 0 }, uH0: { value: 0 }, uREff: { value: 6371000 / 0.87 },
+};
+const FAR_VERT = /* glsl */`
+uniform float uREff;
+varying vec3 vW;
+varying vec3 vN;
+varying vec2 vUv;
+varying float vAlt;
+void main() {
+  vec3 p = (modelMatrix * vec4(position, 1.0)).xyz;
+  vAlt = p.y;
+  vec2 d = p.xz - cameraPosition.xz;
+  p.y -= max(0.0, dot(d, d) - 6.4e7) / (2.0 * uREff);                // (nothing within 8 km of the camera: the map stays level)
+  vW = p; vN = normal; vUv = uv;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}`;
+const FAR_FRAG = /* glsl */`
+uniform sampler2D uMap;
+uniform vec3 uSunDir, uSunCol, uSky, uGround, uAmb, uFogCol;
+uniform float uFogDensity, uSunHaze, uSnow, uWinter, uH0;
+varying vec3 vW;
+varying vec3 vN;
+varying vec2 vUv;
+varying float vAlt;
+void main() {
+  vec3 alb = texture2D(uMap, vUv).rgb;
+  vec3 n = normalize(vN);
+  // snow: the open ground white, the woods (dark, green) grey with it; the mountains in winter white high up
+  float green = clamp((alb.g - max(alb.r, alb.b)) * 18.0 + (0.09 - dot(alb, vec3(0.33))) * 9.0, 0.0, 1.0);
+  float hi = uWinter * smoothstep(900.0, 1400.0, vAlt + uH0);
+  float sn = clamp(max(uSnow * (1.0 - 0.6 * green), hi * (1.0 - 0.35 * green)) * smoothstep(0.35, 0.75, n.y), 0.0, 1.0);
+  alb = mix(alb, vec3(0.78, 0.8, 0.83), sn);
+  // lit by the sun and the sky (the imagery has its own soft relief shading: the sun's share kept modest)
+  float ndl = max(dot(n, uSunDir), 0.0);
+  vec3 col = alb * (uSunCol * ndl + mix(uGround, uSky, 0.5 + 0.5 * n.y) + uAmb) * 0.3183;
+  // aerial perspective
+  vec3 v = vW - cameraPosition;
+  float dist = length(v);
+  float mie = pow(max(dot(v / dist, uSunDir), 0.0), 6.0);
+  vec3 fogc = uFogCol * (1.0 + uSunHaze * mie);
+  col = mix(col, fogc, 1.0 - exp(-uFogDensity * dist));
+  gl_FragColor = vec4(col, 1.0);
+}`;
+function farMaterial(map) {
+  const m = new THREE.ShaderMaterial({ uniforms: { ...FAR, uMap: { value: map } }, vertexShader: FAR_VERT, fragmentShader: FAR_FRAG, fog: false });
+  // (what the Unreal export reads: export/unreal.js)
+  Object.assign(m, { map, color: new THREE.Color(0xd8dccf), roughness: 1, metalness: 0 });
+  return m;
+}
+
+// the far ring to 20 km (100 m cells; the map's square is left out)
+export function buildFarTerrain(gt) {
   const { farN: n, farExt: ext, F, worldExt: near } = GEO;
   const s = 2 * ext / (n - 1);
   const pos = [], uv = [];
@@ -203,12 +266,52 @@ export function buildFarTerrain(scene, gt) {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
-  const m = new THREE.MeshStandardMaterial({ map: gt.orthoFar, roughness: 1, metalness: 0, color: 0xd8dccf });
-  const mesh = new THREE.Mesh(g, m);
+  const mesh = new THREE.Mesh(g, farMaterial(gt.orthoFar));
   mesh.userData.noAO = true;
   mesh.userData.ue = { kind: 'far' };
   mesh.matrixAutoUpdate = false;
-  scene.add(mesh);
+  mesh.frustumCulled = false;                        // (its bounds take no account of the curvature)
+  return mesh;
+}
+
+// The horizon ring, 20.25 to 100 km: a polar grid whose cells all look the same size from the middle (512 sectors of
+// 0.7 deg, rings 1.23 % apart: ~250 m at 20 km, ~1.2 km at 100 km), heights from the 500 m grid; its inner edge a
+// little under the far ring's (no gap, no flicker) with a skirt hanging below it.
+export function buildHorizon(gt) {
+  const Hz = GEO.Hz;
+  if (!Hz || !gt.horizon) return null;
+  const { n, ext, step, H } = Hz;
+  const hAt = (x, z) => {
+    const fx = Math.min(n - 1.001, Math.max(0, (x + ext) / step)), fz = Math.min(n - 1.001, Math.max(0, (z + ext) / step));
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
+    return (H[j * n + i] * (1 - u) + H[j * n + i + 1] * u) * (1 - v) + (H[(j + 1) * n + i] * (1 - u) + H[(j + 1) * n + i + 1] * u) * v;
+  };
+  const NA = 512, Q = 1.0123, R0 = 20250, R1 = Math.min(ext - 600, 99000);
+  const radii = [R0 - 1];                             // (the skirt's ring)
+  for (let r = R0; r < R1; r *= Q) radii.push(r);
+  radii.push(R1);
+  const NR = radii.length, pos = new Float32Array(NA * NR * 3), uv = new Float32Array(NA * NR * 2);
+  for (let k = 0; k < NR; k++) for (let a = 0; a < NA; a++) {
+    const t = a / NA * Math.PI * 2, r = radii[k], x = Math.cos(t) * r, z = Math.sin(t) * r, o = k * NA + a;
+    pos[o * 3] = x; pos[o * 3 + 1] = k === 0 ? hAt(x, z) - 160 : hAt(x, z) - (k === 1 ? 3 : 0); pos[o * 3 + 2] = z;
+    uv[o * 2] = (x + ext) / (2 * ext); uv[o * 2 + 1] = (z + ext) / (2 * ext);
+  }
+  const idx = new Uint32Array((NR - 1) * NA * 6);
+  let q = 0;
+  for (let k = 0; k < NR - 1; k++) for (let a = 0; a < NA; a++) {
+    const A = k * NA + a, B = k * NA + (a + 1) % NA, C = A + NA, D = B + NA;
+    idx[q++] = A; idx[q++] = C; idx[q++] = B; idx[q++] = B; idx[q++] = C; idx[q++] = D;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeVertexNormals();
+  const mesh = new THREE.Mesh(g, farMaterial(gt.horizon));
+  mesh.userData.noAO = true;
+  mesh.userData.ue = { kind: 'far' };
+  mesh.matrixAutoUpdate = false;
+  mesh.frustumCulled = false;
   return mesh;
 }
 

@@ -387,7 +387,8 @@ export async function exportUnreal(game, sink, { log = (s) => console.log('[ue] 
     }
     if (written % 10 === 0) log(`tile-uri scrise: ${written}/${tileList.length} (${el()})`);
   }
-  // the far ring of relief (to 20 km) as one mesh of its own
+  // the far relief (the ring to 20 km, the horizon to 100 km: drawn in a scene of their own) as one mesh of its own
+  game.farScene?.traverse(o => { if (o.isMesh && o.userData?.ue?.kind === 'far' && !farMeshes.includes(o)) farMeshes.push(o); });
   if (farMeshes.length) {
     const g = new Map();
     for (const o of farMeshes) {

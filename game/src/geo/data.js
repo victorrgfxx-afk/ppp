@@ -8,7 +8,7 @@ export async function loadGeo(base) {
   const get = (f) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
   // binary grids travel as base64 in JSON (static hosts may refuse .bin)
   const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  const [json, h, hw, far, trees, forest, species] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null), get('species.json').then(bin).catch(() => null)]);
+  const [json, h, hw, far, trees, forest, species, hz] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null), get('species.json').then(bin).catch(() => null), get('horizon.json').catch(() => null)]);
   Object.assign(GEO, json);
   const g = json.meta.grid;
   // near grid (5 m, +-3 km around the street) and world grid (10 m, the whole playable map)
@@ -38,6 +38,9 @@ export async function loadGeo(base) {
   // bits 5-7 tree cover density (Copernicus 2018) / 100 * 7
   GEO.speciesBits = species && json.species ? new Uint8Array(species) : null;
   if (GEO.speciesBits) GEO.speciesMix = speciesMix(GEO.speciesBits, json.species.n);
+  // the horizon ring (geo/build_horizon.py): relief from 20 to 100 km, 500 m cells, azimuthal equidistant
+  GEO.Hz = null;
+  if (hz) { const a = new Int16Array(bin(hz)), H = new Float32Array(a.length); for (let i = 0; i < a.length; i++) H[i] = a[i] / hz.scale; GEO.Hz = { n: hz.n, ext: hz.ext, step: 2 * hz.ext / (hz.n - 1), H }; }
   const fi = new Int16Array(far);
   GEO.farN = json.meta.far.n; GEO.farExt = json.meta.far.ext;
   GEO.F = new Float32Array(fi.length);

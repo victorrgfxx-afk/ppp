@@ -115,24 +115,28 @@ export function shareInstancedDepth(root) {
 // Each preset: the sky shader's uniforms, the sun / sky lights, the image-based light, fog and exposure.
 // "senin" and "noros" match the sunny Street View captures (deep blue sky, cumulus, hard sun shadows); "innorat" is the
 // grey late-September deck of the user's own photos 1-23.
+// fogDensity: the haze's extinction (1/m); what one can still make out is ~3.9 / fogDensity away (Koschmieder, 2 %
+// contrast: the meteorological visibility): clear ~55 km (the Bucegi, 40 km off, faint and blue), partly cloudy ~40
+// km, the grey September deck ~20 km, the clear cold air after a snowfall ~70 km, rain ~2 km, a squall ~1.6 km, snow
+// ~3 km, a blizzard ~330 m
 export const WEATHER = {
   senin: {
     label: 'Senin', cover: 0.4, cumulus: 1, zenith: [0.03, 0.115, 0.43], horizon: [0.46, 0.6, 0.78], bright: 1,
     cloudLit: [1.25, 1.22, 1.18], cloudDark: [0.46, 0.52, 0.62],
     sun: 3.8, sunColor: [1, 0.94, 0.84], hemi: 0.4, hemiSky: [0.8, 0.85, 0.95], hemiGround: [0.45, 0.4, 0.32],
-    env: 1.4, envDesat: 0.7, envGround: [0.4, 0.37, 0.3], fog: [0.6, 0.69, 0.8], fogDensity: 1 / 6500, exposure: 0.95, shadow: 1,
+    env: 1.4, envDesat: 0.7, envGround: [0.4, 0.37, 0.3], fog: [0.6, 0.69, 0.8], fogDensity: 1 / 14000, exposure: 0.95, shadow: 1,
   },
   noros: {
     label: 'Parțial noros', cover: 0.56, cumulus: 1, zenith: [0.06, 0.17, 0.48], horizon: [0.56, 0.64, 0.75], bright: 1,
     cloudLit: [1.15, 1.13, 1.1], cloudDark: [0.42, 0.46, 0.53],
     sun: 3.3, sunColor: [1, 0.94, 0.85], hemi: 0.45, hemiSky: [0.8, 0.84, 0.92], hemiGround: [0.42, 0.38, 0.31],
-    env: 1.3, envDesat: 0.5, envGround: [0.38, 0.36, 0.3], fog: [0.6, 0.66, 0.74], fogDensity: 1 / 5500, exposure: 0.95, shadow: 0.95,
+    env: 1.3, envDesat: 0.5, envGround: [0.38, 0.36, 0.3], fog: [0.6, 0.66, 0.74], fogDensity: 1 / 10500, exposure: 0.95, shadow: 0.95,
   },
   innorat: {
     label: 'Înnorat', cover: 0.72, cumulus: 0, zenith: [0.32, 0.42, 0.58], horizon: [0.6, 0.64, 0.69], bright: 1.12,
     cloudLit: [0.86, 0.87, 0.89], cloudDark: [0.5, 0.53, 0.58],
     sun: 1.7, sunColor: [1, 0.945, 0.867], hemi: 0.35, hemiSky: [0.875, 0.902, 0.933], hemiGround: [0.31, 0.29, 0.26],
-    env: 0.75, fog: [0.56, 0.6, 0.65], fogDensity: 1 / 4000, exposure: 0.92, shadow: 1,
+    env: 0.75, fog: [0.56, 0.6, 0.65], fogDensity: 1 / 5500, exposure: 0.92, shadow: 1,
   },
 };
 // torrential rain (rain.js): a low, dark, even deck; the sun only a faint glow; heavy haze, visibility ~1.5 km
@@ -166,7 +170,7 @@ WEATHER.zapada = {
   label: 'Zăpadă, senin', cover: 0.25, cumulus: 1, zenith: [0.025, 0.1, 0.42], horizon: [0.52, 0.64, 0.82], bright: 1,
   cloudLit: [1.25, 1.24, 1.22], cloudDark: [0.5, 0.56, 0.66],
   sun: 3.6, sunColor: [1, 0.95, 0.88], hemi: 0.5, hemiSky: [0.78, 0.84, 0.96], hemiGround: [0.74, 0.76, 0.8],
-  env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], fogDensity: 1 / 7000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,
+  env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], fogDensity: 1 / 18000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,
 };
 // a blizzard (viscol): a gale of ~15 m/s gusting to ~75 km/h drives the snow almost level and lifts it off the ground;
 // a white-out under a bright, even deck, no shadows, visibility ~250 m that closes in with every gust (main.js)

@@ -61,6 +61,7 @@ export class Vehicle {
     const y = (fl + fr + rl + rr) / 4;
     this.gy = y;
     const pitchG = Math.atan2((fl + fr) / 2 - (rl + rr) / 2, this.wheelbase);
+    this.slope = pitchG;                                   // (> 0: the nose up the hill)
     const rollG = Math.atan2((fr + rr) / 2 - (fl + fr + rl + rr - (fr + rr)) / 2, hw * 2);
     g.position.set(this.x, y, this.z);
     g.rotation.set(pitchG, this.h, rollG, 'YXZ');
@@ -68,7 +69,8 @@ export class Vehicle {
     this.car.bodyPivot.position.y = -Math.abs(this.pitch) * 0.2;
     // wheels
     this.car.setWheels(this.spin, this.steer);
-    if (this.car.steer) this.car.steer.rotation.z = this.steer * 7;
+    // the steering wheel (7 turns of it to the wheels' angle), or an ATV's bars, about their leaning column
+    if (this.car.steer) { if (this.m.steerRatio) this.car.steer.rotation.y = -this.steer * this.m.steerRatio; else this.car.steer.rotation.z = this.steer * 7; }
     this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
     void dt;
   }
@@ -122,16 +124,19 @@ export class Vehicle {
       this.throttle = 0;
       hand = true;
     }
-    // the tyres cannot push or brake harder than the road lets them (snow: wheelspin, long stops)
-    const mu = TRACTION.mu;
+    // the tyres cannot push or brake harder than the road lets them (snow: wheelspin, long stops); an ATV's knobby
+    // tyres and four driven wheels bite into it (snowGrip: the share of the grip the snow takes away)
+    const mu = this.m.snowGrip ? 1 - (1 - TRACTION.mu) * this.m.snowGrip : TRACTION.mu;
     if (mu < 0.999) { const aMax = (this.hyper ? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
     // rolling resistance + aero drag + engine braking
     const cd = this.hyper ? this.hyper.cd : 0.0012;
-    const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * Math.min(1, TRACTION.sink / 0.3));
+    const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * (this.m.float ?? 1) * Math.min(1, TRACTION.sink / 0.3));
     if (Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle)) { vF *= Math.exp(-6 * dt); }
     else vF -= drag * dt;
     if (hand) vF *= Math.exp(-(ctl ? 1.2 : 5) * dt);
     vF += accel * dt;
+    // off-road: the hill pulls it back going up and on going down (cars keep their road manners)
+    if (this.m.offroad && this.slope) vF -= 9.81 * Math.sin(this.slope) * dt;
     if (this.hyper) vF = Math.min(vF, this.hyper.limit);
 
     // steering (less lock at speed)
@@ -252,6 +257,11 @@ export class Vehicle {
   }
   headPos() {
     const pm = this.m;
+    if (pm.seat) {
+      // astride: the rider's eyes over the middle of the seat
+      const s = Math.sin(this.h), c = Math.cos(this.h), lz = pm.seat.z;
+      return new THREE.Vector3(this.x + lz * s, this.car.group.position.y + pm.seat.eye, this.z + lz * c);
+    }
     const lz = pm.pillars[0] - 0.06 - pm.L / 2, lx = -0.37;
     const s = Math.sin(this.h), c = Math.cos(this.h);
     const beltY = pm.belt.reduce((a, b) => Math.max(a, b[1]), 0);

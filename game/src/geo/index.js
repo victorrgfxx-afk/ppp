@@ -2,7 +2,7 @@ import { moonAltAz } from '../astro.js';
 import * as THREE from 'three';
 import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns } from './data.js';
 import { genGeoTextures } from './geotex.js';
-import { loadGeoTextures, buildTerrain, buildFarTerrain, buildWater } from './terrain.js';
+import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, buildWater, FAR } from './terrain.js';
 import { makeBuildingMaterials, buildBuildings, footprintIndex } from './buildings.js';
 import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight } from './roads.js';
 import { makePropMaterials, buildFences, buildPower, addWires } from './props.js';
@@ -33,7 +33,7 @@ import { prepareBiserica } from './biserica.js';
 import { prepareUrcus } from './urcus.js';
 import { prepareSonda } from './sonda.js';
 
-export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex };
+export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex, FAR };
 
 export async function loadGeoAll(base) {
   await loadGeo(base);
@@ -52,8 +52,9 @@ export function geoGround(x, z, ref) {
 
 export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {}) {
   const t0 = performance.now();
-  // 750 m chunks around the street, 2 km beyond; merged meshes farther than 6.8 km are hidden (fog)
-  const B = new GeoBuilder(750, 2000, GEO.ext, 6800);
+  // 750 m chunks around the street, 2 km beyond; the merged meshes are hidden only beyond what the haze lets one see
+  // (update: the visibility), the whole map on a clear day
+  const B = new GeoBuilder(750, 2000, GEO.ext, 24000);
   prepareGrigorescu();                                  // levels the sports ground's courts before the terrain is meshed
   prepareCornu();                                       // DN1 at the Cornu roundabout: carriageways to the measured cross-section
   prepareEtu();                                         // DN1 at the Etu station: 2 lanes per carriageway, canopy instead of a house
@@ -77,7 +78,8 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareUrcus();                                       // the lane up to the cross (the user's clip): its real width, the trees by its first bend
   prepareSonda();                                       // the oil wells in the wood (photos 84-86): the pad levelled, no forest on it
   const terrain = buildTerrain(scene, gt, quality);
-  buildFarTerrain(scene, gt);
+  // the far relief (to 20 km, then the horizon to 100 km): drawn in a pass of its own (post.js FarPass)
+  const far = [buildFarTerrain(gt), buildHorizon(gt)].filter(Boolean);
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
@@ -114,23 +116,29 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   let cullI = 0, lastCull = null;
   const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.length, meshes: meshes.length };
   return {
-    fronts, info, terrain, landmarks, forest: trees.forest, trees, canopy,
+    fronts, info, terrain, landmarks, forest: trees.forest, trees, canopy, far,
     // the snow modes: bare broadleaves near and far (trees.js, canopy.js)
     setWinter(on) { trees.setWinter(on); canopy?.setWinter(on); },
     // every frame: the moving parts near the camera (t: seconds)
     tick(t, camPos) { for (const l of moving) l.animate(t, camPos); },
     // a still mirror near the camera (the wells' puddle): the screen-space reflections stay on in dry weather
     mirrorNear(camPos) { return moving.some(l => l.mirrorNear?.(camPos)); },
-    update(camPos) {
+    // vis: how far one sees now (main.js: the weather's visibility, m): nothing is hidden before the haze has hidden it
+    update(camPos, vis = Infinity) {
       trees.update(camPos);
       hill.update(camPos);
-      // distance culling of the merged chunks (a few per frame is enough: they change slowly; all at once after a jump)
-      const jumped = !lastCull || Math.hypot(camPos.x - lastCull.x, camPos.z - lastCull.z) > 150;
-      lastCull = { x: camPos.x, z: camPos.z };
+      // distance culling of the merged chunks (a few per frame is enough: they change slowly; all at once after a jump
+      // or when the visibility changes)
+      const jumped = !lastCull || Math.hypot(camPos.x - lastCull.x, camPos.z - lastCull.z) > 150 || Math.abs(Math.log(vis / lastCull.vis)) > 0.15;
+      lastCull = { x: camPos.x, z: camPos.z, vis };
+      const reach = Math.max(1200, vis);
       for (let k = 0, n = jumped ? culled.length : 200; k < n && culled.length; k++) {
         const e = culled[cullI = (cullI + 1) % culled.length];
-        e.m.visible = Math.hypot(e.c.x - camPos.x, e.c.z - camPos.z) - e.r < e.d;
+        e.m.visible = Math.hypot(e.c.x - camPos.x, e.c.z - camPos.z) - e.r < Math.min(e.d, reach);
       }
+      // the far relief only when the haze lets it through (the horizon ring starts at 20 km)
+      if (far[0]) far[0].visible = vis > 6000;
+      if (far[1]) far[1].visible = vis > 14000;
     },
   };
 }

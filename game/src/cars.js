@@ -5,7 +5,7 @@ import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Geometry pieces [geometry, material (or one per group), matrix?] -> one non-indexed geometry with a single group
 // (one draw call) per material, in the order the materials first appear. The same triangles as separate meshes.
-function mergeByMaterial(items) {
+export function mergeByMaterial(items) {
   const mats = [], bins = [];
   const bin = (mat) => { let i = mats.indexOf(mat); if (i < 0) { i = mats.push(mat) - 1; bins.push({ p: [], n: [], uv: [] }); } return bins[i]; };
   for (const [g0, mat, mtx] of items) {

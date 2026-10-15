@@ -304,6 +304,8 @@ function mats() {
     logo: std({ map: tex(logoC), roughness: 0.55, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     cabinet: std({ map: tex(cabC), roughness: 0.4, metalness: 0.2 }),
     grey: std({ color: 0x8d9092, roughness: 0.5, metalness: 0.4 }),
+    dark: std({ color: 0x2a2c2e, roughness: 0.55, metalness: 0.5 }),
+    lens: std({ color: 0xdfe6ea, roughness: 0.08, metalness: 0.1, emissive: 0x000000 }),
     grass: std({ map: tex(grassCard(5, 0.4)), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.85 }),
     grassFl: std({ map: tex(grassCard(14, 0.25)), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.85 }),
     grassDry: std({ map: tex(grassCard(1, 0.75)), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.9 }),
@@ -419,10 +421,29 @@ function pumpUnit(u, Mt, near) {
     const rr = vulcan ? 0.64 : 0.52, dome = new THREE.CylinderGeometry(rr, rr, vulcan ? 0.92 : 0.78, 18, 1, false, -Math.PI / 2, Math.PI);
     dome.rotateX(Math.PI / 2); dome.translate(gx, Hg + 0.2, 0); L.push(dome);
     boxAt(L, gx, 0.82, 0, vulcan ? 1.7 : 1.35, 0.16, vulcan ? 1.15 : 1.0);
-    const mot = new THREE.CylinderGeometry(0.3, 0.3, 0.72, 14); mot.rotateX(Math.PI / 2); mot.translate(mx, my, near * 0.1); L.push(mot);
+    // (the housing's split flange at the shafts' height, its bolts, the breather, the inspection cover)
+    const hw = vulcan ? 0.66 : 0.53, hd = vulcan ? 0.5 : 0.43;
+    boxAt(L, gx, Hg - 0.05, 0, 2 * hw + 0.12, 0.06, 2 * hd + 0.08);
+    for (let k = 0; k < 6; k++) for (const sz of [-1, 1]) cyl(L, gx - hw + 0.08 + k * (2 * hw - 0.16) / 5, Hg - 0.02, sz * (hd + 0.02), 0.05, 0.025, 0.025, 6);
+    cyl(L, gx - 0.15, Hg + 0.2 + (vulcan ? 0.64 : 0.52) - 0.04, 0, 0.12, 0.04, 0.03, 8);
+    boxAt(L, gx + 0.2, Hg + 0.2 + (vulcan ? 0.6 : 0.48), 0, 0.36, 0.04, 0.3);
+    // the motor: finned frame, the fan cowl at its back, the terminal box, the slide rails
+    const mot = new THREE.CylinderGeometry(0.3, 0.3, 0.72, 16); mot.rotateX(Math.PI / 2); mot.translate(mx, my, near * 0.1); L.push(mot);
+    for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; if (Math.sin(a) < -0.6) continue; const f = new THREE.BoxGeometry(0.018, 0.07, 0.62); f.rotateZ(a - Math.PI / 2); f.translate(mx + Math.cos(a) * 0.32, my + Math.sin(a) * 0.32, near * 0.12); L.push(f); }
     const fan = new THREE.CylinderGeometry(0.26, 0.3, 0.16, 14); fan.rotateX(Math.PI / 2); fan.translate(mx, my, -near * 0.33); L.push(fan);
+    boxAt(L, mx, my + 0.36, near * 0.15, 0.22, 0.14, 0.24);
     boxAt(L, mx, my - 0.36, near * 0.05, 0.6, 0.2, 0.8);
     bar(L, [mx, 0.66, -0.5], [mx, 0.66, 0.5], 0.12, 0.12);
+  });
+  // the brake: a drum on the input shaft on the far side, its band and the rod back to the hand lever at the skid's end
+  add(Mt.steel, L => {
+    const zb = -near * (vulcan ? 0.62 : 0.55), cyb = Hg - 0.55;
+    const dr = new THREE.CylinderGeometry(0.22, 0.22, 0.12, 16); dr.rotateX(Math.PI / 2); dr.translate(gx - 0.2, cyb, zb); L.push(dr);
+    bar(L, [gx - 0.2, cyb - 0.24, zb], [mx - 0.55, 0.95, zb], 0.025, 0.025);
+    bar(L, [mx - 0.55, 0.6, zb], [mx - 0.62, 1.3, zb], 0.04, 0.04);
+    // the cable from the motor down into the ground (to the cabinets)
+    bar(L, [mx, my + 0.36, near * 0.15], [mx + 0.05, 0.55, near * 0.45], 0.03, 0.03);
+    bar(L, [mx + 0.05, 0.55, near * 0.45], [mx + 0.05, -0.3, near * 0.45], 0.03, 0.03);
   });
   if (vulcan) {
     // the belt guard on the near side: a flat case from the motor's pulley up to the reducer's input sheave
@@ -456,6 +477,13 @@ function pumpUnit(u, Mt, near) {
     bar(L, [A, 0.82, -near * 1.5], [A, 0.12, -near * 1.5], 0.09, 0.09);
     bar(L, [A, 0.82, 0], [A + 0.6, 0.82, 0], 0.07, 0.07);
     for (const [x, z] of [[A, -near * 0.7], [A + 0.45, 0]]) { const w = new THREE.TorusGeometry(0.12, 0.015, 6, 14); w.translate(x, 1.1, z); L.push(w); cyl(L, x, 0.82, z, 0.28, 0.03, 0.03, 6); }
+    // the rod blowout preventer under the stuffing box: its rams' T-handles out to both sides
+    boxAt(L, A, 1.08, 0, 0.2, 0.12, 0.2);
+    for (const sz of [-1, 1]) { bar(L, [A, 1.08, sz * 0.1], [A, 1.08, sz * 0.32], 0.03, 0.03); bar(L, [A - 0.12, 1.08, sz * 0.32], [A + 0.12, 1.08, sz * 0.32], 0.025, 0.025); }
+    // the pressure gauge on the tee, the check valve in the flowline
+    bar(L, [A + 0.1, 0.82, 0], [A + 0.1, 1.02, 0.0], 0.02, 0.02);
+    { const gg = new THREE.CylinderGeometry(0.06, 0.06, 0.035, 14); gg.rotateZ(Math.PI / 2); gg.translate(A + 0.1, 1.06, 0); L.push(gg); }
+    boxAt(L, A, 0.82, -near * 1.1, 0.16, 0.16, 0.2);
   });
 
   // ---- the moving parts
@@ -466,6 +494,11 @@ function pumpUnit(u, Mt, near) {
   {
     const L = [], H = [], E = [];
     ibeam(L, -C - 0.3, A - 0.2, 0, bh, bh * 0.6);
+    // web stiffeners both sides every ~0.7 m, the plates over the saddle and the tail bearings
+    for (let x = -C; x < A - 0.4; x += 0.7) for (const sz of [-1, 1]) boxAt(L, x, 0, sz * bh * 0.17, 0.03, bh - 0.06, bh * 0.25);
+    boxAt(L, 0, -bh / 2 - 0.03, 0, 0.7, 0.06, bh * 0.75);
+    { const sb = new THREE.CylinderGeometry(0.14, 0.14, bh * 0.9, 14); sb.rotateX(Math.PI / 2); sb.translate(0, -bh / 2 - 0.12, 0); L.push(sb); }
+    for (const sx of [-0.3, 0.3]) for (const sz of [-1, 1]) cyl(L, sx, -bh / 2 - 0.08, sz * bh * 0.3, 0.06, 0.025, 0.025, 6);
     // the horsehead: two curved side plates on the arc of radius A round the pivot (the bridle hangs straight down
     // from it at every angle), the face plate, the brace frame back to the beam
     const a0 = -0.46, a1 = 0.36, rIn = A - (vulcan ? 0.5 : 0.42);
@@ -476,9 +509,17 @@ function pumpUnit(u, Mt, near) {
     bar(H, [rIn * Math.cos(a0), rIn * Math.sin(a0), 0], [hb, -bh * 0.5, 0], 0.16, 0.12);
     bar(H, [rIn * Math.cos(a1), rIn * Math.sin(a1), 0], [rIn * Math.cos(a0), rIn * Math.sin(a0), 0], 0.14, 0.1);
     bar(H, [rIn * Math.cos(a1 * 0.5), rIn * Math.sin(a1 * 0.5), 0], [hb + 0.5, -bh * 0.4, 0], 0.1, 0.08);
+    // the flanges of the face's rope groove; the two wire ropes lying in it from the anchor at the top
+    for (const z of [-0.23, 0.23]) { const fl = sector(A - 0.02, A + 0.05, a0, a1, 0.02); fl.translate(0, 0, z); H.push(fl); }
+    const RW = [];
+    for (const z of [-0.13, 0.13]) { const rw = sector(A, A + 0.026, a0 + 0.02, a1 - 0.01, 0.026, 24); rw.translate(0, 0, z); RW.push(rw); }
+    boxAt(RW, Math.cos(a1) * (A + 0.06), Math.sin(a1) * (A + 0.06), 0, 0.12, 0.08, 0.36);
     // the equalizer at the tail: a cross beam with the pitman bearings (a yellow box on the rusty unit)
     boxAt(E, -C, vulcan ? -0.1 : 0.05, 0, vulcan ? 0.4 : 0.55, bh * (vulcan ? 0.9 : 1.15), vulcan ? 1.3 : 1.05);
-    beamG.add(meshOf(L, beamMat), meshOf(H, headMat), meshOf(E, Mt.yellow));
+    // its bearings: the tail bearing under the beam, the pitmans' at both ends
+    { const tb = new THREE.CylinderGeometry(0.12, 0.12, 0.5, 12); tb.rotateX(Math.PI / 2); tb.translate(-C, -bh / 2 - 0.1, 0); E.push(tb); }
+    for (const sz of [-1, 1]) { const eb = new THREE.CylinderGeometry(0.1, 0.1, 0.16, 12); eb.rotateX(Math.PI / 2); eb.translate(-C, 0, sz * 0.42); E.push(eb); }
+    beamG.add(meshOf(L, beamMat), meshOf(H, headMat), meshOf(E, Mt.yellow), meshOf(RW, Mt.wire));
     if (vulcan) {
       // the logo on both faces of the beam, towards the horsehead
       const LG = [];
@@ -488,18 +529,23 @@ function pumpUnit(u, Mt, near) {
   }
   // the cranks: an arm each side of the reducer, the wrist pin at R, the sector counterweights at its end
   {
-    const L = [], W = [];
+    const L = [], W = [], HL = [];
     for (const z of [-0.6, 0.6]) {
       const shp = new THREE.Shape(); shp.moveTo(-0.3, -0.26); shp.lineTo(R * 1.15, -0.16); shp.lineTo(R * 1.15, 0.16); shp.lineTo(-0.3, 0.26); shp.closePath();
       const g = new THREE.ExtrudeGeometry(shp, { depth: 0.1, bevelEnabled: false }); g.translate(0, 0, z - 0.05); L.push(g);
-      const aw = vulcan ? 0.62 : 0.5, cw = sector(R * 0.55, R * 1.4, -aw, aw, 0.18, 10); cw.translate(0, 0, z + (z > 0 ? 0.14 : -0.14)); W.push(cw);
+      const aw = vulcan ? 0.62 : 0.5, zo = z + (z > 0 ? 0.14 : -0.14);
+      for (const [b0, b1] of [[-aw, -0.03], [0.03, aw]]) { const cw = sector(R * 0.55, R * 1.4, b0, b1, 0.18, 6); cw.translate(0, 0, zo); W.push(cw); }
+      for (const a of [-aw * 0.5, aw * 0.5]) { const bt = new THREE.CylinderGeometry(0.035, 0.035, 0.24, 6); bt.rotateX(Math.PI / 2); bt.translate(Math.cos(a) * R * 0.95, Math.sin(a) * R * 0.95, zo); W.push(bt); }
       const pin = new THREE.CylinderGeometry(0.08, 0.08, 0.3, 10); pin.rotateX(Math.PI / 2); pin.translate(R, 0, z); L.push(pin);
+      for (const f of [0.55, 0.75]) { const hole = new THREE.CylinderGeometry(0.05, 0.05, 0.11, 10); hole.rotateX(Math.PI / 2); hole.translate(R * f, 0, z); HL.push(hole); }
+      const brg = new THREE.CylinderGeometry(0.11, 0.11, 0.14, 12); brg.rotateX(Math.PI / 2); brg.translate(R, 0, z + (z > 0 ? -0.08 : 0.08)); HL.push(brg);
     }
     const shaft = new THREE.CylinderGeometry(0.12, 0.12, 1.5, 10); shaft.rotateX(Math.PI / 2); L.push(shaft);
-    crankG.add(meshOf(L, Mt.yellow), meshOf(W, Mt.yellow));
+    crankG.add(meshOf(L, Mt.yellow), meshOf(W, Mt.yellow), meshOf(HL, Mt.steel));
   }
   // the pitmans (one each side), the bridle (two wire ropes) with the carrier bar and the polished rod
-  const pit = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.BoxGeometry(1, 0.14, 0.1), pitMat); m.castShadow = true; m.receiveShadow = true; group.add(m); return m; });
+  const pitGeo = (() => { const I = []; boxAt(I, 0, 0, 0, 1, 0.16, 0.025); boxAt(I, 0, 0.075, 0, 1, 0.02, 0.1); boxAt(I, 0, -0.075, 0, 1, 0.02, 0.1); return merged(I); })();
+  const pit = [0, 1].map(() => { const m = new THREE.Mesh(pitGeo, pitMat); m.castShadow = true; m.receiveShadow = true; group.add(m); return m; });
   const bridle = [0, 1].map(() => { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 1, 5), Mt.wire); group.add(m); return m; });
   const carrier = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.46), Mt.steel); group.add(carrier);
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 1, 8), Mt.rod); group.add(rod);
@@ -551,7 +597,7 @@ export function buildSonda(B, world) {
   const Mt = mats();
   const R = rng(8486);
   const A = { slab: new Acc(), grass: new Acc(), grassFl: new Acc(), grassDry: new Acc(), mesh: new Acc(), sign: new Acc() };
-  const G = { fence: [], concrete: [], cabinet: [], steel: [], grey: [] };
+  const G = { fence: [], concrete: [], cabinet: [], steel: [], grey: [], dark: [], lens: [] };
   const Y = (x, z) => heightAt(x, z);
   const box = (x, z, hw, hd, rot, y0, y1, tag) => world.addStatic(new world.Box(x, z, hw, hd, rot, y0, y1, tag));
   const bb = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
@@ -574,8 +620,8 @@ export function buildSonda(B, world) {
     const weeds = clamp01(1 - Math.abs(t - 7) / 3.5) * 0.75 + clamp01((vnoise(x, z, 0.55) - 0.58) * 3) * 0.6 + edge * 0.8;
     const pr = Math.hypot((s - PUDDLE.s) / PUDDLE.a, (t - PUDDLE.t) / PUDDLE.b), wet = clamp01((1.45 - pr) / 0.45);
     const k = (0.7 + 0.26 * v - 0.14 * clamp01((vnoise(z, x, 2.1) - 0.6) * 4)) * (1 - 0.35 * wet);
-    const g = clamp01(weeds) * (1 - wet);
-    return [k * (1 - 0.3 * g), k * (1 - 0.02 * g), k * (1 - 0.45 * g)];
+    const g = clamp01(weeds) * (1 - wet), mud = clamp01(1 - Math.abs(pr - 1.06) / 0.22) * (0.8 + 0.4 * v);   // (the silt left at its rim)
+    return [k * (1 - 0.3 * g) * (1 - 0.18 * mud), k * (1 - 0.02 * g) * (1 - 0.27 * mud), k * (1 - 0.45 * g) * (1 - 0.42 * mud)];
   };
   const drapeC = (P, lift, maxEdge) => {
     const faces = THREE.ShapeUtils.triangulateShape(P.map(([x, z]) => new THREE.Vector2(x, z)), []);
@@ -600,6 +646,18 @@ export function buildSonda(B, world) {
       const a0 = -w / 2 + w * i / n, a1 = -w / 2 + w * (i + 1) / n, b0 = -l / 2 + l * j / n, b1 = -l / 2 + l * (j + 1) / n;
       const V = [Q(a0, b0), Q(a1, b0), Q(a1, b1), Q(a0, b1)].map(([x, z]) => [x, Y(x, z) + 0.065, z]);
       A.slab.quad(V[0], V[1], V[2], V[3], UP, [a0 / 2.2 + us, b0 / 2.2 + vs, a1 / 2.2 + us, b0 / 2.2 + vs, a1 / 2.2 + us, b1 / 2.2 + vs, a0 / 2.2 + us, b1 / 2.2 + vs]);
+    }
+    // its sides: ~10 cm of concrete, the top edge a little chipped and standing ~6 cm out of the gravel
+    const E = [[-w / 2, -l / 2], [w / 2, -l / 2], [w / 2, l / 2], [-w / 2, l / 2]];
+    for (let e = 0; e < 4; e++) {
+      const [pa, pb] = [E[e], E[(e + 1) % 4]], len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
+      for (let k = 0; k < n; k++) {
+        const f0 = k / n, f1 = (k + 1) / n, P0 = Q(pa[0] + (pb[0] - pa[0]) * f0, pa[1] + (pb[1] - pa[1]) * f0), P1 = Q(pa[0] + (pb[0] - pa[0]) * f1, pa[1] + (pb[1] - pa[1]) * f1);
+        const dx = P1[0] - P0[0], dz = P1[1] - P0[1], dl = Math.hypot(dx, dz), nx = dz / dl, nz = -dx / dl;
+        const chip = (q) => 0.065 - 0.03 * clamp01((vnoise(q[0] * 7, q[1] * 7, 3) - 0.62) * 5);
+        const y0 = Y(...P0), y1 = Y(...P1);
+        A.slab.quad([P1[0], y1 - 0.04, P1[1]], [P0[0], y0 - 0.04, P0[1]], [P0[0], y0 + chip(P0), P0[1]], [P1[0], y1 + chip(P1), P1[1]], [nx, 0.15, nz], [len * f1 / 2.2, 0, len * f0 / 2.2, 0, len * f0 / 2.2, 0.05, len * f1 / 2.2, 0.05]);
+      }
     }
   }
 
@@ -648,10 +706,18 @@ export function buildSonda(B, world) {
   }
 
   // ---- the fences: blue square posts every ~2.2 m, top and bottom rails, welded mesh panels
+  const ya0 = (p) => Y(p[0], p[1]);
   const fence = (pts, h = 1.75) => {
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i], b = pts[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.round(L / 2.2)), ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
-      for (let k = 0; k < n; k++) { const x = a[0] + ux * L * k / n, z = a[1] + uz * L * k / n; boxAt(G.fence, x, Y(x, z) + h / 2 - 0.1, z, 0.06, h + 0.2, 0.06, -Math.atan2(uz, ux)); }
+      for (let k = 0; k < n; k++) {
+        const x = a[0] + ux * L * k / n, z = a[1] + uz * L * k / n, y = Y(x, z), w = k ? 0.06 : 0.08;
+        boxAt(G.fence, x, y + h / 2 - 0.1, z, w, h + 0.2, w, -Math.atan2(uz, ux));
+        boxAt(G.steel, x, y + h + 0.11, z, w + 0.02, 0.02, w + 0.02, -Math.atan2(uz, ux));         // (the post's cap)
+        boxAt(G.concrete, x, y + 0.02, z, 0.24, 0.08, 0.24, -Math.atan2(uz, ux));                    // (its footing)
+      }
+      // the corner post's braces into this side
+      { const b0 = a[0] + ux * 1.4, b1 = a[1] + uz * 1.4; bar(G.fence, [a[0], ya0(a) + h * 0.8, a[1]], [b0, Y(b0, b1) + 0.12, b1], 0.04, 0.04); }
       const ya = Y(...a), yb = Y(...b);
       A.mesh.quad([a[0], ya + 0.06, a[1]], [b[0], yb + 0.06, b[1]], [b[0], yb + h - 0.05, b[1]], [a[0], ya + h - 0.05, a[1]], [uz, 0, -ux], [0, 0, L, 0, L, h, 0, h]);
       bar(G.fence, [a[0], ya + h, a[1]], [b[0], yb + h, b[1]], 0.045, 0.045);
@@ -663,6 +729,26 @@ export function buildSonda(B, world) {
   const rect = (s0, s1, t0, t1) => [[s0, t0], [s1, t0], [s1, t1], [s0, t1], [s0, t0]].map(([s, t]) => site(s, t));
   fence(rect(-15.2, -1.4, -3.4, 4.0));
   fence(rect(3.0, 14.9, -2.6, 2.5));
+  // the double gates on the pad side: heavier posts, two framed mesh leaves, their hinges, the drop bolt, the padlock
+  const gate = (s0, w, t, h = 1.7) => {
+    const P = (s, dt = 0) => site(s, t + dt), hw = w / 2;
+    for (const s of [s0, s0 + w]) { const [x, z] = P(s), y = Y(x, z); boxAt(G.fence, x, y + h / 2, z, 0.09, h + 0.3, 0.09, rotLD); boxAt(G.concrete, x, y + 0.03, z, 0.32, 0.1, 0.32, rotLD); }
+    for (const [l0, l1] of [[s0 + 0.06, s0 + hw - 0.01], [s0 + hw + 0.01, s0 + w - 0.06]]) {
+      const [x0, z0] = P(l0, 0.05), [x1, z1] = P(l1, 0.05), y0 = Y(x0, z0), y1 = Y(x1, z1);
+      for (const yy of [0.12, h - 0.05]) bar(G.fence, [x0, y0 + yy, z0], [x1, y1 + yy, z1], 0.035, 0.035);
+      for (const [x, z, y] of [[x0, z0, y0], [x1, z1, y1]]) bar(G.fence, [x, y + 0.1, z], [x, y + h - 0.03, z], 0.035, 0.035);
+      bar(G.fence, [x0, y0 + 0.14, z0], [x1, y1 + h - 0.07, z1], 0.025, 0.025);
+      A.mesh.quad([x0, y0 + 0.12, z0], [x1, y1 + 0.12, z1], [x1, y1 + h - 0.05, z1], [x0, y0 + h - 0.05, z0], [LT[0], 0, LT[1]], [0, 0, hw, 0, hw, h, 0, h]);
+    }
+    for (const [s, k] of [[s0 + 0.05, 1], [s0 + w - 0.05, -1]]) for (const yy of [0.3, h - 0.25]) { const [x, z] = P(s, 0.05); cyl(G.steel, x, Y(x, z) + yy - 0.06, z, 0.12, 0.022, 0.022, 6); }
+    const [mx, mz] = P(s0 + hw, 0.09), my = Y(mx, mz);
+    boxAt(G.steel, mx, my + 1.05, mz, 0.12, 0.05, 0.03, rotLD);
+    boxAt(G.dark, mx + LT[0] * 0.03, my + 0.98, mz + LT[1] * 0.03, 0.045, 0.055, 0.022, rotLD);
+    { const sh = new THREE.TorusGeometry(0.016, 0.004, 4, 10, Math.PI); sh.rotateY(rotLD); sh.translate(mx + LT[0] * 0.03, my + 1.008, mz + LT[1] * 0.03); G.steel.push(sh); }
+    bar(G.steel, [mx - LD[0] * 0.08, my + 0.05, mz - LD[1] * 0.08], [mx - LD[0] * 0.08, my + 0.75, mz - LD[1] * 0.08], 0.018, 0.018);
+  };
+  gate(-11.6, 3.0, 4.0);
+  gate(4.6, 3.0, 2.5);
   // the safety signs on the fences' pad sides
   for (const [s, t] of [[-6.6, 4.03], [12.4, 2.53]]) {
     const p = site(s - 0.3, t), q = site(s + 0.3, t), y = Y(...p);
@@ -675,6 +761,17 @@ export function buildSonda(B, world) {
     if (legs) for (const o of [-0.22, 0.22]) { const [lx, lz] = site(s + o, t); boxAt(G.steel, lx, y + legs / 2, lz, 0.05, legs, 0.05); }
     boxAt(G.cabinet, x, y + 0.14 + legs + h / 2, z, w, h, d, rotLD + Math.PI / 2);
     boxAt(G.cabinet, x, y + 0.16 + legs + h, z, w + 0.06, 0.04, d + 0.08, rotLD + Math.PI / 2);
+    boxAt(G.grey, x, y + 0.14 + legs + 0.04, z, w + 0.02, 0.08, d + 0.02, rotLD + Math.PI / 2);
+    // (on both broad faces: the door's frame, its hinges, the handle, the louvres at the bottom)
+    for (const sd of [-1, 1]) {
+      const fx = x + LD[0] * sd * (d / 2 + 0.006), fz = z + LD[1] * sd * (d / 2 + 0.006), yc = y + 0.14 + legs + h / 2;
+      for (const yy of [-h / 2 + 0.1, h / 2 - 0.05]) boxAt(G.cabinet, fx, yc + yy, fz, w - 0.03, 0.02, 0.012, rotLD + Math.PI / 2);
+      for (const tt of [-1, 1]) { const ex = fx + LT[0] * tt * (w / 2 - 0.02), ez = fz + LT[1] * tt * (w / 2 - 0.02); boxAt(G.cabinet, ex, yc, ez, 0.02, h - 0.12, 0.012, rotLD + Math.PI / 2); }
+      for (const yy of [-h * 0.32, h * 0.3]) { const ex = fx + LT[0] * (w / 2 - 0.005) + LD[0] * sd * 0.01, ez = fz + LT[1] * (w / 2 - 0.005) + LD[1] * sd * 0.01; cyl(G.grey, ex, yc + yy - 0.04, ez, 0.08, 0.012, 0.012, 6); }
+      { const ex = fx - LT[0] * (w / 2 - 0.07) + LD[0] * sd * 0.02, ez = fz - LT[1] * (w / 2 - 0.07) + LD[1] * sd * 0.02; boxAt(G.dark, ex, yc, ez, 0.03, 0.14, 0.02, rotLD + Math.PI / 2); }
+      for (let k = 0; k < 4; k++) boxAt(G.grey, fx + LD[0] * sd * 0.004, yc - h / 2 + 0.17 + k * 0.035, fz + LD[1] * sd * 0.004, w * 0.5, 0.012, 0.012, rotLD + Math.PI / 2);
+    }
+    if (legs) for (const o of [-0.12, 0.0, 0.12]) { const [cx, cz] = site(s + o * 0.6, t + o); cyl(G.grey, cx, y - 0.2, cz, legs + 0.36, 0.028, 0.028, 8); }
     box(x, z, w / 2 + 0.05, 0.3, rotLD, y - 0.5, y + 1.6 + legs, 'pole');
     grow(x, z, 1);
   }
@@ -682,9 +779,30 @@ export function buildSonda(B, world) {
   const pole = (s, t, h, lamp) => {
     const [x, z] = site(s, t), y = Y(x, z);
     // a perforated concrete pole (the vibrated type: two flanges joined by webs, holes between them)
-    for (const d of [-0.075, 0.075]) boxAt(G.concrete, x + LT[0] * d, y + h / 2 - 0.4, z + LT[1] * d, 0.05, h + 0.8, 0.22, rotLD);
-    for (let k = 0; k < h / 0.4; k++) boxAt(G.concrete, x, y + 0.2 + k * 0.4, z, 0.2, 0.14, 0.13, rotLD);
-    if (lamp) { boxAt(G.steel, x + LT[0] * 0.32, y + h - 0.35, z + LT[1] * 0.32, 0.26, 0.2, 0.38, rotLD); boxAt(G.steel, x + LT[0] * 0.15, y + h - 0.25, z + LT[1] * 0.15, 0.08, 0.06, 0.3, rotLD); }
+    const taper = (k) => 1 - 0.45 * k;                                     // (the flanges narrow from 0.22 to 0.12 m)
+    for (const d of [-0.075, 0.075]) {
+      const g = new THREE.BoxGeometry(0.22, h + 0.8, 0.05, 1, 1, 1), pa = g.attributes.position;  // (deep along the line)
+      for (let i = 0; i < pa.count; i++) if (pa.getY(i) > 0) pa.setX(i, pa.getX(i) * taper(1));
+      g.rotateY(rotLD); g.translate(x + LT[0] * d, y + h / 2 - 0.4, z + LT[1] * d); g.computeVertexNormals(); G.concrete.push(g);
+    }
+    for (let k = 0; k < h / 0.4; k++) { const f = (0.2 + k * 0.4 + 0.8) / (h + 0.8); boxAt(G.concrete, x, y + 0.2 + k * 0.4, z, 0.13 * taper(f), 0.14, 0.17, rotLD); }
+    boxAt(G.concrete, x, y + h - 0.02, z, 0.13, 0.04, 0.2, rotLD);
+    if (lamp) {
+      // a slim LED floodlight: its die-cast body with cooling fins at the back, the glass tilted down, the U bracket
+      const lx = x + LT[0] * 0.42, lz = z + LT[1] * 0.42, ly = y + h - 0.32;
+      const bodyG = [], fin = [], glass = [];
+      boxAt(bodyG, 0, 0, 0, 0.3, 0.05, 0.22); for (let k = 0; k < 7; k++) boxAt(fin, -0.12 + k * 0.04, 0.045, 0, 0.008, 0.04, 0.2);
+      boxAt(glass, 0, -0.028, 0, 0.26, 0.006, 0.18);
+      const T = new THREE.Matrix4().makeRotationY(rotLD + Math.PI / 2).multiply(new THREE.Matrix4().makeRotationZ(0.45)).setPosition(lx, ly, lz);
+      for (const g of [...bodyG, ...fin]) { g.applyMatrix4(T); G.dark.push(g); }
+      for (const g of glass) { g.applyMatrix4(T); G.lens.push(g); }
+      bar(G.steel, [x + LT[0] * 0.1, ly + 0.12, z + LT[1] * 0.1], [lx, ly + 0.12, lz], 0.04, 0.03);
+      bar(G.steel, [lx, ly + 0.12, lz], [lx, ly + 0.02, lz], 0.03, 0.03);
+      bar(G.steel, [x + LT[0] * 0.11, ly + 0.06, z + LT[1] * 0.11], [x + LT[0] * 0.11, ly + 0.18, z + LT[1] * 0.11], 0.08, 0.02);
+      // its cable down the pole's face into a conduit at the foot
+      bar(G.dark, [x + LT[0] * 0.115, ly + 0.1, z + LT[1] * 0.115], [x + LT[0] * 0.12, y + 0.6, z + LT[1] * 0.12], 0.014, 0.014);
+      cyl(G.grey, x + LT[0] * 0.13, y - 0.1, z + LT[1] * 0.13, 0.7, 0.025, 0.025, 8);
+    }
     box(x, z, 0.15, 0.15, 0, y - 0.5, y + h, 'pole');
   };
   pole(0.6, -1.7, 6.6, true);
@@ -719,6 +837,7 @@ export function buildSonda(B, world) {
   A.sign.flush(B, Mt.sign, null, {});
   const geo = (list, mat, opts) => { if (list.length) B.geo(mat, merged(list), null, null, opts); };
   geo(G.fence, Mt.fenceBlue); geo(G.concrete, Mt.concrete); geo(G.cabinet, Mt.cabinet); geo(G.steel, Mt.steel); geo(G.grey, Mt.grey);
+  geo(G.dark, Mt.dark); geo(G.lens, Mt.lens);
   for (const p of PAD) grow(p[0], p[1], 2);
 
   // ---- the puddle: its own mesh (a mirror; hidden under the snow)

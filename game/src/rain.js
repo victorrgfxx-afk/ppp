@@ -1499,8 +1499,9 @@ export class Spray {
       // each tyre lifts a fan of spray behind it, more the faster it turns (rear ones more, in the front ones' wake)
       const fx = -Math.sin(car.h), fz = -Math.cos(car.h), rx = Math.cos(car.h), rz = -Math.sin(car.h);
       const rate = Math.min(1, (sp - 3) / 18) * 240 * wet;
+      const m = car.m, af = m ? m.axles[0] - m.L / 2 + 0.1 : -1.35, ar = m ? m.axles[1] - m.L / 2 : 1.3, sw = m ? m.W / 2 - 0.12 : 0.78;
       for (let k = 0; k < 4; k++) {
-        const along = k < 2 ? -1.35 : 1.3, side = k % 2 ? 0.78 : -0.78, share = k < 2 ? 0.65 : 0.35;
+        const along = k < 2 ? af : ar, side = k % 2 ? sw : -sw, share = k < 2 ? 0.65 : 0.35;
         this.acc = (this.acc ?? 0) + rate * share * dt;
         while (this.acc >= 1) {
           this.acc -= 1;
