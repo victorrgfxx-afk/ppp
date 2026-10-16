@@ -136,8 +136,8 @@ export function profileAt(m, s) {
     const d = s - a;
     if (Math.abs(d) < R) yb = Math.max(yb, m.r + Math.sqrt(R * R - d * d) * 0.97);
   }
-  const d = Math.min(s, m.L - s);
-  const f = 0.74 + 0.26 * Math.sqrt(Math.max(0, 1 - Math.pow(1 - Math.min(d / 0.55, 1), 2)));
+  const d = Math.min(s, m.L - s), [f0, fl] = m.taper ?? [0.74, 0.55];       // (how the body narrows at the ends)
+  const f = f0 + (1 - f0) * Math.sqrt(Math.max(0, 1 - Math.pow(1 - Math.min(d / fl, 1), 2)));
   const hw = m.W / 2 * f;
   return { belt, roof, yb, hw, cab: Math.min(1, (roof - belt) / 0.25) };
 }
@@ -223,7 +223,7 @@ function carBodyGeometry(m) {
   return { body: g, caps: cg };
 }
 
-function roundedRectGeo(w, h, r, depth) {
+export function roundedRectGeo(w, h, r, depth) {
   const s = new THREE.Shape();
   s.moveTo(-w / 2 + r, -h / 2); s.lineTo(w / 2 - r, -h / 2); s.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
   s.lineTo(w / 2, h / 2 - r); s.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2); s.lineTo(-w / 2 + r, h / 2);
@@ -288,7 +288,7 @@ export function buildCar(modelKey, paint, plateKey) {
   const headMat = S.headGlass.clone();
   const [, hy, hx, hw, hh] = m.lights.head;
   const headL = [], tailL = [];
-  for (const sg of [-1, 1]) {
+  if (!m.details) for (const sg of [-1, 1]) {
     const s0 = surfaceS(sg * hx, hy + hh * 0.3, true);
     const p = profileAt(m, s0 + 0.05);
     const x = sg * Math.min(hx, p.hw - hw / 2 - 0.03);
@@ -296,7 +296,7 @@ export function buildCar(modelKey, paint, plateKey) {
   }
   const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x7a0a0a, roughness: 0.15, clearcoat: 1, emissive: 0xff1a10, emissiveIntensity: 0.15 });
   const [, ty, tx, tw, th] = m.lights.tail;
-  for (const sg of [-1, 1]) {
+  if (!m.details) for (const sg of [-1, 1]) {
     const s0 = surfaceS(sg * tx, ty, false);
     const p = profileAt(m, s0 - 0.05);
     const x = sg * Math.min(tx, p.hw - tw / 2 - 0.02);
@@ -308,7 +308,7 @@ export function buildCar(modelKey, paint, plateKey) {
     for (const sg of [-1, 1]) add(roundedRectGeo(0.17, 0.12, 0.04, 0.08), S.chrome, sg * 0.11, 0.66, zAt(surfaceS(0.11, 0.66, true)) + 0.02, -0.3, 0, 0);
     for (const sg of [-1, 1]) add(roundedRectGeo(0.14, 0.09, 0.035, 0.08), S.trim, sg * 0.11, 0.66, zAt(surfaceS(0.11, 0.66, true)) + 0.008, -0.3, 0, 0);
     add(roundedRectGeo(0.9, 0.12, 0.05, 0.06), S.trim, 0, 0.36, zAt(surfaceS(0.4, 0.36, true)) + 0.01);
-  } else {
+  } else if (!m.details) {
     add(roundedRectGeo(m.W * 0.42, 0.13, 0.05, 0.08), S.trim, 0, m.lights.head[1] - 0.04, zAt(sg0) + 0.02, -0.3, 0, 0);
     add(roundedRectGeo(m.W * 0.5, 0.12, 0.05, 0.06), S.trim, 0, 0.38, zAt(surfaceS(0.4, 0.38, true)) + 0.01);
     if (m.grille === 'opel') add(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 16), S.chrome, 0, m.lights.head[1] - 0.04, zAt(sg0) - 0.005, Math.PI / 2, 0, 0);
@@ -316,19 +316,21 @@ export function buildCar(modelKey, paint, plateKey) {
   // plates
   const plateMat = new THREE.MeshStandardMaterial({ map: TEX[plateKey] ?? TEX.plateA, roughness: 0.4 });
   const pg = new THREE.PlaneGeometry(0.52, 0.112);
-  add(pg, plateMat, 0, 0.42, zAt(0) - 0.012, 0, Math.PI, 0);
-  add(pg, plateMat, 0, m.belt[m.belt.length - 1][1] - 0.05, zAt(m.L) + 0.012);
+  const [pfy, pfz] = m.plates?.front ?? [0.42, zAt(0) - 0.012], [pry, prz] = m.plates?.rear ?? [m.belt[m.belt.length - 1][1] - 0.05, zAt(m.L) + 0.012];
+  add(pg, plateMat, 0, pfy, pfz, m.plates?.frontTilt ?? 0, Math.PI, 0);
+  add(pg, plateMat, 0, pry, prz, m.plates?.rearTilt ?? 0);
   // mirrors
   for (const sg of [-1, 1]) {
     const s = m.wind[0] + 0.12;
     const p = profileAt(m, s);
-    add(roundedRectGeo(0.2, 0.12, 0.04, 0.08), paint, sg * (p.hw + 0.07), p.belt + 0.07, zAt(s), 0, Math.PI / 2, 0);
+    const [mw, mh] = m.mirror ?? [0.2, 0.12];
+    add(roundedRectGeo(mw, mh, 0.04, 0.08), paint, sg * (p.hw + 0.07 + (mw - 0.2) / 2), p.belt + 0.07, zAt(s), 0, Math.PI / 2, 0);
     add(new THREE.BoxGeometry(0.08, 0.04, 0.05), S.trim, sg * (p.hw - 0.01), p.belt + 0.04, zAt(s));
   }
   // door handles
   for (const sg of [-1, 1]) for (const s of [m.pillars[0] - 0.2, m.pillars[1] - 0.25]) {
     const p = profileAt(m, s);
-    add(new THREE.BoxGeometry(0.02, 0.025, 0.13), paint, sg * (p.hw * 0.99 + 0.005), p.belt - 0.08, zAt(s));
+    add(new THREE.BoxGeometry(0.02, 0.025, 0.13), m.chromeHandles ? S.chrome : paint, sg * (p.hw * 0.99 + 0.005), p.belt - 0.08, zAt(s));
   }
   // door shut lines
   const seamMat = S.trim;
@@ -339,7 +341,9 @@ export function buildCar(modelKey, paint, plateKey) {
     add(new THREE.BoxGeometry(0.006, y1 - y0, 0.006), seamMat, sg * (p.hw + 0.001), (y0 + y1) / 2, zAt(s));
   }
   // exhaust
-  add(new THREE.CylinderGeometry(0.035, 0.035, 0.15, 10), S.chrome, -0.5, 0.26, zAt(m.L) + 0.02, Math.PI / 2, 0, 0);
+  if (!m.details) add(new THREE.CylinderGeometry(0.035, 0.035, 0.15, 10), S.chrome, -0.5, 0.26, zAt(m.L) + 0.02, Math.PI / 2, 0, 0);
+  // a model's own details (grille, lamps, trim, its cabin: maybach.js), merged with the body like the rest
+  m.details?.({ add, S, paint, zAt, prof: (s) => profileAt(m, s), surfaceS, headMat, tailMat, rigid });
 
   // simple interior (visible through the glass)
   const seatMat = new THREE.MeshStandardMaterial({ color: m.interior, roughness: 0.8 });
@@ -371,18 +375,29 @@ export function buildCar(modelKey, paint, plateKey) {
 
   // wheels
   const wheels = [];
-  const tireGeo = new THREE.CylinderGeometry(m.r, m.r, m.tireW, 28, 1);
-  tireGeo.rotateZ(Math.PI / 2);
-  // rounded sidewall bulge
-  const tp = tireGeo.attributes.position;
-  for (let i = 0; i < tp.count; i++) {
-    const x = tp.getX(i), y = tp.getY(i), z = tp.getZ(i);
-    const rr = Math.hypot(y, z);
-    if (rr > m.r * 0.99) { const k = 1 - 0.035 * Math.pow(Math.abs(x) / (m.tireW / 2), 4); tp.setY(i, y * k); tp.setZ(i, z * k); }
+  let tireGeo;
+  if (m.rim) {
+    // round a 3D rim: the tyre's section turned about the axle - the bead on the rim's lip, the sidewalls bulging, the
+    // shoulders, the tread - open in the middle, so the rim shows through
+    const w = m.tireW / 2, R0 = m.r * m.rimK - 0.012, rm = (R0 + m.r) / 2;
+    const sec = [[R0, -w + 0.012], [R0 + 0.018, -w - 0.004], [rm, -w - 0.014], [m.r - 0.035, -w - 0.006], [m.r - 0.008, -w + 0.022], [m.r, -w + 0.05],
+      [m.r, w - 0.05], [m.r - 0.008, w - 0.022], [m.r - 0.035, w + 0.006], [rm, w + 0.014], [R0 + 0.018, w + 0.004], [R0, w - 0.012]];
+    tireGeo = new THREE.LatheGeometry(sec.map(([r, y]) => new THREE.Vector2(r, y)), 48);
+    tireGeo.rotateZ(Math.PI / 2);
+  } else {
+    tireGeo = new THREE.CylinderGeometry(m.r, m.r, m.tireW, 28, 1);
+    tireGeo.rotateZ(Math.PI / 2);
+    // rounded sidewall bulge
+    const tp = tireGeo.attributes.position;
+    for (let i = 0; i < tp.count; i++) {
+      const x = tp.getX(i), y = tp.getY(i), z = tp.getZ(i);
+      const rr = Math.hypot(y, z);
+      if (rr > m.r * 0.99) { const k = 1 - 0.035 * Math.pow(Math.abs(x) / (m.tireW / 2), 4); tp.setY(i, y * k); tp.setZ(i, z * k); }
+    }
   }
   tireGeo.computeVertexNormals();
-  const rimMat = new THREE.MeshStandardMaterial({ map: TEX[m.wheelTex], roughness: 0.3, metalness: 0.8, alphaTest: 0 });
-  const rimGeo = new THREE.CircleGeometry(m.r * 0.72, 28);
+  const rimMat = m.rim ? m.rim.mat : new THREE.MeshStandardMaterial({ map: TEX[m.wheelTex], roughness: 0.3, metalness: 0.8, alphaTest: 0 });
+  const rimGeo = m.rim ? m.rim.geo : new THREE.CircleGeometry(m.r * 0.72, 28);
   const arch = new THREE.MeshStandardMaterial({ color: 0x0d0d0e, roughness: 0.9, side: THREE.DoubleSide });
   // each wheel: steering pivot -> spin -> tyre, rim (outside) and dark inner disc. The pivot and spin are kept as
   // transforms only; the 4 tyres, the 4 rims and the 4 discs are 3 meshes whose vertices setWheels places when the
@@ -395,9 +410,11 @@ export function buildCar(modelKey, paint, plateKey) {
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 12), 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 12), 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+    const C0 = g.attributes.color?.array;                          // (a model's 3D rim: its parts' colours)
+    if (C0) { const C = new Float32Array(n * 12); for (let i = 0; i < 4; i++) C.set(C0, i * n * 3); geo.setAttribute('color', new THREE.BufferAttribute(C, 3)); }
     return { mesh: new THREE.Mesh(geo, mat), n, P0: g.attributes.position.array, N0: g.attributes.normal.array };
   };
-  const tires = fourOf(tireGeo, S.tire), rims = fourOf(rimGeo, rimMat), inners = fourOf(new THREE.CircleGeometry(m.r * 0.72, 20), S.under);
+  const tires = fourOf(tireGeo, S.tire), rims = fourOf(rimGeo, rimMat), inners = fourOf(new THREE.CircleGeometry(m.r * (m.rimK ?? 0.72), 20), S.under);
   tires.mesh.castShadow = true;
   const wells = [];
   for (const [ai, a] of m.axles.entries()) {
@@ -408,7 +425,8 @@ export function buildCar(modelKey, paint, plateKey) {
       const spin = new THREE.Object3D();
       const rimAt = pose(sg * (m.tireW / 2 + 0.002), 0, 0, 0, sg * Math.PI / 2, 0), innerAt = pose(-sg * (m.tireW / 2 + 0.002), 0, 0, 0, -sg * Math.PI / 2, 0);
       // dark wheel-well liner
-      wells.push([new THREE.CylinderGeometry(m.r + 0.06, m.r + 0.06, m.tireW + 0.1, 18, 1, true, -Math.PI / 2, Math.PI), arch, pose(x, m.r, zAt(a), 0, 0, Math.PI / 2)]);
+      // (round a 3D rim, the liner arches over the top only: none of it shows beside the tyre down to the ground)
+      wells.push([new THREE.CylinderGeometry(m.r + 0.06, m.r + 0.06, m.tireW + 0.1, 18, 1, true, m.rim ? 0 : -Math.PI / 2, Math.PI), arch, pose(x, m.r, zAt(a), 0, 0, Math.PI / 2)]);
       wheels.push({ pivot, spin, rimAt, innerAt, front: ai === 0, side: sg, x, z: zAt(a) });
     }
   }

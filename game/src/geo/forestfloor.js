@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, forestCode, speciesAt, inHole } from './data.js';
 import { M, addWind } from '../materials.js';
 import { UNDER_SNOW } from '../rain.js';
-import { valueNoise2 } from './trees.js';
+import { valueNoise2, cleared } from './trees.js';
 import { HILL_BOX } from './drapel.js';
 import { litterTexture, fernTexture, grassTexture, brambleTexture, rockTexture, woodEndTexture, starGeo, fernGeo, branchGeo, rockShape, mossy } from './hillwood.js';
 
@@ -59,7 +59,7 @@ function onRoad(x, z, pad = 0) {
 const inHill = (x, z) => x > HILL_BOX.x0 - 4 && x < HILL_BOX.x1 + 4 && z > HILL_BOX.z0 - 4 && z < HILL_BOX.z1 + 4;
 // what the ground is at (x, z): null outside the woods; the stand's genus, how near its edge, how steep
 function siteAt(x, z) {
-  if (!forestCode(x, z) || inHill(x, z) || inHole(x, z) || onRoad(x, z)) return null;
+  if (!forestCode(x, z) || inHill(x, z) || inHole(x, z) || onRoad(x, z) || cleared(x, z)) return null;
   let edge = 0;
   for (const [d, w] of [[5, 1], [10, 0.5]]) for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!forestCode(x + a * d, z + b * d)) edge = Math.max(edge, w);
   const gx = (heightAt(x + 1.5, z) - heightAt(x - 1.5, z)) / 3, gz = (heightAt(x, z + 1.5) - heightAt(x, z - 1.5)) / 3;

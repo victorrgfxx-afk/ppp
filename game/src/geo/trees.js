@@ -441,12 +441,16 @@ const SP = 5.2, GT = 280, ST = 70, SSP = 7.5;
 // fn(x, z, type, edge, code, h1, h2) -> type (< 0: no tree there), with h1 and h2 two hashes of the tree's cell
 const MIX = [];
 export function addForestMix(fn) { MIX.push(fn); }
+// spots kept free of trees, bushes and deadwood: a car parked on the verge (main.js: the Maybach)
+const CLEARINGS = [];
+export function keepClear(x, z, r) { CLEARINGS.push([x, z, r * r]); }
+export const cleared = (x, z) => CLEARINGS.length > 0 && CLEARINGS.some(([cx, cz, r2]) => (x - cx) * (x - cx) + (z - cz) * (z - cz) < r2);
 // every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
 function eachForestTree(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / SP); j <= Math.floor(z1 / SP); j++) for (let i = Math.floor(x0 / SP); i <= Math.floor(x1 / SP); i++) {
     if (hash3(i, j, 1) > 0.93) continue;
     const x = (i + 0.5 + (hash3(i, j, 2) - 0.5) * 0.9) * SP, z = (j + 0.5 + (hash3(i, j, 3) - 0.5) * 0.9) * SP;
-    if (x < x0 || x >= x1 || z < z0 || z >= z1) continue;
+    if (x < x0 || x >= x1 || z < z0 || z >= z1 || cleared(x, z)) continue;
     const code = forestCode(x, z);
     if (!code) continue;
     const edge = !forestCode(x + 8, z) || !forestCode(x - 8, z) || !forestCode(x, z + 8) || !forestCode(x, z - 8);
@@ -479,7 +483,7 @@ function eachShrub(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / SSP); j <= Math.floor(z1 / SSP); j++) for (let i = Math.floor(x0 / SSP); i <= Math.floor(x1 / SSP); i++) {
     if (hash3(i, j, 21) > 0.72) continue;
     const x = (i + hash3(i, j, 22)) * SSP, z = (j + hash3(i, j, 23)) * SSP;
-    const code = x < x0 || x >= x1 || z < z0 || z >= z1 ? 0 : forestCode(x, z);
+    const code = x < x0 || x >= x1 || z < z0 || z >= z1 || cleared(x, z) ? 0 : forestCode(x, z);
     if (!code) continue;
     const g = speciesAt(x, z) & 15;
     if (g && g < 13 && hash3(i, j, 28) > GENUS_SHRUB[g]) continue;
@@ -495,7 +499,7 @@ function eachShrub(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / MSP); j <= Math.floor(z1 / MSP); j++) for (let i = Math.floor(x0 / MSP); i <= Math.floor(x1 / MSP); i++) {
     if (hash3(i, j, 41) > 0.7) continue;
     const x = (i + hash3(i, j, 42)) * MSP, z = (j + hash3(i, j, 43)) * MSP;
-    if (x < x0 || x >= x1 || z < z0 || z >= z1 || !forestCode(x, z)) continue;
+    if (x < x0 || x >= x1 || z < z0 || z >= z1 || !forestCode(x, z) || cleared(x, z)) continue;
     if (forestCode(x + 6, z) && forestCode(x - 6, z) && forestCode(x, z + 6) && forestCode(x, z - 6)) continue;
     cb(x, z, T_SHRUB, 0.8 + 0.7 * hash3(i, j, 44), hash3(i, j, 45) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 46));
   }
@@ -505,7 +509,7 @@ function eachShrub(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / RSP); j <= Math.floor(z1 / RSP); j++) for (let i = Math.floor(x0 / RSP); i <= Math.floor(x1 / RSP); i++) {
     if (hash3(i, j, 31) > 0.75) continue;
     const x = (i + hash3(i, j, 35)) * RSP, z = (j + hash3(i, j, 36)) * RSP;
-    if (x < x0 || x >= x1 || z < z0 || z >= z1 || valueNoise2(x, z, 38, 43) < 0.6) continue;
+    if (x < x0 || x >= x1 || z < z0 || z >= z1 || valueNoise2(x, z, 38, 43) < 0.6 || cleared(x, z)) continue;
     const code = forestCode(x, z);
     if (!code) continue;
     const g = speciesAt(x, z) & 15;

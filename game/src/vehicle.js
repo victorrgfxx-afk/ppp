@@ -33,7 +33,9 @@ export class Vehicle {
     this.spin = 0; this.lightsOn = false;
     this.power = opts.power ?? 1;
     this.vmax = opts.vmax ?? 52;
-    this.hyper = opts.hyper ? HYPER : null;
+    // a tune: the same physical model as the hyper car's, with a model's own numbers (maybach.js)
+    this.hyper = opts.hyper ? HYPER : opts.tune ?? null;
+    if (this.hyper && this.hyper.cd === undefined) this.hyper.cd = (this.hyper.P / this.hyper.top - 0.15) / (this.hyper.top * this.hyper.top);
     this.wheelbase = this.m.axles[1] - this.m.axles[0];
     this.box = new Box(x, z, car.half.w, car.half.l, heading, -1, 1.6, 'car');
     this.box.vehicle = this;
@@ -127,7 +129,7 @@ export class Vehicle {
     // the tyres cannot push or brake harder than the road lets them (snow: wheelspin, long stops); an ATV's knobby
     // tyres and four driven wheels bite into it (snowGrip: the share of the grip the snow takes away)
     const mu = this.m.snowGrip ? 1 - (1 - TRACTION.mu) * this.m.snowGrip : TRACTION.mu;
-    if (mu < 0.999) { const aMax = (this.hyper ? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
+    if (mu < 0.999) { const aMax = (this.hyper ? this.hyper.aMax ?? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
     // rolling resistance + aero drag + engine braking
     const cd = this.hyper ? this.hyper.cd : 0.0012;
     const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * (this.m.float ?? 1) * Math.min(1, TRACTION.sink / 0.3));
@@ -175,7 +177,7 @@ export class Vehicle {
     // body dynamics (springy pitch/roll)
     const longA = accel - (hand ? vF * 1.2 : 0);
     const latA = vF * yawRate;
-    const tp = clamp(longA * 0.006, -0.05, 0.05), tr = clamp(-latA * (Hs ? 0.0016 : 0.0065), -0.06, 0.06);   // stiff, low hyper car
+    const tp = clamp(longA * 0.006, -0.05, 0.05), tr = clamp(-latA * (Hs ? Hs.roll ?? 0.0016 : 0.0065), -0.06, 0.06);   // stiff, low hyper car
     this.pitchV += ((tp - this.pitch) * 60 - this.pitchV * 9) * dt; this.pitch += this.pitchV * dt;
     this.rollV += ((tr - this.roll) * 50 - this.rollV * 8) * dt; this.roll += this.rollV * dt;
     this.spin -= (vF / this.m.r) * dt;
@@ -187,7 +189,8 @@ export class Vehicle {
       let g = 1; for (let i = 0; i < up.length - 1; i++) if (kmh > up[i]) g = i + 1;
       this.gear = g;
       const f = (kmh - up[g - 1]) / (up[g] - up[g - 1]);
-      const target = kmh < 3 ? 900 + (ctl && ctl.throttle > 0 ? 2600 : 0) : 3000 + 5000 * Math.min(1, f);
+      const [r0, r1] = this.hyper.rpm ?? [3000, 8000];
+      const target = kmh < 3 ? 900 + (ctl && ctl.throttle > 0 ? 2600 : 0) : r0 + (r1 - r0) * Math.min(1, f);
       this.rpm = damp(this.rpm, target, 10, dt);
     } else {
       const up = [0, 22, 45, 70, 98];
@@ -265,6 +268,6 @@ export class Vehicle {
     const lz = pm.pillars[0] - 0.06 - pm.L / 2, lx = -0.37;
     const s = Math.sin(this.h), c = Math.cos(this.h);
     const beltY = pm.belt.reduce((a, b) => Math.max(a, b[1]), 0);
-    return new THREE.Vector3(this.x + lx * c + lz * s, this.car.group.position.y + beltY + 0.22, this.z - lx * s + lz * c);
+    return new THREE.Vector3(this.x + lx * c + lz * s, this.car.group.position.y + (pm.eyeY ?? beltY + 0.22), this.z - lx * s + lz * c);
   }
 }

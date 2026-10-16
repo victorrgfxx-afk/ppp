@@ -20,6 +20,8 @@ import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
 import { buildCar, paintMaterial } from './cars.js';
 import { buildATV } from './atv.js';
+import { buildMaybach, MAYBACH_TUNE } from './maybach.js';
+import { keepClear } from './geo/trees.js';
 import { Vehicle, TRACTION } from './vehicle.js';
 import { FirDetail } from './geo/firs.js';
 import { Player } from './player.js';
@@ -372,6 +374,35 @@ async function main() {
       atv.name = car.model.name;
       vehicles.push(atv);
       atv.update(0.016, null);
+    }
+  }
+  // the black Mercedes-Maybach GLS 600 (maybach.js), past the scene of the clip IMG_0725 on the lane over the hill of the
+  // cross: where the walkers' climb ends (they stop at s 907-918 m), on the right-hand verge by the meadow, facing on up
+  // towards the cross; the spot with the most even ground and the fewest trunks, then kept clear of the wood's trees,
+  // bushes and deadwood
+  let maybach = null;
+  {
+    const q = [];
+    let best = null;
+    for (let s = 898; s >= 868; s -= 1.5) for (const o of [-2.5, -2.8, -3.1]) {
+      const p = laneAt(s, o), h = Math.atan2(p.hx, p.hz), c = Math.cos(h), sn = Math.sin(h);
+      const ys = [[-0.95, -2.4], [0.95, -2.4], [-0.95, 2.4], [0.95, 2.4]].map(([a, b]) => world.groundHeight(p.x + c * a - sn * b, p.z - sn * a - c * b));
+      const tilt = (Math.max(...ys) - Math.min(...ys)) / 2.4;
+      if (tilt > 0.2) continue;
+      const gy = world.groundHeight(p.x, p.z), probe = new world.Box(p.x, p.z, 1.3, 2.9, h);
+      const hits = world.query(p.x, p.z, 5, q).filter(b => b.y1 > gy + 0.3 && b.y0 < gy + 2.2 && !b.vehicle && boxBox(probe, b));
+      if (hits.some(b => b.tag !== 'tree')) continue;                          // (walls, fences, poles: never)
+      const score = tilt + hits.length * 0.15 + Math.abs(s - 888) * 0.002;
+      if (!best || score < best.score) best = { x: p.x, z: p.z, h, s, score };
+    }
+    if (best) {
+      keepClear(best.x, best.z, 3.6);
+      const car = buildMaybach();
+      scene.add(car.group);
+      maybach = new Vehicle(car, world, best.x, best.z, best.h, { tune: MAYBACH_TUNE });
+      maybach.name = 'Mercedes-Maybach GLS 600';
+      vehicles.push(maybach);
+      maybach.update(0.016, null);
     }
   }
   flashlight = new Flashlight(scene);
@@ -752,6 +783,12 @@ async function main() {
   if (atv && !PHOTO_VIEWS.some(v => v.atv)) {
     const d = atv.doorPos(-1), bx = d.x + Math.sin(atv.h) * 2.2, bz = d.z + Math.cos(atv.h) * 2.2;
     PHOTO_VIEWS.push({ atv: true, x: bx, z: bz, yaw: Math.atan2(-(atv.x - bx), -(atv.z - bz)), pitch: -0.12, fov: 70, label: 'ATV — ATV-ul de pe dealul crucii (F: urcă)' });
+  }
+  // the Maybach past the clip's scene: seen from the lane ahead of it, three-quarters from the front (F to get in)
+  if (maybach && !PHOTO_VIEWS.some(v => v.maybach)) {
+    const fx = -Math.sin(maybach.h), fz = -Math.cos(maybach.h), lx = -Math.cos(maybach.h), lz = Math.sin(maybach.h);
+    const bx = maybach.x + fx * 7 + lx * 3.2, bz = maybach.z + fz * 7 + lz * 3.2, by = world.groundHeight(bx, bz) + 1.6;
+    PHOTO_VIEWS.push({ maybach: true, x: bx, z: bz, yaw: Math.atan2(-(maybach.x - bx), -(maybach.z - bz)), pitch: Math.atan2(world.groundHeight(maybach.x, maybach.z) + 0.8 - by, Math.hypot(maybach.x - bx, maybach.z - bz)), fov: 60, label: 'Maybach — Mercedes-Maybach GLS 600 negru, după scena drumeților (F: urcă)' });
   }
   $('views').innerHTML = PHOTO_VIEWS.map((v, i) => `<button data-view="${i}">${i + 1}. ${v.label.split('—')[1]}</button>`).join('');
   $('views').addEventListener('click', (e) => {
@@ -1137,7 +1174,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

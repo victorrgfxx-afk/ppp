@@ -1052,6 +1052,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   genPlate('B 162 DDC', 'plateSUV');
   genPlate('PH 22 VIC', 'plateA');
   genPlate('PH 05 RMN', 'plateB');
+  genPlate('PH 60 MBH', 'plateMaybach');   // the Maybach on the hill of the cross (maybach.js)
   genPlate('B 93 MHD', 'plateC');
   genWheel('wheelBMW', 5, '#b7babe', true, true);
   genWheel('wheel508', 5, '#aeb2b7', true);

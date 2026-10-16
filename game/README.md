@@ -519,6 +519,19 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Modelul**: cadru din țeavă, motor cu aripioare de răcire, carcasa variatorului CVT, scut sub motor, toba de eșapament, suspensie independentă cu brațe duble și amortizoare cu arc, aripi cu căptușeală neagră, podele cu striații, far și stopuri, portbagaje față și spate, bara de protecție cu troliu, cârma cu mânere, apărători de mâini și manete (se rotește cu roțile), anvelope de teren cu crampoane (22 × 2 rânduri), jante; pilotul are geacă, pantaloni, cizme, mănuși și cască cu vizor.
   * **Pe zăpadă**: aderența scade mult mai puțin decât la mașini (crampoane, tracțiune 4×4), se afundă de ~3 ori mai puțin (anvelope late, cu presiune mică pe sol), urcă pantele cu forța gravitației luată din panta reală (încetinește la urcare, accelerează la coborâre), viteza maximă ~80 km/h. Lasă urme în zăpadă după ecartamentul și lățimea roților lui și ridică pulbere de zăpadă din roți.
   * Pe **viscol** (tasta **T**) se merge cum ai cerut: din dealul crucii, cu vizibilitate de câteva sute de metri.
+* **Mercedes-Maybach GLS 600 negru (V61)** (`src/maybach.js`): pe ulița de peste dealul crucii (OSM way 198810461), imediat după scena din clipul IMG_0725. Drumeții se opresc în vârful pantei, la 907–918 m de Strada Măgurii; mașina e parcată puțin mai încolo, pe acostamentul din dreapta (spre poiană), cu fața spre cruce. Locul e ales automat între 868 și 898 m: teren cât mai plan, cât mai puține trunchiuri. Pe ~3,6 m în jurul ei pădurea nu mai pune copaci, tufe sau lemn mort. În lista de locuri: „Maybach”; **F** urcă.
+  * **E facelift-ul din 2023**, vândut ca GLS 600 (actualizarea din iulie 2026 se numește GLS 680), la dimensiunile reale: 5,205 m lungime, 2,03 m lățime, 1,838 m înălțime, 3,135 m între axe.
+  * **Fața**: grila Maybach cu ramă cromată, bare verticale fine cromate și inscripția MAYBACH; steaua în picioare pe capotă; farurile MULTIBEAM LED (lumina de zi pe margine, modulele LED, semnalizarea); prizele de aer cu modelul Maybach în ramă cromată; scutul de jos cromat.
+  * **Lateral**: crom în jurul geamurilor, emblema Maybach pe stâlpul C, mânere cromate, treptele electrice strânse sub prag, ornament cromat pe prag; jante forjate de 22″ cu 20 de spițe subțiri, pe anvelope 285/45 R22 față și 325/40 R22 spate. Anvelopele au flancuri reale, iar janta se vede adâncită în ele.
+  * **Spatele**: stopurile facelift-ului, cu trei blocuri orizontale de lumină; ornamentul cromat dintre ele, steaua, evacuările integrate în bară cu rame cromate, ornamentul cromat al difuzorului, eleronul cu a treia lampă de frână.
+  * Vopsea negru obsidian metalizat; interior bej din piele nappa, cu lemn, ecranul lat MBUX și consola dintre cele două scaune din spate.
+  * **Merge ca cel real**: V8 biturbo de 4,0 l, 410 kW (557 CP) plus EQ Boost pe 48 V, ~2,8 t, tracțiune 4MATIC, cutie 9G-TRONIC cu 9 trepte. Verificat în simulare, cu același cod ca în joc:
+    * 0–100 km/h în 4,92 s (oficial 4,9 s), 0–200 km/h în 18 s;
+    * viteza limitată la 250 km/h;
+    * frânare 100–0 în 35,7 m;
+    * aderență laterală de 0,86 g;
+    * în viraj caroseria se înclină doar ~1°, ca pe suspensia pneumatică E-ACTIVE BODY CONTROL.
+  * **Surse**: comunicatul Mercedes-Benz din aprilie 2023 (grila cu bare verticale cromate și inscripția Maybach, prizele cu modelul Maybach și ramă cromată, noua jantă forjată de 23″ opțională) și datele tehnice X167 (dimensiuni, 557 CP, 0–100 în 4,9 s, 250 km/h).
 * **Pădurile, refăcute (V60)** (`src/geo/broadgen.js`, `src/geo/forestfloor.js`, `src/textures.js`):
   * **Copacii foioși cresc dintr-un schelet de ramuri**, nu mai sunt un stâlp sub o minge de frunze:
     * trunchiul se subțiază treptat, e puțin strâmb și se lățește la bază (la fag cu contraforți);
