@@ -377,30 +377,32 @@ async function main() {
     }
   }
   // the black Mercedes-Maybach GLS 600 (maybach.js), past the scene of the clip IMG_0725 on the lane over the hill of the
-  // cross: where the walkers' climb ends (they stop at s 907-918 m), on the right-hand verge by the meadow, facing on up
-  // towards the cross; the spot with the most even ground and the fewest trunks, then kept clear of the wood's trees,
-  // bushes and deadwood
+  // cross: where the walkers' climb ends (they stop at s 907-918 m at the top of the rise), a little way down the other
+  // side towards the cross, parked at the right-hand edge of the asphalt (the verge drops away steeply to the meadow
+  // there; the narrow lane leaves 2.5 m to pass), facing on down towards the cross. The spot: level across (the lane's
+  // own grade is fine), the fewest trunks near; then kept clear of the wood's trees, bushes and deadwood
   let maybach = null;
   {
     const q = [];
     let best = null;
-    for (let s = 898; s >= 868; s -= 1.5) for (const o of [-2.5, -2.8, -3.1]) {
+    for (let s = 890; s >= 852; s -= 1.5) for (const o of [-1.2, -1.35, -1.5]) {
       const p = laneAt(s, o), h = Math.atan2(p.hx, p.hz), c = Math.cos(h), sn = Math.sin(h);
-      const ys = [[-0.95, -2.4], [0.95, -2.4], [-0.95, 2.4], [0.95, 2.4]].map(([a, b]) => world.groundHeight(p.x + c * a - sn * b, p.z - sn * a - c * b));
-      const tilt = (Math.max(...ys) - Math.min(...ys)) / 2.4;
-      if (tilt > 0.2) continue;
-      const gy = world.groundHeight(p.x, p.z), probe = new world.Box(p.x, p.z, 1.3, 2.9, h);
+      // the ground under the four wheels: left and right, behind and ahead
+      const [lb, rb, la, ra] = [[-0.86, -1.6], [0.86, -1.6], [-0.86, 1.6], [0.86, 1.6]].map(([a, b]) => world.groundHeight(p.x + c * a - sn * b, p.z - sn * a - c * b));
+      const roll = Math.abs(lb + la - rb - ra) / 2 / 1.72, pitch = Math.abs(lb + rb - la - ra) / 2 / 3.2, twist = Math.abs(lb - rb - la + ra);
+      if (roll > 0.06 || pitch > 0.16 || twist > 0.12) continue;
+      const gy = world.groundHeight(p.x, p.z), probe = new world.Box(p.x, p.z, 1.15, 2.75, h);
       const hits = world.query(p.x, p.z, 5, q).filter(b => b.y1 > gy + 0.3 && b.y0 < gy + 2.2 && !b.vehicle && boxBox(probe, b));
-      if (hits.some(b => b.tag !== 'tree')) continue;                          // (walls, fences, poles: never)
-      const score = tilt + hits.length * 0.15 + Math.abs(s - 888) * 0.002;
-      if (!best || score < best.score) best = { x: p.x, z: p.z, h, s, score };
+      if (hits.some(b => b.tag !== 'tree')) continue;                          // (walls, fences, poles, rocks: never)
+      const score = roll * 3 + pitch + twist + hits.length * 0.15 + Math.abs(s - 876) * 0.004;
+      if (!best || score < best.score) best = { x: p.x, z: p.z, h, s, o, score };
     }
     if (best) {
       keepClear(best.x, best.z, 3.6);
       const car = buildMaybach();
       scene.add(car.group);
       maybach = new Vehicle(car, world, best.x, best.z, best.h, { tune: MAYBACH_TUNE });
-      maybach.name = 'Mercedes-Maybach GLS 600';
+      maybach.name = 'Mercedes-Maybach GLS 600'; maybach._spot = { s: best.s, o: best.o };
       vehicles.push(maybach);
       maybach.update(0.016, null);
     }
