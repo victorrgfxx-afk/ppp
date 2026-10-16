@@ -22,6 +22,7 @@ import { prepareHala } from './hala.js';
 import { prepareTriaj } from './triaj.js';
 import { prepareDrapel } from './drapel.js';
 import { buildHillwood } from './hillwood.js';
+import { buildForestFloor } from './forestfloor.js';
 import { prepareVad } from './vad.js';
 import { prepareBreaza } from './breaza.js';
 import { preparePastravaria } from './pastravaria.js';
@@ -112,6 +113,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const trees = buildTrees(scene, world, renderer, quality);
   const canopy = buildCanopy(scene, gt, trees.forest.Q);
   const hill = buildHillwood(scene, world, quality);        // the hill of the cross up close: grass, litter, ferns, brambles
+  const floor = buildForestFloor(scene, world, quality);    // every other wood's floor: litter, ferns, brambles, deadwood, boulders
   log('copaci ' + trees.count + ', pădure ' + trees.forest.count() + ', coronament ' + (canopy ? canopy.meshes.length : 0), performance.now() - t0);
   let cullI = 0, lastCull = null;
   const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.length, meshes: meshes.length };
@@ -127,6 +129,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
     update(camPos, vis = Infinity) {
       trees.update(camPos);
       hill.update(camPos);
+      floor.update(camPos);
       // distance culling of the merged chunks (a few per frame is enough: they change slowly; all at once after a jump
       // or when the visibility changes)
       const jumped = !lastCull || Math.hypot(camPos.x - lastCull.x, camPos.z - lastCull.z) > 150 || Math.abs(Math.log(vis / lastCull.vis)) > 0.15;

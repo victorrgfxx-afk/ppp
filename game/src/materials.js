@@ -100,6 +100,8 @@ export function buildMaterials() {
   std('woodLight', { map: TEX.wood, normalMap: TEX.woodN, roughness: 0.6, color: 0xb87a45 });  // oak window frames
   std('picket', { map: TEX.picket, normalMap: TEX.picketN, roughness: 0.75 });
   std('bark', { map: TEX.bark, normalMap: TEX.barkN, roughness: 0.95 });
+  // the forest species' own bark (textures.js genBarks)
+  for (const k of ['Beech', 'Hornbeam', 'Oak', 'Robinia', 'Birch']) std('bark' + k, { map: TEX['bark' + k], normalMap: TEX['bark' + k + 'N'], roughness: k === 'Beech' || k === 'Birch' ? 0.82 : 0.95 });
 
   // --- roofs & metal ---
   std('roofPhoto', { map: TEX.roof_panels, normalMap: TEX.roof_panelsN, roughness: 0.42, metalness: 0.55, color: 0xe4e8ec });
@@ -149,6 +151,9 @@ export function buildMaterials() {
   leaf('leavesDark', TEX.leaves, 0x93a67e, 0.035);
   leaf('leavesAutumn', TEX.leavesAutumn, 0xffffff, 0.035);                 // the lane up to the cross in mid-October
   leaf('leavesPinnate', TEX.leavesPinnate, 0xffffff, 0.045);                // black locust
+  leaf('leavesBeech', TEX.leavesBeech, 0xffffff, 0.035);                    // the forest broadleaves' own sprays (genLeafSprays)
+  leaf('leavesHornbeam', TEX.leavesHornbeam, 0xffffff, 0.035);
+  leaf('leavesOak', TEX.leavesOak, 0xffffff, 0.03);
   leaf('fir', TEX.fir, 0x9fb59a, 0.018);
   M.fir.userData.snow = 0.8;                       // (rain.js: in the snow the conifers' boughs carry a load, as the spruces' do)
   leaf('pine', TEX.pineTuft ?? TEX.fir, 0xb4c4a4, 0.014);   // black pine needle tufts (geo/trees.js)

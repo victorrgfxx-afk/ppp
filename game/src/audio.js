@@ -203,6 +203,81 @@ export class Audio {
     const g = ctx.createGain(); g.gain.setValueAtTime(1.2, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
     o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.45);
   }
+  // ---- the woods' animals (wildlife.js, birds.js): k from the distance (sound carries: a howl for kilometres)
+  att(d, near = 10, min = 0.02) { return Math.max(min, Math.min(1, near / Math.max(d, 1))); }
+  voice(o, gainNode, t0, t1) { o.connect(gainNode); o.start(t0); o.stop(t1); }
+  // wolves howling: each a long, rising then falling note with a slow vibrato, the pack in a chorus, out of step
+  howl(d, n = 3) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, k = this.att(d, 60, 0.04), lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900 + 3000 * k;
+    lp.connect(this.master);
+    for (let w = 0; w < Math.min(4, n); w++) {
+      const t = ctx.currentTime + w * (0.6 + Math.random() * 1.2), f0 = 360 + Math.random() * 140, len = 3.2 + Math.random() * 2;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.22 * k, t + 0.5); g.gain.setValueAtTime(0.2 * k, t + len - 0.9); g.gain.linearRampToValueAtTime(0, t + len);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 0.7;
+      g.connect(f).connect(lp);
+      for (const [type, m, a] of [['sine', 1, 1], ['triangle', 2, 0.25]]) {
+        const o = ctx.createOscillator(); o.type = type;
+        o.frequency.setValueAtTime(f0 * 0.8 * m, t); o.frequency.linearRampToValueAtTime(f0 * 1.18 * m, t + 0.9); o.frequency.linearRampToValueAtTime(f0 * 1.05 * m, t + len - 0.6); o.frequency.linearRampToValueAtTime(f0 * 0.72 * m, t + len);
+        const vib = ctx.createOscillator(); vib.frequency.value = 4.5 + Math.random(); const vg = ctx.createGain(); vg.gain.value = f0 * 0.012 * m; vib.connect(vg).connect(o.frequency);
+        const og = ctx.createGain(); og.gain.value = a; o.connect(og).connect(g);
+        o.start(t); o.stop(t + len + 0.05); vib.start(t); vib.stop(t + len + 0.05);
+      }
+    }
+  }
+  // the fox: three sharp, hoarse barks
+  foxBark(d) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, k = this.att(d, 18, 0.03);
+    for (let i = 0; i < 3; i++) {
+      const t = ctx.currentTime + i * (0.32 + Math.random() * 0.1);
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(720, t); o.frequency.exponentialRampToValueAtTime(430, t + 0.13);
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1300; f.Q.value = 1.6;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3 * k, t + 0.015); g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 0.17);
+      this.burst({ f: 2200, q: 0.8, dur: 0.1, gain: 0.05 * k, delay: t - ctx.currentTime });
+    }
+  }
+  // wild boar: low, pulsing grunts; alarmed, a loud snort ("woof") and squeals of the young
+  boarGrunt(d, alarm = false) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, k = this.att(d, 12, 0.02);
+    if (alarm) {
+      this.burst({ f: 380, q: 1.2, dur: 0.35, gain: 0.45 * k, type: 'bandpass', rate: 0.6 });
+      for (let i = 0; i < 3; i++) {
+        const t = ctx.currentTime + 0.3 + i * 0.22 + Math.random() * 0.1, o = ctx.createOscillator(); o.type = 'square';
+        o.frequency.setValueAtTime(1100 + Math.random() * 400, t); o.frequency.linearRampToValueAtTime(1500, t + 0.08); o.frequency.linearRampToValueAtTime(900, t + 0.2);
+        const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 2;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06 * k, t + 0.02); g.gain.linearRampToValueAtTime(0, t + 0.22);
+        o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 0.25);
+      }
+      return;
+    }
+    for (let i = 0, n = 2 + Math.floor(Math.random() * 3); i < n; i++) {
+      const t = ctx.currentTime + i * (0.28 + Math.random() * 0.15), len = 0.16 + Math.random() * 0.1;
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(105 + Math.random() * 30, t); o.frequency.linearRampToValueAtTime(85, t + len);
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 650; f.Q.value = 3;
+      const am = ctx.createGain(); am.gain.value = 0.5; const lfo = ctx.createOscillator(); lfo.frequency.value = 24; const lg = ctx.createGain(); lg.gain.value = 0.5; lfo.connect(lg).connect(am.gain);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.4 * k, t + 0.03); g.gain.linearRampToValueAtTime(0, t + len);
+      o.connect(f).connect(am).connect(g).connect(this.master); o.start(t); o.stop(t + len + 0.02); lfo.start(t); lfo.stop(t + len + 0.02);
+    }
+  }
+  // birds: the buzzard's mewing "pee-yow", the crow's "kraa", the jay's screech, a woodpecker drumming
+  birdCall(kind, d) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, k = this.att(d, 25, 0.02), t = ctx.currentTime;
+    const tone = (type, f0, f1, t0, len, gain, bp, q) => {
+      const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f1, t0 + len);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(gain, t0 + Math.min(0.05, len * 0.2)); g.gain.linearRampToValueAtTime(0, t0 + len);
+      let out = o; if (bp) { const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = bp; f.Q.value = q ?? 1.5; o.connect(f); out = f; }
+      out.connect(g).connect(this.master); o.start(t0); o.stop(t0 + len + 0.02);
+    };
+    if (kind === 'buzzard') { tone('sine', 2500, 1350, t, 0.95, 0.12 * k); tone('sine', 5000, 2700, t, 0.95, 0.025 * k); }
+    else if (kind === 'crow') for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) tone('sawtooth', 620, 500, t + i * 0.42, 0.3, 0.16 * k, 1500, 2);
+    else if (kind === 'jay') for (let i = 0; i < 2; i++) this.burst({ f: 2600, q: 1.2, dur: 0.22, gain: 0.16 * k, delay: i * 0.35, rate: 1.3 });
+    else if (kind === 'woodpecker') for (let i = 0; i < 16; i++) this.burst({ f: 1100, q: 2.5, dur: 0.025, gain: 0.14 * k * (1 - i / 22), delay: i * 0.05 });
+    else if (kind === 'wings') for (let i = 0; i < 8; i++) this.burst({ f: 900, q: 0.5, dur: 0.06, gain: 0.05 * k, delay: i * 0.07 });
+  }
   update(dt, st) {
     if (!this.ctx || this.ctx.state !== 'running') return;
     this.t += dt;

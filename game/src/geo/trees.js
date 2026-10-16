@@ -5,27 +5,28 @@ import { M, addWind } from '../materials.js';
 import { TEX } from '../textures.js';
 import { rng } from '../util.js';
 import { spruceDetail } from './firs.js';
+import { broadTree } from './broadgen.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
 // Sentinel-2 shows vegetation). Near: light 3D trees per 200 m chunk; far: impostor billboards
 // rendered from the same models. A vertex-shader distance switch avoids drawing both.
 
 const TYPES = [
-  { name: 'oak', H: 15, crown: 5.0, trunkR: 0.34, cards: 115, leaf: 'leavesDark', tint: 0xb9c7a3 },
-  { name: 'hornbeam', H: 12, crown: 3.8, trunkR: 0.24, cards: 100, leaf: 'leaves', tint: 0xc4d0a8 },
+  { name: 'oak', H: 15, crown: 5.0, trunkR: 0.34, cards: 115, leaf: 'leavesOak', tint: 0xd2dcc0, form: 'oak', bark: 'barkOak', bole: 0.3 },
+  { name: 'hornbeam', H: 12, crown: 3.8, trunkR: 0.24, cards: 100, leaf: 'leavesHornbeam', tint: 0xdae2c4, form: 'hornbeam', bark: 'barkHornbeam', bole: 0.3 },
   { name: 'spruce', H: 17, crown: 3.0, conifer: true },
   { name: 'fruit', H: 5.2, crown: 2.4, trunkR: 0.13, cards: 80, leaf: 'leavesDense', tint: 0xd8e0c0 },
-  { name: 'walnut', H: 13, crown: 5.4, trunkR: 0.36, cards: 115, leaf: 'leaves', tint: 0xb4c49c },
+  { name: 'walnut', H: 13, crown: 5.4, trunkR: 0.36, cards: 115, leaf: 'leaves', tint: 0xb4c49c, form: 'oak', bole: 0.25 },
   { name: 'willow', H: 11, crown: 4.0, trunkR: 0.3, cards: 100, leaf: 'leavesDense', tint: 0xc8d7a0, droop: true },
   // forest-grown trees of the mapped stands (generated around the player): tall clear boles, high crowns
-  { name: 'beech', H: 23, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leaves', tint: 0xbccb98, bole: 0.5, bark: 'barkLight' },
-  { name: 'oak (forest)', H: 20, crown: 4.7, trunkR: 0.36, cards: 130, leaf: 'leavesDark', tint: 0xaabd92, bole: 0.44 },
-  { name: 'hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leaves', tint: 0xc6d2a4, bole: 0.4 },
+  { name: 'beech', H: 23, crown: 4.3, trunkR: 0.32, cards: 125, leaf: 'leavesBeech', tint: 0xdfe6c8, bole: 0.5, bark: 'barkBeech', form: 'beech' },
+  { name: 'oak (forest)', H: 20, crown: 4.7, trunkR: 0.36, cards: 130, leaf: 'leavesOak', tint: 0xd0dabc, bole: 0.44, bark: 'barkOak', form: 'oak' },
+  { name: 'hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.23, cards: 105, leaf: 'leavesHornbeam', tint: 0xdce4c6, bole: 0.4, bark: 'barkHornbeam', form: 'hornbeam' },
   { name: 'spruce (forest)', H: 26, crown: 3.3, conifer: true, low: 7 },
   { name: 'black pine', H: 19, crown: 3.4, pine: true },
-  { name: 'shrub', H: 2.6, crown: 1.5, trunkR: 0.05, cards: 34, leaf: 'leaves', tint: 0xd2dcae, bole: 0.1, noImpostor: true },
+  { name: 'shrub', H: 2.6, crown: 1.5, trunkR: 0.022, cards: 48, leaf: 'leavesHornbeam', tint: 0xe2ead0, bole: 0.1, noImpostor: true, form: 'shrub', bark: 'barkHazel', cardScale: 0.85 },
   // stand edges: trees in the light keep their branches down to the ground (a wall of leaves, not a row of poles)
-  { name: 'edge broadleaf', H: 13, crown: 4.4, trunkR: 0.26, cards: 140, leaf: 'leaves', tint: 0xb6c895, bole: 0.13 },
+  { name: 'edge broadleaf', H: 13, crown: 4.4, trunkR: 0.26, cards: 140, leaf: 'leavesBeech', tint: 0xdce4c4, bole: 0.13, bark: 'barkBeech', form: 'edge' },
   // Strada Gării (photos 46-48): Lombardy poplars (narrow columns), a black poplar (tall oval), young planted pines
   { name: 'lombardy poplar', H: 26, crown: 2.5, trunkR: 0.34, cards: 180, leaf: 'leaves', tint: 0xb2c294, bole: 0.14 },
   { name: 'poplar', H: 25, crown: 4.2, trunkR: 0.42, cards: 170, leaf: 'leaves', tint: 0xb6c698, bole: 0.2 },
@@ -38,11 +39,16 @@ const TYPES = [
   { name: 'autumn hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leavesAutumn', tint: 0xf4f6d6, bole: 0.4 },
   // black locust (Robinia, planted on the eroded slopes and by the villages): airy crown of pinnate light leaves, dark
   // bark; at the stand edges (as along DN1 at Cornu, KartaView July 2016) leafy down to a few metres
-  { name: 'black locust (forest)', H: 18, crown: 3.7, trunkR: 0.24, cards: 105, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.42 },
-  { name: 'edge black locust', H: 14, crown: 4.0, trunkR: 0.22, cards: 125, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.18 },
+  { name: 'black locust (forest)', H: 18, crown: 3.7, trunkR: 0.24, cards: 105, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.42, bark: 'barkRobinia', form: 'robinia' },
+  { name: 'edge black locust', H: 14, crown: 4.0, trunkR: 0.22, cards: 125, leaf: 'leavesPinnate', tint: 0xd6e2a6, bole: 0.18, bark: 'barkRobinia', form: 'robinia' },
   // natural regeneration in the spruce and fir stands: young spruces branched down to the ground (understory only)
   { name: 'young spruce', H: 4.6, crown: 1.6, conifer: true, low: 0.15, noImpostor: true },
+  // the stand edges of the oak and hornbeam stands (the beech ones keep 'edge broadleaf')
+  { name: 'edge oak', H: 13, crown: 4.8, trunkR: 0.3, cards: 140, leaf: 'leavesOak', tint: 0xd0dabc, bole: 0.15, bark: 'barkOak', form: 'edge' },
+  { name: 'edge hornbeam', H: 11, crown: 3.9, trunkR: 0.22, cards: 125, leaf: 'leavesHornbeam', tint: 0xdce4c6, bole: 0.12, bark: 'barkHornbeam', form: 'edge' },
 ];
+// the variants grown of each skeleton type (broadgen.js): a tree picks one from its own hash
+export const NVAR = 3;
 // the detailed model of each spruce-like type for the near ones (firs.js)
 const FIR_SPEC = TYPES.map((t, i) => t.conifer && !t.pine ? { key: 'ty' + i, H: t.H, crown: t.crown, low: t.low ?? 1.3, seed: 50 + i, stubs: (t.low ?? 1.3) > 3 } : null);
 const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
@@ -56,8 +62,8 @@ function firRecord(t, spec) {
   };
   return t;
 }
-export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20, robiniaEdge: 21, youngSpruce: 22 };
-const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20, T_ROBINIA_EDGE = 21, T_YOUNG = 22;
+export const TREE_T = { oak: 0, hornbeam: 1, spruceLow: 2, beech: 6, oakF: 7, hornbeamF: 8, spruceF: 9, pine: 10, shrubTall: 11, edge: 12, autumn: 16, autumnBirch: 17, autumnBeechF: 18, autumnHornbeamF: 19, robinia: 20, robiniaEdge: 21, youngSpruce: 22, edgeOak: 23, edgeHorn: 24 };
+const T_BEECH = 6, T_OAK = 7, T_HORN = 8, T_SPRUCE = 9, T_PINE = 10, T_SHRUB = 11, T_EDGE = 12, T_SPRUCE_LOW = 2, T_ROBINIA = 20, T_ROBINIA_EDGE = 21, T_YOUNG = 22, T_EDGE_OAK = 23, T_EDGE_HORN = 24;
 // genus groups of species.json (data.js) -> forest tree type: Fagus, Quercus, Carpinus, Abies, Picea, Pinus, Populus,
 // Robinia, Salix, Tilia, other deciduous (maples, ash, cherry ...), other evergreen
 const GENUS_T = [0, T_BEECH, T_OAK, T_HORN, T_SPRUCE, T_SPRUCE, T_PINE, 14, T_ROBINIA, 5, T_HORN, T_HORN, T_SPRUCE];
@@ -237,17 +243,25 @@ export function buildTrees(scene, world, renderer, quality) {
     bark: M.bark, core: M.firCore, fir: M.fir, pine: M.pine, pineCore: M.firCore.clone(),
     crown: new THREE.MeshStandardMaterial({ color: 0x3a4b2c, roughness: 1 }),
     barkLight: M.bark.clone(),
+    barkBeech: M.barkBeech, barkHornbeam: M.barkHornbeam, barkOak: M.barkOak, barkRobinia: M.barkRobinia, barkBirch: M.barkBirch,
+    barkHazel: M.barkHornbeam.clone(),
   };
   mats.barkLight.color = new THREE.Color(0xc9c4ba);             // smooth grey beech bark
-  M.bark.userData.bark = mats.barkLight.userData.bark = true;
+  mats.barkHazel.color = new THREE.Color(0x8f8170);              // the understory's hazel: smooth grey-brown stems
+  for (const k of ['bark', 'barkLight', 'barkBeech', 'barkHornbeam', 'barkOak', 'barkRobinia', 'barkBirch', 'barkHazel']) if (mats[k]) mats[k].userData.bark = true;
   mats.crown.userData.core = mats.pineCore.userData.core = true;
-  const models = TYPES.map((t, i) => {
-    const parts = t.pine ? pineModel(t, 50 + i) : t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
-    const leaf = M[t.leaf] ?? M.leaves;
-    const pm = parts.map(([g, k]) => [g, k === 'leaf' ? leaf : mats[k]]);
-    const imp = t.noImpostor ? null : bakeImpostor(renderer, pm, t);
-    return { t, parts: pm, imp };
+  // every skeleton type (broadgen.js) in NVAR variants; the billboards far away are baked from the first
+  const partsOf = (t, i, v, lite) => {
+    if (t.form) { const g = broadTree(t, t.form, 50 + i + 101 * v, lite ? -1 : 0); return [[g.wood, t.bark ?? 'bark'], [g.core, 'crown'], [g.leaves, 'leaf']]; }
+    return t.pine ? pineModel(t, 50 + i) : t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
+  };
+  // (lite: the same tree with fewer limbs drawn, for the forest's sub-tiles from ~75 m on)
+  const variants = TYPES.map((t, i) => {
+    const leaf = M[t.leaf] ?? M.leaves, mat = (ps) => ps.map(([g, k]) => [g, k === 'leaf' ? leaf : mats[k]]);
+    return Array.from({ length: t.form ? NVAR : 1 }, (_, v) => { const parts = mat(partsOf(t, i, v)); return { t, parts, lite: t.form ? mat(partsOf(t, i, v, true)) : parts }; });
   });
+  const models = variants.map(([m0]) => ({ ...m0, imp: m0.t.noImpostor ? null : bakeImpostor(renderer, m0.parts, m0.t) }));
+  const varOf = (ty, x, z) => variants[ty].length > 1 ? Math.floor(Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) * 977) % variants[ty].length : 0;
   // compact per-tree arrays + chunk lists (near: 300 m, far impostors: 1500 m)
   const n = T.n, X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n), R = new Float32Array(n), S = new Float32Array(n), V = new Float32Array(n), TY = new Uint8Array(n);
   const CH = 300, FCH = 1500, near = new Map(), far = new Map(), cell = new Map(), CELL = 16;
@@ -294,14 +308,14 @@ export function buildTrees(scene, world, renderer, quality) {
   const buildNear = (ch) => {
     const grp = new THREE.Group();
     ch.firs = [];
-    const byType = TYPES.map(() => []);
-    for (const k of ch.idx) byType[TY[k]].push(k);
-    byType.forEach((list, ty) => {
-      if (!list.length) return;
+    const byType = new Map();
+    for (const k of ch.idx) { const key = TY[k] * 8 + varOf(TY[k], X[k], Z[k]); if (!byType.has(key)) byType.set(key, []); byType.get(key).push(k); }
+    byType.forEach((list, key) => {
+      const ty = key >> 3, va = key & 7;
       const recs = FIR_SPEC[ty] ? list.map(k => firRecord({ x: X[k], y: Y[k], z: Z[k], s: S[k], rot: R[k], v: V[k] }, FIR_SPEC[ty])) : null;
-      for (const [g, mat] of models[ty].parts) {
+      for (const [g, mat] of variants[ty][va].parts) {
         if (mat.userData.core) continue;                 // the dark inner volume is only for the impostors
-        const leafy = mat !== M.bark;
+        const leafy = !mat.userData.bark;
         const im = new THREE.InstancedMesh(g, nearMat(mat), list.length);
         list.forEach((k, j) => setInst(im, k, j, TYPES[ty].tint ?? 0xffffff, leafy));
         im.castShadow = true; im.receiveShadow = true;
@@ -351,7 +365,7 @@ export function buildTrees(scene, world, renderer, quality) {
     });
   }
   const nearList = [...near.values()];
-  const forest = buildForest(scene, world, quality, { models, impGeo, withSwitch, setInst });
+  const forest = buildForest(scene, world, quality, { models, variants, varOf, impGeo, withSwitch, setInst });
   // the far billboards keep only part of a snow cover (rain.js), the near crowns' cards their default share
   for (const m of [...impMat, ...(forest.impMat || [])]) if (m) m.userData.snow = 0.35;
   // winter (the snow modes): the broadleaves stand bare. Their leaf cards draw twigs (main.js swaps the maps of every
@@ -445,15 +459,14 @@ function eachForestTree(x0, z0, x1, z1, cb) {
       const gg = hash3(i, j, 4) < (sp & 16 ? 0.88 : 0.62) ? g : speciesCompanion(x, z, g, hash3(i, j, 15));
       ty = GENUS_T[gg];
       // stand edges: the broadleaves keep their branches down to the ground, spruces their low skirts
-      if (edge && (ty === T_BEECH || ty === T_OAK || ty === T_HORN)) ty = T_EDGE;
+      if (edge && (ty === T_BEECH || ty === T_OAK || ty === T_HORN)) ty = ty === T_OAK ? T_EDGE_OAK : ty === T_HORN ? T_EDGE_HORN : T_EDGE;
       else if (edge && ty === T_ROBINIA) ty = T_ROBINIA_EDGE;
       else if (edge && ty === T_SPRUCE) ty = T_SPRUCE_LOW;
     } else {
       // stands outside the genus map: species in stands of a few hectares, pines in the needle stands
       const needle = code === 3 ? 0.9 : code === 2 ? 0.45 : 0.02;
       if (hash3(i, j, 4) < needle * (0.55 + 0.9 * valueNoise2(x, z, 55, 7))) ty = edge ? T_SPRUCE_LOW : hash3(i, j, 5) < 0.62 ? T_PINE : T_SPRUCE;
-      else if (edge) ty = T_EDGE;
-      else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.55 ? T_BEECH : b < 0.75 ? T_HORN : T_OAK; }
+      else { const b = hash3(i, j, 6) * 0.7 + valueNoise2(x, z, 80, 11) * 0.6 - 0.15; ty = b < 0.55 ? T_BEECH : b < 0.75 ? T_HORN : T_OAK; if (edge) ty = ty === T_OAK ? T_EDGE_OAK : ty === T_HORN ? T_EDGE_HORN : T_EDGE; }
     }
     for (const f of MIX) ty = f(x, z, ty, edge, code, hash3(i, j, 12), hash3(i, j, 13));
     if (ty < 0) continue;                                                   // (a place keeps that spot free)
@@ -477,6 +490,15 @@ function eachShrub(x0, z0, x1, z1, cb) {
     if (k < 0.3) cb(x, z, sap, sap === T_YOUNG ? 0.5 + 0.7 * hash3(i, j, 24) : 0.22 + 0.2 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
     else cb(x, z, T_SHRUB, 0.6 + 0.8 * hash3(i, j, 24), hash3(i, j, 25) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 26));
   }
+  // the mantle of the woods' edges: hazel, hawthorn, dogwood and blackthorn bushes in a band along the outermost trees
+  const MSP = 3.3;
+  for (let j = Math.floor(z0 / MSP); j <= Math.floor(z1 / MSP); j++) for (let i = Math.floor(x0 / MSP); i <= Math.floor(x1 / MSP); i++) {
+    if (hash3(i, j, 41) > 0.7) continue;
+    const x = (i + hash3(i, j, 42)) * MSP, z = (j + hash3(i, j, 43)) * MSP;
+    if (x < x0 || x >= x1 || z < z0 || z >= z1 || !forestCode(x, z)) continue;
+    if (forestCode(x + 6, z) && forestCode(x - 6, z) && forestCode(x, z + 6) && forestCode(x, z - 6)) continue;
+    cb(x, z, T_SHRUB, 0.8 + 0.7 * hash3(i, j, 44), hash3(i, j, 45) * Math.PI * 2, 0.8 + 0.3 * hash3(i, j, 46));
+  }
   // natural regeneration of the spruce and fir stands: thickets of young spruces (2-5 m, branched to the ground) in
   // the gaps, a fifth of the stand
   const RSP = 3.4;
@@ -492,7 +514,7 @@ function eachShrub(x0, z0, x1, z1, cb) {
   }
 }
 
-function buildForest(scene, world, quality, { models, impGeo, withSwitch, setInst }) {
+function buildForest(scene, world, quality, { models, variants, varOf, impGeo, withSwitch, setInst }) {
   if (!GEO.forestBits) return { update() {}, count: () => 0, Q: null };
   const Q = FOREST_Q[quality.label] ?? { imp: 1500, near: 180, shrub: 95 };
   const impMat = models.map(({ imp }) => imp && withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), Q.near, true, 'ffar', Q.imp));
@@ -531,22 +553,23 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
     return { grp, subs, n, cx: x0 + GT / 2, cz: z0 + GT / 2 };
   };
   // near 3D models (and the understory) of a 70 m sub-tile
-  const buildSub = (sub) => {
+  const buildSub = (sub, lv) => {
+    sub.lv = lv;
     const grp = new THREE.Group();
     const byType = new Map();
-    for (const t of sub.trees) { if (!byType.has(t.ty)) byType.set(t.ty, []); byType.get(t.ty).push(t); }
+    for (const t of sub.trees) { const key = t.ty * 8 + varOf(t.ty, t.x, t.z); if (!byType.has(key)) byType.set(key, []); byType.get(key).push(t); }
     if (Q.shrub > 0) {
       const x0 = sub.cx - ST / 2, z0 = sub.cz - ST / 2, sh = [];
       eachShrub(x0, z0, x0 + ST, z0 + ST, (x, z, ty, s, rot, v) => sh.push({ x, y: heightAt(x, z) - 0.05, z, ty, s, rot, v, under: true }));
-      for (const t of sh) { const key = 'u' + t.ty; if (!byType.has(key)) byType.set(key, []); byType.get(key).push(t); }
+      for (const t of sh) { const key = 'u' + (t.ty * 8 + varOf(t.ty, t.x, t.z)); if (!byType.has(key)) byType.set(key, []); byType.get(key).push(t); }
     }
     sub.firs = [];
     for (const [key, list] of byType) {
-      const ty = list[0].ty;
+      const ty = list[0].ty, va = typeof key === 'number' ? key & 7 : (+key.slice(1)) & 7;
       const r = list[0].under ? Q.shrub : Q.near;
       // the spruces near enough are drawn in detail (firs.js): their instances here are hidden meanwhile
       if (FIR_SPEC[ty]) for (const t of list) { if (!t.spec) firRecord(t, FIR_SPEC[ty]); t.refs = []; sub.firs.push(t); }
-      for (const [g, mat] of models[ty].parts) {
+      for (const [g, mat] of variants[ty][va][lv ? 'lite' : 'parts']) {
         if (mat.userData.core) continue;
         const leafy = !mat.userData.bark;
         const im = instancedFrom(list, g, nearMat(mat, r), !list[0].under, leafy, TYPES[ty].tint ?? 0xffffff);
@@ -610,8 +633,11 @@ function buildForest(scene, world, quality, { models, impGeo, withSwitch, setIns
         }
         if (d > Q.near + GT) { for (const s of t.subs.values()) if (s.grp) { dispose(s.grp); s.grp = null; for (const f of s.firs ?? []) f.refs = []; } continue; }
         for (const s of t.subs.values()) {
-          const inR = Math.hypot(s.cx - cam.x, s.cz - cam.z) < Q.near + ST * 0.75;
-          if (inR && !s.grp && performance.now() - t0 < budget + 10) s.grp = buildSub(s);
+          const ds = Math.hypot(s.cx - cam.x, s.cz - cam.z), inR = ds < Q.near + ST * 0.75;
+          // the full trees within ~75 m (a sub-tile's centre), the lite ones beyond; a margin against flicker
+          const lv = s.grp ? (s.lv === 0 ? (ds > 75 + ST * 0.5 + 12 ? 1 : 0) : (ds < 75 + ST * 0.5 - 12 ? 0 : 1)) : (ds < 75 + ST * 0.5 ? 0 : 1);
+          if (s.grp && s.lv !== lv && performance.now() - t0 < budget + 10) { dispose(s.grp); for (const f of s.firs ?? []) f.refs = []; s.grp = buildSub(s, lv); }
+          if (inR && !s.grp && performance.now() - t0 < budget + 10) s.grp = buildSub(s, lv);
           if (s.grp) s.grp.visible = inR;
         }
       }

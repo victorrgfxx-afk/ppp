@@ -110,7 +110,7 @@ function site(x, z) {
 }
 
 // ------------------------------------------------------------------ textures (canvas, generated once)
-function grassTexture() {
+export function grassTexture() {
   const W = 256, H = 256, c = canvas(W, H), g = c.getContext('2d'), R = rng(7);
   g.clearRect(0, 0, W, H);
   const blade = (x, h, lean, w, c0, c1, tip) => {
@@ -148,7 +148,7 @@ function flowerTexture() {
   }
   const t = tex(c); t.premultiplyAlpha = false; return t;
 }
-function litterTexture() {
+export function litterTexture() {
   const W = 256, c = canvas(W, W), g = c.getContext('2d'), R = rng(13);
   g.clearRect(0, 0, W, W);
   const cols = ['#5a4230', '#664a34', '#72563c', '#4e3a2a', '#7a5e40', '#46342a', '#624e3a', '#3e3024', '#6e5842', '#564a3a'];
@@ -176,7 +176,7 @@ function litterTexture() {
   }
   const t = tex(c); t.premultiplyAlpha = false; return t;
 }
-function fernTexture() {
+export function fernTexture() {
   const W = 64, H = 256, c = canvas(W, H), g = c.getContext('2d'), R = rng(17);
   g.clearRect(0, 0, W, H);
   g.strokeStyle = '#4c5a2a'; g.lineWidth = 2; g.beginPath(); g.moveTo(W / 2, H); g.lineTo(W / 2, 4); g.stroke();
@@ -207,7 +207,7 @@ export function brambleTexture() {
   }
   const t = tex(c); t.premultiplyAlpha = false; return t;
 }
-function rockTexture() {
+export function rockTexture() {
   const W = 128, c = canvas(W, W), g = c.getContext('2d', { willReadFrequently: true }), R = rng(23);
   g.fillStyle = '#9a9488'; g.fillRect(0, 0, W, W);
   for (let i = 0; i < 260; i++) { const v = 120 + R() * 60 | 0; g.fillStyle = `rgba(${v},${v - 6},${v - 16},0.35)`; g.beginPath(); g.arc(R() * W, R() * W, 2 + R() * 9, 0, Math.PI * 2); g.fill(); }
@@ -216,7 +216,7 @@ function rockTexture() {
   const d = g.getImageData(0, 0, W, W), a = d.data; for (let i = 0; i < a.length; i += 4) { const n = (R() - 0.5) * 24; a[i] += n; a[i + 1] += n; a[i + 2] += n; } g.putImageData(d, 0, 0);
   return tex(c, { repeat: true });
 }
-function woodEndTexture() {
+export function woodEndTexture() {
   const W = 64, c = canvas(W, W), g = c.getContext('2d');
   g.fillStyle = '#b89a72'; g.fillRect(0, 0, W, W);
   for (let r = 3; r < 31; r += 2.2) { g.strokeStyle = `rgba(110,80,50,${0.25 + (r % 4) * 0.05})`; g.lineWidth = 1; g.beginPath(); g.arc(32 + Math.sin(r) * 0.8, 32, r, 0, Math.PI * 2); g.stroke(); }
@@ -237,7 +237,7 @@ export function starGeo(w = 1) {
   return g;
 }
 // a fern clump: 8 arching fronds, 1 m long
-function fernGeo() {
+export function fernGeo() {
   const pos = [], uv = [], nrm = [], idx = [], R = rng(29);
   for (let f = 0; f < 8; f++) {
     const a = f / 8 * Math.PI * 2 + R() * 0.4, rise = 0.6 + R() * 0.3, w = 0.19 + R() * 0.05, base = pos.length / 3;
@@ -255,7 +255,7 @@ function fernGeo() {
   return g;
 }
 // a fallen branch, 1 m along +x, with two twigs
-function branchGeo() {
+export function branchGeo() {
   const parts = [], up = new THREE.Vector3(0, 1, 0);
   const stick = (a, b, r0, r1) => {
     const A = new THREE.Vector3(...a), Bv = new THREE.Vector3(...b), d = Bv.clone().sub(A), L = d.length();
@@ -426,7 +426,7 @@ function cyl(a, b, r0, r1, seg = 8, open = false) {
 }
 function ellipsoid(c, rx, ry, rz, seg = 10) { const g = new THREE.SphereGeometry(1, seg, Math.max(6, seg - 2)); g.scale(rx, ry, rz); g.translate(c.x, c.y, c.z); return g; }
 // vertex colours: mossy where the surface faces up
-function mossy(g, base, moss, k = 0.45, seed = 1) {
+export function mossy(g, base, moss, k = 0.45, seed = 1) {
   const n = g.attributes.normal, pp = g.attributes.position, c = new Float32Array(n.count * 3);
   for (let i = 0; i < n.count; i++) {
     const w = clamp01((n.getY(i) - k) / 0.35) * (0.55 + 0.45 * valueNoise2(pp.getX(i) * 3, pp.getZ(i) * 3, 1, seed));
@@ -493,7 +493,7 @@ function fallenTrunk(B, world, Mt, x, z, ux, uz, L, r, R, rootPlate) {
   for (let t = -L / 2; t <= L / 2; t += 2.5) clearForest(x + ux * t, z + uz * t, 2.2);     // a corridor along the trunk
 }
 const ROCK_SHAPES = [];
-function rockShape(k, detail = 2) {
+export function rockShape(k, detail = 2) {
   const key = k * 3 + detail;
   if (ROCK_SHAPES[key]) return ROCK_SHAPES[key];
   const g = new THREE.IcosahedronGeometry(1, detail), p = g.attributes.position, R = rng(100 + k);

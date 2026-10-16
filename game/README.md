@@ -519,6 +519,67 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Modelul**: cadru din țeavă, motor cu aripioare de răcire, carcasa variatorului CVT, scut sub motor, toba de eșapament, suspensie independentă cu brațe duble și amortizoare cu arc, aripi cu căptușeală neagră, podele cu striații, far și stopuri, portbagaje față și spate, bara de protecție cu troliu, cârma cu mânere, apărători de mâini și manete (se rotește cu roțile), anvelope de teren cu crampoane (22 × 2 rânduri), jante; pilotul are geacă, pantaloni, cizme, mănuși și cască cu vizor.
   * **Pe zăpadă**: aderența scade mult mai puțin decât la mașini (crampoane, tracțiune 4×4), se afundă de ~3 ori mai puțin (anvelope late, cu presiune mică pe sol), urcă pantele cu forța gravitației luată din panta reală (încetinește la urcare, accelerează la coborâre), viteza maximă ~80 km/h. Lasă urme în zăpadă după ecartamentul și lățimea roților lui și ridică pulbere de zăpadă din roți.
   * Pe **viscol** (tasta **T**) se merge cum ai cerut: din dealul crucii, cu vizibilitate de câteva sute de metri.
+* **Pădurile, refăcute (V60)** (`src/geo/broadgen.js`, `src/geo/forestfloor.js`, `src/textures.js`):
+  * **Copacii foioși cresc dintr-un schelet de ramuri**, nu mai sunt un stâlp sub o minge de frunze:
+    * trunchiul se subțiază treptat, e puțin strâmb și se lățește la bază (la fag cu contraforți);
+    * la fag și la carpen trunchiul urcă prin coroană; la stejar și la salcâm se desface la baza coroanei în câteva crengi groase;
+    * ramurile principale ies în spirală (137,5°), mai lungi unde coroana e mai lată, cu unghiul speciei (la fag urcătoare, la stejar întinse), și se curbează în sus spre lumină; din ele pornesc ramuri secundare;
+    * frunzișul stă în ciorchini la capetele ramurilor, deci coroana are goluri și cer printre crengi;
+    * copacii crescuți în pădure păstrează pe trunchi cioturile ramurilor de jos uscate;
+    * fiecare specie are 3 variante.
+  * **Scoarța fiecărei specii**:
+    * fagul: netedă, gri-argintie, cu pete de licheni, riduri fine orizontale și „ochii” lăsați de ramurile căzute;
+    * carpenul: gri mai închis, cu trunchiul canelat ca un mușchi încordat;
+    * gorunul: gros, brăzdat vertical, cu muchiile rupte în cruce;
+    * salcâmul: o rețea de creste împletite, roșcată în crăpături;
+    * mesteacănul: alb, cu lenticele negre.
+  * **Frunzele fiecărei specii**, desenate frunză cu frunză pe lăstari, alternativ, ca pe crenguța reală:
+    * fagul: ovale, cu marginea ondulată și 7–9 perechi de nervuri;
+    * carpenul: ascuțite, dublu dințate, cu ~12 perechi de nervuri pliate;
+    * gorunul: lobate, strânse la vârful lăstarului;
+    * câteva frunze încep să se îngălbenească (sfârșit de septembrie).
+  * **Solul pădurii, în toate pădurile din jurul tău** (până acum doar pe dealul crucii):
+    * covor de frunze moarte, sub molizi ace închise la culoare, crenguțe și ramuri căzute;
+    * stratul de ierburi după lumina care ajunge jos: aproape nimic sub fag, rogozuri și ierburi sub stejar și salcâm;
+    * ferigi la umbră și pe versanții reci, mure în luminișuri și la margini, puieți ai speciei arboretului;
+    * **lemn mort ca într-o pădure gospodărită din Carpați**: cioate tăiate (cu tăietura netedă), trunchiuri căzute, mai des așezate de-a curmezișul pantei și cu mușchi pe partea de sus, iar din loc în loc câte un copac uscat în picioare, cu vârful rupt și ciuperci iască pe el;
+    * **bolovani** de gresie unde panta e mare.
+    * Trunchiurile căzute, cioatele mari, copacii uscați și bolovanii mari te opresc (și pe animale).
+    * Culoarea solului de sub păduri nu mai e luată din satelit (acolo se văd coroanele): e cea a frunzelor moarte.
+  * **Lizierele**: copacii de margine au crengi și frunze până jos, iar pe o fâșie de la margine cresc alun, păducel, corn și porumbar.
+  * **Performanță**: în jurul tău, pe o rază de ~75–110 m, copacii sunt modelele întregi; mai departe se desenează varianta ușoară (aceeași coroană, mai puține crengi), apoi imaginile pre-randate, ca înainte.
+* **Animalele pădurii (V60)** (`src/beasts.js`, `src/gait.js`, `src/wildlife.js`):
+  * **Speciile**, la mărimea celor din Carpați:
+    * vulpea roșcată: ~38 cm la greabăn, ~6 kg; gâtul și pieptul albe, „ciorapi” negri, coada stufoasă cu vârful alb;
+    * lupul cenușiu: ~75 cm, ~40 kg; gri-maroniu, cu șa închisă pe spate, burta și picioarele deschise;
+    * mistrețul: ~85 cm, ~90 kg; negru-cafeniu, cu creasta de peri pe greabăn, râtul cu disc și colți. **Purceii din anul acesta** sunt mai mici și maro-roșcați: la sfârșit de septembrie și-au pierdut deja dungile;
+    * ursul brun: ~1,05 m la cocoașă, ~2 m lungime.
+  * **Cum sunt făcute**:
+    * fiecare animal e un singur corp sculptat, legat de un schelet de 19 oase: coloană, gât, cap, coada în două, iar fiecare picior în trei (umăr sau șold, cot sau genunchi, încheietură sau jaret). De aceea se îndoaie ca un corp viu, fără îmbinări rigide;
+    * blana e în straturi de fire care stau lipite de piele când se mișcă; de la distanță, unde un fir e mai subțire decât un pixel, blana ia culoarea medie, fără „pistrui”.
+  * **Mersul** se schimbă cu viteza, după mărimea animalului:
+    * la pas, picioarele cad în ordinea reală: spate-stânga, față-stânga, spate-dreapta, față-dreapta;
+    * la trap, în perechi diagonale (lupii trap în ritmul lor de ore întregi);
+    * la galop, cu spatele care se strânge și se întinde;
+    * picioarele se îndoaie din genunchi și din încheietură când se ridică.
+  * **Comportamentul**, cum îl au în realitate:
+    * vulpea își face rondul pe la margini; te observă de la ~45 m (mult mai de departe dacă ești în mașină), se oprește, se uită la tine și o ia la fugă spre pădure;
+    * mistreții umblă în grup, cu râtul în frunze, grohăind; la ~40 m scroafa se oprește și adulmecă, apoi fuge toată turma în aceeași direcție, cu pufnetul de alarmă și guițatul purceilor;
+    * lupii merg în șir, fiecare pe urmele celui din față; sunt cei mai sfioși: te observă de la ~85 m, se întorc și dispar. Noaptea, când stau, urlă în cor;
+    * ursul umblă încet și caută de mâncare. Dacă te apropii pe jos la ~30 m, rămâne pe loc, pufnește și se îndepărtează la pas mare (mai repede decât mergi tu). Dacă alergi după el și ajungi sub ~18 m, face un atac de intimidare (se oprește la câțiva metri), apoi fuge și nu mai atacă așa o bună bucată de vreme, cum fac aproape întotdeauna urșii. De mașini nu se atinge: fuge;
+    * un animal speriat rămâne cu frica în oase vreo două minute: te observă de mai departe și nu se mai oprește să se uite, fuge direct. Cine se retrage și e ajuns din urmă trece la fugă; când te-a pierdut, își vede de drum în partea opusă ție.
+  * **Când și unde apar**:
+    * apar doar unde harta are pădure (vulpea și pe pajiștile de lângă ea), la 70–180 m de tine, în spatele tău sau între copaci, și pleacă când te depărtezi;
+    * mistreții, lupii și ursul sunt mai activi la amurg și noaptea, vulpea la orice oră;
+    * în modurile cu zăpadă urșii hibernează;
+    * ursul de pe dealul crucii din noaptea cu furtună a rămas cum era.
+  * **Sunetele sunt sintetizate**: urletul în cor al lupilor, lătratul răgușit al vulpii, grohăitul, pufnetul și guițatul mistreților.
+* **Păsările (V60)** (`src/birds.js`), ziua, nu pe ploaie:
+  * șorecarul comun rotește în cercuri largi deasupra lizierelor și pajiștilor, la 40–120 m, cu aripile în V și câteva bătăi din când în când, și se aude „piii-ău”;
+  * ciorile grive (gri cu negru, cioara obișnuită la noi) trec în stol de la pădure la câmp, coboară pe pajiști, merg și ciugulesc, și își iau zborul când te apropii;
+  * gaițele sar din coroană în coroană (toamna ascund ghinda) și țipă la tine;
+  * pițigoii trec în cârduri mici prin coroanele de la margine, cu zborul lor în salturi;
+  * în pădure se aude din când în când o ciocănitoare pestriță bătând în trunchi.
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
 
 ## Grafică

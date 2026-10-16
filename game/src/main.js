@@ -10,6 +10,8 @@ import { SnowTrail } from './snowtrail.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
+import { Wildlife } from './wildlife.js';
+import { Birds } from './birds.js';
 import { ForestScene } from './forest.js';
 import { Hikers } from './hikers.js';
 import { laneAt, CLIP } from './geo/urcus.js';
@@ -394,6 +396,9 @@ async function main() {
       hud.toast('Ursul te-a doborât! Ridică-te și fugi!', 3.5);
     },
   });
+  // the animals of the woods and the birds (wildlife.js, birds.js)
+  const wildlife = new Wildlife(scene, world, { audio, quality: Q.label });
+  const birds = new Birds(scene, world, { audio });
   applyWeather(weatherKey);
 
   let mode = 'foot';       // 'foot' | 'car'
@@ -457,7 +462,7 @@ async function main() {
   const softSkip = (o) => o.isLine || o.isPoints || o.isSprite || (o.isMesh && !!o.material && (Array.isArray(o.material) ? o.material.every(softMat) : softMat(o.material)));
   // winter (the snow modes): the broadleaves stand bare - every leaf texture shows twigs (one image swap reaches every
   // material and clone that uses it), and the far billboards and forest roof go bare too (geo/trees.js, canopy.js)
-  const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn].filter(Boolean);
+  const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn, TEX.leavesBeech, TEX.leavesHornbeam, TEX.leavesOak].filter(Boolean);
   const summerImg = new Map(leafTex.map(t => [t, t.image]));
   setWinter = (on) => {
     for (const t of leafTex) { t.image = on ? TEX.twigs.image : summerImg.get(t); t.needsUpdate = true; }
@@ -1109,6 +1114,9 @@ async function main() {
     if (!paused) {
       const pp = mode === 'car' && active ? active.car.group.position : player.pos;
       bear?.update(dt, t, { active: horror === 1, px: pp.x, pz: pp.z, inCar: mode === 'car', torch: flashlight.on, camX: camera.position.x, camZ: camera.position.z });
+      const camYaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
+      wildlife.update(dt, t, { px: pp.x, pz: pp.z, camX: camera.position.x, camZ: camera.position.z, camYaw, camera, inCar: mode === 'car', running: mode === 'foot' && (input.down('ShiftLeft') || input.down('ShiftRight') || !!input.touchRun), night, winter, horror: horror > 0.5 });
+      birds.update(dt, t, { px: pp.x, pz: pp.z, camX: camera.position.x, camZ: camera.position.z, day: 1 - night, rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value });
     }
     post.grade.uniforms.uTime.value = t;
     scene.updateMatrixWorld();
@@ -1129,7 +1137,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

@@ -628,6 +628,154 @@ function genBark() {
   TEX.barkN = tex(heightToNormalCanvas(H, w, h, 5), { srgb: false });
 }
 
+// Bark of the forest species, each as it looks at breast height (tiles both ways: noise periods matched to the size)
+//  * beech (Fagus sylvatica): smooth, light silvery grey, mottled with whitish and green-grey lichen, fine horizontal
+//    wrinkles and the dark chevrons ("eyes") left by shed branches;
+//  * hornbeam (Carpinus betulus): smooth darker grey, the trunk fluted like flexed muscle, a net of paler streaks;
+//  * sessile oak (Quercus petraea): thick grey-brown bark in deep vertical fissures, the ridges broken across;
+//  * black locust (Robinia pseudoacacia): a deep net of interlacing ridges, orange-brown in the furrows;
+//  * birch: white with black horizontal lenticels and dark rough diamonds.
+function genBarks() {
+  const w = 256, h = 512;
+  const sm = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const mix3 = (p, a, b, k) => { p[0] += (a[0] * b - p[0]) * k; p[1] += (a[1] * b - p[1]) * k; p[2] += (a[2] * b - p[2]) * k; };
+  const N = (x, y, P, oct, seed) => fbm(x / (w / P), y / (h / P), oct, P, seed);            // tiles with period P
+  const done = (key, c, strength) => { TEX[key] = tex(c); TEX[key + 'N'] = tex(normalFromCanvas(c, strength, 512), { srgb: false }); };
+  const strokes = (c, n, seed, fn) => { const g = c.getContext('2d'), r = rng(seed); for (let i = 0; i < n; i++) for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); fn(g, r, i); g.restore(); } };
+  // -- beech
+  {
+    const c = paint(w, h, (x, y, p) => {
+      const m1 = N(x, y, 16, 4, 301), m2 = N(x, y, 64, 3, 302), lA = sm(0.6, 0.7, N(x, y, 8, 4, 303)), lB = sm(0.62, 0.7, N(x, y, 16, 4, 304));
+      const v = 0.84 + 0.2 * m1 + 0.07 * m2;
+      p[0] = 124 * v; p[1] = 126 * v; p[2] = 121 * v;
+      mix3(p, [168, 170, 162], 1, lA * 0.6); mix3(p, [132, 142, 112], 0.95 + 0.1 * m2, lB * 0.45);
+    });
+    strokes(c, 260, 305, (g, r) => { const x = r() * w, y = r() * h, l = 4 + r() * 18; g.strokeStyle = `rgba(70,70,64,${0.18 + r() * 0.25})`; g.lineWidth = 1 + r(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (r() - 0.5) * 2); g.stroke(); });
+    strokes(c, 2, 306, (g, r) => {                                         // the chevrons of shed branches
+      const x = 30 + r() * (w - 60), y = 40 + r() * (h - 80), s = 14 + r() * 16;
+      g.strokeStyle = 'rgba(64,62,57,0.4)'; g.lineWidth = 2 + r() * 2; g.beginPath(); g.moveTo(x - s, y + s * 0.65); g.quadraticCurveTo(x, y - s * 0.1, x + s, y + s * 0.65); g.stroke();
+    });
+    done('barkBeech', c, 0.7);
+  }
+  // -- hornbeam
+  {
+    const c = paint(w, h, (x, y, p) => {
+      const warp = 2.2 * N(x, y, 8, 3, 311), fl = 0.5 + 0.5 * Math.sin(2 * Math.PI * (x / w * 5 + warp * 0.5));
+      const net = sm(0.9, 0.985, Math.abs(Math.sin(Math.PI * (x / w * 13 + warp)))), m = N(x, y, 32, 4, 312), lA = sm(0.64, 0.72, N(x, y, 16, 4, 313));
+      const v = (0.8 + 0.22 * fl + 0.12 * m) * (1 + 0.16 * net);
+      p[0] = 132 * v; p[1] = 133 * v; p[2] = 126 * v;
+      mix3(p, [178, 180, 170], 1, lA * 0.4);
+    });
+    done('barkHornbeam', c, 1.6);
+  }
+  // -- sessile oak
+  {
+    const c = paint(w, h, (x, y, p) => {
+      const warp = 1.6 * N(x, y, 4, 4, 321) + 0.35 * N(x, y, 16, 3, 325), f = x / w * 10 + warp;
+      let ridge = Math.pow(Math.abs(Math.sin(Math.PI * f)), 0.5);
+      const crack = sm(0.7, 0.76, N(x, y, 16, 3, 322)); ridge *= 1 - 0.7 * crack;
+      const m = N(x, y, 64, 3, 323), lich = sm(0.62, 0.7, N(x, y, 16, 4, 324)) * ridge;
+      const v = 0.85 + 0.25 * m;
+      p[0] = (44 + 92 * ridge) * v; p[1] = (41 + 90 * ridge) * v; p[2] = (38 + 82 * ridge) * v;
+      mix3(p, [128, 136, 110], 1, lich * 0.5);
+    });
+    done('barkOak', c, 4.5);
+  }
+  // -- black locust
+  {
+    const c = paint(w, h, (x, y, p) => {
+      const wa = 1.6 * N(x, y, 8, 3, 331), wb = 1.6 * N(x, y, 8, 3, 332);
+      const n1 = Math.abs(Math.sin(Math.PI * (x / w * 7 + y / h * 3 + wa))), n2 = Math.abs(Math.sin(Math.PI * (x / w * 7 - y / h * 3 + wb)));
+      const ridge = Math.pow(Math.min(n1, n2), 0.45), m = N(x, y, 64, 3, 333), v = 0.85 + 0.25 * m;
+      p[0] = (78 + 50 * ridge) * v; p[1] = (54 + 56 * ridge) * v; p[2] = (36 + 56 * ridge) * v;
+    });
+    done('barkRobinia', c, 4);
+  }
+  // -- birch
+  {
+    const c = paint(w, h, (x, y, p) => {
+      const m = N(x, y, 32, 4, 341), d = sm(0.66, 0.72, N(x, y, 8, 4, 342)), v = 0.88 + 0.14 * m;
+      p[0] = 222 * v; p[1] = 219 * v; p[2] = 210 * v;
+      mix3(p, [58, 54, 50], 1, d * 0.85);
+    });
+    strokes(c, 190, 343, (g, r) => { const x = r() * w, y = r() * h, l = 6 + r() * 34; g.strokeStyle = `rgba(30,28,26,${0.45 + r() * 0.4})`; g.lineWidth = 1.5 + r() * 2.5; g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (r() - 0.5) * 3); g.stroke(); });
+    done('barkBirch', c, 1.2);
+  }
+}
+
+// Leaf sprays of the forest broadleaves (alpha cards, ~1 m across): leafy shoots from the card's middle, the leaves
+// alternate in two ranks along each shoot as on the real twig, every leaf drawn with its own outline and veins
+//  * beech: ovate, entire wavy margin, 7-9 straight parallel vein pairs, glossy fresh green;
+//  * hornbeam: ovate pointed, doubly serrated, 12-14 pleated vein pairs, duller green;
+//  * sessile oak: obovate with 5-7 rounded lobes a side, crowded at the shoot tips, dark green.
+// Late September: a few leaves already yellowing.
+function genLeafSprays() {
+  const leaf = (g, L, W, kind, r) => {
+    const n = kind === 'hornbeam' ? 44 : 30, pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      let ww = W * Math.pow(Math.sin(Math.PI * Math.pow(t, kind === 'oak' ? 1.15 : 0.78)), 0.85);
+      if (kind === 'hornbeam' && t > 0.06 && t < 0.97) ww *= 1 + (i % 2 ? 0.07 : -0.03) * (i % 4 === 1 ? 1.6 : 1);
+      if (kind === 'oak') ww *= 0.58 + 0.42 * Math.abs(Math.sin(Math.PI * (t * 5.6 + 0.3)));
+      if (kind === 'beech') ww *= 1 + 0.035 * Math.sin(t * 44);
+      pts.push([t * L, ww]);
+    }
+    g.beginPath(); g.moveTo(0, 0);
+    for (const [x, ww] of pts) g.lineTo(x, -ww);
+    for (let i = pts.length - 1; i >= 0; i--) g.lineTo(pts[i][0], pts[i][1]);
+    g.closePath();
+  };
+  const make = (kind, key, seed) => {
+    const n = 1024, r = rng(seed), K = n / 512;
+    const c = document.createElement('canvas'); c.width = c.height = n;
+    const g = c.getContext('2d');
+    const base = kind === 'beech' ? [92, 140, 50] : kind === 'hornbeam' ? [98, 136, 54] : [70, 108, 42];
+    const shoots = kind === 'oak' ? 30 : 24;
+    for (let s = 0; s < shoots; s++) {
+      // a shoot: a slightly curving twig, the first ones from the middle, the later ones filling in between
+      const inner = s >= shoots * 0.45, a0 = s / shoots * Math.PI * 2 * (inner ? 2.7 : 1) + (r() - 0.5) * 0.7, len = (inner ? 90 + r() * 70 : 170 + r() * 70) * K;
+      const st = inner ? (60 + r() * 120) * K : 26 * K;
+      let x = n / 2 + Math.cos(a0) * st, y = n / 2 + Math.sin(a0) * st, a = a0;
+      const pts = [[x, y]];
+      for (let k = 0; k < 8; k++) { a += (r() - 0.5) * 0.25; x += Math.cos(a) * len / 8; y += Math.sin(a) * len / 8; pts.push([x, y]); }
+      g.strokeStyle = 'rgba(78,62,44,0.9)'; g.lineWidth = 2.2 * K; g.beginPath(); g.moveTo(...pts[0]); for (const q of pts) g.lineTo(...q); g.stroke();
+      const nl = kind === 'oak' ? 5 + Math.floor(r() * 2) : 9 + Math.floor(r() * 4);
+      for (let k = 0; k < nl; k++) {
+        // where along the shoot (oak leaves crowd at its tip), which side, the leaf's size
+        const u = kind === 'oak' ? 0.62 + 0.38 * (k / nl) : 0.12 + 0.86 * (k / nl);
+        const i = Math.min(7, Math.floor(u * 8)), f = u * 8 - i, px = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, py = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f;
+        const ta = Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]), side = k % 2 ? 1 : -1;
+        const L = (kind === 'oak' ? 52 : kind === 'beech' ? 40 : 42) * K * (0.75 + 0.45 * r()) * (kind === 'oak' ? 1 : 0.7 + 0.5 * u);
+        const W = L * (kind === 'oak' ? 0.36 : kind === 'beech' ? 0.36 : 0.32);
+        const ang = ta + side * (kind === 'oak' ? 0.5 + r() * 0.9 : 0.75 + r() * 0.35);
+        const yel = r() < 0.08 ? 0.4 + r() * 0.6 : 0, lt = 0.8 + 0.4 * r();
+        const col = [base[0] * lt + 120 * yel, base[1] * lt + 70 * yel, base[2] * lt], dark = [col[0] * 0.72, col[1] * 0.74, col[2] * 0.7];
+        g.save(); g.translate(px, py); g.rotate(ang);
+        g.strokeStyle = 'rgba(90,80,50,0.9)'; g.lineWidth = 1.2 * K; g.beginPath(); g.moveTo(0, 0); g.lineTo(5 * K, 0); g.stroke();   // the petiole
+        g.translate(5 * K, 0);
+        const grd = g.createLinearGradient(0, -W, 0, W);
+        grd.addColorStop(0, `rgb(${col[0] | 0},${col[1] | 0},${col[2] | 0})`); grd.addColorStop(1, `rgb(${dark[0] | 0},${dark[1] | 0},${dark[2] | 0})`);
+        g.fillStyle = grd; leaf(g, L, W, kind, r); g.fill();
+        g.strokeStyle = `rgba(${dark[0] * 0.7 | 0},${dark[1] * 0.7 | 0},${dark[2] * 0.6 | 0},0.5)`; g.lineWidth = 0.8 * K; g.stroke();
+        // midrib and the lateral veins
+        g.strokeStyle = `rgba(${Math.min(255, col[0] * 1.35) | 0},${Math.min(255, col[1] * 1.3) | 0},${col[2] * 1.1 | 0},0.75)`; g.lineWidth = 1.1 * K;
+        g.beginPath(); g.moveTo(0, 0); g.lineTo(L * 0.96, 0); g.stroke();
+        const nv = kind === 'hornbeam' ? 12 : kind === 'beech' ? 8 : 6;
+        g.lineWidth = 0.6 * K; g.strokeStyle = `rgba(${dark[0] * 0.8 | 0},${dark[1] * 0.85 | 0},${dark[2] * 0.7 | 0},0.45)`;
+        for (let v = 1; v <= nv; v++) {
+          const t = v / (nv + 1), xx = t * L, ww = W * 0.85 * Math.pow(Math.sin(Math.PI * Math.pow(t, 0.8)), 0.85);
+          for (const sd of [-1, 1]) { g.beginPath(); g.moveTo(xx, 0); g.lineTo(xx + ww * 0.6, sd * ww); g.stroke(); }
+        }
+        g.restore();
+      }
+    }
+    const t = tex(c, { repeat: false });
+    t.premultiplyAlpha = false;
+    TEX[key] = t;
+  };
+  make('beech', 'leavesBeech', 611); make('hornbeam', 'leavesHornbeam', 612); make('oak', 'leavesOak', 613);
+}
+
 function genCurtain() {
   // Window interior seen from outside: dim room + sheer curtain folds + zebra blind variant
   const w = 256, h = 256;
@@ -887,7 +1035,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', genBark],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); genLeafSprays(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', () => { genBark(); genBarks(); }],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];
