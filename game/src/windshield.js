@@ -6,11 +6,13 @@ import { profileAt } from './cars.js';
 // through the windshield of the car you drive, in metres), so they stay on it when you look round.
 //  * The drops that land: as many as the rain brings (Marshall-Palmer: N(D) = 8000 e^(-Λ D) per m³ per mm,
 //    Λ = 4.1 R^-0.21 per mm) times how fast they hit the glass - their fall (Atlas: 9.65 - 10.3 e^(-0.6 D) m/s) on its
-//    slope and, driving, the car's speed into them: standing in a 40 mm/h downpour ~10 000 per m² per s land on a
-//    windshield raked at 30°, at 70 km/h ~35 000. Each sits as a cap ~0.63 D across (a half sphere of the same water).
-//  * What it collects merges: where ~1 cm² has gathered the water of a 2-4.5 mm drop, there is one; where 2.6 cm
-//    across has gathered a 3.5 mm one, it is heavy enough to slide: it runs down the slope in fits and starts, along a
-//    wavering path, leaving a trail of small beads; driving fast (over ~55 km/h) the air pushes it up instead.
+//    slope and, driving, the car's speed into them: standing in a 40 mm/h downpour ~7 000 per m² per s land on the
+//    Maybach's windshield (34° from level), at 70 km/h ~36 000. Each sits as a cap of radius ~0.63 D (a half sphere of
+//    the same water).
+//  * What it collects merges: where ~1 cm² has gathered the water of a 2-4.5 mm drop, there is one (and 0.8-2 mm ones
+//    between, the small ones they swallowed gone); where 2.6 cm across has gathered a 3.5 mm one, it is heavy enough to
+//    slide: it runs down the slope in fits and starts, along a wavering path, leaving a trail of small beads; driving
+//    fast (over ~50 km/h) the air pushes it up instead.
 //  * Every drop is a little ball lens: through it the view behind, small and turned over, darkened at its rim (light
 //    past ~50° in it is reflected back inside: the dark of the car). The eye focused on the road sees it out of focus:
 //    blurred over about the pupil's width (3 mm by day, 6 mm at night) - the small ones a soft speckle, the big ones
@@ -48,27 +50,29 @@ void take(inout vec4 best, vec2 d, float r, float e) {
   float c = cover(length(d), r, e);
   if (c > best.z) best = vec4(d / r, c, r);
 }
-// the drops as they land (two a cell at most: past that they merge)
+// the drops as they land (two a cell at most; a few drops later each has merged with its neighbours into the bigger
+// ones below)
 void small(vec2 g, float n, float e, inout vec4 best) {
   const float C = 0.0045;
   vec2 c = floor(g / C);
   float landed = n * C * C;
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) for (int s = 0; s < 2; s++) {
     vec2 id = c + vec2(float(i), float(j)), k = id + float(s) * 37.0;
-    if (float(s) + h21(k) > landed) continue;
+    float at = float(s) + h21(k);
+    if (at > landed || landed > at + 3.0 + 4.0 * h21(k + 1.9)) continue;
     float D = min(3.0, 0.25 - log(1.0 - 0.97 * h21(k + 3.7)) / uLam);
     take(best, g - (id + vec2(h21(k + 7.3), h21(k + 11.1))) * C, 6.3e-4 * D, e);
   }
 }
-// the drops they merge into
-void big(vec2 g, float q, float e, inout vec4 best) {
-  const float C = 0.011;
+// the drops they merge into: big ones (2-4.5 mm) with middling ones (0.8-2 mm) between, not every cell holding one
+void merged(vec2 g, float q, float e, float C, float r0, float r1, float salt, inout vec4 best) {
   vec2 c = floor(g / C);
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-    vec2 id = c + vec2(float(i), float(j)), k = id + 51.3;
-    float r = (2.0 + 2.5 * h21(k)) * 1e-3;
+    vec2 id = c + vec2(float(i), float(j)), k = id + salt;
+    if (h21(k + 4.4) > 0.72) continue;
+    float r = mix(r0, r1, pow(h21(k), 1.6));
     if (2.0 / 3.0 * PI * r * r * r / (C * C) * (0.6 + 0.8 * h21(k + 2.9)) > q) continue;
-    take(best, g - (id + 0.2 + 0.6 * vec2(h21(k + 5.1), h21(k + 8.7))) * C, r, e);
+    take(best, g - (id + 0.15 + 0.7 * vec2(h21(k + 5.1), h21(k + 8.7))) * C, r, e);
   }
 }
 // the ones heavy enough to run, each in its column, with its trail
@@ -123,7 +127,8 @@ void main() {
   vec3 s0 = since(g, uW0, 0), s1 = since(g, uW1, 1), s = min(s0, s1);
   vec4 best = vec4(0.0);
   small(g, s.y, e, best);
-  big(g, s.z, e, best);
+  merged(g, s.z, e, 0.011, 2.0e-3, 4.5e-3, 51.3, best);
+  merged(g, s.z * 2.0, e, 0.0062, 0.8e-3, 2.0e-3, 13.7, best);
   runners(g, s.z, e, best);
   float dark = 0.0;
   wiper(g, uW0, uAng.x, uAngV.x, e, dark, best);
@@ -168,7 +173,7 @@ export class WindshieldPass extends Pass {
     this.quad = new FullScreenQuad(this.material);
     this.enabled = false;
     this.now = null;                 // [s, drops per m², water m] since the car was in the rain
-    this.phase = 0; this.pause = 0; this.ang = [0.07, 0.07]; this.mode = 'off';
+    this.phase = 0; this.pause = 0; this.ang = [0.07, 0.07]; this.mode = 'off'; this.model = null; this.s0 = 0;
   }
   // o: { on (in a car's cockpit), rate (mm/h), car (the Vehicle), camera, pupil (m) }
   update(dt, o) {
@@ -177,11 +182,17 @@ export class WindshieldPass extends Pass {
     this.enabled = on;
     if (!on) return;
     const u = this.u, cam = o.camera;
-    // the glass: a plane from the middle of the windshield's lower edge to the middle of its upper edge (car frame)
-    const s0 = m.wind[0] + 0.03, s1 = m.wind[1] - 0.03, p0 = profileAt(m, s0), p1 = profileAt(m, s1);
+    // the glass: a plane from the middle of the windshield's lower edge (where the body turns to glass: cars.js) to the
+    // middle of its upper edge (car frame); the wipers sized by its full width, at the top
+    if (this.model !== m) {
+      let s0 = m.wind[0];
+      while (s0 < m.wind[1] - 0.2 && profileAt(m, s0).cab < 0.3) s0 += 0.01;
+      this.model = m; this.s0 = s0;
+    }
+    const s0 = this.s0, s1 = m.wind[1] - 0.03, p0 = profileAt(m, s0), p1 = profileAt(m, s1);
     const hwOf = (p) => { const hwr = Math.min(m.hwr, p.hw * 0.9); return p.hw * 0.25 + (hwr * 0.84 - p.hw * 0.25) * Math.min(1, p.cab); };
     _B.set(0, p0.roof + 0.008, s0 - m.L / 2); _T.set(0, p1.roof + 0.008, s1 - m.L / 2);
-    const Lv = _B.distanceTo(_T), hwB = hwOf(p0), hwT = hwOf(p1), Wg = 2 * hwB;
+    const Lv = _B.distanceTo(_T), hwB = hwOf(p0), hwT = hwOf(p1), Wg = 2 * hwT;
     // its outward normal (forward and up) in the car's frame, for how hard the rain hits it
     _n.subVectors(_T, _B).cross(_X.set(1, 0, 0)).normalize();
     const R = o.rate, lam = 4.1 * Math.pow(R, -0.21), Dm = 0.25 + 1 / lam;
@@ -195,7 +206,7 @@ export class WindshieldPass extends Pass {
     const now = this.now;
     now[0] += dt; now[1] += flux * dt; now[2] += qv * dt;
     u.uNow.value.set(now[0], now[1], now[2]);
-    // the drops that run: down the slope (~3 cm/s), held by the air at ~45 km/h, pushed up past it
+    // the drops that run: down the slope (~3 cm/s), held by the air at ~50 km/h, pushed up past it
     const sp = Math.abs(car.speed ?? 0), air = THREE.MathUtils.smoothstep(sp, 10, 22);
     const run = -0.035 * (1 - air) + 0.22 * air * air;
     u.uRunD.value += dt * run; u.uRunDir.value = run < 0 ? -1 : 1;

@@ -305,7 +305,7 @@ export function buildHorizon(gt, outer = false) {
   let q = 0;
   for (let k = 0; k < NR - 1; k++) for (let a = 0; a < NA; a++) {
     const A = k * NA + a, B = k * NA + (a + 1) % NA, C = A + NA, D = B + NA;
-    idx[q++] = A; idx[q++] = C; idx[q++] = B; idx[q++] = B; idx[q++] = C; idx[q++] = D;
+    idx[q++] = A; idx[q++] = B; idx[q++] = C; idx[q++] = B; idx[q++] = D; idx[q++] = C;     // (facing up: A->B turns with the angle)
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
