@@ -34,11 +34,12 @@ const CFG = {
 // are dropped within 450 m of the bridge, tapering back to the full bed by 700 m.
 const NARROW = { x: -825, z: -3, r0: 450, r1: 700, hw: 4.5 };
 let RIV = null;
-export function riverCellKept(x, z) {
+// how far inside the kept channel a point is (m; < 0 outside it, Infinity where the bed is not narrowed)
+export function riverKeep(x, z) {
   const dc = Math.hypot(x - NARROW.x, z - NARROW.z);
-  if (dc > NARROW.r1) return true;
+  if (dc > NARROW.r1) return Infinity;
   const R = GEO.river;
-  if (!R || !R.p) return true;
+  if (!R || !R.p) return Infinity;
   if (!RIV) {
     RIV = [];
     for (let i = 0; i < R.p.length - 2; i += 2) if (Math.hypot(R.p[i] - NARROW.x, R.p[i + 1] - NARROW.z) < NARROW.r1 + 150) RIV.push([R.p[i], R.p[i + 1], R.p[i + 2], R.p[i + 3]]);
@@ -48,8 +49,8 @@ export function riverCellKept(x, z) {
     const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
     d = Math.min(d, Math.hypot(x - ax - t * dx, z - az - t * dz));
   }
-  if (d > 80) return true;                                      // not the Prahova
-  return d <= NARROW.hw + Math.max(0, dc - NARROW.r0) * 0.12;
+  if (d > 80) return Infinity;                                  // not the Prahova
+  return NARROW.hw + Math.max(0, dc - NARROW.r0) * 0.12 - d;
 }
 
 let BR;

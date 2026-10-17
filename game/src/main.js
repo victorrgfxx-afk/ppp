@@ -34,7 +34,7 @@ import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
-import { AIR_GLSL, HAZE_H, hazeFor, visibilityOf } from './air.js';
+import { AIR_GLSL, AIR_H0, HAZE_H, hazeFor, visibilityOf } from './air.js';
 import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR } from './geo/index.js';
 
 // The air between the eye and every point (air.js): molecules and haze, each with its own fall-off with height, per
@@ -1087,6 +1087,7 @@ async function main() {
     if (!paused) forest.update(dt, { ok: sceneTime(), px: pos0().x, pz: pos0().z, camera, sound: forestSound });
     if (!paused) hikers.update(dt, { ok: clipTime(), px: pos0().x, pz: pos0().z, camera });
     sky.position.copy(camera.position);
+    sky.material.uniforms.uDip.value = Math.sqrt(2 * Math.max(0, camera.position.y + AIR_H0) / FAR.uREff.value);
     // grass only near the camera (distance culling per 16 m chunk)
     // the 8 nearest street lamps, for their reflections in a wet road
     if (post.ssr && (frameNo & 7) === 4) {
@@ -1199,7 +1200,7 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4,
-      (weatherKey === 'rafale' ? 60 : 40) * Math.max(0.15, RAIN.uRain.value), night);   // (a downpour ~40 mm/h, a squall's ~60)
+      weatherKey === 'rafale' ? 60 : 40, night);   // (a downpour ~40 mm/h, a squall's ~60: the drops' sizes, so their speeds, fixed per weather - how many fall goes with the rain)
     eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);

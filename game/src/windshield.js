@@ -189,6 +189,7 @@ export class WindshieldPass extends Pass {
     const imp = Math.max(0, vf * _n.y - (car.speed ?? 0) * _n.z);          // (m/s into the glass)
     const flux = 8000 / lam * Math.exp(-0.25 * lam) * imp;                 // drops over 0.25 mm per m² per s
     const qv = R / 3.6e6 * imp / vf;                                       // water per m² per s (m/s)
+    this.flux = flux; this.slope = Math.acos(Math.min(1, _n.y)) * 180 / Math.PI;
     // a car that has stood in the rain: its glass all over drops when you get in
     if (!this.now) this.now = [300, flux * 300, qv * 300];
     const now = this.now;

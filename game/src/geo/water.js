@@ -3,12 +3,12 @@ import { GEO, heightAt } from './data.js';
 import { TEX } from '../textures.js';
 import { WIND } from '../util.js';
 import { RAIN } from '../rain.js';
-import { riverCellKept } from './bridge.js';
+import { riverKeep } from './bridge.js';
 
 // Rivers and lakes (V63): the Prahova, the Câmpinița and the brooks, the ponds. Each water cell of the map (5 m near,
 // 10 m out to 8 km) knows how deep the water stands over its carved bed (build_geo.py: up to ~1.5 m in the Prahova's
 // channel, a few cm at its gravel edges) and which way and how fast it runs:
-//  * the Prahova down its mapped line (the level falls ~0.8 % downstream), faster where it is deeper - Manning's
+//  * the Prahova down its mapped line (the level falls ~0.9 % downstream), faster where it is deeper - Manning's
 //    v ~ h^(2/3): ~1.5 m/s in the middle of the channel, ~0.5 m/s at the edges; a gravel-bed foothill river;
 //  * the smaller rivers and brooks down their own level, the ponds still.
 // The surface (one opaque PBR material, ior 1.33: the sky and the sun mirrored by Fresnel, ~2 % looking down, nearly all
@@ -28,9 +28,9 @@ uniform float uWTime, uRain, uRainTime, uCaustic;
 uniform sampler2D tWN, tBed;
 varying vec3 vWW;
 varying vec2 vFlow;
-varying float vDepth;
+varying float vDepth, vKeep;
 vec3 wN;                 // the surface's normal here (world)
-float wFoam, wRough;
+float wFoam, wRough, wDepth, wPx;
 float wHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float wNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -49,20 +49,29 @@ vec2 wRings(vec2 p, float t) {
   }
   return g;
 }
-// the bed's cobbles (10-25 cm, a Voronoi pattern): their colour and the dark gaps between them
-vec3 wCobbles(vec2 p) {
-  vec2 q = p * 5.5, c = floor(q), f = fract(q);
+// the bed: rounded cobbles (10-25 cm, a Voronoi pattern), lit on top and darker to their rims, with pebbles (3-6 cm)
+// packed in between
+vec3 wStones(vec2 q, float salt, out float inside) {
+  vec2 c = floor(q), f = fract(q);
   float d1 = 9.0, d2 = 9.0; vec2 id = c;
   for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-    vec2 o = vec2(float(i), float(j)), r = o + vec2(wHash(c + o), wHash(c + o + 7.3)) * 0.8 + 0.1 - f;
+    vec2 o = vec2(float(i), float(j)), r = o + vec2(wHash(c + o + salt), wHash(c + o + salt + 7.3)) * 0.8 + 0.1 - f;
     float d = dot(r, r);
     if (d < d1) { d2 = d1; d1 = d; id = c + o; } else if (d < d2) d2 = d;
   }
-  float h = wHash(id * 1.7 + 3.1), gap = smoothstep(0.0, 0.18, sqrt(d2) - sqrt(d1));
-  vec3 stone = mix(vec3(0.42, 0.40, 0.36), vec3(0.62, 0.60, 0.55), h);
-  stone = mix(stone, vec3(0.50, 0.42, 0.32), step(0.78, wHash(id + 11.0)));    // some brown sandstone
-  stone = mix(stone, vec3(0.70, 0.69, 0.66), step(0.9, wHash(id + 23.0)));     // a few pale limestones
-  return mix(vec3(0.16, 0.15, 0.13), stone, gap);
+  float h = wHash(id * 1.7 + 3.1 + salt);
+  vec3 stone = mix(vec3(0.40, 0.38, 0.34), vec3(0.60, 0.58, 0.53), h);
+  stone = mix(stone, vec3(0.50, 0.42, 0.32), step(0.8, wHash(id + 11.0 + salt)));    // some brown sandstone
+  stone = mix(stone, vec3(0.68, 0.67, 0.64), step(0.92, wHash(id + 23.0 + salt)));   // a few pale limestones
+  stone *= 0.7 + 0.42 * (1.0 - smoothstep(0.0, 0.6, sqrt(d1)));                      // (rounded)
+  inside = smoothstep(0.02, 0.1, sqrt(d2) - sqrt(d1));
+  return stone;
+}
+vec3 wCobbles(vec2 p) {
+  float ci, pi;
+  vec3 cob = wStones(p * 5.5, 0.0, ci), peb = wStones(p * 19.0 + 3.7, 41.0, pi);
+  peb = mix(peb * 0.55, peb, pi) * 0.85;
+  return mix(peb, cob, ci);
 }
 // the sun focused by the ripples onto the bed: a moving net of light
 float wCaustic(vec2 p, float t) {
@@ -78,7 +87,11 @@ float wCaustic(vec2 p, float t) {
 }
 void waterSurface() {
   vec2 fl = vFlow, p = vWW.xz;
-  float sp = length(fl), d = max(vDepth, 0.0);
+  // (where the bed is kept to its low-water channel, by the DJ100E bridge: shallower towards the channel's edge)
+  float kf = smoothstep(0.0, 2.5, vKeep);
+  wDepth = max(vDepth, 0.0) * kf;
+  fl *= pow(kf, 0.667);                                        // (and slower: Manning)
+  float sp = length(fl), d = wDepth;
   float P = 2.6, f0 = fract(uWTime / P), f1 = fract(uWTime / P + 0.5), w0 = 1.0 - abs(2.0 * f0 - 1.0);
   // carried with the current: the swell (~3 m) and the ripples on it (~0.8 m, a little faster at the top)
   vec2 a = mix(wSlope((p - fl * f1 * P) / 3.1 + 0.37), wSlope((p - fl * f0 * P) / 3.1), w0);
@@ -86,8 +99,13 @@ void waterSurface() {
   // a breeze ruffles still water a little; the current, the more the faster; over the shallows it breaks into riffles
   float shallow = 1.0 - smoothstep(0.12, 0.6, d);
   float riffle = smoothstep(0.5, 1.3, sp) * shallow;
-  float k = 0.07 + 0.22 * smoothstep(0.15, 1.4, sp) + 0.5 * riffle;
+  float k = 0.12 + 0.25 * smoothstep(0.15, 1.4, sp) + 0.5 * riffle;
   vec2 g = (a * 0.6 + b * 0.45) * k;
+  // where it runs fast, waves that stand still against the current: gravity waves as fast upstream as the water
+  // runs down, so ~2 pi v^2 / g apart (1.4 m at 1.5 m/s), across the flow, in patches
+  vec2 fd0 = sp > 1e-3 ? fl / sp : vec2(1.0, 0.0);
+  float lam = max(0.4, 6.2832 * sp * sp / 9.81), ph0 = dot(p, fd0) * 6.2832 / lam + 2.0 * wNoise(p * 0.21);
+  g += fd0 * cos(ph0) * 0.11 * smoothstep(0.6, 1.3, sp) * smoothstep(0.35, 0.75, wNoise(p * 0.12 + 5.0)) * (0.4 + 0.6 * smoothstep(0.1, 0.8, d));
   if (uRain > 0.01) g += wRings(p, uRainTime) * 0.55 * min(1.0, uRain * 1.5);
   wN = normalize(vec3(-g.x, 1.0, -g.y));
   // foam: bubbles carried in streaks along the flow where it runs fast over the shallows, a lacy line at the edge
@@ -98,13 +116,14 @@ void waterSurface() {
     vec2 q = p - fl * ph * P + float(m) * vec2(3.7, 7.1);
     fb += wNoise(vec2(dot(q, fa) * 6.0, dot(q, fd) * 1.6)) * wNoise(vec2(dot(q, fa) * 1.5 + 3.0, dot(q, fd) * 0.5 + 7.0)) * wk;
   }
-  float edge = 1.0 - smoothstep(0.015, 0.09, d);
-  wFoam = clamp(smoothstep(0.3, 0.55, fb) * (0.15 + 0.85 * riffle) + edge * smoothstep(0.35, 0.6, wNoise(p * 7.0 + uWTime * 0.3)) * 0.6, 0.0, 0.85);
-  wRough = mix(0.035 + 0.08 * riffle, 0.55, wFoam);
+  float edge = 1.0 - smoothstep(0.006, 0.045, d);
+  wFoam = clamp(smoothstep(0.32, 0.6, fb) * (0.04 + 0.8 * riffle) + edge * smoothstep(0.45, 0.7, wNoise(p * 7.0 + uWTime * 0.3)) * 0.45, 0.0, 0.8);
+  // ripples too small to tell apart at this distance blur the mirror instead (the pixel's footprint, wPx m)
+  wRough = mix(0.035 + 0.08 * riffle + 0.2 * smoothstep(0.08, 0.6, wPx), 0.55, wFoam);
 }
 // the colour under the surface: the bed through the water, the silt's own colour filling in with depth
 vec3 waterBody(vec3 V) {
-  float d = max(vDepth, 0.0);
+  float d = wDepth;
   float ci = clamp(dot(V, wN), 0.02, 1.0), ct = sqrt(max(0.06, 1.0 - (1.0 - ci * ci) / 1.769));   // Snell, n = 1.33
   vec3 sigma = vec3(1.9, 1.05, 1.25);                               // turbid river water (1/m)
   vec3 Tw = exp(-sigma * d * (1.0 + 1.0 / ct));                    // down to the bed and back up along the view
@@ -146,28 +165,38 @@ export function buildWater(scene) {
   // the level of every cell (its grid), for the others' downhill direction
   const levels = [new Map(), new Map()];
   for (const [ext, step, [i, j, lc]] of cells) levels[ext === GEO.ext ? 0 : 1].set(i + ',' + j, lc / 100);
-  const pos = [], depth = [], flow = [];
+  const pos = [], depth = [], flow = [], keepA = [];
   const nearCells = new Set();                    // (100 m squares with water: for the reflections and the river's sound)
+  // each cell: its level and its current (the way it runs times its top speed); its corners take the mean of the
+  // cells around them, so the surface and the current run on without a step from cell to cell
+  const kept = [], at = new Map();
+  const vtx = (ext, i, j) => { const k = ext + ':' + i + ',' + j; let v = at.get(k); if (!v) at.set(k, v = [0, 0, 0, 0]); return v; };
   for (const [ext, step, [i, j, lc]] of cells) {
     const x0 = -ext + i * step, z0 = -ext + j * step, y = lc / 100;
-    if (!riverCellKept(x0 + step / 2, z0 + step / 2)) continue;
+    // (by the DJ100E bridge only the low-water channel: the cells it crosses, cut along its edge in the shader)
+    const x1 = x0 + step, z1 = z0 + step, keep = [riverKeep(x0, z0), riverKeep(x0, z1), riverKeep(x1, z0), riverKeep(x1, z1)];
+    if (Math.max(...keep) < 0) continue;
     const cx = x0 + step / 2, cz = z0 + step / 2;
     nearCells.add(Math.floor(cx / 100) + ',' + Math.floor(cz / 100));
     // which way it runs
     let dir = prahova(cx, cz), vmax = 1.5;
     if (!dir) {
-      const L = levels[ext === GEO.ext ? 0 : 1], at = (a, b) => L.get(a + ',' + b);
-      const gx = ((at(i - 1, j) ?? y) - (at(i + 1, j) ?? y)) / (2 * step), gz = ((at(i, j - 1) ?? y) - (at(i, j + 1) ?? y)) / (2 * step);
+      const L = levels[ext === GEO.ext ? 0 : 1], lv = (a, b) => L.get(a + ',' + b);
+      const gx = ((lv(i - 1, j) ?? y) - (lv(i + 1, j) ?? y)) / (2 * step), gz = ((lv(i, j - 1) ?? y) - (lv(i, j + 1) ?? y)) / (2 * step);
       const g = Math.hypot(gx, gz);
       dir = g > 2e-4 ? [gx / g, gz / g] : [0, 0];
       vmax = g > 2e-4 ? Math.min(1.1, 0.25 + g * 60) : 0;          // (a brook on a 1 % slope ~0.85 m/s; a pond still)
     }
-    const corner = (x, z) => {
-      const d = y - heightAt(x, z), v = vmax * Math.pow(Math.min(1.2, Math.max(0.06, d / 1.2)), 2 / 3);
-      pos.push(x, y, z); depth.push(d); flow.push(dir[0] * v, dir[1] * v);
+    kept.push([ext, step, i, j, x0, z0, keep]);
+    for (const [a, b] of [[0, 0], [0, 1], [1, 0], [1, 1]]) { const v = vtx(ext, i + a, j + b); v[0] += y; v[1] += dir[0] * vmax; v[2] += dir[1] * vmax; v[3]++; }
+  }
+  for (const [ext, step, i, j, x0, z0, keep] of kept) {
+    const corner = (a, b, kp) => {
+      const v = vtx(ext, i + a, j + b), x = x0 + a * step, z = z0 + b * step, y = v[0] / v[3];
+      const d = y - heightAt(x, z), f = Math.pow(Math.min(1.2, Math.max(0.06, d / 1.2)), 2 / 3);   // (Manning: v ~ depth^2/3)
+      pos.push(x, y, z); depth.push(d); flow.push(v[1] / v[3] * f, v[2] / v[3] * f); keepA.push(Math.max(-20, Math.min(20, kp)));
     };
-    const x1 = x0 + step, z1 = z0 + step;
-    corner(x0, z0); corner(x0, z1); corner(x1, z0); corner(x1, z0); corner(x0, z1); corner(x1, z1);
+    corner(0, 0, keep[0]); corner(0, 1, keep[1]); corner(1, 0, keep[2]); corner(1, 0, keep[2]); corner(0, 1, keep[1]); corner(1, 1, keep[3]);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -175,6 +204,7 @@ export function buildWater(scene) {
   g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
   g.setAttribute('aDepth', new THREE.Float32BufferAttribute(depth, 1));
   g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 2));
+  g.setAttribute('aKeep', new THREE.Float32BufferAttribute(keepA, 1));
   g.computeBoundingSphere();
 
   const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, ior: 1.33, envMapIntensity: 1 });
@@ -182,11 +212,11 @@ export function buildWater(scene) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aDepth;\nattribute vec2 aFlow;\nvarying vec3 vWW;\nvarying vec2 vFlow;\nvarying float vDepth;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz; vFlow = aFlow; vDepth = aDepth;');
+      .replace('#include <common>', '#include <common>\nattribute float aDepth, aKeep;\nattribute vec2 aFlow;\nvarying vec3 vWW;\nvarying vec2 vFlow;\nvarying float vDepth, vKeep;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz; vFlow = aFlow; vDepth = aDepth; vKeep = aKeep;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + WATER_PARS)
-      .replace('#include <color_fragment>', '#include <color_fragment>\nwaterSurface();\ndiffuseColor.rgb = waterBody(normalize(cameraPosition - vWW));')
+      .replace('#include <color_fragment>', '#include <color_fragment>\nwPx = length(fwidth(vWW.xz));\nif (vKeep < 0.0) discard;\nwaterSurface();\ndiffuseColor.rgb = waterBody(normalize(cameraPosition - vWW));')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = wRough;')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize((viewMatrix * vec4(wN, 0.0)).xyz);')
       // near the camera it mirrors the scene (the screen-space reflections read 1 - this from the alpha)

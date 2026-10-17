@@ -28,6 +28,7 @@ uniform float uBright;
 uniform float uDisk;
 uniform float uEnvPass;
 uniform float uEnvDesat;
+uniform float uDip;       // how far below level the real horizon lies from the eye (the Earth's curve; radians)
 uniform vec3 uGround;
 uniform float uNight;
 uniform float uHole;
@@ -43,7 +44,9 @@ float fbm3(vec2 q, float t) {
 
 void main() {
   vec3 d = normalize(vDir);
-  float y = d.y;
+  // the sky reaches down to the real horizon, which the Earth's curve sets below level: ~0.6 deg from the street
+  // (405 m), ~1.1 deg from 1300 m (an aircraft's view); beneath it the ground (the env map: none)
+  float y = d.y + uDip * (1.0 - uEnvPass);
   float mu = max(dot(d, uSunDir), 0.0);
   vec3 sky = mix(uHorizon, uZenith, pow(clamp(y, 0.0, 1.0), mix(0.55, 0.42, uCumulus)));
   // the bright aureole around the sun (forward scattering), the disk itself only in the visible sky
@@ -107,7 +110,7 @@ export function createSky() {
       uCumulus: { value: 0 },
       uBright: { value: 1.12 },
       uDisk: { value: 1 },
-      uEnvPass: { value: 0 },
+      uEnvPass: { value: 0 }, uDip: { value: 0 },
       uEnvDesat: { value: 0 },
       uGround: { value: new THREE.Vector3(0.33, 0.33, 0.31) },
       uNight: { value: 0 }, uHole: { value: 0 }, uFlash: { value: 0 },

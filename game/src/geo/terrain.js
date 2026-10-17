@@ -3,7 +3,6 @@ import { GEO, normalAt, heightAt, underpassAt, fineAt } from './data.js';
 import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
 import { WIND } from '../util.js';
-import { riverCellKept } from './bridge.js';
 import { AIR_GLSL } from '../air.js';
 
 // Near terrain (+-3 km, 5 m grid) and world terrain (+-8 km, 10 m grid) in LOD chunks,
