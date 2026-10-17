@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { WindshieldPass } from './windshield.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 class DepthTap extends Pass {
@@ -312,6 +313,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // the softness of distant things in the haze (after the passes that read the scene's depth through this buffer)
   const aerial = new AerialBlurPass(camera);
   composer.addPass(aerial);
+  // the rain on the windshield, from the driver's seat (windshield.js; off but in a car's cockpit in the rain)
+  const shield = new WindshieldPass();
+  composer.addPass(shield);
   if (q.bloom) {
     // only really bright things (sun glints, lamps) bloom: a bright overcast sky must not veil the view
     bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.1, 0.4, 1.3);
@@ -327,5 +331,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shield, setSize };
 }

@@ -474,6 +474,7 @@ async function main() {
   const cockpitLook = { yaw: 0, pitch: 0 };
   let paused = true, started = false, hornOn = false;
   let shake = 0;
+  let riverT = 0, riverK = 0;                // the river's rush where you are (geo/water.js), looked up twice a second
 
   // The field of view (V62). 'natural' (the default): the angle the picture really takes up in your own field of view,
   // the screen's height seen from where your eyes are, so everything shows at its true angular size, as through a
@@ -1104,7 +1105,7 @@ async function main() {
       wetScene(scene);                                    // the materials streamed in since: rain and snow on them too
       roadName = roadNameAt(pos0().x, pos0().z);
       offRoad = SNOW.uSnowDepth.value > 0.03 && !rainOcc.onRoad(pos0().x, pos0().z);
-      if (SNOW.uSnowFall.value > 0.01 && M.lampGlass.emissiveIntensity > 0.2) {
+      if ((SNOW.uSnowFall.value > 0.01 || RAIN.uRain.value > 0.01) && M.lampGlass.emissiveIntensity > 0.2) {
         const cp = camera.position;
         snowLamps = allLamps.filter(l => Math.abs(l.x - cp.x) < 45 && Math.abs(l.z - cp.z) < 45).sort((a, b) => ((a.x - cp.x) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.z - cp.z) ** 2)).slice(0, 6);
       } else snowLamps = [];
@@ -1125,7 +1126,11 @@ async function main() {
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
         (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
-    audio.update(dt, { rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    if ((riverT -= dt) <= 0) {
+      riverT = 0.5; riverK = geoWorld.water?.sound(camera.position) ?? 0;
+      geoWorld.water?.setSun(Math.min(1, sun.intensity / 3.8) * sun.shadow.intensity * (1 - night));   // (the caustics: only in sunshine)
+    }
+    audio.update(dt, { river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -1193,7 +1198,8 @@ async function main() {
     if (forest.live && moonBeam?.on && (frameNo & 1)) moonBeam.light.shadow.needsUpdate = true;   // (they move in the moonlight)
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
-    rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info);
+    rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4,
+      (weatherKey === 'rafale' ? 60 : 40) * Math.max(0.15, RAIN.uRain.value), night);   // (a downpour ~40 mm/h, a squall's ~60)
     eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
@@ -1232,6 +1238,7 @@ async function main() {
     }
     post.grade.uniforms.uTime.value = t;
     scene.updateMatrixWorld();
+    post.shield.update(paused ? 0 : dt, { on: mode === 'car' && !!active && camMode === 'cockpit', rate: (weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value, car: active, camera, pupil: rainFX.pupil.value });
     post.composer.render(dt);
     perf.end();
     input.endFrame();

@@ -321,46 +321,4 @@ export function buildHorizon(gt, outer = false) {
   return mesh;
 }
 
-// Water: Prahova (level from the DEM, falling ~0.8 % downstream), Câmpinița, lakes.
-export function buildWater(scene) {
-  const byChunk = new Map();
-  const cells = GEO.water.map(c => [GEO.ext, GEO.step, c]);
-  if (GEO.W && GEO.water2) for (const c of GEO.water2) cells.push([GEO.W.ext, GEO.W.step, c]);
-  for (const [ext, step, [i, j, lc]] of cells) {
-    const x0 = -ext + i * step, z0 = -ext + j * step, y = lc / 100;
-    if (!riverCellKept(x0 + step / 2, z0 + step / 2)) continue;
-    const key = Math.floor(x0 / 500) + ',' + Math.floor(z0 / 500);
-    if (!byChunk.has(key)) byChunk.set(key, []);
-    const a = byChunk.get(key);
-    const x1 = x0 + step, z1 = z0 + step;
-    a.push(x0, y, z0, x0, y, z1, x1, y, z0, x1, y, z0, x0, y, z1, x1, y, z1);
-  }
-  const nm = TEX.waterN;
-  nm.repeat.set(1, 1);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x4a5a52, roughness: 0.07, metalness: 0.0, transparent: true, opacity: 0.86, normalMap: nm, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.1 });
-  mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = WIND.time;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_NORMALMAP\nvNormalMapUv = position.xz / 9.0 + vec2(uTime * 0.018, uTime * 0.05);\n#endif');
-  };
-  mat.customProgramCacheKey = () => 'geoWater';
-  mat.userData.ue = { kind: 'water' };
-  const meshes = [];
-  for (const arr of byChunk.values()) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
-    const nrm = new Float32Array(arr.length); for (let k = 1; k < nrm.length; k += 3) nrm[k] = 1;
-    g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(arr.length / 3 * 2), 2));
-    const tan = new Float32Array(arr.length / 3 * 4); for (let k = 0; k < tan.length; k += 4) { tan[k] = 1; tan[k + 3] = 1; }
-    g.setAttribute('tangent', new THREE.BufferAttribute(tan, 4));
-    g.computeBoundingSphere();
-    const mesh = new THREE.Mesh(g, mat);
-    mesh.receiveShadow = true;
-    mesh.userData.noAO = true;
-    mesh.renderOrder = 2;
-    scene.add(mesh);
-    meshes.push(mesh);
-  }
-  return meshes;
-}
+// Water: geo/water.js.

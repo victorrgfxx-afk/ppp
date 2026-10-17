@@ -2,7 +2,8 @@ import { moonAltAz } from '../astro.js';
 import * as THREE from 'three';
 import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns } from './data.js';
 import { genGeoTextures } from './geotex.js';
-import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, buildWater, FAR } from './terrain.js';
+import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, FAR } from './terrain.js';
+import { buildWater } from './water.js';
 import { makeBuildingMaterials, buildBuildings, footprintIndex } from './buildings.js';
 import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight } from './roads.js';
 import { makePropMaterials, buildFences, buildPower, addWires } from './props.js';
@@ -116,7 +117,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const floor = buildForestFloor(scene, world, quality);    // every other wood's floor: litter, ferns, brambles, deadwood, boulders
   log('copaci ' + trees.count + ', pădure ' + trees.forest.count() + ', coronament ' + (canopy ? canopy.meshes.length : 0), performance.now() - t0);
   let cullI = 0, lastCull = null;
-  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.length, meshes: meshes.length };
+  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.meshes.length, meshes: meshes.length };
   return {
     fronts, info, terrain, landmarks, forest: trees.forest, trees, canopy, far,
     // the snow modes: bare broadleaves near and far (trees.js, canopy.js)
@@ -124,7 +125,8 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
     // every frame: the moving parts near the camera (t: seconds)
     tick(t, camPos) { for (const l of moving) l.animate(t, camPos); },
     // a still mirror near the camera (the wells' puddle): the screen-space reflections stay on in dry weather
-    mirrorNear(camPos) { return moving.some(l => l.mirrorNear?.(camPos)); },
+    mirrorNear(camPos) { return moving.some(l => l.mirrorNear?.(camPos)) || water.near(camPos, 150); },
+    water,
     // vis: how far one sees now (main.js: the weather's visibility, m): nothing is hidden before the haze has hidden it
     update(camPos, vis = Infinity) {
       trees.update(camPos);

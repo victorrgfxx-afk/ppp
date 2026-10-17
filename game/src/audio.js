@@ -54,6 +54,15 @@ export class Audio {
     this.pourGain = ctx.createGain(); this.pourGain.gain.value = 0;
     pn.connect(pf).connect(this.pourGain).connect(this.master); pn.start();
     this.gurgle = 700;
+    // a river near: the rush of water over the gravel (a broad hiss with a low roar under it, rising and falling as the
+    // riffles do), silent away from it
+    const rv = ctx.createBufferSource(); rv.buffer = this.noise; rv.loop = true; rv.playbackRate.value = 0.9;
+    this.riverF = ctx.createBiquadFilter(); this.riverF.type = 'bandpass'; this.riverF.frequency.value = 1100; this.riverF.Q.value = 0.45;
+    const rlo = ctx.createBufferSource(); rlo.buffer = this.noise; rlo.loop = true; rlo.playbackRate.value = 0.45;
+    const rlf = ctx.createBiquadFilter(); rlf.type = 'lowpass'; rlf.frequency.value = 260;
+    this.riverGain = ctx.createGain(); this.riverGain.gain.value = 0;
+    rv.connect(this.riverF).connect(this.riverGain); rlo.connect(rlf).connect(this.riverGain);
+    this.riverGain.connect(this.master); rv.start(); rlo.start();
     // night storm: a low uneasy drone (two detuned tones and a hollow wind), silent until then
     this.drone = ctx.createGain(); this.drone.gain.value = 0; this.drone.connect(this.master);
     for (const f of [41.2, 43.6, 61.7]) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.value = 0.35; o.connect(g).connect(this.drone); o.start(); }
@@ -299,6 +308,8 @@ export class Audio {
     this.brookF.frequency.setTargetAtTime(Math.max(350, this.gurgle), now, 0.02);
     this.brookGain.gain.setTargetAtTime(0.16 * (st.brook ?? 0) * (0.7 + 0.3 * Math.random()), now, 0.08);
     this.pourGain.gain.setTargetAtTime(0.09 * (st.pour ?? 0), now, 0.3);
+    this.riverGain.gain.setTargetAtTime(0.11 * (st.river ?? 0) * (0.85 + 0.15 * Math.sin(this.t * 0.7) * Math.sin(this.t * 0.23)), now, 0.4);
+    this.riverF.frequency.setTargetAtTime(950 + 250 * Math.sin(this.t * 0.31), now, 0.5);
     this.nextBird -= dt;
     if (this.nextBird <= 0) { if (rain < 0.2 && !(st.snow > 0.2) && !(st.night > 0.5)) this.chirp(Math.random() * 2 - 1); this.nextBird = (st.snowCover > 0.5 ? 6 : 1.5) + Math.random() * 6; }   // (no birdsong in a downpour, while it snows or at night; little in winter)
     const e = this.eng;

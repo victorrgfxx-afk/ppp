@@ -835,23 +835,31 @@ const STREAK_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
 uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth, uCurtain, uGale;
+uniform float uRate, uPx, uPupil;    // the rain rate (mm/h); the camera's angle per pixel; the eye's pupil (m)
+uniform vec4 uLamps[6];              // street lamp heads near you (w: how bright)
+uniform vec4 uCarL, uCarLDir;        // the headlights of the car you drive (w: on) and their axis (w: cos of the cone)
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 uniform vec2 uWind, uWindOff;        // the wind now and how far it has carried the air so far (no jumps when it changes)
 uniform vec3 uCam;
 uniform vec4 uTorch, uTorchDir;      // torch position (w: on) and direction (w: cos of the cone)
 uniform vec4 uBeam, uBeamDir;        // the moon's shaft: a point on its axis (w: radius) and the axis (w: on)
-varying float vA, vLit, vB;
+varying float vA, vLit, vB, vOsc, vAmp;
+varying vec3 vLamp;
 varying vec2 vC;
 ${OCC_GLSL}
 ${LEE_GLSL}
 void main() {
-  vC = corner; vA = 0.0; vLit = 0.0; vB = 0.0;
+  vC = corner; vA = 0.0; vLit = 0.0; vB = 0.0; vOsc = 0.0; vAmp = 0.0; vLamp = vec3(0.0);
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);                       // (culled unless placed below)
   if (aSeed.w > uRain) return;
-  // drop size: big drops fall faster (~9 m/s for 3 mm, ~6 m/s for 1 mm), leave longer, wider, brighter streaks
-  float sz = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
-  float fall = uSpeed * (0.66 + 0.36 * sz);
+  // the drop's diameter (mm), as rain has them: Marshall-Palmer, N(D) ~ exp(-Lambda D), Lambda = 4.1 R^-0.21 per mm
+  // (the drops under ~0.5 mm too faint to show); its fall speed (Atlas et al. 1973): ~4 m/s at 1 mm, ~6.5 at 2 mm,
+  // ~8 at 3 mm, ~9 m/s at 5 mm
+  float u = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
+  float D = min(5.5, 0.5 - log(1.0 - 0.995 * u) / (4.1 * pow(max(uRate, 1.0), -0.21)));
+  float sz = clamp((D - 0.5) / 3.0, 0.0, 1.0);
+  float fall = max(1.6, 9.65 - 10.3 * exp(-0.6 * D)) * uSpeed / 9.5;
   // in a gale each drop rides the gusty air at its own slant (the eddies toss the small ones about)
   vec2 tw = (vec2(fract(aSeed.z * 13.7), fract(aSeed.x * 29.3)) - 0.5) * (1.2 - 0.6 * sz) * 0.35 * length(uWind) * uGale;
   vec3 vel = vec3(uWind.x + tw.x, -fall, uWind.y + tw.y);
@@ -869,12 +877,22 @@ void main() {
   vec3 dir = normalize(vel), toCam = uCam - p;
   float dist = length(toCam);
   vec3 side = normalize(cross(dir, toCam));
-  float w = (0.0025 + dist * 0.0011) * (0.7 + 0.6 * sz) * uWidth;   // ~1 px wide at any distance
-  // (its travel in the camera's exposure: longer the faster it flies)
+  // its width: the drop itself or a pixel, whichever is bigger; close to the eye (focused on the scene beyond) the
+  // pupil blurs it into a wide, faint smear (blur angle ~ pupil x (1/distance - 1/10 m))
+  float blur = uPupil * abs(1.0 / max(dist, 0.2) - 0.1), ang = max(max(uPx, D * 1e-3 / dist), blur);
+  float w = dist * ang * 0.5 * uWidth;
+  // its streak: how far it travels while the eye takes it in (~45 ms; uLen), faster drops longer
   float stretch = clamp(sqrt(length(vel) / fall), 1.0, 1.5);
-  vec3 pos = p - dir * uLen * (0.45 + 0.8 * sz) * stretch * corner.y + side * w * corner.x;
-  vA = (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(1.0, 2.6, dist) * mix(0.45, 1.0, smoothstep(2.0, 5.0, dist));
-  vB = (0.55 + 0.45 * sz) / stretch;
+  vec3 pos = p - dir * length(vel) * uLen * corner.y + side * w * corner.x;
+  vA = (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.25, 0.9, dist) * min(1.0, max(uPx, D * 1e-3 / dist) / ang);
+  // how bright: a drop is a tiny lens showing the sky; over a streak each pixel holds it for (its size / its travel)
+  // of the time - about the same for big and small drops (~D / speed), the big ones a little brighter
+  vB = (0.62 + 0.38 * sz) / stretch;
+  // drops over ~1 mm oscillate as they fall (mode 2, f = sqrt(8 sigma / rho a^3) / 2 pi: ~65 Hz at 3 mm, ~120 Hz at
+  // 2 mm): their streaks come out banded, a few bright beads along them (Garg & Nayar)
+  float a = D * 5e-4;
+  vOsc = sqrt(8.0 * 0.0728 / (1000.0 * a * a * a)) / 6.2832 * uLen;
+  vAmp = 0.55 * smoothstep(1.0, 3.0, D);
   // the rain comes in sheets (curtains) carried along by the air, denser and sparser bands across the wind some tens of
   // metres apart; in a squall they sweep past with every gust
   vec2 wd = normalize(uWind + vec2(1e-4)), wn = vec2(-wd.y, wd.x), ap = p.xz - uWindOff;
@@ -885,19 +903,32 @@ void main() {
   vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
   vec3 bp = p - uBeam.xyz; float br = length(bp - uBeamDir.xyz * dot(bp, uBeamDir.xyz));
   vLit += uBeamDir.w * 0.1 * (1.0 - smoothstep(uBeam.w * 0.6, uBeam.w, br));
+  // the headlights of the car you drive, and the street lamps: a drop with the light behind it, nearly on your line of
+  // sight, throws it forward into your eye (the forward scattering of a water drop) - the bright rain under a lamp
+  vec3 vd = -toCam / max(dist, 1e-3);
+  vec3 cp = p - uCarL.xyz; float cl = length(cp);
+  vLit += 1.2 * uCarL.w * smoothstep(uCarLDir.w, uCarLDir.w + 0.05, dot(cp / max(cl, 1e-3), uCarLDir.xyz)) * (1.0 - smoothstep(3.0, 40.0, cl));
+  for (int i = 0; i < 6; i++) {
+    vec4 L = uLamps[i];
+    if (L.w <= 0.0) continue;
+    vec3 q = L.xyz - p; float d2 = dot(q, q), cf = dot(normalize(q), vd);
+    vLamp += vec3(1.0, 0.78, 0.5) * L.w * (0.35 + 2.5 * pow(max(cf, 0.0), 8.0)) / (1.0 + d2 * 0.12) * (1.0 - smoothstep(30.0, 90.0, d2));
+  }
   gl_Position = projectionMatrix * viewMatrix * vec4(pos, 1.0);
 }`;
 const STREAK_FRAG = /* glsl */`
 uniform vec3 uColor;
 uniform float uOpacity;
-varying float vA, vLit, vB;
+varying float vA, vLit, vB, vOsc, vAmp;
+varying vec3 vLamp;
 varying vec2 vC;
 void main() {
   // drawn additively: a drop is a tiny lens that shows the bright sky, so it lightens what is behind it - plain against
   // dark trees and walls, almost gone against the sky (like real rain)
-  float a = vA * uOpacity * (1.0 - abs(vC.x)) * smoothstep(0.0, 0.2, vC.y) * (1.0 - smoothstep(0.55, 1.0, vC.y));
+  float a = vA * uOpacity * (1.0 - abs(vC.x)) * smoothstep(0.0, 0.12, vC.y) * (1.0 - smoothstep(0.85, 1.0, vC.y));
+  a *= 1.0 + vAmp * sin(6.2832 * vOsc * vC.y + vOsc * 3.1);       // (an oscillating drop: beads along its streak)
   if (a < 0.002) discard;
-  gl_FragColor = vec4(uColor * vB + vec3(0.9, 0.92, 1.0) * vLit * 1.4, min(a, 1.0));
+  gl_FragColor = vec4(uColor * vB + vec3(0.9, 0.92, 1.0) * vLit * 1.4 + vLamp, min(a, 1.0));
 }`;
 
 const SPLASH_VERT = /* glsl */`
@@ -1024,13 +1055,17 @@ export class RainFX {
     this.wind = { value: new THREE.Vector2(1.6, 0.7) }; this.windOff = { value: new THREE.Vector2() }; this.lastT = null;
     this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
     this.beam = { value: new THREE.Vector4() }; this.beamDir = { value: new THREE.Vector4(0, 1, 0, 0) };
+    this.rate = { value: 40 }; this.px = { value: 1.1e-3 }; this.pupil = { value: 0.003 };
+    this.carL = { value: new THREE.Vector4() }; this.carLDir = { value: new THREE.Vector4(0, 0, -1, 0.9) };
+    this.lamps = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
+    Object.assign(common, { uRate: this.rate, uPx: this.px, uPupil: this.pupil, uCarL: this.carL, uCarLDir: this.carLDir, uLamps: this.lamps });
     const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uWindOff: this.windOff, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
       transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });   // (the quads face either way)
     const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5; this.group.add(m); return m; };
     // two layers of streaks: close ones (a few metres, the ones you read as drops) and the curtain further out
     const quad = [-1, 0, 1, 0, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
-    add(cloud(10000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uLen: { value: 0.42 }, uOpacity: { value: 0.9 }, uWidth: { value: 1 }, uCurtain: { value: 0.3 } }));
-    add(cloud(30000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uLen: { value: 0.55 }, uOpacity: { value: 0.62 }, uWidth: { value: 1 }, uCurtain: { value: 1 } }));
+    add(cloud(10000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uLen: { value: 0.045 }, uOpacity: { value: 0.95 }, uWidth: { value: 1 }, uCurtain: { value: 0.3 } }));
+    add(cloud(30000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uLen: { value: 0.05 }, uOpacity: { value: 0.66 }, uWidth: { value: 1 }, uCurtain: { value: 1 } }));
     add(cloud(2600, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mk(SPLASH_VERT, SPLASH_FRAG, { uRadius: { value: 12 }, uOpacity: { value: 0.55 } }));
     // the spray mist over the ground (not added on: it veils what is behind it)
     this.gust = { value: 1 }; this.mistColor = { value: new THREE.Color() };
@@ -1039,9 +1074,14 @@ export class RainFX {
     add(cloud(4000, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mist);
   }
 
-  // torch: { on, pos, dir } ; beam: { on, pos, dir, r } (the moon's shaft)
-  update(camera, light, torch, beam) {
+  // torch: { on, pos, dir } ; beam: { on, pos, dir, r } (the moon's shaft); car: the headlights { on, pos, dir };
+  // lamps: the lamp heads near you, level: how bright they burn; rate: mm/h; night: 0..1 (the pupil opens)
+  update(camera, light, torch, beam, car = null, lamps = [], level = 0, rate = 40, night = 0) {
     this.group.visible = RAIN.uRain.value > 0.002;
+    if (car?.on) { this.carL.value.set(car.pos.x, car.pos.y, car.pos.z, 1); this.carLDir.value.set(car.dir.x, car.dir.y, car.dir.z, 0.9); } else this.carL.value.w = 0;
+    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * 0.18); else v.w = 0; });
+    this.rate.value = rate; this.pupil.value = 0.003 + 0.003 * night;
+    this.px.value = camera.fov * Math.PI / 180 / Math.max(1, innerHeight);
     if (torch?.on) { this.torch.value.set(torch.pos.x, torch.pos.y, torch.pos.z, 1); this.torchDir.value.set(torch.dir.x, torch.dir.y, torch.dir.z, 0.93); } else this.torch.value.w = 0;
     if (beam?.on) { this.beam.value.set(beam.pos.x, beam.pos.y, beam.pos.z, beam.r); this.beamDir.value.set(beam.dir.x, beam.dir.y, beam.dir.z, 1); } else this.beamDir.value.w = 0;
     this.cam.value.copy(camera.position);
