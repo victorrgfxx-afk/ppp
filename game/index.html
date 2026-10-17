@@ -112,6 +112,10 @@
       <label>Ora <select id="hour"></select></label>
       <label>Sensibilitate <input id="sens" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
     </div>
+    <div class="row">
+      <label>Unghi de vedere <select id="fovMode"><option value="natural">Natural, ca ochiul</option><option value="binocular">Câmpul ambilor ochi (120°)</option><option value="joc">Larg, ca în jocuri (70° vertical)</option></select></label>
+      <span id="scrRow"><label>Ecran <input id="scrDiag" type="number" min="4" max="120" step="0.5" style="width:4.5em">″</label> <label>la <input id="scrDist" type="number" min="15" max="400" step="1" style="width:4.5em"> cm de ochi</label></span>
+    </div>
     <div id="views"></div>
     <p class="credits">Date: © OpenStreetMap contributors (ODbL) · relief EU-DEM / SRTM (AWS Terrain Tiles) și Copernicus GLO-30 · culoarea solului: Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0, date Copernicus Sentinel modificate)</p>
   </div>
@@ -127,6 +131,10 @@
       <label>Vremea <select id="weather2"></select></label>
       <label>Ora <select id="hour2"></select></label>
       <button id="mute">Sunet: pornit</button>
+    </div>
+    <div class="row">
+      <label>Unghi de vedere <select id="fovMode2"><option value="natural">Natural, ca ochiul</option><option value="binocular">Câmpul ambilor ochi (120°)</option><option value="joc">Larg, ca în jocuri (70° vertical)</option></select></label>
+      <span id="scrRow2"><label>Ecran <input id="scrDiag2" type="number" min="4" max="120" step="0.5" style="width:4.5em">″</label> <label>la <input id="scrDist2" type="number" min="15" max="400" step="1" style="width:4.5em"> cm de ochi</label></span>
     </div>
     <p style="margin-top:14px">Tastele 1–9 și 0 (și lista din ecranul de start) te duc exact în locurile din care au fost făcute fotografiile, ca să compari.</p>
   </div>

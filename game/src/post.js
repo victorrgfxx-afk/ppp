@@ -94,7 +94,7 @@ void main() {
   float d = texture2D(tDepth, vUv).r;
   vec3 p = viewPos(vUv, d);
   vec3 fn = normalize(cross(dFdx(p), dFdy(p)));                  // (derivatives before any branch)
-  gl_FragColor = vec4(c.rgb, 1.0);
+  gl_FragColor = vec4(c.rgb, max(c.a, 1.0));                     // (> 1: the haze's share, for the distance blur)
   float refl = clamp(1.0 - c.a, 0.0, 1.0);
   if (refl < 0.02 || d >= 1.0 || abs(dot(fn, uUp)) < 0.8) return; // wet, level surfaces only
   vec3 n = normalize(uUp), v = normalize(p);
@@ -175,15 +175,94 @@ class WetSSRPass extends Pass {
   dispose() { this.material.dispose(); this.quad.dispose(); }
 }
 
+// The softness of distant things (air.js). The haze scatters light mostly at small angles forward, so part of what
+// reaches the eye from far off arrives slightly off its line: the far hills lose their crisp edges and fine detail, the
+// more the thicker the haze between (the atmospheric point spread function: Narasimhan & Nayar 2003; Monte Carlo
+// studies find the aerosols' near-forward scattering the main cause, growing with their optical depth, turbulence far
+// smaller). Opaque surfaces leave 1 + (1 - e^-tau) of the haze in the frame's alpha (main.js fog chunk, the far relief);
+// a pyramid of the frame built from the hazy pixels only (a near trunk lends no glow to the hills behind it) is read per
+// pixel at a width growing with tau (~0.07 deg per unit: in pixels by the camera's field of view) and mixed in by the
+// share the haze scatters forward (~half of what it takes out of the direct light). The output's alpha is 1 again.
+const AB_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
+const AB_DOWN = /* glsl */`
+uniform sampler2D tSrc;
+uniform vec2 uTexel;
+uniform float uFirst;
+varying vec2 vUv;
+vec4 tap(vec2 o) {
+  vec4 c = texture2D(tSrc, vUv + o * uTexel);
+  if (uFirst > 0.5) { float h = clamp(c.a - 1.0, 0.0, 1.0); return vec4(c.rgb * h, h); }   // (premultiplied by the haze)
+  return c;
+}
+void main() {
+  gl_FragColor = (tap(vec2(0.0)) * 4.0 + tap(vec2(-1.0, -1.0)) + tap(vec2(1.0, -1.0)) + tap(vec2(-1.0, 1.0)) + tap(vec2(1.0, 1.0))) / 8.0;
+}`;
+const AB_COMP = /* glsl */`
+uniform sampler2D tDiffuse, tL0, tL1, tL2, tL3, tL4;
+uniform vec2 uTexel4;
+uniform float uRadPerPx;
+varying vec2 vUv;
+vec4 lv(sampler2D t, vec2 tx) { return (texture2D(t, vUv + tx * vec2(-0.5, -0.5)) + texture2D(t, vUv + tx * vec2(0.5, -0.5)) + texture2D(t, vUv + tx * vec2(-0.5, 0.5)) + texture2D(t, vUv + tx * vec2(0.5, 0.5))) * 0.25; }
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  float h = clamp(c.a - 1.0, 0.0, 0.999);
+  gl_FragColor = vec4(c.rgb, 1.0);
+  if (h < 0.02) return;
+  float tau = -log(1.0 - h);
+  float sigma = min(0.0012 * tau, 0.02) / uRadPerPx;              // the glow's width, in pixels
+  float k = smoothstep(0.35, 1.2, sigma);
+  if (k <= 0.0) return;
+  // the pyramid's level k blurs over ~2^(k+1) pixels: blend the two around the width wanted
+  float L = clamp(log2(max(sigma, 1.0)) - 1.0, 0.0, 4.0);
+  vec4 b = texture2D(tL0, vUv) * max(0.0, 1.0 - abs(L)) + texture2D(tL1, vUv) * max(0.0, 1.0 - abs(L - 1.0))
+         + texture2D(tL2, vUv) * max(0.0, 1.0 - abs(L - 2.0)) + lv(tL3, uTexel4 * 0.5) * max(0.0, 1.0 - abs(L - 3.0))
+         + lv(tL4, uTexel4) * max(0.0, 1.0 - abs(L - 4.0));
+  if (b.a < 1e-4) return;
+  gl_FragColor.rgb = mix(c.rgb, b.rgb / b.a, min(0.6, 0.5 * h) * k);
+}`;
+class AerialBlurPass extends Pass {
+  constructor(camera) {
+    super();
+    this.camera = camera;
+    this.rts = Array.from({ length: 5 }, () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false }));
+    this.down = new THREE.ShaderMaterial({ uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uFirst: { value: 1 } }, vertexShader: AB_VERT, fragmentShader: AB_DOWN, depthTest: false, depthWrite: false });
+    this.comp = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tL0: { value: null }, tL1: { value: null }, tL2: { value: null }, tL3: { value: null }, tL4: { value: null },
+      uTexel4: { value: new THREE.Vector2() }, uRadPerPx: { value: 1e-3 } }, vertexShader: AB_VERT, fragmentShader: AB_COMP, depthTest: false, depthWrite: false });
+    this.quad = new FullScreenQuad(null);
+  }
+  setSize(w, h) {
+    this.h = h;
+    this.rts.forEach((rt, i) => rt.setSize(Math.max(1, Math.ceil(w / 2 ** (i + 1))), Math.max(1, Math.ceil(h / 2 ** (i + 1)))));
+    this.comp.uniforms.uTexel4.value.set(2 ** 5 / w, 2 ** 5 / h);
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    let src = readBuffer.texture, sw = readBuffer.width, sh = readBuffer.height;
+    this.quad.material = this.down;
+    this.rts.forEach((rt, i) => {
+      this.down.uniforms.tSrc.value = src; this.down.uniforms.uFirst.value = i === 0 ? 1 : 0; this.down.uniforms.uTexel.value.set(1 / sw, 1 / sh);
+      renderer.setRenderTarget(rt); this.quad.render(renderer);
+      src = rt.texture; sw = rt.width; sh = rt.height;
+    });
+    const u = this.comp.uniforms;
+    u.tDiffuse.value = readBuffer.texture;
+    for (let i = 0; i < 5; i++) u['tL' + i].value = this.rts[i].texture;
+    u.uRadPerPx.value = this.camera.fov * Math.PI / 180 / readBuffer.height;
+    this.quad.material = this.comp;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.quad.render(renderer);
+  }
+  dispose() { this.rts.forEach(r => r.dispose()); this.down.dispose(); this.comp.dispose(); this.quad.dispose(); }
+}
+
 // The far relief and the sky (terrain.js FAR): drawn first into the frame with a camera of their own (the street's
-// view, 30 m to 260 km), so the mountains 40-100 km away keep a depth precision of metres; the map is drawn over them
+// view, 30 m to 430 km), so the mountains 40-300 km away keep a depth precision of metres; the map is drawn over them
 // after the depth is cleared (the RenderPass). Nothing of the map lies beyond the far relief along any view ray (the
 // rings surround the map's square), so the order is right everywhere.
 class FarPass extends Pass {
   constructor(scene, camera) {
     super();
     this.scene = scene; this.camera = camera; this.needsSwap = false;
-    this.cam = new THREE.PerspectiveCamera(70, 1, 30, 260000);
+    this.cam = new THREE.PerspectiveCamera(70, 1, 30, 430000);              // (the outer relief ring reaches 300 km)
   }
   render(renderer, writeBuffer, readBuffer) {
     const c = this.cam, m = this.camera;
@@ -230,6 +309,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0); gl_FragColor = min(c, vec4(64.0)); }',
   }));
+  // the softness of distant things in the haze (after the passes that read the scene's depth through this buffer)
+  const aerial = new AerialBlurPass(camera);
+  composer.addPass(aerial);
   if (q.bloom) {
     // only really bright things (sun glints, lamps) bloom: a bright overcast sky must not veil the view
     bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.1, 0.4, 1.3);
@@ -245,5 +327,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  return { composer, grade, gtao, bloom, smaa, ssr, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, setSize };
 }

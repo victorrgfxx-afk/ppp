@@ -4,6 +4,7 @@ import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
 import { WIND } from '../util.js';
 import { riverCellKept } from './bridge.js';
+import { AIR_GLSL } from '../air.js';
 
 // Near terrain (+-3 km, 5 m grid) and world terrain (+-8 km, 10 m grid) in LOD chunks,
 // the far relief (the far ring to 20 km, the horizon ring to 100 km), water surfaces.
@@ -20,9 +21,10 @@ function loadTex(url, srgb = true) {
 }
 
 export async function loadGeoTextures(base) {
-  const [ortho, orthoFar, splat, orthoW, splatW, horizon] = await Promise.all([loadTex(base + 'ortho.jpg'), loadTex(base + 'ortho_far.jpg'), loadTex(base + 'splat.png', false),
-    GEO.W ? loadTex(base + 'ortho_w.jpg') : null, GEO.W ? loadTex(base + 'splat_w.png', false) : null, GEO.Hz ? loadTex(base + 'horizon.jpg').catch(() => null) : null]);
-  return { ortho, orthoFar, splat, orthoW, splatW, horizon };
+  const [ortho, orthoFar, splat, orthoW, splatW, horizon, horizon2] = await Promise.all([loadTex(base + 'ortho.jpg'), loadTex(base + 'ortho_far.jpg'), loadTex(base + 'splat.png', false),
+    GEO.W ? loadTex(base + 'ortho_w.jpg') : null, GEO.W ? loadTex(base + 'splat_w.png', false) : null, GEO.Hz ? loadTex(base + 'horizon.jpg').catch(() => null) : null,
+    GEO.Hz2 ? loadTex(base + 'horizon2.jpg').catch(() => null) : null]);
+  return { ortho, orthoFar, splat, orthoW, splatW, horizon, horizon2 };
 }
 
 function terrainMaterial(ortho, splat, ext) {
@@ -192,7 +194,7 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
 export const FAR = {
   uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
   uSky: { value: new THREE.Color(0.5, 0.55, 0.6) }, uGround: { value: new THREE.Color(0.3, 0.28, 0.25) }, uAmb: { value: new THREE.Color(0.3, 0.33, 0.38) },
-  uFogCol: { value: new THREE.Color(0.6, 0.66, 0.74) }, uFogDensity: { value: 1 / 14000 }, uSunHaze: { value: 0.8 },
+  uFogCol: { value: new THREE.Color(0.6, 0.66, 0.74) }, uFogDensity: { value: 1e-4 }, uFogH: { value: 1200 }, uSunHaze: { value: 0.8 },
   uSnow: { value: 0 }, uWinter: { value: 0 }, uH0: { value: 0 }, uREff: { value: 6371000 / 0.87 },
 };
 const FAR_VERT = /* glsl */`
@@ -212,7 +214,8 @@ void main() {
 const FAR_FRAG = /* glsl */`
 uniform sampler2D uMap;
 uniform vec3 uSunDir, uSunCol, uSky, uGround, uAmb, uFogCol;
-uniform float uFogDensity, uSunHaze, uSnow, uWinter, uH0;
+uniform float uFogDensity, uFogH, uSunHaze, uSnow, uWinter, uH0;
+${AIR_GLSL}
 varying vec3 vW;
 varying vec3 vN;
 varying vec2 vUv;
@@ -228,13 +231,14 @@ void main() {
   // lit by the sun and the sky (the imagery has its own soft relief shading: the sun's share kept modest)
   float ndl = max(dot(n, uSunDir), 0.0);
   vec3 col = alb * (uSunCol * ndl + mix(uGround, uSky, 0.5 + 0.5 * n.y) + uAmb) * 0.3183;
-  // aerial perspective
+  // the air between (air.js): its own height along the ray (vAlt: the point's, before the curvature's drop), the
+  // haze brighter towards the sun (the aerosols scatter forward)
   vec3 v = vW - cameraPosition;
-  float dist = length(v);
-  float mie = pow(max(dot(v / dist, uSunDir), 0.0), 6.0);
-  vec3 fogc = uFogCol * (1.0 + uSunHaze * mie);
-  col = mix(col, fogc, 1.0 - exp(-uFogDensity * dist));
-  gl_FragColor = vec4(col, 1.0);
+  float mie = pow(max(dot(normalize(v), uSunDir), 0.0), 6.0);
+  vec3 airT, airL; float airTau;
+  airPath(cameraPosition, vec3(vW.x, vAlt, vW.z), uFogDensity, uFogH, uFogCol * (1.0 + uSunHaze * mie), airT, airL, airTau);
+  col = col * airT + airL;
+  gl_FragColor = vec4(col, 2.0 - exp(-airTau));                       // (the haze's share for the distance blur: post.js)
 }`;
 function farMaterial(map) {
   const m = new THREE.ShaderMaterial({ uniforms: { ...FAR, uMap: { value: map } }, vertexShader: FAR_VERT, fragmentShader: FAR_FRAG, fog: false });
@@ -277,16 +281,18 @@ export function buildFarTerrain(gt) {
 // The horizon ring, 20.25 to 100 km: a polar grid whose cells all look the same size from the middle (512 sectors of
 // 0.7 deg, rings 1.23 % apart: ~250 m at 20 km, ~1.2 km at 100 km), heights from the 500 m grid; its inner edge a
 // little under the far ring's (no gap, no flicker) with a skirt hanging below it.
-export function buildHorizon(gt) {
-  const Hz = GEO.Hz;
-  if (!Hz || !gt.horizon) return null;
+// The outer ring (V62), 99 to 299 km on the 1.5 km grid, the same way: nothing is cut short of where the Earth's
+// curvature (and the air) hides it.
+export function buildHorizon(gt, outer = false) {
+  const Hz = outer ? GEO.Hz2 : GEO.Hz, tex = outer ? gt.horizon2 : gt.horizon;
+  if (!Hz || !tex) return null;
   const { n, ext, step, H } = Hz;
   const hAt = (x, z) => {
     const fx = Math.min(n - 1.001, Math.max(0, (x + ext) / step)), fz = Math.min(n - 1.001, Math.max(0, (z + ext) / step));
     const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
     return (H[j * n + i] * (1 - u) + H[j * n + i + 1] * u) * (1 - v) + (H[(j + 1) * n + i] * (1 - u) + H[(j + 1) * n + i + 1] * u) * v;
   };
-  const NA = 512, Q = 1.0123, R0 = 20250, R1 = Math.min(ext - 600, 99000);
+  const NA = 512, Q = 1.0123, R0 = outer ? 98950 : 20250, R1 = outer ? ext - 1800 : Math.min(ext - 600, 99000);
   const radii = [R0 - 1];                             // (the skirt's ring)
   for (let r = R0; r < R1; r *= Q) radii.push(r);
   radii.push(R1);
@@ -307,7 +313,7 @@ export function buildHorizon(gt) {
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
   g.computeVertexNormals();
-  const mesh = new THREE.Mesh(g, farMaterial(gt.horizon));
+  const mesh = new THREE.Mesh(g, farMaterial(tex));
   mesh.userData.noAO = true;
   mesh.userData.ue = { kind: 'far' };
   mesh.matrixAutoUpdate = false;

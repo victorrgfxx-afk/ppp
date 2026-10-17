@@ -11,6 +11,9 @@ in the shader, from the camera (terrain.js).
 
 -> assets/geo/horizon.json: heights (dm, over the street's level h0) on a 401 x 401 grid of 500 m over +-100 km
    assets/geo/horizon.jpg:  2048 x 2048 colour over +-100 km
+   assets/geo/horizon2.json / horizon2.jpg: the same over +-300 km (1.5 km cells, z8 tiles): to the geometric horizon
+   of the highest Carpathian peaks seen from the hills (the Fagaras ~90 km, the Vrancea and the Ciucas, the plain to
+   the Danube), beyond which the Earth's curvature hides everything anyway
 """
 import os, math, json, base64, urllib.request, concurrent.futures as cf
 import numpy as np, cv2
@@ -69,15 +72,15 @@ def mosaic(tiles, path_of, decode):
     return M, xs[0], ys[0]
 
 
-def main():
-    # the lat / lon box of the +-100 km square (with its corners)
+def main(EXT=EXT, N=N, TEX=TEX, DEM_Z=DEM_Z, S2_Z=S2_Z, name='horizon'):
+    # the lat / lon box of the square (with its corners)
     v = np.linspace(-EXT * 1.42, EXT * 1.42, 9)
     X, Z = np.meshgrid(v, v)
     la, lo = game_to_ll_aeqd(X, Z)
     box = (la.min(), la.max(), lo.min(), lo.max())
     dem_t = tiles_for(box[0], box[1], box[2], box[3], DEM_Z)
     s2_t = tiles_for(box[0], box[1], box[2], box[3], S2_Z)
-    dem_p = lambda x, y: os.path.join(bg.RAW, 'dem10', f'{DEM_Z}_{x}_{y}.png')
+    dem_p = lambda x, y: os.path.join(bg.RAW, 'dem10' if DEM_Z == 10 else f'dem{DEM_Z}', f'{DEM_Z}_{x}_{y}.png')
     s2_p = lambda x, y: os.path.join(bg.RAW, 's2', str(S2_Z), f'{x}_{y}.jpg')
     jobs = [(f'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{DEM_Z}/{x}/{y}.png', dem_p(x, y)) for x, y in dem_t]
     jobs += [(f'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/g/{S2_Z}/{y}/{x}.jpg', s2_p(x, y)) for x, y in s2_t]
@@ -96,7 +99,7 @@ def main():
     G = json.load(open(os.path.join(bg.OUT, 'geo.json')))
     h0 = G['meta']['origin']['h0']
     Y = np.clip(np.round((H - h0) * 10), -32768, 32767).astype('<i2')
-    with open(os.path.join(bg.OUT, 'horizon.json'), 'w') as f:
+    with open(os.path.join(bg.OUT, name + '.json'), 'w') as f:
         json.dump({'n': N, 'ext': EXT, 'scale': 10, 'b64': base64.b64encode(Y.tobytes()).decode()}, f)
     print('relief', round(float(H.min())), '..', round(float(H.max())), 'm; peak at',
           np.unravel_index(int(np.argmax(H)), H.shape))
@@ -108,10 +111,13 @@ def main():
     la, lo = game_to_ll_aeqd(TXg, TZg)
     TX, TY = bg.tile_frac(la, lo, S2_Z)
     C = cv2.remap(S, ((TX - sx0) * 256 - 0.5).astype(np.float32), ((TY - sy0) * 256 - 0.5).astype(np.float32), cv2.INTER_LINEAR)
-    cv2.imwrite(os.path.join(bg.OUT, 'horizon.jpg'), C, [cv2.IMWRITE_JPEG_QUALITY, 86])
-    print('horizon.json', os.path.getsize(os.path.join(bg.OUT, 'horizon.json')) // 1024, 'KB, horizon.jpg',
-          os.path.getsize(os.path.join(bg.OUT, 'horizon.jpg')) // 1024, 'KB')
+    cv2.imwrite(os.path.join(bg.OUT, name + '.jpg'), C, [cv2.IMWRITE_JPEG_QUALITY, 86])
+    print(name + '.json', os.path.getsize(os.path.join(bg.OUT, name + '.json')) // 1024, 'KB, ' + name + '.jpg',
+          os.path.getsize(os.path.join(bg.OUT, name + '.jpg')) // 1024, 'KB')
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    if 'outer' not in sys.argv[1:]:
+        main()
+    main(EXT=300000.0, N=401, TEX=2048, DEM_Z=8, S2_Z=8, name='horizon2')

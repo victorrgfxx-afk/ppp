@@ -80,7 +80,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareSonda();                                       // the oil wells in the wood (photos 84-86): the pad levelled, no forest on it
   const terrain = buildTerrain(scene, gt, quality);
   // the far relief (to 20 km, then the horizon to 100 km): drawn in a pass of its own (post.js FarPass)
-  const far = [buildFarTerrain(gt), buildHorizon(gt)].filter(Boolean);
+  const far = [buildFarTerrain(gt), buildHorizon(gt), buildHorizon(gt, true)].filter(Boolean);
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
@@ -142,6 +142,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
       // the far relief only when the haze lets it through (the horizon ring starts at 20 km)
       if (far[0]) far[0].visible = vis > 6000;
       if (far[1]) far[1].visible = vis > 14000;
+      if (far[2]) far[2].visible = vis > 25000;
     },
   };
 }

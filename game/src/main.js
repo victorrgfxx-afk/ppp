@@ -34,11 +34,42 @@ import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
+import { AIR_GLSL, HAZE_H, hazeFor, visibilityOf } from './air.js';
 import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR } from './geo/index.js';
 
-// Aerial perspective: exponential (not squared) haze, so the real valley sides stay visible for km.
-THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
-  '1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth )', '1.0 - exp( - fogDensity * vFogDepth )');
+// The air between the eye and every point (air.js): molecules and haze, each with its own fall-off with height, per
+// colour channel, integrated along the line of sight. scene.fog is a THREE.Fog used as the carrier of the haze's two
+// numbers (near: its extinction at the street's level, 1/m; far: its scale height, m). Opaque surfaces put 1 + the
+// haze's share into the alpha of the frame for the distance blur (post.js); wet ground writes its own value below 1.
+THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n\tvarying float vFogDepth;\n\tvarying vec3 vFogW;\n#endif';
+THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogW = transpose( mat3( viewMatrix ) ) * ( mvPosition.xyz - viewMatrix[ 3 ].xyz );\n#endif';
+THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
+	uniform vec3 fogColor;
+	varying float vFogDepth;
+	varying vec3 vFogW;
+	#ifdef FOG_EXP2
+		uniform float fogDensity;
+	#else
+		uniform float fogNear;
+		uniform float fogFar;
+	#endif
+${AIR_GLSL}
+#endif`;
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+	{
+		#ifdef FOG_EXP2
+			float airB = fogDensity, airH = ${HAZE_H.toFixed(1)};
+		#else
+			float airB = fogNear, airH = fogFar;
+		#endif
+		vec3 airT, airL; float airTau;
+		airPath( cameraPosition, vFogW, airB, airH, fogColor, airT, airL, airTau );
+		gl_FragColor.rgb = gl_FragColor.rgb * airT + airL;
+		#ifdef OPAQUE
+			gl_FragColor.a = 2.0 - exp( - airTau );
+		#endif
+	}
+#endif`;
 // one sun, several shadow maps (fine near, coarse far): patched into the light loop before any shader compiles
 installCascadedShadows();
 // Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina. The hour can be
@@ -111,7 +142,7 @@ async function main() {
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0.56, 0.60, 0.65);
-  scene.fog = new THREE.FogExp2(fogColor, 1 / 4000);
+  scene.fog = new THREE.Fog(fogColor, hazeFor(32000), HAZE_H);             // (near: the haze's extinction, far: its scale height: air.js)
   // the sky and the far relief (to 100 km) are drawn first, in a pass of their own (post.js FarPass), the map over them:
   // no background colour here (three.js would clear the frame with it)
   const farScene = new THREE.Scene();
@@ -204,7 +235,8 @@ async function main() {
     hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night));
     hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), 0.25, night);
     fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
-    scene.fog.density = baseFog = w.fogDensity * (horror ? 1.3 : 1);
+    scene.fog.near = baseFog = hazeFor(w.vis) * (horror ? 1.3 : 1);
+    scene.fog.far = w.hazeH ?? HAZE_H;
     stormTarget = w.storm ?? 0;
     galeBase = w.gale ?? 15; squall = !!w.squall;
     if (w.galeFrom !== undefined) {                                           // (a compass bearing: where it comes from)
@@ -218,7 +250,7 @@ async function main() {
     FAR.uAmb.value.fromArray(mixA(w.zenith, w.horizon, 0.6)).multiplyScalar(baseEnv * 1.6 * (1 - 0.85 * night)); FAR.uWinter.value = w.winter ? 1 : 0;
     // street lamps on at night; the moon's shaft on the hill of the cross; the bear's eyes catch the light
     M.lampGlass.emissive.setRGB(1, 0.78, 0.5); M.lampGlass.emissiveIntensity = 4 * (1 - THREE.MathUtils.smoothstep(sunInfo.el, -6, 1));
-    moonBeam?.set(night > 0.5 && moonUp > 0.1, moonInfo.dir, 0.45 * moonUp, rainTarget > 0 ? 1 : overcast ? 0.6 : 0.3, scene.fog.density);
+    moonBeam?.set(night > 0.5 && moonUp > 0.1, moonInfo.dir, 0.45 * moonUp, rainTarget > 0 ? 1 : overcast ? 0.6 : 0.3, scene.fog.near);
     if (bear) bear.eyeMat.emissiveIntensity = 3 * night;                     // eyeshine in the dark
     if (gradeU) { gradeU.uVig.value = horror ? 0.5 : 0.28; gradeU.uGrain.value = horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
   };
@@ -443,6 +475,28 @@ async function main() {
   let paused = true, started = false, hornOn = false;
   let shake = 0;
 
+  // The field of view (V62). 'natural' (the default): the angle the picture really takes up in your own field of view,
+  // the screen's height seen from where your eyes are, so everything shows at its true angular size, as through a
+  // window (the way simulators work it out: 2 atan(height / 2 distance)). A flat screen fills only part of the eye's
+  // ~200 deg (~135 deg high); the rest is seen by turning the head - the mouse. 'binocular': the ~120 deg both eyes see
+  // at once, squeezed onto the screen (everything looks smaller and farther). 'joc': the former 70 deg (vertical).
+  const screenGuess = () => {
+    const coarse = matchMedia('(pointer: coarse)').matches, w = screen.width, h = screen.height, small = Math.min(w, h) < 600;
+    const mm = coarse ? (small ? 0.165 : 0.2) : 0.265;      // a CSS pixel (mm): phones, tablets, computers at their usual scaling
+    const diag = Math.hypot(w, h) * mm / 25.4;
+    return { diag: Math.round(diag * 2) / 2, dist: coarse ? (small ? 32 : 40) : diag < 17 ? 50 : 65 };
+  };
+  let fovMode = store.get('fov', 'natural'), scr = { ...screenGuess(), ...store.get('screen', {}) };
+  const baseFov = () => {
+    if (fovMode === 'joc') return 70;
+    if (fovMode === 'binocular') return 2 * Math.atan(Math.tan(60 * Math.PI / 180) / (innerWidth / innerHeight)) * 180 / Math.PI;
+    const mm = scr.diag * 25.4 / Math.hypot(screen.width, screen.height);                 // (one CSS pixel on this screen)
+    return Math.min(100, 2 * Math.atan(innerHeight * mm / 2 / (scr.dist * 10)) * 180 / Math.PI);
+  };
+  const fovLabel = () => {
+    const v = baseFov(), hz = 2 * Math.atan(Math.tan(v * Math.PI / 360) * innerWidth / innerHeight) * 180 / Math.PI;
+    return `${Math.round(hz)}° × ${Math.round(v)}°`;
+  };
   const resize = () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.aspect = innerWidth / innerHeight;
@@ -555,6 +609,24 @@ async function main() {
   $('quality').addEventListener('change', (e) => { store.set('quality', e.target.value); location.reload(); });
   $('quality2').addEventListener('change', (e) => { store.set('quality', e.target.value); location.reload(); });
   $('sens').addEventListener('input', (e) => store.set('sens', parseFloat(e.target.value)));
+  // the field of view: the mode, and for 'natural' the screen's diagonal and how far your eyes are from it
+  const fovUi = () => {
+    for (const id of ['fovMode', 'fovMode2']) {
+      const el = $(id); if (!el) continue;
+      el.querySelector('option[value="natural"]').textContent = `Natural, ca ochiul (${fovLabel()})`;
+      el.value = fovMode;
+    }
+    for (const sfx of ['', '2']) { if ($('scrDiag' + sfx)) { $('scrDiag' + sfx).value = scr.diag; $('scrDist' + sfx).value = scr.dist; $('scrRow' + sfx).style.display = fovMode === 'natural' ? '' : 'none'; } }
+  };
+  for (const sfx of ['', '2']) {
+    $('fovMode' + sfx)?.addEventListener('change', (e) => { fovMode = e.target.value; store.set('fov', fovMode); fovUi(); });
+    for (const k of ['Diag', 'Dist']) $('scr' + k + sfx)?.addEventListener('change', (e) => {
+      const v = parseFloat(e.target.value); if (!(v > 0)) return;
+      scr = { ...scr, [k === 'Diag' ? 'diag' : 'dist']: v }; store.set('screen', { diag: scr.diag, dist: scr.dist }); fovUi();
+    });
+  }
+  addEventListener('resize', fovUi);
+  fovUi();
   $('mute').addEventListener('click', () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? 'Sunet: oprit' : 'Sunet: pornit'; });
   $('menuBtn').addEventListener('click', () => pause());
   const pause = () => {
@@ -803,7 +875,7 @@ async function main() {
     if (mode === 'car') exitCar(true);
     player.setPose(v.x, v.z, v.yaw, v.pitch);
     photoFov = v.fov ? { fov: v.fov, x: v.x, z: v.z } : null;
-    camera.fov = v.fov ?? 70; camera.updateProjectionMatrix();
+    camera.fov = v.fov ?? baseFov(); camera.updateProjectionMatrix();
     hud.toast(v.label);
     if (v.clip) { setHour(CLIP_HOUR); setWeather('senin'); hikers.atClip(); }
   };
@@ -873,7 +945,7 @@ async function main() {
   let roadName = null;
   const pos0 = () => (mode === 'car' && active ? active.car.group.position : player.pos);
   // how far one sees (Koschmieder: 2 % contrast) in the weather's haze, without its gusts
-  const visibility = () => (baseFog > 0 ? 3.912 / baseFog : Infinity);
+  const visibility = () => visibilityOf(baseFog);
   geoWorld.update(camera.position, visibility());
   let t = 0, frameNo = 0;
   const focus = new THREE.Vector3();
@@ -888,7 +960,7 @@ async function main() {
     // the far relief (terrain.js FAR) in the map's light and haze
     FAR.uSunDir.value.copy(sunDir); FAR.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity);
     FAR.uSky.value.copy(hemi.color).multiplyScalar(hemi.intensity); FAR.uGround.value.copy(hemi.groundColor).multiplyScalar(hemi.intensity);
-    FAR.uFogCol.value.copy(scene.fog.color); FAR.uFogDensity.value = scene.fog.density; FAR.uSnow.value = SNOW.uSnow.value;
+    FAR.uFogCol.value.copy(scene.fog.color); FAR.uFogDensity.value = scene.fog.near; FAR.uFogH.value = scene.fog.far; FAR.uSnow.value = SNOW.uSnow.value;
     // the wind: a breeze, or in a blizzard the crivăț from the north-east, ~15 m/s gusting between ~8 and ~22 m/s (to
     // ~80 km/h) and veering a little; in a squall (rafale) ~6-9 m/s between bursts that come every half minute or so,
     // rise in a couple of seconds to ~20-23 m/s (~80 km/h) and blow for 5-10 s, veering with them, the heaviest rain
@@ -907,7 +979,7 @@ async function main() {
       STORM.uWindOff.value.addScaledVector(STORM.uWind.value, dt);
       STORM.uStorm.value = blizzard; STORM.gust = storm > 0.01 ? gust : 1; STORM.gale = squall ? storm : 0; STORM.burst = burst;
       WIND.strength.value = 1 + storm * 1.3 * Math.min(gust, 1.7);      // (the trees sway harder)
-      if (baseFog) scene.fog.density = baseFog * (1 + storm * (gust - 1) * 0.6);   // (white curtains with every gust)
+      if (baseFog) scene.fog.near = baseFog * (1 + storm * (gust - 1) * 0.6);   // (white curtains with every gust)
     }
     sky.material.uniforms.uTime.value = t;
 
@@ -960,7 +1032,8 @@ async function main() {
     dogs.update(dt, t, camera.position);
 
     // camera for driving
-    let fov = 70;
+    const fov0 = baseFov();
+    let fov = fov0;
     if (mode === 'car' && active) {
       const m = input.consumeMouse();
       const sp = Math.abs(active.speed);
@@ -981,7 +1054,7 @@ async function main() {
         focus.set(g.x - Math.sin(active.h) * 1.5, g.y + (active.m.atv ? 0.95 : 1.05), g.z - Math.cos(active.h) * 1.5);
         if (active.car.rider) active.car.rider.visible = true;
         camera.lookAt(focus);
-        fov = 62 + Math.min(14, sp * 0.3) + Math.max(0, Math.min(14, (sp - 50) * 0.16));
+        fov = fov0 / 70 * (62 + Math.min(14, sp * 0.3) + Math.max(0, Math.min(14, (sp - 50) * 0.16)));   // (the chase camera widens with speed)
         active.car.glass.opacity = 0.86;
       } else {
         cockpitLook.yaw = clamp(cockpitLook.yaw - m.x * sens(), -2.2, 2.2);
@@ -992,11 +1065,11 @@ async function main() {
         if (active.car.rider) active.car.rider.visible = false;
         // (on an ATV the rider watches the trail just ahead: the bars in the lower edge of the view)
         camera.rotation.set(cockpitLook.pitch - (active.m.atv ? 0.28 : 0.06) + active.pitch + active.car.group.rotation.x, active.h + cockpitLook.yaw, -active.roll * 0.6, 'YXZ');
-        fov = 72;
+        fov = fov0;                                              // (the driver's own eyes)
       }
     } else {
       if (photoFov && Math.hypot(player.pos.x - photoFov.x, player.pos.z - photoFov.z) > 0.25) photoFov = null;
-      fov = (photoFov ? photoFov.fov : 70) + player.fovKick;
+      fov = photoFov ? photoFov.fov + player.fovKick : fov0 * (1 + player.fovKick / 70);
     }
     if (shake > 0) {
       camera.position.x += (Math.random() - 0.5) * shake * 0.2;

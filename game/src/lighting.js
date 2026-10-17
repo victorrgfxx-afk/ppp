@@ -115,28 +115,29 @@ export function shareInstancedDepth(root) {
 // Each preset: the sky shader's uniforms, the sun / sky lights, the image-based light, fog and exposure.
 // "senin" and "noros" match the sunny Street View captures (deep blue sky, cumulus, hard sun shadows); "innorat" is the
 // grey late-September deck of the user's own photos 1-23.
-// fogDensity: the haze's extinction (1/m); what one can still make out is ~3.9 / fogDensity away (Koschmieder, 2 %
-// contrast: the meteorological visibility): clear ~55 km (the Bucegi, 40 km off, faint and blue), partly cloudy ~40
-// km, the grey September deck ~20 km, the clear cold air after a snowfall ~70 km, rain ~2 km, a squall ~1.6 km, snow
-// ~3 km, a blizzard ~330 m
+// vis: the meteorological visibility at the street's level (m; Koschmieder, 2 % contrast; the air itself: air.js): a
+// clear autumn day ~32 km (aerosol optical depth ~0.13-0.15 over the hills), partly cloudy ~26 km, the grey, humid
+// September deck ~18 km, the clean cold air after a snowfall ~75 km, rain ~2 km, a squall ~1.6 km, snow ~3 km, a
+// blizzard ~330 m. hazeH: how the haze thins with height (m): the aerosols' ~1.2 km on fair days (the default);
+// rain, snow and a blizzard fill the whole column between the clouds and the ground
 export const WEATHER = {
   senin: {
     label: 'Senin', cover: 0.4, cumulus: 1, zenith: [0.03, 0.115, 0.43], horizon: [0.46, 0.6, 0.78], bright: 1,
     cloudLit: [1.25, 1.22, 1.18], cloudDark: [0.46, 0.52, 0.62],
     sun: 3.8, sunColor: [1, 0.94, 0.84], hemi: 0.4, hemiSky: [0.8, 0.85, 0.95], hemiGround: [0.45, 0.4, 0.32],
-    env: 1.4, envDesat: 0.7, envGround: [0.4, 0.37, 0.3], fog: [0.6, 0.69, 0.8], fogDensity: 1 / 14000, exposure: 0.95, shadow: 1,
+    env: 1.4, envDesat: 0.7, envGround: [0.4, 0.37, 0.3], fog: [0.6, 0.69, 0.8], vis: 32000, exposure: 0.95, shadow: 1,
   },
   noros: {
     label: 'Parțial noros', cover: 0.56, cumulus: 1, zenith: [0.06, 0.17, 0.48], horizon: [0.56, 0.64, 0.75], bright: 1,
     cloudLit: [1.15, 1.13, 1.1], cloudDark: [0.42, 0.46, 0.53],
     sun: 3.3, sunColor: [1, 0.94, 0.85], hemi: 0.45, hemiSky: [0.8, 0.84, 0.92], hemiGround: [0.42, 0.38, 0.31],
-    env: 1.3, envDesat: 0.5, envGround: [0.38, 0.36, 0.3], fog: [0.6, 0.66, 0.74], fogDensity: 1 / 10500, exposure: 0.95, shadow: 0.95,
+    env: 1.3, envDesat: 0.5, envGround: [0.38, 0.36, 0.3], fog: [0.6, 0.66, 0.74], vis: 26000, exposure: 0.95, shadow: 0.95,
   },
   innorat: {
     label: 'Înnorat', cover: 0.72, cumulus: 0, zenith: [0.32, 0.42, 0.58], horizon: [0.6, 0.64, 0.69], bright: 1.12,
     cloudLit: [0.86, 0.87, 0.89], cloudDark: [0.5, 0.53, 0.58],
     sun: 1.7, sunColor: [1, 0.945, 0.867], hemi: 0.35, hemiSky: [0.875, 0.902, 0.933], hemiGround: [0.31, 0.29, 0.26],
-    env: 0.75, fog: [0.56, 0.6, 0.65], fogDensity: 1 / 5500, exposure: 0.92, shadow: 1,
+    env: 0.75, fog: [0.56, 0.6, 0.65], vis: 18000, exposure: 0.92, shadow: 1,
   },
 };
 // torrential rain (rain.js): a low, dark, even deck; the sun only a faint glow; heavy haze, visibility ~1.5 km
@@ -144,7 +145,7 @@ WEATHER.ploaie = {
   label: 'Ploaie torențială', cover: 0.97, cumulus: 0, zenith: [0.2, 0.215, 0.235], horizon: [0.36, 0.38, 0.4], bright: 0.95,
   cloudLit: [0.47, 0.49, 0.52], cloudDark: [0.22, 0.235, 0.255],
   sun: 0.35, sunColor: [0.85, 0.88, 0.95], hemi: 0.5, hemiSky: [0.62, 0.66, 0.72], hemiGround: [0.2, 0.2, 0.19],
-  env: 0.9, envGround: [0.2, 0.2, 0.19], fog: [0.33, 0.35, 0.38], fogDensity: 1 / 520, exposure: 1.3, shadow: 0.45, rain: 1,
+  env: 0.9, envGround: [0.2, 0.2, 0.19], fog: [0.33, 0.35, 0.38], vis: 2030, hazeH: 4000, exposure: 1.3, shadow: 0.45, rain: 1,
 };
 // a summer squall (ploaie în rafale): the gust front of a thunderstorm come over the hills from the west-north-west. A
 // wind of ~8 m/s with squalls every half minute or so to ~22 m/s (~80 km/h) drives the heaviest rain almost level, in
@@ -154,7 +155,7 @@ WEATHER.rafale = {
   label: 'Ploaie în rafale', cover: 1, cumulus: 0, zenith: [0.15, 0.165, 0.17], horizon: [0.31, 0.34, 0.34], bright: 0.85,
   cloudLit: [0.39, 0.42, 0.42], cloudDark: [0.15, 0.165, 0.17],
   sun: 0.25, sunColor: [0.82, 0.88, 0.9], hemi: 0.5, hemiSky: [0.58, 0.64, 0.66], hemiGround: [0.18, 0.19, 0.17],
-  env: 0.8, envGround: [0.18, 0.19, 0.17], fog: [0.25, 0.28, 0.29], fogDensity: 1 / 420, exposure: 1.15, shadow: 0.35, rain: 1,
+  env: 0.8, envGround: [0.18, 0.19, 0.17], fog: [0.25, 0.28, 0.29], vis: 1640, hazeH: 4000, exposure: 1.15, shadow: 0.35, rain: 1,
   storm: 1, gale: 11, galeFrom: 295, squall: true,
 };
 // snowing (rain.js: falling flakes, a cover that builds up): an even, bright grey deck, soft light thrown back by the
@@ -163,14 +164,14 @@ WEATHER.ninsoare = {
   label: 'Ninsoare', cover: 0.96, cumulus: 0, zenith: [0.46, 0.49, 0.54], horizon: [0.7, 0.72, 0.75], bright: 1.05,
   cloudLit: [0.8, 0.82, 0.85], cloudDark: [0.52, 0.55, 0.6],
   sun: 0.7, sunColor: [0.93, 0.95, 1], hemi: 0.62, hemiSky: [0.8, 0.84, 0.9], hemiGround: [0.62, 0.64, 0.67],
-  env: 1.0, envGround: [0.62, 0.64, 0.68], fog: [0.69, 0.71, 0.74], fogDensity: 1 / 750, exposure: 0.95, shadow: 0.35, snow: 1, winter: true,
+  env: 1.0, envGround: [0.62, 0.64, 0.68], fog: [0.69, 0.71, 0.74], vis: 2930, hazeH: 4000, exposure: 0.95, shadow: 0.35, snow: 1, winter: true,
 };
 // the day after: deep blue sky, low winter sun, the snow lies everywhere and throws the light back up
 WEATHER.zapada = {
   label: 'Zăpadă, senin', cover: 0.25, cumulus: 1, zenith: [0.025, 0.1, 0.42], horizon: [0.52, 0.64, 0.82], bright: 1,
   cloudLit: [1.25, 1.24, 1.22], cloudDark: [0.5, 0.56, 0.66],
   sun: 3.6, sunColor: [1, 0.95, 0.88], hemi: 0.5, hemiSky: [0.78, 0.84, 0.96], hemiGround: [0.74, 0.76, 0.8],
-  env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], fogDensity: 1 / 18000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,
+  env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], vis: 75000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,
 };
 // a blizzard (viscol): a gale of ~15 m/s gusting to ~75 km/h drives the snow almost level and lifts it off the ground;
 // a white-out under a bright, even deck, no shadows, visibility ~250 m that closes in with every gust (main.js)
@@ -178,7 +179,7 @@ WEATHER.viscol = {
   label: 'Viscol', cover: 1, cumulus: 0, zenith: [0.62, 0.65, 0.69], horizon: [0.76, 0.78, 0.8], bright: 1.05,
   cloudLit: [0.82, 0.84, 0.86], cloudDark: [0.64, 0.66, 0.7],
   sun: 0.25, sunColor: [0.93, 0.95, 1], hemi: 0.72, hemiSky: [0.84, 0.87, 0.92], hemiGround: [0.7, 0.72, 0.76],
-  env: 1.0, envGround: [0.7, 0.72, 0.76], fog: [0.67, 0.7, 0.74], fogDensity: 1 / 85, exposure: 0.92, shadow: 0.12, snow: 1, storm: 1, winter: true,
+  env: 1.0, envGround: [0.7, 0.72, 0.76], fog: [0.67, 0.7, 0.74], vis: 330, hazeH: 4000, exposure: 0.92, shadow: 0.12, snow: 1, storm: 1, winter: true,
 };
 export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'rafale', 'ninsoare', 'viscol', 'zapada'];
 
