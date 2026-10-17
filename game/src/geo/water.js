@@ -105,7 +105,8 @@ void waterSurface() {
   // runs down, so ~2 pi v^2 / g apart (1.4 m at 1.5 m/s), across the flow, in patches
   vec2 fd0 = sp > 1e-3 ? fl / sp : vec2(1.0, 0.0);
   float lam = max(0.4, 6.2832 * sp * sp / 9.81), ph0 = dot(p, fd0) * 6.2832 / lam + 2.0 * wNoise(p * 0.21);
-  g += fd0 * cos(ph0) * 0.11 * smoothstep(0.6, 1.3, sp) * smoothstep(0.35, 0.75, wNoise(p * 0.12 + 5.0)) * (0.4 + 0.6 * smoothstep(0.1, 0.8, d));
+  // (gone where a pixel spans a good part of a wavelength: there they would only flicker)
+  g += fd0 * cos(ph0) * 0.08 * smoothstep(0.6, 1.3, sp) * smoothstep(0.35, 0.75, wNoise(p * 0.12 + 5.0)) * (0.4 + 0.6 * smoothstep(0.1, 0.8, d)) * (1.0 - smoothstep(0.08, 0.3, wPx / lam));
   if (uRain > 0.01) g += wRings(p, uRainTime) * 0.55 * min(1.0, uRain * 1.5);
   wN = normalize(vec3(-g.x, 1.0, -g.y));
   // foam: bubbles carried in streaks along the flow where it runs fast over the shallows, a lacy line at the edge
