@@ -12,8 +12,8 @@ import { CinePass } from './cinepass.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 class DepthTap extends Pass {
-  constructor() { super(); this.needsSwap = false; this.tex = null; }
-  render(renderer, writeBuffer, readBuffer) { this.tex = readBuffer.depthTexture; }
+  constructor() { super(); this.needsSwap = false; this.tex = null; this.onTap = null; }
+  render(renderer, writeBuffer, readBuffer) { this.tex = readBuffer.depthTexture; this.onTap?.(renderer, readBuffer); }
 }
 
 // GTAO that ignores alpha-tested foliage/grass (they would render as solid quads in its normal pass).
