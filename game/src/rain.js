@@ -956,6 +956,8 @@ void main() {
   if (top < -1e4) return;
   vec3 c = vec3(xz.x, top + 0.005, xz.y);
   if (uGale > 0.05 && leeGap(c + vec3(0.0, 0.3, 0.0)) > 0.06) return;     // (the driven rain does not reach it)
+  // (none inside the car you drive: the map of tops is redrawn every ~0.5 s, the car meanwhile metres on)
+  if (inCar(c + vec3(0.0, 0.05, 0.0))) return;
   vec3 toCam = uCam - c;
   float dist = length(toCam);
   vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
