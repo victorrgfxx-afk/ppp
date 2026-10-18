@@ -54,7 +54,8 @@ uniform float uExt, uAutumn;`)
   vec2 duv = vGeoW.xz / 2.6;
   vec3 cg = texture2D(uGrass, duv).rgb;
   vec3 cs = texture2D(uSoil, duv * 0.8).rgb;
-  vec3 cr = texture2D(uGravel, duv * 1.3).rgb;
+  // (the gravel: river cobbles and bars are a mid grey, darker in the damp hollows: a broad patchiness over the grit)
+  vec3 cr = texture2D(uGravel, duv * 1.3).rgb * vec3(0.74, 0.73, 0.7) * (0.8 + 0.45 * (texture2D(uSoil, vGeoW.xz / 23.0 + 0.17).r - 0.5));
   // forest floor: last year's beech/oak leaves over dark soil, a little moss
   float lit = texture2D(uSoil, duv * 0.37 + 0.31).r;
   vec3 cf = mix(cs * vec3(1.08, 0.8, 0.54), cs * vec3(0.74, 0.56, 0.4), smoothstep(0.35, 0.65, lit));   // (the brown of dry beech leaves)
@@ -70,7 +71,7 @@ uniform float uExt, uAutumn;`)
   vec3 nearCol = det * mix(vec3(1.0), tint, 0.6 * (1.0 - wf / ws - 0.7 * wr / ws));
   // (under the woods the photo shows the crowns, not the floor; the gravel keeps its own grey, the photo's colour
   // there being a blend with the water and the scrub)
-  vec3 farCol = mix(orth * 1.08, uAvgR * vec3(0.88, 0.87, 0.84), 0.6 * wr / ws);
+  vec3 farCol = mix(orth * 1.08, uAvgR * vec3(0.7, 0.69, 0.66), 0.6 * wr / ws);
   diffuseColor.rgb *= mix(nearCol, farCol, farK * (1.0 - 0.9 * wf / ws));
   // autumn (season.js): the grass dries in patches to olive and straw (the pastures on the hills in the drone photos;
   // the mown lawns by the houses stay greener: the patches are tens of metres across)
