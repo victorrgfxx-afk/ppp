@@ -15,16 +15,16 @@ const BLOCKS = [0xd9d2c3, 0xc9c8c2, 0xe0d6bf, 0xd8c8b0, 0xc7ccd0];
 // when old), pressed-steel tile or standing seam painted brown ~18 %, red ~12 %, burgundy ~10 %, anthracite ~4 %,
 // green ~4 %, old sheet rusting through ~10 %, ceramic tiles ~6 %. Sheds and garages: mostly bare sheet, half of it rusty.
 const ROOF_KINDS = [
-  [0.35, 'galv', [0xd4d8dc, 0xc2c7cc, 0xaeb3b8, 0xb8b8b2]],
+  [0.35, 'galv', [0xb4b8bc, 0xa4a9ae, 0x969ba0, 0xa8a8a2]],
   [0.18, 'paint', [0x4e3026, 0x5a3a2c, 0x45302a]],
-  [0.12, 'paint', [0x9a2a22, 0x8a2e24, 0xa33a2a]],
+  [0.12, 'paint', [0x8a2e24, 0x7c2a22, 0x92382a]],
   [0.10, 'paint', [0x6a2626, 0x5e2224, 0x702c2a]],
   [0.04, 'paint', [0x3b3e43, 0x45484d]],
   [0.04, 'paint', [0x2f4a36, 0x3a5c44]],
   [0.10, 'rust', [0xffffff, 0xe6dcd2, 0xd2c8bc]],
   [0.07, 'tiles', [0xffffff, 0xd8c8c0, 0xb89a90]],
 ];
-const SHED_KINDS = [[0.5, 'galv', [0xc2c7cc, 0xaeb3b8, 0x9ea3a8]], [0.35, 'rust', [0xffffff, 0xe6dcd2]], [0.15, 'paint', [0x5a3a2c, 0x8a2e24, 0x45484d]]];
+const SHED_KINDS = [[0.5, 'galv', [0xa4a9ae, 0x969ba0, 0x8c9196]], [0.35, 'rust', [0xffffff, 0xe6dcd2]], [0.15, 'paint', [0x5a3a2c, 0x8a2e24, 0x45484d]]];
 const pickKind = (K, u, h) => { let a = 0; for (const k of K) { a += k[0]; if (u < a) return [k[1], k[2][h % k[2].length]]; } const k = K[K.length - 1]; return [k[1], k[2][0]]; };
 const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0xdcb99a, stuccoGrayLight: 0xa9a8a4, woodDark: 0x6a4a3a, ochre: 0xd8a94e, gray: 0xb3b2ac, shingle: 0x7c7771, stampedGray: 0xa9acad, sand: 0xe3d0a0, brickRed: 0x9b5f47 };
 const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d, roofMetalDark: 0x45484d, roofMetalTeal: 0x5c9a92, tileRed: 0xffffff };
@@ -65,6 +65,9 @@ export function makeBuildingMaterials() {
     // pressed-steel 'metal tile' roofing (photos 17, 21): the tile relief, glossy painted steel
     roofMetalTile: new THREE.MeshStandardMaterial({ normalMap: TEX.roofTilesN, normalScale: new THREE.Vector2(1.3, 1.3), roughness: 0.42, metalness: 0.35, vertexColors: true, side: THREE.DoubleSide }),
     roofFlat: new THREE.MeshStandardMaterial({ map: TEX.gravel, roughness: 0.95, color: 0x6b6b68 }),
+    // the halls (the drone photos 5-6): light grey trapezoidal sheet, long strips of polycarbonate skylights
+    roofHall: new THREE.MeshStandardMaterial({ map: TEX.roofGalv, normalMap: TEX.roofCorrN, roughness: 0.55, metalness: 0.3, vertexColors: true }),
+    skylight: new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0, color: 0x9fb4c4 }),
     // corrugated sheet: galvanised, and old and rusting (the rust is rough and dull, the zinc a dull metal)
     roofGalv: new THREE.MeshStandardMaterial({ map: TEX.roofGalv, normalMap: TEX.roofCorrN, roughnessMap: TEX.roofGalvRM, metalnessMap: TEX.roofGalvRM, roughness: 1, metalness: 1, vertexColors: true, side: THREE.DoubleSide }),
     roofRust: new THREE.MeshStandardMaterial({ map: TEX.roofRust, normalMap: TEX.roofCorrN, roughnessMap: TEX.roofRustRM, metalnessMap: TEX.roofRustRM, roughness: 1, metalness: 1, vertexColors: true, side: THREE.DoubleSide }),
@@ -190,7 +193,18 @@ export function buildBuildings(B, world, mats) {
       }
       const [sk, sc] = pickKind(SHED_KINDS, r(), h);
       const shedMat = o.roof ? mats.roofMetal : sk === 'galv' ? mats.roofGalv : sk === 'rust' ? mats.roofRust : mats.roofMetal;
-      B.tris(isShed ? shedMat : mats.roofFlat, pos, nrm, uv, isShed ? col(o.roof ? OVR_ROOF[o.roof] ?? 0xa8adb3 : sc) : null);
+      const hall = isInd && kind !== 'storage_tank' && b.roof !== 'tank';
+      B.tris(isShed ? shedMat : hall ? mats.roofHall : mats.roofFlat, pos, nrm, uv, isShed ? col(o.roof ? OVR_ROOF[o.roof] ?? 0xa8adb3 : sc) : hall ? col([0xb8bcc0, 0xa8adb2, 0xc4c6c4][h % 3]) : null);
+      // a big hall's skylights: strips along its length every ~9 m, clear of its edges
+      if (hall && b.r?.length && 4 * b.r[0][2] * b.r[0][3] > 600) {
+        const [cx, cz, hw, hd, a] = b.r[0], ex = [Math.cos(a), Math.sin(a)], ez = [-Math.sin(a), Math.cos(a)];
+        const [L, S, Lh, Sh] = hw >= hd ? [ex, ez, hw, hd] : [ez, ex, hd, hw];
+        const k = Math.max(1, Math.round(2 * Sh / 9));
+        for (let i = 0; i < k; i++) {
+          const t = -Sh + (i + 0.5) * 2 * Sh / k, Q = (u, v) => [cx + L[0] * u + S[0] * v, top + 0.06, cz + L[1] * u + S[1] * v];
+          pushFace(B, mats.skylight, [Q(-Lh + 2.5, t - 0.8), Q(Lh - 2.5, t - 0.8), Q(Lh - 2.5, t + 0.8), Q(-Lh + 2.5, t + 0.8)], [[0, 0], [1, 0], [1, 1], [0, 1]], null);
+        }
+      }
       // coping on the parapet
       if (!isShed) for (let k = 0; k < n; k++) {
         const A = P[k], C = P[(k + 1) % n];

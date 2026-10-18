@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SEASON } from '../season.js';
 import { GEO, normalAt, heightAt, underpassAt, fineAt } from './data.js';
 import { TEX } from '../textures.js';
 import { avgColor } from './geotex.js';
@@ -33,7 +34,7 @@ function terrainMaterial(ortho, splat, ext) {
     uGrass: { value: TEX.grass }, uSoil: { value: TEX.soil }, uGravel: { value: TEX.gravel },
     uGrassN: { value: TEX.grassN },
     uAvgG: { value: avgColor(TEX.grass) }, uAvgS: { value: avgColor(TEX.soil) }, uAvgR: { value: avgColor(TEX.gravel) },
-    uExt: { value: ext },
+    uExt: { value: ext }, uAutumn: SEASON.uAutumn,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
@@ -45,7 +46,7 @@ function terrainMaterial(ortho, splat, ext) {
 varying vec3 vGeoW;
 uniform sampler2D uOrtho, uSplat, uGrass, uSoil, uGravel;
 uniform vec3 uAvgG, uAvgS, uAvgR;
-uniform float uExt;`)
+uniform float uExt, uAutumn;`)
       .replace('#include <map_fragment>', `
   vec2 guv = (vGeoW.xz + uExt) / (2.0 * uExt);
   vec3 sp = texture2D(uSplat, guv).rgb;                 // forest floor, farmland, gravel
@@ -68,6 +69,16 @@ uniform float uExt;`)
   float farK = smoothstep(35.0, 420.0, dist);
   vec3 nearCol = det * mix(vec3(1.0), tint, 0.6 * (1.0 - wf / ws));
   diffuseColor.rgb *= mix(nearCol, orth * 1.08, farK * (1.0 - 0.9 * wf / ws));   // (under the woods the photo shows the crowns, not the floor)
+  // autumn (season.js): the grass dries in patches to olive and straw (the pastures on the hills in the drone photos;
+  // the mown lawns by the houses stay greener: the patches are tens of metres across)
+  if (uAutumn > 0.0) {
+    vec2 q = vGeoW.xz;
+    float k = 0.5 + 0.25 * (sin(dot(q, vec2(0.031, 0.017)) + 1.8 * sin(dot(q, vec2(-0.012, 0.027)))) + sin(dot(q, vec2(0.019, -0.041)) + 1.3 * sin(dot(q, vec2(0.044, 0.008)))));
+    vec3 c = diffuseColor.rgb;
+    float L = dot(c, vec3(0.2126, 0.7152, 0.0722)), gr = smoothstep(0.02, 0.2, (c.g - max(c.r, c.b)) / max(c.g, 1e-4));
+    vec3 dry = L * vec3(1.32, 1.0, 0.55);
+    diffuseColor.rgb = mix(c, dry, gr * (wg / ws) * uAutumn * (0.25 + 0.75 * smoothstep(0.3, 0.75, k)) * 0.9);
+  }
 `);
   };
   m.customProgramCacheKey = () => 'geoTerrain';

@@ -336,7 +336,7 @@ function genRoofCorr() {
     const zr = 150 + 30 * valueNoise(x / 3, y / 3, n / 3, 66);
     p[0] = clamp((zr * (1 - m) + 142 * d * m), 0, 255); p[1] = clamp((zr * (1 - m) + 74 * d * m), 0, 255); p[2] = clamp((zr * 1.02 * (1 - m) + 42 * d * m), 0, 255);
   });
-  const rm = (mask) => paint(n, n, (x, y, p) => { const m = mask ? mask[y * n + x] : 0; p[0] = 0; p[1] = (0.42 + 0.48 * m) * 255; p[2] = (0.7 - 0.6 * m) * 255; });
+  const rm = (mask) => paint(n, n, (x, y, p) => { const m = mask ? mask[y * n + x] : 0; p[0] = 0; p[1] = (0.45 + 0.45 * m) * 255; p[2] = (0.55 - 0.45 * m) * 255; });
   TEX.roofGalv = tex(zinc);
   TEX.roofRust = tex(rust);
   TEX.roofCorrN = tex(heightToNormalCanvas(H, n, n, 3), { srgb: false });

@@ -77,16 +77,17 @@ export function buildWagons(B, world) {
     covered: { L: 14.9, bogie: 5.4, body: coveredBody(), K: COVERED },
   };
   for (const t of Object.values(TYPES)) t.gear = gear(t.L, t.bogie);
-  // what is already standing: sample points every ~3 m along each wagon, hashed by 8 m cells
+  // what already stands on the other tracks (where two of them meet at a switch): sample points along each wagon,
+  // hashed by 8 m cells (a wagon's own rake, coupled buffer to buffer on its track, does not count)
   const taken = new Map(), cellK = (x, z) => Math.floor(x / 8) + ',' + Math.floor(z / 8);
-  const free = (pts) => pts.every(([x, z]) => {
+  const free = (pts, track) => pts.every(([x, z]) => {
     for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
       const l = taken.get((Math.floor(x / 8) + i) + ',' + (Math.floor(z / 8) + j));
-      if (l) for (const [px, pz] of l) if (Math.hypot(px - x, pz - z) < 3.4) return false;
+      if (l) for (const [px, pz, t] of l) if (t !== track && Math.hypot(px - x, pz - z) < 3.4) return false;
     }
     return true;
   });
-  const take = (pts) => { for (const p of pts) { const k = cellK(...p); if (!taken.has(k)) taken.set(k, []); taken.get(k).push(p); } };
+  const take = (pts, track) => { for (const [x, z] of pts) { const k = cellK(x, z); if (!taken.has(k)) taken.set(k, []); taken.get(k).push([x, z, track]); } };
   let n = 0;
   for (const rl of GEO.rails) {
     if (rl.main || rl.br || SKIP.has(String(rl.id)) || (rl.svc !== 'siding' && rl.svc !== 'yard')) continue;
@@ -104,8 +105,8 @@ export function buildWagons(B, world) {
         const a = F.at(s + len / 2 - T.bogie), b = F.at(s + len / 2 + T.bogie);
         const cx = (a.x + b.x) / 2, cz = (a.z + b.z) / 2, dl = Math.hypot(b.x - a.x, b.z - a.z) || 1, ux = (b.x - a.x) / dl, uz = (b.z - a.z) / dl;
         const pts = [-0.45, -0.15, 0.15, 0.45].map(f => [cx + ux * f * len, cz + uz * f * len]);
-        if (free(pts)) {
-          take(pts);
+        if (free(pts, rl.id)) {
+          take(pts, rl.id);
           const y = (railHeightAt(a.x, a.z) + railHeightAt(b.x, b.z)) / 2 + 0.23;
           const Tm = new THREE.Matrix4().makeRotationY(Math.atan2(ux, uz)).setPosition(cx, y, cz);
           const c = col(R() < 0.7 ? main : pick(T.K, R())), v = 0.85 + R() * 0.3;

@@ -35,6 +35,7 @@ import { prepareBiserica } from './biserica.js';
 import { prepareUrcus } from './urcus.js';
 import { prepareSonda } from './sonda.js';
 import { buildWagons } from './wagons.js';
+import { addOutbuildings } from './anexe.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex, FAR };
 
@@ -85,6 +86,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const far = [buildFarTerrain(gt), buildHorizon(gt), buildHorizon(gt, true)].filter(Boolean);
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
+  const anexe = addOutbuildings();                      // the lots' sheds and summer kitchens behind the houses (the drone photos)
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
   const landmarks = buildLandmarks(B, world);
   // the landmarks' moving parts (the pumping units' beams and cranks): their own meshes, animated by tick()
@@ -119,7 +121,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const floor = buildForestFloor(scene, world, quality);    // every other wood's floor: litter, ferns, brambles, deadwood, boulders
   log('copaci ' + trees.count + ', pădure ' + trees.forest.count() + ', coronament ' + (canopy ? canopy.meshes.length : 0), performance.now() - t0);
   let cullI = 0, lastCull = null;
-  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, wagons, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.meshes.length, meshes: meshes.length };
+  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, wagons, anexe, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.meshes.length, meshes: meshes.length };
   return {
     fronts, info, terrain, landmarks, forest: trees.forest, trees, canopy, far,
     // the snow modes: bare broadleaves near and far (trees.js, canopy.js)
