@@ -87,7 +87,7 @@ export function buildCanopy(scene, gt, Q) {
     float k = 0.5 + 0.22 * (sin(dot(q, vec2(0.23, 0.11)) + 2.0 * sin(dot(q, vec2(-0.07, 0.19)))) + sin(dot(q, vec2(0.13, -0.29)) + 1.7 * sin(dot(q, vec2(0.31, 0.05)))));
     float s = uAutumn + (k - 0.5) * 0.9 + 0.25 * (crown - 0.5);
     float pick = fract(k * 9.7);
-    vec3 A = pick < 0.4 ? vec3(1.62, 0.92, 0.17) * 1.9 : pick < 0.75 ? vec3(2.25, 0.62, 0.1) * 1.45 : vec3(1.35, 1.0, 0.28) * 1.2;
+    vec3 A = pick < 0.4 ? vec3(1.62, 0.92, 0.17) * 1.9 : pick < 0.75 ? vec3(1.95, 0.8, 0.135) * 1.4 : vec3(1.35, 1.0, 0.28) * 1.2;
     vec3 full = A * L;
     vec3 aut = mix(mix(orth, mix(orth, full, 0.45), smoothstep(0.15, 0.5, s)), full, smoothstep(0.45, 0.85, s));
     orth = mix(orth, aut, gr * (1.0 - vNeedle));

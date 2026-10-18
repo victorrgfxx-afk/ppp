@@ -7,20 +7,20 @@ import * as THREE from 'three';
 // The colour change follows the green texel's brightness (so the light and shade within a crown stay); yellow leaves
 // reflect ~2x the light of green ones (the chlorophyll that absorbed the red and blue is gone; carotenoids remain:
 // leaf spectra, e.g. Gitelson & Merzlyak 1994), orange ~1.5x, browns about as much.
-// SEASON.uAutumn: 0 the summer green; 0.6 mid-October in the Prahova Subcarpathians at 400-700 m (the user's drone
+// SEASON.uAutumn: 0 the summer green; 0.5 mid-October in the Prahova Subcarpathians at 400-700 m (the user's drone
 // photos of 18 Oct: ~half of the broadleaves turned, the rest olive or still green, the oaks the last).
 export const SEASON = { uAutumn: { value: 0 } };
-export const FOLIAGE = { toamna: 0.6, vara: 0 };
+export const FOLIAGE = { toamna: 0.5, vara: 0 };
 
 // per leaf material: two colours a tree picks between (sRGB hex, brightness over its green), how early it turns
 const PAL = {
-  leavesBeech: [[0xb8651e, 1.5], [0xc8952e, 1.9], 1.0],
+  leavesBeech: [[0xb07430, 1.45], [0xc0983a, 1.8], 1.0],
   leavesHornbeam: [[0xc8b03c, 2.0], [0xa88a3c, 1.6], 1.05],
   leavesOak: [[0x8c7a3c, 1.25], [0x96602e, 1.15], 0.7],
   leaves: [[0xccb444, 2.0], [0xa08838, 1.5], 1.1],
   leavesDark: [[0xa08838, 1.5], [0x8c7a3c, 1.25], 0.9],
   leavesSmall: [[0xd0b040, 2.1], [0xb8963a, 1.7], 1.15],
-  leavesDense: [[0xb4502a, 1.35], [0xb4ae44, 1.7], 1.0],
+  leavesDense: [[0xb0602e, 1.35], [0xb4ae44, 1.7], 1.0],
   leavesPinnate: [[0xc8be50, 1.9], [0xa8aa48, 1.5], 0.85],
 };
 const LUM = new THREE.Vector3(0.2126, 0.7152, 0.0722);
