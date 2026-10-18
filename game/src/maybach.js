@@ -147,6 +147,7 @@ function mats() {
     screen: new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.08, metalness: 0.3, emissive: 0x1a2a40, emissiveIntensity: 0.6 }),
     nappa: new THREE.MeshStandardMaterial({ color: 0xb39f82, roughness: 0.62 }),
   };
+  MAT.wood.userData.noWet = MAT.screen.userData.noWet = MAT.nappa.userData.noWet = true;     // (the cabin's: dry)
   return MAT;
 }
 

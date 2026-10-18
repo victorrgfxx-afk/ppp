@@ -362,6 +362,8 @@ export function buildCar(modelKey, paint, plateKey) {
   const pr = profileAt(m, (m.wind[1] + m.rear[0]) / 2);
   const cabL = m.rear[0] - m.wind[1] + 0.3;
   const liner = new THREE.MeshStandardMaterial({ color: m.interior === 0x9c8e76 ? 0xb9ad98 : 0x5a5a5c, roughness: 0.95, side: THREE.DoubleSide });
+  // (under the roof: never rained on, whatever the map of tops still says while the car moves)
+  seatMat.userData.noWet = dashMat.userData.noWet = liner.userData.noWet = true;
   add(new THREE.BoxGeometry(m.hwr * 2 - 0.1, 0.02, cabL), liner, 0, pr.roof - 0.07, zAt((m.wind[1] + m.rear[0]) / 2));
   for (const sg of [-1, 1]) add(new THREE.BoxGeometry(0.04, pr.belt - 0.25, m.rear[0] - m.wind[0]), dashMat, sg * (m.W / 2 - 0.1), (pr.belt + 0.25) / 2, zAt((m.wind[0] + m.rear[0]) / 2));
   const steer = new THREE.Group();
