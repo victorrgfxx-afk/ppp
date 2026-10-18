@@ -92,10 +92,11 @@ export class CinePass extends Pass {
       this.quad.render(renderer);
       src = this.mid.texture;
     }
-    if (doMb) {
+    if (doMb || !doDof) {
+      // (with no motion either - a cut, or no shutter set - the same pass copies it through at a shutter of 0)
       const u = this.mb.uniforms;
-      u.tDiffuse.value = src; u.tDepth.value = depth; u.uInvProj.value.copy(cam.projectionMatrixInverse); u.uCamWorld.value.copy(cam.matrixWorld);
-      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = p.shutter;
+      u.tDiffuse.value = src; u.tDepth.value = depth ?? null; u.uInvProj.value.copy(cam.projectionMatrixInverse); u.uCamWorld.value.copy(cam.matrixWorld);
+      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = doMb ? p.shutter : 0;
       this.quad.material = this.mb;
       renderer.setRenderTarget(this.mid2);
       this.quad.render(renderer);
