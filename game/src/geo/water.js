@@ -11,6 +11,8 @@ import { riverKeep } from './bridge.js';
 //  * the Prahova down its mapped line (the level falls ~0.9 % downstream), faster where it is deeper - Manning's
 //    v ~ h^(2/3): ~1.5 m/s in the middle of the channel, ~0.5 m/s at the edges; a gravel-bed foothill river;
 //  * the smaller rivers and brooks down their own level, the ponds still.
+//  * at low water (the user's drone photos of 18 Oct 2026) the Prahova keeps to its channels: where it would stand under
+//    ~10 cm over the gravel the bars lie bare (their edges wander a few cm with a broad noise).
 // The surface (one opaque PBR material, ior 1.33: the sky and the sun mirrored by Fresnel, ~2 % looking down, nearly all
 // at a grazing angle):
 //  * its waves carried with the current (a flow map: two layers of the same pattern, each carried for one period and
@@ -28,7 +30,7 @@ uniform float uWTime, uRain, uRainTime, uCaustic;
 uniform sampler2D tWN, tBed;
 varying vec3 vWW;
 varying vec2 vFlow;
-varying float vDepth, vKeep;
+varying float vDepth, vKeep, vPra;
 vec3 wN;                 // the surface's normal here (world)
 float wFoam, wRough, wDepth, wPx;
 float wHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -166,7 +168,7 @@ export function buildWater(scene) {
   // the level of every cell (its grid), for the others' downhill direction
   const levels = [new Map(), new Map()];
   for (const [ext, step, [i, j, lc]] of cells) levels[ext === GEO.ext ? 0 : 1].set(i + ',' + j, lc / 100);
-  const pos = [], depth = [], flow = [], keepA = [];
+  const pos = [], depth = [], flow = [], keepA = [], praA = [];
   const nearCells = new Set();                    // (100 m squares with water: for the reflections and the river's sound)
   // each cell: its level and its current (the way it runs times its top speed); its corners take the mean of the
   // cells around them, so the surface and the current run on without a step from cell to cell
@@ -181,6 +183,7 @@ export function buildWater(scene) {
     nearCells.add(Math.floor(cx / 100) + ',' + Math.floor(cz / 100));
     // which way it runs
     let dir = prahova(cx, cz), vmax = 1.5;
+    const pra = dir ? 1 : 0;
     if (!dir) {
       const L = levels[ext === GEO.ext ? 0 : 1], lv = (a, b) => L.get(a + ',' + b);
       const gx = ((lv(i - 1, j) ?? y) - (lv(i + 1, j) ?? y)) / (2 * step), gz = ((lv(i, j - 1) ?? y) - (lv(i, j + 1) ?? y)) / (2 * step);
@@ -188,14 +191,14 @@ export function buildWater(scene) {
       dir = g > 2e-4 ? [gx / g, gz / g] : [0, 0];
       vmax = g > 2e-4 ? Math.min(1.1, 0.25 + g * 60) : 0;          // (a brook on a 1 % slope ~0.85 m/s; a pond still)
     }
-    kept.push([ext, step, i, j, x0, z0, keep]);
+    kept.push([ext, step, i, j, x0, z0, keep, pra]);
     for (const [a, b] of [[0, 0], [0, 1], [1, 0], [1, 1]]) { const v = vtx(ext, i + a, j + b); v[0] += y; v[1] += dir[0] * vmax; v[2] += dir[1] * vmax; v[3]++; }
   }
-  for (const [ext, step, i, j, x0, z0, keep] of kept) {
+  for (const [ext, step, i, j, x0, z0, keep, pra] of kept) {
     const corner = (a, b, kp) => {
       const v = vtx(ext, i + a, j + b), x = x0 + a * step, z = z0 + b * step, y = v[0] / v[3];
       const d = y - heightAt(x, z), f = Math.pow(Math.min(1.2, Math.max(0.06, d / 1.2)), 2 / 3);   // (Manning: v ~ depth^2/3)
-      pos.push(x, y, z); depth.push(d); flow.push(v[1] / v[3] * f, v[2] / v[3] * f); keepA.push(Math.max(-20, Math.min(20, kp)));
+      pos.push(x, y, z); depth.push(d); flow.push(v[1] / v[3] * f, v[2] / v[3] * f); keepA.push(Math.max(-20, Math.min(20, kp))); praA.push(pra);
     };
     corner(0, 0, keep[0]); corner(0, 1, keep[1]); corner(1, 0, keep[2]); corner(1, 0, keep[2]); corner(0, 1, keep[1]); corner(1, 1, keep[3]);
   }
@@ -206,6 +209,7 @@ export function buildWater(scene) {
   g.setAttribute('aDepth', new THREE.Float32BufferAttribute(depth, 1));
   g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 2));
   g.setAttribute('aKeep', new THREE.Float32BufferAttribute(keepA, 1));
+  g.setAttribute('aPra', new THREE.Float32BufferAttribute(praA, 1));
   g.computeBoundingSphere();
 
   const mat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0, ior: 1.33, envMapIntensity: 1 });
@@ -213,11 +217,11 @@ export function buildWater(scene) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float aDepth, aKeep;\nattribute vec2 aFlow;\nvarying vec3 vWW;\nvarying vec2 vFlow;\nvarying float vDepth, vKeep;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz; vFlow = aFlow; vDepth = aDepth; vKeep = aKeep;');
+      .replace('#include <common>', '#include <common>\nattribute float aDepth, aKeep, aPra;\nattribute vec2 aFlow;\nvarying vec3 vWW;\nvarying vec2 vFlow;\nvarying float vDepth, vKeep, vPra;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz; vFlow = aFlow; vDepth = aDepth; vKeep = aKeep; vPra = aPra;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + WATER_PARS)
-      .replace('#include <color_fragment>', '#include <color_fragment>\nwPx = length(fwidth(vWW.xz));\nif (vKeep < 0.0) discard;\nwaterSurface();\ndiffuseColor.rgb = waterBody(normalize(cameraPosition - vWW));')
+      .replace('#include <color_fragment>', '#include <color_fragment>\nwPx = length(fwidth(vWW.xz));\nif (vKeep < 0.0 || (vPra > 0.5 && vDepth < 0.1 + 0.12 * (wNoise(vWW.xz * 0.05) - 0.5))) discard;\nwaterSurface();\ndiffuseColor.rgb = waterBody(normalize(cameraPosition - vWW));')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = wRough;')
       .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\nnormal = normalize((viewMatrix * vec4(wN, 0.0)).xyz);')
       // near the camera it mirrors the scene (the screen-space reflections read 1 - this from the alpha)
