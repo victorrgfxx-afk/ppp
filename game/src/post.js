@@ -8,6 +8,7 @@ import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { WindshieldPass } from './windshield.js';
+import { CinePass } from './cinepass.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 class DepthTap extends Pass {
@@ -292,13 +293,14 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   } else composer.addPass(new RenderPass(scene, camera));
   let gtao = null, bloom = null, smaa = null, ssr = null;
   const reuse = q.ao && q.ssr && (() => { try { return localStorage.getItem('strada.aoReuse') !== 'false'; } catch (_) { return true; } })();
-  const tap = reuse ? new DepthTap() : null;
+  // (the scene's depth: for the AO when it reuses it, and for the cinematics' lens and shutter, cinepass.js)
+  const tap = q.ssr ? new DepthTap() : null;
   if (tap) composer.addPass(tap);
   if (q.ssr) { ssr = new WetSSRPass(camera); composer.addPass(ssr); }
   // AO straight after the reflections: no pass in between may draw into the buffer whose depth it reads
   if (q.ao) {
     gtao = new FoliageSafeGTAO(scene, camera, size.x, size.y);
-    gtao.tap = tap;
+    gtao.tap = reuse ? tap : null;
     gtao.updateGtaoMaterial({ radius: 0.55, distanceExponent: 1.6, thickness: 1.6, scale: 1.15, samples: 16, distanceFallOff: 0.9, screenSpaceRadius: false });
     gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 5, radiusExponent: 1, rings: 2, samples: 12 });
     gtao.blendIntensity = 0.95;
@@ -313,6 +315,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // the softness of distant things in the haze (after the passes that read the scene's depth through this buffer)
   const aerial = new AerialBlurPass(camera);
   composer.addPass(aerial);
+  // a film lens and shutter for recorded cinematics (off in play)
+  const cine = new CinePass(camera, tap);
+  composer.addPass(cine);
   // the rain on the windshield, from the driver's seat (windshield.js; off but in a car's cockpit in the rain)
   const shield = new WindshieldPass();
   composer.addPass(shield);
@@ -331,5 +336,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shield, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, cine, shield, setSize };
 }

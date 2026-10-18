@@ -1,0 +1,101 @@
+import * as THREE from 'three';
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+
+// A film camera's lens and shutter, for recorded cinematics (the trailer): off in play (enabled only while a recording
+// sets `params`), so the game itself is untouched.
+//  * depth of field: a thin lens focused at `focus` metres; the blur circle of a point at depth z is
+//    c = blur * |1 - focus / z| px (blur: the circle of a point at infinity, the aperture's size in pixels), up to 24 px;
+//    gathered over a 32-tap golden-angle disc, each tap counted only if its own circle reaches the centre (so a sharp
+//    foreground does not bleed into the blurred background, nor the background over it);
+//  * motion blur of the camera's own movement: every pixel's world point, reprojected through last frame's camera,
+//    gives its motion on screen in one frame; the shutter (`shutter`: 0.5 = the 180-degree shutter of cinema, 1/48 s at
+//    24 fps) smears it along that path, 12 taps, at most 48 px. Things that move by themselves (the car, the snow) keep
+//    only the camera's share; a cut (`cut`) skips one frame of it.
+// It reads the scene's depth as drawn by the main pass (DepthTap) and keeps the alpha (the haze's share) of the pixel.
+const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
+const DOF = /* glsl */`
+uniform sampler2D tDiffuse, tDepth;
+uniform mat4 uInvProj;
+uniform vec2 uTexel;
+uniform float uFocus, uBlur;
+varying vec2 vUv;
+float depthAt(vec2 uv) { float d = texture2D(tDepth, uv).r; vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); return -v.z / v.w; }
+float coc(float z) { return min(24.0, uBlur * abs(1.0 - uFocus / max(z, 0.05))); }
+void main() {
+  vec4 c0 = texture2D(tDiffuse, vUv);
+  float r0 = coc(depthAt(vUv));
+  vec3 acc = c0.rgb; float w = 1.0;
+  if (r0 > 0.5) {
+    for (int i = 1; i < 32; i++) {
+      float fi = float(i), r = sqrt(fi / 31.0) * r0, a = fi * 2.39996323;
+      vec2 uv = vUv + vec2(cos(a), sin(a)) * r * uTexel;
+      float rs = coc(depthAt(uv));
+      float k = smoothstep(r - 1.0, r + 0.5, max(rs, r0 * 0.25));      // (its own circle reaches here)
+      acc += texture2D(tDiffuse, uv).rgb * k; w += k;
+    }
+  }
+  gl_FragColor = vec4(acc / w, c0.a);
+}`;
+const MB = /* glsl */`
+uniform sampler2D tDiffuse, tDepth;
+uniform mat4 uInvProj, uCamWorld, uPrevVP;
+uniform vec2 uRes;
+uniform float uShutter;
+varying vec2 vUv;
+void main() {
+  vec4 c0 = texture2D(tDiffuse, vUv);
+  float d = texture2D(tDepth, vUv).r;
+  vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0); v /= v.w;
+  vec4 wp = uCamWorld * vec4(v.xyz, 1.0);
+  vec4 pc = uPrevVP * wp;
+  vec2 prev = pc.xy / pc.w * 0.5 + 0.5;
+  vec2 mv = (vUv - prev) * uShutter;
+  float L = length(mv * uRes);
+  if (pc.w <= 0.0 || L < 0.5) { gl_FragColor = c0; return; }
+  mv *= min(1.0, 48.0 / L);
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 12; i++) acc += texture2D(tDiffuse, vUv + mv * (float(i) / 11.0 - 0.5)).rgb;
+  gl_FragColor = vec4(acc / 12.0, c0.a);
+}`;
+
+export class CinePass extends Pass {
+  constructor(camera, tap) {
+    super();
+    this.camera = camera; this.tap = tap;
+    this.params = null;                    // { focus: m, blur: px, shutter: 0..1, cut: bool }
+    this.enabled = false;
+    this.dof = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uTexel: { value: new THREE.Vector2() }, uFocus: { value: 10 }, uBlur: { value: 0 } },
+      vertexShader: VERT, fragmentShader: DOF, depthTest: false, depthWrite: false });
+    this.mb = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() }, uRes: { value: new THREE.Vector2() }, uShutter: { value: 0.5 } },
+      vertexShader: VERT, fragmentShader: MB, depthTest: false, depthWrite: false });
+    this.mid = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    this.quad = new FullScreenQuad(null);
+    this.prevVP = new THREE.Matrix4(); this.hasPrev = false;
+  }
+  setSize(w, h) { this.mid.setSize(w, h); }
+  render(renderer, writeBuffer, readBuffer) {
+    const p = this.params ?? {}, cam = this.camera, depth = this.tap?.tex;
+    const vp = new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    const doDof = depth && p.blur > 0, doMb = depth && p.shutter > 0 && this.hasPrev && !p.cut;
+    let src = readBuffer.texture;
+    if (doDof) {
+      const u = this.dof.uniforms;
+      u.tDiffuse.value = src; u.tDepth.value = depth; u.uInvProj.value.copy(cam.projectionMatrixInverse);
+      u.uTexel.value.set(1 / readBuffer.width, 1 / readBuffer.height); u.uFocus.value = p.focus ?? 10; u.uBlur.value = p.blur;
+      this.quad.material = this.dof;
+      renderer.setRenderTarget(doMb ? this.mid : (this.renderToScreen ? null : writeBuffer));
+      this.quad.render(renderer);
+      src = this.mid.texture;
+    }
+    if (doMb || !doDof) {
+      const u = this.mb.uniforms;
+      u.tDiffuse.value = src; u.tDepth.value = depth ?? null; u.uInvProj.value.copy(cam.projectionMatrixInverse); u.uCamWorld.value.copy(cam.matrixWorld);
+      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = doMb ? p.shutter : 0;
+      this.quad.material = this.mb;
+      renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+      this.quad.render(renderer);
+    }
+    this.prevVP.copy(vp); this.hasPrev = true;
+  }
+  dispose() { this.dof.dispose(); this.mb.dispose(); this.mid.dispose(); this.quad.dispose(); }
+}
