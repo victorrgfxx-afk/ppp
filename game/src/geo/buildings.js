@@ -10,8 +10,8 @@ import { rng } from '../util.js';
 const col = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
 const WALLS = [0xefede7, 0xeae2cf, 0xe9dcb0, 0xe6c9a8, 0xd2dcc0, 0xd3d8dc, 0xe6cbc2, 0xc9c6bf, 0xdcc08e, 0xf1efe9, 0xe4e0d4];
 const BLOCKS = [0xd9d2c3, 0xc9c8c2, 0xe0d6bf, 0xd8c8b0, 0xc7ccd0];
-// what the roofs of the houses are, by share: counted on the user's drone photos of the streets by the Prahova and the
-// station (18 Oct 2026, ~120 roofs): zinc-coated corrugated or trapezoidal sheet ~35 % (bright when new, dull grey
+// what the roofs of the houses are, by share: counted on the user's drone photo 3 of the streets by the Prahova (18 Oct
+// 2026, ~50 roofs; photos 1 and 5 agree): zinc-coated corrugated or trapezoidal sheet ~35 % (bright when new, dull grey
 // when old), pressed-steel tile or standing seam painted brown ~18 %, red ~12 %, burgundy ~10 %, anthracite ~4 %,
 // green ~4 %, old sheet rusting through ~10 %, ceramic tiles ~6 %. Sheds and garages: mostly bare sheet, half of it rusty.
 const ROOF_KINDS = [

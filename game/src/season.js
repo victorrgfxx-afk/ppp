@@ -8,7 +8,8 @@ import * as THREE from 'three';
 // reflect ~2x the light of green ones (the chlorophyll that absorbed the red and blue is gone; carotenoids remain:
 // leaf spectra, e.g. Gitelson & Merzlyak 1994), orange ~1.5x, browns about as much.
 // SEASON.uAutumn: 0 the summer green; 0.5 mid-October in the Prahova Subcarpathians at 400-700 m (the user's drone
-// photos of 18 Oct: ~half of the broadleaves turned, the rest olive or still green, the oaks the last).
+// photos of 18 Oct: about a quarter of the broadleaves in full colour, as many again turning, the rest olive or still
+// green, the oaks the last). The game's day stays 26 September (its sun and its real full moon): the leaves are a setting.
 export const SEASON = { uAutumn: { value: 0 } };
 export const FOLIAGE = { toamna: 0.5, vara: 0 };
 
