@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns } from './data.js';
 import { genGeoTextures } from './geotex.js';
 import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, FAR } from './terrain.js';
-import { buildWater } from './water.js';
+import { buildWater, paintGravelBed } from './water.js';
 import { makeBuildingMaterials, buildBuildings, footprintIndex } from './buildings.js';
 import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight } from './roads.js';
 import { makePropMaterials, buildFences, buildPower, addWires } from './props.js';
@@ -94,6 +94,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   for (const l of moving) for (const g of l.groups || []) scene.add(g);
   log('clădiri ' + stats.n, performance.now() - t0);
   paintLawns(gt.splat);
+  paintGravelBed(gt.splat);                             // the Prahova's gravel bed (the drone photos: bare at low water)
   if (GEO.W && gt.splatW) paintLawns(gt.splatW, GEO.W.ext);        // the lots in the world grid too (Strada Mihai Viteazul)
   const rm = makeRoadMaterials();
   buildRoads(B, world, rm);

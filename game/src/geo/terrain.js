@@ -67,8 +67,11 @@ uniform float uExt, uAutumn;`)
   vec3 tint = clamp(orth / max(avg, vec3(0.01)), 0.35, 2.4);
   float dist = length(vGeoW - cameraPosition);
   float farK = smoothstep(35.0, 420.0, dist);
-  vec3 nearCol = det * mix(vec3(1.0), tint, 0.6 * (1.0 - wf / ws));
-  diffuseColor.rgb *= mix(nearCol, orth * 1.08, farK * (1.0 - 0.9 * wf / ws));   // (under the woods the photo shows the crowns, not the floor)
+  vec3 nearCol = det * mix(vec3(1.0), tint, 0.6 * (1.0 - wf / ws - 0.7 * wr / ws));
+  // (under the woods the photo shows the crowns, not the floor; the gravel keeps its own grey, the photo's colour
+  // there being a blend with the water and the scrub)
+  vec3 farCol = mix(orth * 1.08, uAvgR * vec3(1.0, 0.98, 0.94), 0.75 * wr / ws);
+  diffuseColor.rgb *= mix(nearCol, farCol, farK * (1.0 - 0.9 * wf / ws));
   // autumn (season.js): the grass dries in patches to olive and straw (the pastures on the hills in the drone photos;
   // the mown lawns by the houses stay greener: the patches are tens of metres across)
   if (uAutumn > 0.0) {

@@ -139,6 +139,53 @@ vec3 waterBody(vec3 V) {
   return mix(col, vec3(0.8, 0.82, 0.82), wFoam);
 }`;
 
+// The Prahova's active bed: the gravel it spreads over at high water, bare at low water (the user's drone photo 1: a
+// grey gravel bed ~70-120 m wide, the river in its channels). The ground within ~70 m of its line and less than ~1.2 m
+// above its level (the low terrace, fading out by 1.8 m) is painted gravel in the ground map (the Sentinel-2 colour
+// there is a summer green-grey blend of gravel, water and willow scrub).
+export function paintGravelBed(splat, E = GEO.ext) {
+  const R = GEO.river?.p, LV = GEO.river?.lev, img = splat?.image;
+  if (!R || !LV || !img || !img.width) return 0;
+  const W = img.width, Hh = img.height, px = 2 * E / W;
+  const c = document.createElement('canvas'); c.width = W; c.height = Hh;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0);
+  // the line's segments in 80 m buckets (the 3 x 3 around a point reach past 75 m)
+  const B = 80, seg = new Map();
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i + 3 < R.length; i += 2) {
+    const k = Math.floor((R[i] + R[i + 2]) / 2 / B) + ',' + Math.floor((R[i + 1] + R[i + 3]) / 2 / B);
+    if (!seg.has(k)) seg.set(k, []);
+    seg.get(k).push(i);
+    x0 = Math.min(x0, R[i]); x1 = Math.max(x1, R[i]); z0 = Math.min(z0, R[i + 1]); z1 = Math.max(z1, R[i + 1]);
+  }
+  const i0 = Math.max(0, Math.floor((x0 - 80 + E) / px)), i1 = Math.min(W - 1, Math.ceil((x1 + 80 + E) / px));
+  const j0 = Math.max(0, Math.floor((z0 - 80 + E) / px)), j1 = Math.min(Hh - 1, Math.ceil((z1 + 80 + E) / px));
+  if (i1 < i0 || j1 < j0) return 0;
+  const d = g.getImageData(i0, j0, i1 - i0 + 1, j1 - j0 + 1);
+  let n = 0;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const x = -E + (i + 0.5) * px, z = -E + (j + 0.5) * px;
+    let best = Infinity, lev = 0;
+    const ci = Math.floor(x / B), cj = Math.floor(z / B);
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) for (const k of seg.get((ci + di) + ',' + (cj + dj)) ?? []) {
+      const ax = R[k], az = R[k + 1], dx = R[k + 2] - ax, dz = R[k + 3] - az, l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), dd = Math.hypot(x - ax - t * dx, z - az - t * dz);
+      if (dd < best) { best = dd; lev = LV[k / 2] + (LV[k / 2 + 1] - LV[k / 2]) * t; }
+    }
+    if (best > 75) continue;
+    const up = heightAt(x, z) - lev;
+    const w = Math.min(1, Math.max(0, (1.8 - up) / 0.6)) * Math.min(1, Math.max(0, (75 - best) / 15));
+    if (w <= 0) continue;
+    const q = ((j - j0) * (i1 - i0 + 1) + (i - i0)) * 4;
+    d.data[q] *= 1 - w; d.data[q + 1] *= 1 - w; d.data[q + 2] = Math.max(d.data[q + 2], 255 * w);
+    n++;
+  }
+  g.putImageData(d, i0, j0);
+  splat.image = c; splat.needsUpdate = true;
+  return n;
+}
+
 export function buildWater(scene) {
   // the cells: the near grid's, and the world grid's outside it (the near grid covers its own square)
   const inner = GEO.ext - GEO.step;
