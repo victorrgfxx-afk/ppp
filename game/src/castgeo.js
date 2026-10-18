@@ -236,14 +236,15 @@ function manSculpt(sc, J, P) {
     sc.at(B.chest, 'trap', 0.04).cap([sg * 0.035, 1.5 * s, -0.035], [sg * (P.shoulderW - 0.02), 1.45 * s, -0.03], 0.05 + mu * 0.012, 0.04 + mu * 0.008);
   }
   // neck and head
-  sc.at(B.neck, 'neck', 0.035).cap([0, J.neck[1] - 0.03, -0.02], [0, J.head[1] + 0.02, 0.0], 0.058 + mu * 0.008, 0.052);
+  const fw = P.faceW ?? 1;                                                                   // (a broad, full face)
+  sc.at(B.neck, 'neck', 0.035).cap([0, J.neck[1] - 0.03, -0.02], [0, J.head[1] + 0.02, 0.0], (0.058 + mu * 0.008) * fw, 0.052 * fw);
   const hy = J.head[1];
   sc.at(B.head, 'head', 0.03).ell([0, hy + 0.13, -0.004], [0.077, 0.1, 0.095]);              // skull
   sc.ell([0, hy + 0.16, -0.018], [0.081, 0.08, 0.094]);                                      // cranium
-  sc.ell([0, hy + 0.06, 0.035], [0.062, 0.045, 0.058], { region: 'jaw' });                   // jaw
+  sc.ell([0, hy + 0.06, 0.035], [0.062 * fw, 0.045, 0.058], { region: 'jaw' });              // jaw
   sc.ell([0, hy + 0.04, 0.072], [0.03, 0.022, 0.024], { region: 'chin', k: 0.025 });         // chin
   for (const sg of [1, -1]) {
-    sc.ell([sg * 0.05, hy + 0.115, 0.06], [0.026, 0.02, 0.025], { region: 'cheek', k: 0.025 });          // cheekbones
+    sc.ell([sg * 0.05 * fw, hy + 0.115 - (fw - 1) * 0.08, 0.06], [0.026 * fw, 0.02 * fw, 0.025], { region: 'cheek', k: 0.025 });   // cheekbones (full cheeks lower)
     sc.ell([sg * 0.079, hy + 0.115, -0.008], [0.012, 0.03, 0.02], { region: 'ear', k: 0.012 });           // ears
   }
   sc.ell([0, hy + 0.148, 0.073], [0.064, 0.017, 0.022], { region: 'brow', k: 0.02 });       // brow ridge
@@ -302,6 +303,8 @@ function manPaint(look) {
     const hy = J.head[1];
     // hair: above the hairline, down the sides to the sideburns, over the back; the eyebrows
     if (o.bone === B.head && r !== 'ear' && r !== 'eye' && r !== 'nose') {
+      // a fade: the sides and the back clipped to a shadow of stubble up to the temples, the top left long
+      if (look.fade && y > hy + 0.09 && y < hy + 0.192 && (Math.abs(x) > 0.058 || z < -0.035) && !(z > 0.045 && y < hy + 0.165)) return [look.fade, 2];
       if (y > hy + 0.178 + Math.max(0, z - 0.04) * 0.3 || (z < 0.035 && Math.abs(x) > 0.062 && y > hy + 0.125) || (z < -0.03 && y > hy + 0.06)) return [look.hair, 2];
       if (r === 'brow' && z > 0.075 && y > hy + 0.141 && Math.abs(x) > 0.012 && Math.abs(x) < 0.058) return [look.hair, 2];
     }
@@ -350,6 +353,20 @@ function curls(sc, J, n, seed, rad, lift) {
     if (dz > 0.55 && dy < 0.55) continue;                                     // not over the forehead / face
     const r = rad * (0.75 + 0.5 * rnd());
     sc.ell([dx * 0.085, hy + 0.15 + dy * 0.085 + lift, -0.018 + dz * 0.095], [r, r * 0.9, r]);
+  }
+}
+
+// a quiff (the user's photo 2): the hair on top left 5-7 cm long, brushed up and back from the forehead in thick locks
+function quiff(sc, J, seed) {
+  let a = seed;
+  const rnd = () => { a = (a * 1103515245 + 12345) & 0x7fffffff; return a / 0x7fffffff; };
+  const hy = J.head[1];
+  sc.at(B.head, 'hair', 0.018);
+  for (let i = 0; i < 26; i++) {
+    const z = -0.045 + rnd() * 0.125, x = (rnd() - 0.5) * 0.09 * (1 - Math.max(0, z - 0.05) * 4);
+    const up = 0.012 + 0.03 * Math.max(0, 1 - Math.abs(z - 0.045) / 0.09);       // (highest just behind the forehead)
+    const yb = hy + 0.16 + Math.sqrt(Math.max(0, 0.0071 - x * x - (z + 0.018) * (z + 0.018) * 0.8));
+    sc.ell([x, yb + up, z], [0.016 + rnd() * 0.01, 0.014 + up * 0.5, 0.026 + rnd() * 0.012]);
   }
 }
 
@@ -444,11 +461,13 @@ function creaturePaint(o, x, y, z, J) {
 
 export const CAST = {
   // the one in the black tank top: tall, very muscular, short dark hair, black shorts, black trainers, a watch
-  tank: { kind: 'tank', cell: 0.0085, P: { h: 1.83, shoulderW: 0.205, hipW: 0.092, armAngle: 47, upper: 0.3, fore: 0.265, hand: 0.19, thigh: 0.445, foot: 0.25, neckLen: 0, hunch: 0, muscle: 1, belly: 0 },
-    sculpt: manSculpt, paint: manPaint({ top: 'tank', skin: 0xc79a80, lip: 0xa86a5c, hair: 0x231a14, shirt: 0x141416, pants: 0x161618, shorts: true, sock: 0x111112, shoe: 0x1a1a1c, band: 'L' }) },
+  // (the remaster after the user's photo 2: young and athletic, a fade with a quiff of dark brown hair, fair skin)
+  tank: { kind: 'tank', cell: 0.0065, P: { h: 1.81, shoulderW: 0.2, hipW: 0.09, armAngle: 47, upper: 0.3, fore: 0.265, hand: 0.19, thigh: 0.445, foot: 0.25, neckLen: 0.005, hunch: 0, muscle: 0.85, belly: 0 },
+    sculpt: (sc, J, P) => { manSculpt(sc, J, P); quiff(sc, J, 37); }, paint: manPaint({ top: 'tank', skin: 0xcfa08a, lip: 0xb07068, hair: 0x2a1c14, fade: 0x8a6c5c, iris: 0x5a4a30, shirt: 0x141416, pants: 0x161618, shorts: true, sock: 0x111112, shoe: 0x1a1a1c, band: 'L' }) },
   // the one in the cream T-shirt: broad and fit, curly dark hair, a full dark beard, black trousers
-  tee: { kind: 'tee', cell: 0.0085, P: { h: 1.79, shoulderW: 0.198, hipW: 0.095, armAngle: 47, upper: 0.295, fore: 0.26, hand: 0.185, thigh: 0.44, foot: 0.25, neckLen: 0, hunch: 0, muscle: 0.7, belly: 0.12 },
-    sculpt: (sc, J, P) => { manSculpt(sc, J, P); curls(sc, J, 70, 91, 0.026, 0.012); }, paint: manPaint({ skin: 0xbb8d70, lip: 0x9e6355, hair: 0x15100d, beard: 0x1f1712, shirt: 0xe3dccb, pants: 0x18181a, shorts: false, shoe: 0x1c1c1e }) },
+  // (the remaster after the user's photo 1: heavy-set and broad, a full round face, a thick neck, a full beard)
+  tee: { kind: 'tee', cell: 0.0065, P: { h: 1.79, shoulderW: 0.21, hipW: 0.1, armAngle: 47, upper: 0.295, fore: 0.26, hand: 0.19, thigh: 0.44, foot: 0.25, neckLen: -0.01, hunch: 0, muscle: 0.8, belly: 0.3, faceW: 1.12 },
+    sculpt: (sc, J, P) => { manSculpt(sc, J, P); curls(sc, J, 80, 91, 0.027, 0.012); }, paint: manPaint({ skin: 0xc8907a, lip: 0xb06c66, hair: 0x1e1610, beard: 0x1c1410, iris: 0x3a2618, shirt: 0xe3dccb, pants: 0x18181a, shorts: false, shoe: 0x1c1c1e }) },
   // the clip IMG_0725 (hikers.js): the man walking up the lane to the cross barefoot, grey-haired, a white T-shirt and
   // khaki shorts; the three walkers ahead of him (seen from 35 m: a dark blue shirt, a light blue one, a white one and a
   // pale cap), made coarser
@@ -461,7 +480,7 @@ export const CAST = {
   walkerC: { kind: 'walkerC', cell: 0.0115, P: { h: 1.71, shoulderW: 0.19, hipW: 0.1, armAngle: 47, upper: 0.285, fore: 0.25, hand: 0.18, thigh: 0.42, foot: 0.245, neckLen: 0, hunch: 0.03, muscle: 0.15, belly: 0.45 },
     sculpt: manSculpt, paint: manPaint({ skin: 0xc8a086, lip: 0xa06a5a, hair: 0xd9d6cc, shirt: 0xe6e4de, pants: 0xa99d84, shorts: false, shoe: 0x6b6258 }) },
   // the creature
-  creature: { kind: 'creature', cell: 0.0072, P: { h: 1.9, shoulderW: 0.175, hipW: 0.08, armAngle: 44, upper: 0.34, fore: 0.33, hand: 0.25, thigh: 0.48, foot: 0.27, neckLen: 0.02, hunch: 0.02, muscle: 0, belly: 0 },
+  creature: { kind: 'creature', cell: 0.0062, P: { h: 1.9, shoulderW: 0.175, hipW: 0.08, armAngle: 44, upper: 0.34, fore: 0.33, hand: 0.25, thigh: 0.48, foot: 0.27, neckLen: 0.02, hunch: 0.02, muscle: 0, belly: 0 },
     sculpt: creatureSculpt, paint: creaturePaint },
 };
 

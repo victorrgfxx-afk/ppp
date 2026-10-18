@@ -12,6 +12,9 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 //    24 fps) smears it along that path, 12 taps, at most 48 px. Things that move by themselves (the car, the snow) keep
 //    only the camera's share; a cut (`cut`) skips one frame of it.
 // It reads the scene's depth as drawn by the main pass (DepthTap) and keeps the alpha (the haze's share) of the pixel.
+// It draws into targets of its own and copies the result out: the composer's buffer it writes to may be the very one
+// that depth texture belongs to (the passes before it swap the buffers a varying number of times), and a draw that
+// samples a texture attached to its own framebuffer is refused (a feedback loop).
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
 const DOF = /* glsl */`
 uniform sampler2D tDiffuse, tDepth;
@@ -69,10 +72,12 @@ export class CinePass extends Pass {
     this.mb = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() }, uRes: { value: new THREE.Vector2() }, uShutter: { value: 0.5 } },
       vertexShader: VERT, fragmentShader: MB, depthTest: false, depthWrite: false });
     this.mid = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    this.mid2 = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    this.copy = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null } }, vertexShader: VERT, fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ gl_FragColor = texture2D(tDiffuse, vUv); }', depthTest: false, depthWrite: false });
     this.quad = new FullScreenQuad(null);
     this.prevVP = new THREE.Matrix4(); this.hasPrev = false;
   }
-  setSize(w, h) { this.mid.setSize(w, h); }
+  setSize(w, h) { this.mid.setSize(w, h); this.mid2.setSize(w, h); }
   render(renderer, writeBuffer, readBuffer) {
     const p = this.params ?? {}, cam = this.camera, depth = this.tap?.tex;
     const vp = new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -83,19 +88,24 @@ export class CinePass extends Pass {
       u.tDiffuse.value = src; u.tDepth.value = depth; u.uInvProj.value.copy(cam.projectionMatrixInverse);
       u.uTexel.value.set(1 / readBuffer.width, 1 / readBuffer.height); u.uFocus.value = p.focus ?? 10; u.uBlur.value = p.blur;
       this.quad.material = this.dof;
-      renderer.setRenderTarget(doMb ? this.mid : (this.renderToScreen ? null : writeBuffer));
+      renderer.setRenderTarget(this.mid);
       this.quad.render(renderer);
       src = this.mid.texture;
     }
-    if (doMb || !doDof) {
+    if (doMb) {
       const u = this.mb.uniforms;
-      u.tDiffuse.value = src; u.tDepth.value = depth ?? null; u.uInvProj.value.copy(cam.projectionMatrixInverse); u.uCamWorld.value.copy(cam.matrixWorld);
-      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = doMb ? p.shutter : 0;
+      u.tDiffuse.value = src; u.tDepth.value = depth; u.uInvProj.value.copy(cam.projectionMatrixInverse); u.uCamWorld.value.copy(cam.matrixWorld);
+      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = p.shutter;
       this.quad.material = this.mb;
-      renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+      renderer.setRenderTarget(this.mid2);
       this.quad.render(renderer);
+      src = this.mid2.texture;
     }
+    this.copy.uniforms.tDiffuse.value = src;
+    this.quad.material = this.copy;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.quad.render(renderer);
     this.prevVP.copy(vp); this.hasPrev = true;
   }
-  dispose() { this.dof.dispose(); this.mb.dispose(); this.mid.dispose(); this.quad.dispose(); }
+  dispose() { this.dof.dispose(); this.mb.dispose(); this.copy.dispose(); this.mid.dispose(); this.mid2.dispose(); this.quad.dispose(); }
 }

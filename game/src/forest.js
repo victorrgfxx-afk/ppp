@@ -302,7 +302,8 @@ export class ForestScene {
     this.c = Math.cos(place.yaw); this.s = Math.sin(place.yaw);
     // the clearing's carpet of dry leaves is always there; the cast is made the first time the scene's hour comes
     this.leaves = new Leaves(this.stage, (x, z) => this.ground(x, z));
-    this.state = 'off'; this.ready = false; this.t = T0; this.tn = 0; this.dt = 0;
+    this.state = 'off'; this.ready = false; this.t = T0; this.tn = 0; this.dt = 0; this.springs = {};
+    this.events = EVENTS;                          // (a recording that jumps ahead in the scene skips the ones in between)
     this.feet = {}; this.runs = {}; this.end = Infinity; this._q = []; this._f = new THREE.Frustum(); this._m = new THREE.Matrix4(); this._s = new THREE.Sphere();
   }
   // stage <-> world
@@ -391,7 +392,7 @@ export class ForestScene {
         const show = dist < R_WAIT;
         this.show('tank', show); this.show('tee', show); this.show('creature', false);
         if (show) this.pose(T0);
-        if (dist < R_START) { this.state = 'play'; this.t = T0; this.ev = 0; this.show('creature', true); this.pose(T0); }
+        if (dist < R_START) { this.state = 'play'; this.t = T0; this.ev = 0; this.springs = {}; this.show('creature', true); this.pose(T0); }
         break;
       }
       case 'play': case 'after': {
@@ -541,15 +542,24 @@ export class ForestScene {
         r[0] += (run.r[0] - r[0]) * run.w; r[2] += (run.r[2] - r[2]) * run.w;
         r[1] += ((((run.r[1] - r[1]) % 360) + 540) % 360 - 180) * run.w;
       }
-      // struggle (or, waiting, breathing and looking about): a shake on everything, strongest in the trunk and the head
-      const sd = 11 + k.length, tn = this.tn, w = (f, s) => noise1(tn * f, sd + s) * n;
+      // struggle (or, waiting, breathing and looking about): pushes and heaves of effort, slow enough to read as weight
+      // (1.5-3.5 per second), strongest in the trunk and the head; breathing (faster and deeper in the fight); and
+      // inertia: the trunk follows the hips and the head the trunk through damped springs, so every move carries on a
+      // moment and settles instead of snapping to its key
+      const sd = 11 + k.length, tn = this.tn, w = (f, s) => noise1(tn * f * 0.5, sd + s) * n * 0.65;
+      const effort = noise1(tn * 1.1, sd + 60) * n, br = Math.sin(tn * 2 * Math.PI * (0.27 + 0.45 * n) + sd) * (1.2 + 2.6 * n);
+      const S = (key, x, om) => {
+        const id = k + key, dt = this.dt; let st = this.springs[id];
+        if (!st || !(dt > 0) || dt > 0.25) { this.springs[id] = { x, v: 0 }; return x; }
+        st.v += (om * om * (x - st.x) - 2 * om * st.v) * dt; st.x += st.v * dt; return st.x;
+      };
       const hips = a.bones[0];
-      hips.position.set(p[0] + w(5, 1) * 0.025, p[1] + w(6, 2) * 0.02, p[2] + w(5, 3) * 0.025);
-      hips.quaternion.setFromEuler(new THREE.Euler((r[0] + w(4, 4) * 5) * D, (r[1] + w(3, 5) * 6) * D, (r[2] + w(4, 6) * 5) * D, 'YXZ'));
-      const sx = (sp[0] + w(5, 7) * 8) * D, sy = (sp[1] + w(4, 8) * 10) * D, sz = (sp[2] + w(5, 9) * 6) * D;
+      hips.position.set(p[0] + w(5, 1) * 0.025, p[1] + w(6, 2) * 0.02 + effort * 0.012, p[2] + w(5, 3) * 0.025);
+      hips.quaternion.setFromEuler(new THREE.Euler(S('rx', (r[0] + w(4, 4) * 5) * D, 16), S('ry', (r[1] + w(3, 5) * 6) * D, 16), S('rz', (r[2] + w(4, 6) * 5) * D, 16), 'YXZ'));
+      const sx = S('sx', (sp[0] + w(5, 7) * 8 + effort * 6 - br) * D, 12), sy = S('sy', (sp[1] + w(4, 8) * 10) * D, 12), sz = S('sz', (sp[2] + w(5, 9) * 6) * D, 12);
       a.bones[1].rotation.set(sx * 0.5, sy * 0.5, sz * 0.5); a.bones[2].rotation.set(sx * 0.5, sy * 0.5, sz * 0.5);
       const look = this.state === 'wait' ? noise1(tn * 0.25, sd + 40) * 40 : 0;
-      const hx = (hd[0] + w(7, 10) * 14) * D, hy = (hd[1] + look + w(6, 11) * 18) * D, hz = (hd[2] + w(6, 12) * 8) * D;
+      const hx = S('hx', (hd[0] + w(7, 10) * 14 + br * 0.5) * D, 9), hy = S('hy', (hd[1] + look + w(6, 11) * 18) * D, 9), hz = S('hz', (hd[2] + w(6, 12) * 8) * D, 9);
       a.bones[3].rotation.set(hx * 0.4, hy * 0.4, hz * 0.4); a.bones[4].rotation.set(hx * 0.6, hy * 0.6, hz * 0.6);
       a.fk();
       // arms: keyed (relaxed by the sides when not), or the run's

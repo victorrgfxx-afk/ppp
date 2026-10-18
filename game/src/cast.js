@@ -20,13 +20,31 @@ float crack(vec3 p) { vec3 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0;
     float d = length(g + o - f); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d; }
   return d2 - d1; }
 `;
+// A face from a photo (Actor.setFace): projected from the front onto the head's rest shape. The photo's eyes, mouth,
+// chin and hairline are pinned to the sculpture's (piecewise along the height, so its features land on the sculpted
+// ones), the eyes' distance sets its scale across; it fades out towards the sides of the head, the ears and the neck.
+const FACE = /* glsl */`
+#ifdef CAST_FACE
+  { float yr = vRest.y - uHeadY;
+    vec3 dd = normalize(vRest - vec3(0.0, uHeadY + 0.11, -0.01));
+    float wf = smoothstep(0.32, 0.72, dd.z) * smoothstep(-0.03, 0.0, yr) * (1.0 - smoothstep(0.2, 0.24, yr)) * (1.0 - smoothstep(0.072, 0.088, abs(vRest.x)));
+    if (wf > 0.0 && mc < 5.5) {
+      float v = yr > 0.122 ? mix(uFV.y, uFV.x, (yr - 0.122) / 0.056) : yr > 0.07 ? mix(uFV.z, uFV.y, (yr - 0.07) / 0.052) : mix(uFV.w, uFV.z, (yr - 0.02) / 0.05);
+      vec3 ph = texture2D(tFace, vec2(0.5 + vRest.x * uFU, 1.0 - clamp(v, 0.0, 1.0))).rgb;
+      diffuseColor.rgb = mix(diffuseColor.rgb, ph, wf * uFaceK);
+      rough = mix(rough, 0.45, wf);
+    }
+  }
+#endif`;
 function castMaterial(kind) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
   m.userData.noWet = true;
+  const face = m.userData.face = { tFace: { value: null }, uHeadY: { value: 1.57 }, uFV: { value: new THREE.Vector4() }, uFU: { value: 5 }, uFaceK: { value: 1 } };
   m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, face);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aMat; attribute vec3 aRest; varying float vMat; varying vec3 vRest;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvMat = aMat; vRest = aRest;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vMat; varying vec3 vRest;\n' + NOISE)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vMat; varying vec3 vRest;\nuniform sampler2D tFace; uniform float uHeadY, uFU, uFaceK; uniform vec4 uFV;\n' + NOISE)
       .replace('#include <color_fragment>', `#include <color_fragment>
       float mc = floor(vMat + 0.5);
       float grain = fbm(vRest * 140.0);
@@ -45,10 +63,10 @@ function castMaterial(kind) {
         diffuseColor.rgb *= (0.74 + 0.4 * bl) * (1.0 - 0.55 * clamp(lines, 0.0, 1.0)) * (0.84 + 0.3 * wr);
         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.95, 0.88, 0.84), smoothstep(0.55, 0.8, fbm(vRest * 4.0)));
         rough = 0.62 + 0.25 * lines;
-      }`)
+      }` + FACE)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = rough;');
   };
-  m.customProgramCacheKey = () => 'cast';
+  m.customProgramCacheKey = () => 'cast' + (m.defines?.CAST_FACE !== undefined ? 'F' : '');
   return m;
 }
 
@@ -95,6 +113,14 @@ export class Actor {
     this.restDir = BONES.map(n => { const h = J[n], t = J[TAIL[n]]; return new THREE.Vector3(t[0] - h[0], t[1] - h[1], t[2] - h[2]).normalize(); });
     // model-space bone transforms (positions of heads, rotations) after posing
     this.mq = BONES.map(() => new THREE.Quaternion()); this.mp = BONES.map(() => new THREE.Vector3());
+  }
+  // a face from a photo: tex (a texture, sRGB), m: where its hairline, eyes, mouth and chin are (v, 0 at the top) and its
+  // scale across (u per metre); null takes it off
+  setFace(tex, m) {
+    const mat = this.mesh.material, f = mat.userData.face;
+    if (!tex) { delete mat.defines?.CAST_FACE; mat.needsUpdate = true; return; }
+    f.tFace.value = tex; f.uHeadY.value = this.J.head[1]; f.uFV.value.set(m.vHair, m.vEyes, m.vMouth, m.vChin); f.uFU.value = m.uPerM;
+    mat.defines = { ...(mat.defines || {}), CAST_FACE: '' }; mat.needsUpdate = true;
   }
   // forward kinematics into the model (= stage) frame, from bone `from` down its subtree (all bones if omitted)
   fk() {
