@@ -38,7 +38,7 @@ export const AUTUMN_GLSL = `
     float s = uAutumn * uAutRate + (vAutK - 0.5) * 0.75 + (n - 0.5) * 0.45;
     vec4 A = fract(vAutK * 7.13) < 0.5 ? uAutA : uAutB;
     vec3 full = A.rgb * L * A.w;
-    vec3 aut = mix(mix(c, mix(c, full, 0.45), smoothstep(0.15, 0.5, s)), full, smoothstep(0.45, 0.85, s));
+    vec3 aut = mix(mix(c, mix(c, full, 0.25), smoothstep(0.25, 0.55, s)), full, smoothstep(0.55, 0.9, s));
     diffuseColor.rgb = mix(c, aut, gr);
   }`;
 
