@@ -6,6 +6,7 @@ import { TEX } from '../textures.js';
 import { rng } from '../util.js';
 import { spruceDetail } from './firs.js';
 import { broadTree } from './broadgen.js';
+import { SEASON, autumnize } from '../season.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
 // Sentinel-2 shows vegetation). Near: light 3D trees per 200 m chunk; far: impostor billboards
@@ -228,7 +229,9 @@ function bakeImpostor(renderer, parts, t) {
   renderer.setRenderTarget(rt);
   renderer.setClearColor(0x3d4a30, 0);
   renderer.clear();
+  const aut = SEASON.uAutumn.value; SEASON.uAutumn.value = 0;        // (baked green: the billboards turn as the crowns do)
   renderer.render(sc, cam);
+  SEASON.uAutumn.value = aut;
   renderer.setRenderTarget(prevT);
   renderer.setClearColor(prevC, prevA);
   rt.texture.colorSpace = THREE.LinearSRGBColorSpace;
@@ -345,7 +348,7 @@ export function buildTrees(scene, world, renderer, quality) {
   });
   const farList = [];
   const farCull = { 'Scăzută': 3200, 'Medie': 4300, 'Înaltă': 5500 }[quality.label] ?? 6500;   // impostor chunks fade into the ground colour
-  const impMat = models.map(({ imp }) => imp && withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), nearR, true, 'far'));
+  const impMat = models.map(({ t, imp }) => imp && withSwitch(autumnize(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), t.leaf), nearR, true, 'far'));
   for (const ch of far.values()) {
     const byType = TYPES.map(() => []);
     for (const k of ch.idx) byType[TY[k]].push(k);
@@ -521,7 +524,7 @@ function eachShrub(x0, z0, x1, z1, cb) {
 function buildForest(scene, world, quality, { models, variants, varOf, impGeo, withSwitch, setInst }) {
   if (!GEO.forestBits) return { update() {}, count: () => 0, Q: null };
   const Q = FOREST_Q[quality.label] ?? { imp: 1500, near: 180, shrub: 95 };
-  const impMat = models.map(({ imp }) => imp && withSwitch(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), Q.near, true, 'ffar', Q.imp));
+  const impMat = models.map(({ t, imp }) => imp && withSwitch(autumnize(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), t.leaf), Q.near, true, 'ffar', Q.imp));
   const nearMats = new Map();
   const nearMat = (mat, r) => { const k = mat.uuid + r; if (!nearMats.has(k)) nearMats.set(k, withSwitch(mat, r, false, 'fnear')); return nearMats.get(k); };
   const tiles = new Map();

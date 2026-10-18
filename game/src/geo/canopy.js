@@ -3,6 +3,7 @@ import { GEO, heightAt, forestCode } from './data.js';
 import { heightToNormalCanvas } from '../textures.js';
 import { valueNoise2 } from './trees.js';
 import { SNOW } from '../rain.js';
+import { SEASON } from '../season.js';
 
 // Canopy shell: beyond the ring of individual trees the forests are a lumpy roof of crowns at the stand's
 // height (from the same age noise as the trees), coloured by Sentinel-2 and dropping to the ground at the
@@ -57,14 +58,14 @@ export function buildCanopy(scene, gt, Q) {
   const { map, nrm } = crownTexture();
   const mat = new THREE.MeshStandardMaterial({ map, normalMap: nrm, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.95, metalness: 0 });
   mat.userData.noSnow = true;                    // (its own winter look below)
-  const uni = { uOrtho: { value: gt.orthoW }, uExt: { value: E }, uFade: { value: Q.imp * 0.72 }, uFadeLen: { value: Q.imp * 0.26 }, uWinter: { value: 0 }, uCanSnow: SNOW.uSnow };   // (uSnow itself is declared by rain.js)
+  const uni = { uOrtho: { value: gt.orthoW }, uExt: { value: E }, uFade: { value: Q.imp * 0.72 }, uFadeLen: { value: Q.imp * 0.26 }, uWinter: { value: 0 }, uCanSnow: SNOW.uSnow, uAutumn: SEASON.uAutumn };   // (uSnow itself is declared by rain.js)
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;\nattribute float aNeedle;\nvarying float vNeedle;')
       .replace('#include <fog_vertex>', '#include <fog_vertex>\nvCanW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNeedle = aNeedle;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;\nvarying float vNeedle;\nuniform sampler2D uOrtho;\nuniform float uExt, uFade, uFadeLen, uWinter, uCanSnow;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCanW;\nvarying float vNeedle;\nuniform sampler2D uOrtho;\nuniform float uExt, uFade, uFadeLen, uWinter, uCanSnow, uAutumn;')
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
   { float dd = distance(vCanW.xz, cameraPosition.xz);
     float hh = fract(sin(dot(floor(vCanW.xz * 0.3), vec2(12.9898, 78.233))) * 43758.5453);
@@ -77,6 +78,20 @@ export function buildCanopy(scene, gt, Q) {
   vec3 bare = mix(vec3(0.3, 0.27, 0.25), vec3(0.6, 0.6, 0.62), uCanSnow * 0.7);
   vec3 ever = mix(orth, vec3(0.86, 0.89, 0.93), uCanSnow * 0.45 * smoothstep(0.45, 0.9, crown));
   orth = mix(orth, mix(ever, bare, 1.0 - vNeedle), uWinter);
+  // autumn (season.js): the broadleaf stands turn in patches of a few crowns, yellow, orange-brown and olive among the
+  // green; the conifers keep their colour
+  if (uAutumn > 0.0) {
+    float L = dot(orth, vec3(0.2126, 0.7152, 0.0722));
+    float gr = smoothstep(0.02, 0.22, (orth.g - max(orth.r, orth.b)) / max(orth.g, 1e-4));
+    vec2 q = vCanW.xz;
+    float k = 0.5 + 0.22 * (sin(dot(q, vec2(0.23, 0.11)) + 2.0 * sin(dot(q, vec2(-0.07, 0.19)))) + sin(dot(q, vec2(0.13, -0.29)) + 1.7 * sin(dot(q, vec2(0.31, 0.05)))));
+    float s = uAutumn + (k - 0.5) * 0.9 + 0.25 * (crown - 0.5);
+    float pick = fract(k * 9.7);
+    vec3 A = pick < 0.4 ? vec3(1.62, 0.92, 0.17) * 1.9 : pick < 0.75 ? vec3(2.25, 0.62, 0.1) * 1.45 : vec3(1.35, 1.0, 0.28) * 1.2;
+    vec3 full = A * L;
+    vec3 aut = mix(mix(orth, mix(orth, full, 0.45), smoothstep(0.15, 0.5, s)), full, smoothstep(0.45, 0.85, s));
+    orth = mix(orth, aut, gr * (1.0 - vNeedle));
+  }
   diffuseColor.rgb *= orth * (0.5 + 0.85 * crown) * 1.08;`);
   };
   mat.customProgramCacheKey = () => 'geoCanopy';

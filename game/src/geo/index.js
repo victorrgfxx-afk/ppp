@@ -34,6 +34,7 @@ import { prepareUzinei } from './uzinei.js';
 import { prepareBiserica } from './biserica.js';
 import { prepareUrcus } from './urcus.js';
 import { prepareSonda } from './sonda.js';
+import { buildWagons } from './wagons.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex, FAR };
 
@@ -99,6 +100,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const lines = [];
   for (const l of landmarks) if (l && l.wires) for (const v of l.wires) lines.push(v);
   buildRail(B, lines, rm);
+  const wagons = buildWagons(B, world);                   // the freight wagons on the station's sidings (the drone photos)
   const pm = makePropMaterials();
   // small street furniture disappears sooner
   const small = [pm.pole, pm.lamp, pm.insulator, pm.metal, rm.marking, rm.shoulder];
@@ -117,7 +119,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const floor = buildForestFloor(scene, world, quality);    // every other wood's floor: litter, ferns, brambles, deadwood, boulders
   log('copaci ' + trees.count + ', pădure ' + trees.forest.count() + ', coronament ' + (canopy ? canopy.meshes.length : 0), performance.now() - t0);
   let cullI = 0, lastCull = null;
-  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.meshes.length, meshes: meshes.length };
+  const info = { buildings: stats.n, roads: GEO.roads.length, rails: GEO.rails.length, wagons, fences: nFences, poles: pw.nPoles, towers: pw.nTowers, trees: trees.count, forestTrees: trees.forest.count(), water: water.meshes.length, meshes: meshes.length };
   return {
     fronts, info, terrain, landmarks, forest: trees.forest, trees, canopy, far,
     // the snow modes: bare broadleaves near and far (trees.js, canopy.js)

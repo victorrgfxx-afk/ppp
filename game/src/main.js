@@ -35,6 +35,7 @@ import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
 import { AIR_GLSL, AIR_H0, HAZE_H, hazeFor, visibilityOf } from './air.js';
+import { SEASON, FOLIAGE } from './season.js';
 import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR } from './geo/index.js';
 
 // The air between the eye and every point (air.js): molecules and haze, each with its own fall-off with height, per
@@ -166,6 +167,8 @@ async function main() {
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
   let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
+  // the leaves: autumn colours (mid-October, as in the user's drone photos) or the summer's green (season.js; menu)
+  let foliage = FOLIAGE[store.get('foliage', 'toamna')] !== undefined ? store.get('foliage', 'toamna') : 'toamna';
   let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a gale: the blizzard or the squall)
   // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
   // the gale with the snow flying in it (STORM.uStorm: the flakes, the drift, the plastered snow)
@@ -217,6 +220,7 @@ async function main() {
     rainTarget = w.rain ?? 0;
     snowFall = w.snow ?? 0; snowCover = w.snowCover ?? 0;
     if (!!w.winter !== winter) { winter = !!w.winter; setWinter?.(winter); }
+    SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];                       // (bare in the snow)
     horror = night > 0.5 && rainTarget > 0 ? 1 : 0;                         // a night storm: the bear is out
     rainLight = (0.3 + 0.7 * d) * (1 - 0.75 * night);
     // the light (and its cascaded shadows) comes from the moon at night
@@ -628,6 +632,14 @@ async function main() {
   }
   addEventListener('resize', fovUi);
   fovUi();
+  for (const sfx of ['', '2']) {
+    const el = $('foliage' + sfx); if (!el) continue;
+    el.value = foliage;
+    el.addEventListener('change', (e) => {
+      foliage = e.target.value; store.set('foliage', foliage); SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];
+      for (const s2 of ['', '2']) if ($('foliage' + s2)) $('foliage' + s2).value = foliage;
+    });
+  }
   $('mute').addEventListener('click', () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? 'Sunet: oprit' : 'Sunet: pornit'; });
   $('menuBtn').addEventListener('click', () => pause());
   const pause = () => {

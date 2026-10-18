@@ -312,6 +312,38 @@ function genRoofMetal() {
   TEX.roofMetalN = tex(heightToNormalCanvas(H, w, h, 6), { srgb: false });
 }
 
+function genRoofCorr() {
+  // Corrugated zinc-coated sheet (the old houses' and every shed's roof in the drone photos): 12 waves per metre (the
+  // common 76-83 mm pitch), a lap seam at the sheet's edge; texture = 1 m across, V = down the slope. Two looks: the
+  // galvanised sheet (spangle, dull streaks where the water runs) and the old one rusting through (rust in blotches
+  // and in runs down the troughs, the zinc left in grey islands). The roughness (G) and metalness (B) follow the rust.
+  const n = 256, waves = 12;
+  const H = heightField(n, n, (x, y) => 0.5 + 0.5 * Math.sin(2 * Math.PI * x * waves / n) + (x < 3 ? 0.25 : 0));
+  const zinc = paint(n, n, (x, y, p) => {
+    const sp = 0.96 + 0.08 * valueNoise(x / 2.5, y / 2.5, n / 2.5, 61);                  // the spangle
+    const st = 0.9 + 0.12 * fbm(x / 5, y / 70, 3, n / 5, 62);                            // streaks down the slope
+    const v = clamp(0.8 * sp * st * (0.94 + 0.06 * H[y * n + x]), 0, 1) * 255;
+    p[0] = v * 0.98; p[1] = v; p[2] = v * 1.02;
+  });
+  const rustMask = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const trough = 1 - H[y * n + x];
+    const blot = fbm(x / 34, y / 34, 4, n / 34, 63), runs = fbm(x / 4, y / 55, 3, n / 4, 64);
+    rustMask[y * n + x] = clamp((blot - 0.38) * 3.2 + (runs - 0.5) * 1.4 + trough * 0.35, 0, 1);
+  }
+  const rust = paint(n, n, (x, y, p) => {
+    const m = rustMask[y * n + x], d = 0.85 + 0.25 * fbm(x / 9, y / 9, 3, n / 9, 65);
+    const zr = 150 + 30 * valueNoise(x / 3, y / 3, n / 3, 66);
+    p[0] = clamp((zr * (1 - m) + 142 * d * m), 0, 255); p[1] = clamp((zr * (1 - m) + 74 * d * m), 0, 255); p[2] = clamp((zr * 1.02 * (1 - m) + 42 * d * m), 0, 255);
+  });
+  const rm = (mask) => paint(n, n, (x, y, p) => { const m = mask ? mask[y * n + x] : 0; p[0] = 0; p[1] = (0.42 + 0.48 * m) * 255; p[2] = (0.7 - 0.6 * m) * 255; });
+  TEX.roofGalv = tex(zinc);
+  TEX.roofRust = tex(rust);
+  TEX.roofCorrN = tex(heightToNormalCanvas(H, n, n, 3), { srgb: false });
+  TEX.roofGalvRM = tex(rm(null), { srgb: false });
+  TEX.roofRustRM = tex(rm(rustMask), { srgb: false });
+}
+
 function genRoofTiles() {
   // Ceramic "tigla" rows (texture = 1 m x 1 m, 4 rows, 5 tiles)
   const n = 512;
@@ -1034,7 +1066,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   const gens = [
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
-    ['placaj cărămidă', genBrickCladding], ['tablă', genRoofMetal], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
+    ['placaj cărămidă', genBrickCladding], ['tablă', () => { genRoofMetal(); genRoofCorr(); }], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
     ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); genLeafSprays(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', () => { genBark(); genBarks(); }],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],

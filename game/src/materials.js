@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TEX } from './textures.js';
 import { WIND } from './util.js';
+import { autumnize } from './season.js';
 
 export const M = {};
 
@@ -144,7 +145,8 @@ export function buildMaterials() {
   glass('windowDark', null, 0x1d2023);
 
   // --- foliage ---
-  const leaf = (name, map, color, amp) => addWind(std(name, { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, color, alphaToCoverage: false }), amp);
+  // (the broadleaves turn in autumn: season.js)
+  const leaf = (name, map, color, amp) => autumnize(addWind(std(name, { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, color, alphaToCoverage: false }), amp), name);
   leaf('leaves', TEX.leaves, 0xffffff, 0.035);
   leaf('leavesSmall', TEX.leavesSmall, 0xe8f0d8, 0.04);
   leaf('leavesDense', TEX.leavesDense, 0xe8f0d8, 0.04);                     // fruit trees, willows
