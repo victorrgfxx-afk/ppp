@@ -541,11 +541,11 @@ async function main() {
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
-  const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
+  const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && (leafTex.includes(m.map) || !!m.userData.leafMap))); };
   // the flying snow blows through leaves, needles, a crown's dense core, the snow on the branches, chain-link and
   // lattice (all cut out of cards), and through lines and glows; it does not through the rest. (The ground and the
   // water are left out too: the map keeps nothing that low anyway.)
-  const softMat = (m) => m.depthWrite === false || m.alphaTest > 0 || m.userData.core || m.userData.leeSkip || (winter && leafTex.includes(m.map));
+  const softMat = (m) => m.depthWrite === false || m.alphaTest > 0 || m.userData.core || m.userData.leeSkip || (winter && (leafTex.includes(m.map) || !!m.userData.leafMap));
   const leeMatSkip = (m) => softMat(m) || m.userData.ue?.kind === 'terrain' || m.userData.ue?.kind === 'water';
   const leeSkip = (o) => o.isLine || o.isPoints || o.isSprite || o.userData.ue?.kind === 'far' ||
     (o.isMesh && !!o.material && (Array.isArray(o.material) ? o.material.every(leeMatSkip) : leeMatSkip(o.material)));
@@ -556,8 +556,18 @@ async function main() {
   // material and clone that uses it), and the far billboards and forest roof go bare too (geo/trees.js, canopy.js)
   const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn, TEX.leavesBeech, TEX.leavesHornbeam, TEX.leavesOak].filter(Boolean);
   const summerImg = new Map(leafTex.map(t => [t, t.image]));
+  // (the materials are pointed at the twigs' own texture as well: a leaf texture already on the GPU kept drawing its
+  // leaves after the image swap - measured in the snow modes, the near broadleaves stayed green - so the swap alone
+  // only serves what is drawn for the first time after it)
+  const leafMaps = new Set(leafTex);
   setWinter = (on) => {
     for (const t of leafTex) { t.image = on ? TEX.twigs.image : summerImg.get(t); t.needsUpdate = true; }
+    scene.traverse((o) => {
+      for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) {
+        if (on && leafMaps.has(m.map)) { m.userData.leafMap = m.map; m.map = TEX.twigs; m.needsUpdate = true; }
+        else if (!on && m.userData.leafMap) { m.map = m.userData.leafMap; delete m.userData.leafMap; m.needsUpdate = true; }
+      }
+    });
     geoWorld.setWinter(on);
   };
   if (winter) setWinter(true);
