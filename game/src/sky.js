@@ -63,9 +63,13 @@ void main() {
   float cov = uCover + (big - 0.5) * 0.5;
   float soft = mix(0.4, 0.09, uCumulus);
   float dens = smoothstep(1.0 - cov - soft * 0.45, 1.0 - cov + soft * 0.55, c);
-  // a hole in the deck where the full moon looks through (night storm over the hill of the cross)
+  // a hole in the deck where the full moon looks through (night storm over the hill of the cross), 5-9 deg from it;
+  // its rim ragged by +-2 deg of noise in the moon's own frame (a drawn circle read as a dark ring around the moon)
   float mm = max(dot(d, uMoonDir), 0.0);
-  dens *= 1.0 - uHole * smoothstep(0.9877, 0.9962, mm);
+  vec3 mr = d - uMoonDir * mm, me = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0)));
+  vec2 mp = vec2(dot(mr, me), dot(mr, cross(me, uMoonDir)));         // (on the sky's plane at the moon, ~rad)
+  float rag = texture2D(uNoise, mp * 1.3 + t * 2.0 + 0.17).r * 0.7 + texture2D(uNoise, mp * 3.4 + 0.53).g * 0.3;
+  dens *= 1.0 - uHole * (1.0 - smoothstep(0.087, 0.157, length(mp) + (rag - 0.5) * 0.12));
   float thick = smoothstep(0.35, 0.95, c * dens);
   // cumulus: a step towards the sun through the density field tells the lit side from the shaded one
   vec2 ts = normalize(uSunDir.xz + vec2(1e-4)) * 0.03;
