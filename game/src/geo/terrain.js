@@ -114,12 +114,18 @@ function patchCells(holes, pos, nor, idx, X, Z, cx, cz, step, m, H, n, i0, j0) {
   for (const key of holes) {
     const [a, b] = key.split(',').map(Number);
     const kept = { s: !holes.has(a + ',' + (b - 1)), n: !holes.has(a + ',' + (b + 1)), w: !holes.has((a - 1) + ',' + b), e: !holes.has((a + 1) + ',' + b) };
+    // a corner is shared with the cell across the diagonal too: where that one is kept, the corner is its coarse node
+    // (else, at an inner corner of the cut-out, this cell's corner stood off its neighbours': a slit you saw the sky
+    // through, low across the ground)
+    const diag = (da, db) => !holes.has((a + da) + ',' + (b + db));
     const base = pos.length / 3;
     for (let v = 0; v <= K; v++) for (let u = 0; u <= K; u++) {
       const x = X(a) + u * step / K, z = Z(b) + v * step / K, wx = x + cx, wz = z + cz;
       let y;
       const lerp = (p, q, t) => p + (q - p) * t;
-      if (v === 0 && kept.s) y = lerp(nodeH(a, b), nodeH(a + 1, b), u / K);
+      const cu = u === 0 ? -1 : u === K ? 1 : 0, cv = v === 0 ? -1 : v === K ? 1 : 0;
+      if (cu && cv && diag(cu, cv)) y = nodeH(a + (cu > 0 ? 1 : 0), b + (cv > 0 ? 1 : 0));
+      else if (v === 0 && kept.s) y = lerp(nodeH(a, b), nodeH(a + 1, b), u / K);
       else if (v === K && kept.n) y = lerp(nodeH(a, b + 1), nodeH(a + 1, b + 1), u / K);
       else if (u === 0 && kept.w) y = lerp(nodeH(a, b), nodeH(a, b + 1), v / K);
       else if (u === K && kept.e) y = lerp(nodeH(a + 1, b), nodeH(a + 1, b + 1), v / K);

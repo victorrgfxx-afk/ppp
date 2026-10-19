@@ -21,6 +21,7 @@ import { buildWorld } from './world.js';
 import { buildCar, paintMaterial, DAYLIGHT } from './cars.js';
 import { buildATV } from './atv.js';
 import { buildMaybach, MAYBACH_TUNE } from './maybach.js';
+import { DOBLO_OPTS } from './doblo.js';
 import { keepClear } from './geo/trees.js';
 import { Vehicle, TRACTION } from './vehicle.js';
 import { FirDetail } from './geo/firs.js';
@@ -363,9 +364,9 @@ async function main() {
   // the dark blue saloon on the restaurant's lot by DN1 (photo 66)
   const ppLm = geoWorld.landmarks?.find(l => l.type === 'popas');
   if (ppLm) for (const c of ppLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.65, rough: 0.3, dusty: 0.2 }), 'plateB', c.x, c.z, c.h, {});
-  // photo 85: the red Kangoo on the oil wells' pad
+  // photo 85: the red Fiat Doblò Cargo on the oil wells' pad (doblo.js)
   const soLm = geoWorld.landmarks?.find(l => l.type === 'sonda');
-  if (soLm) for (const c of soLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.2, rough: 0.33, dusty: 0.35 }), 'plateB', c.x, c.z, c.h, {});
+  if (soLm) for (const c of soLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.2, rough: 0.33, dusty: c.dusty ?? 0.35 }), 'plateB', c.x, c.z, c.h, c.model === 'doblo' ? { ...DOBLO_OPTS } : {});
   // the cars along Str. Uzinei, in the works' parking area and the lot behind the fence, the red Kangoo (photos 78-83)
   const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
   if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});

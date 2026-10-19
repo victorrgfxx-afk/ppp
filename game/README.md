@@ -566,7 +566,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Așezarea, din poze**:
     * ambele balansiere se văd din profil, cu capetele de cal spre exterior, pe aceeași linie (azimut ~195°): Vulcanul la nord-nord-est, unitatea ruginită la sud-sud-vest;
     * în poza 85 soarele (sus, ~50–55°, dimineața) e în mijlocul cadrului, deci camera privește spre ~130°; de aici iese direcția liniei;
-    * scara vine din Kangoo (1,8 m înălțime): orizontul, apoi înălțimea pivoților deasupra lui. Pivotul Vulcanului e la ~7,5 m, al unității ruginite la ~6,2 m; ~17–18 m între ei;
+    * scara vine din dubiță (Fiat Doblò, 1,82 m înălțime): orizontul, apoi înălțimea pivoților deasupra lui. Pivotul Vulcanului e la ~7,5 m, al unității ruginite la ~6,2 m; ~17–18 m între ei;
     * dulapurile sunt între garduri; stâlpul cu proiector e la ~2 m în spatele lor (în poza 85 apare în stânga dulapului înalt, în poza 84 în dreapta lui).
   * **Unitățile** (balansiere convenționale), animate cum lucrează mecanismul real (patrulater articulat):
     * manivela învârte contragreutățile, bielele trag coada balansierului;
@@ -579,7 +579,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * dulapurile electrice albe (unul pe picioare), cutia gri, stâlpul de beton perforat cu proiector;
     * dalele vechi crăpate, pietrișul cu buruieni și pete umede;
     * fâșia de iarbă uscată de la garduri, iarba înaltă cu morcov sălbatic în garduri și în pajiștea de la sud;
-    * Kangoo-ul roșu.
+    * dubița roșie, Fiat Doblò Cargo (V67).
   * **Balta** e o oglindă pe orice vreme: reflexiile din ecran (până acum doar pe ploaie) pornesc când ești la mai puțin de 70 m de ea. Sub zăpadă dispare.
   * **Drumul prin pădure (poza 86)**:
     * pietriș gri-maroniu de ~3,6 m, cu două făgașe și frunze uscate pe margini;
@@ -598,6 +598,24 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * **stâlpul de beton perforat**: tălpile se îngustează spre vârf (0,22 → 0,12 m), ca la stâlpii vibrați reali (înainte erau puse greșit, pe lat), cu capac; proiectorul e un LED subțire, cu radiator cu nervuri, sticla înclinată în jos, braț și cablu pe stâlp până la tubul de la bază;
     * **dalele**: au acum grosime (~10 cm, ies ~6 cm din pietriș) și muchii ciobite;
     * **balta**: are pe margine o fâșie de mâl mai închis și mai maroniu.
+  * **Remediat în V67** (`src/doblo.js`, `src/geo/sonda.js`, `src/shafts.js`, `src/geo/terrain.js`, `src/geo/trees.js`):
+    * **Dubița roșie e un Fiat Doblò Cargo**, prima generație (tip 223), după facelift-ul din 2005, nu un Kangoo.
+      * Dimensiunile reale: 4253 × 1722 × 1818 mm, ampatament 2583 mm (Wikipedia; fișe tehnice). Forma e luată din pozele laterale, din față și din spate ale modelului (Wikimedia Commons) și din poza ta 85.
+      * Ce o face Doblò: spatele orb, cu ușă culisantă și panouri presate; șina ușii culisante pe aripa din spate, la nivelul umărului; benzile negre de protecție și mânerele negre; oglinzile mari, negre, pe două brațe; stopurile înalte (roșu, alb, roșu) în ornamentele negre din colțuri; ușile din spate 60/40; a treia lampă de frână; barele din plastic nevopsit; farurile mari ale facelift-ului, cu două reflectoare; grila neagră cu sigla Fiat; antena de pe plafon; bușonul de rezervor pe stânga.
+      * Cabina e după poza ta de la volan: bord gri, cu cele patru fante de dezaburire, cutia deschisă de deasupra și cozorocul ceasurilor. În spatele scaunelor e peretele despărțitor.
+      * Vopseaua e roșul Fiat, oxidat și mat, ca pe capota din poză.
+      * Se conduce ca 1.3 Multijet: ~16 s până la 100 km/h, ~155 km/h.
+    * **Ecranul negru de pe platformă.** Privind spre soare, sclipirea lui pe un geam depășea plafonul formatului de 16 biți al imaginii.
+      * Razele de soare (V65) citeau imaginea înainte de filtrul care curăță astfel de pixeli. Razele și apoi strălucirea (bloom) întindeau valoarea pe tot cadrul, care ieșea negru.
+      * Acum masca razelor curăță pixelul la intrare. Bugul putea apărea oriunde pe hartă, nu doar aici; e reparat peste tot.
+    * **Fanta albă din iarbă**, din spatele unităților. Unde terenul e refăcut la 1 m (platforma, pasajele de sub calea ferată, terasele terenului de sport), un colț interior al zonei rămânea la înălțimea fină, iar vecinii lui la cea grosieră. Prin crăpătura dintre ele se vedea cerul. Acum colțurile împărțite cu o celulă păstrată sunt exact nodul ei, deci terenul e etanș.
+    * **Drumul de pietriș ascuns sub iarbă** la intrarea pe platformă. Zona nivelată se termina exact unde se termina racordul cu terenul, iar celulele tăiate de marginea ei aveau iarba mai sus decât înălțimea folosită pentru drum. Acum zona trece cu o celulă dincolo de racord.
+    * **Tufe și puieți pe drum** (poza 86). Subarboretul generat (alun, păducel, puieți de fag și carpen) și tufele de la marginea pădurii nu țineau cont de drum: creșteau pe pietriș și îți atârnau în față. Acum drumul și primul metru de lângă el rămân libere. Arbuștii și puieții puși pe margini stau la 3,4–5,5 m de ax și sunt mai mici.
+    * **Capătul drumului.** Drumul din OSM se termina după cotitură și făcea un ac de păr cu drumeagul spre platformă. Acum cotitura e rotunjită, ca urma unui camion.
+    * **Culorile, după pozele 84–86.** Dalele vechi erau mai închise decât pietrișul; în poze sunt mai deschise. Acum betonul are albedo ~0,33, pietrișul platformei și al drumului ~0,22 (înainte ~0,13).
+    * **Marginea platformei** nu mai e un covor ridicat: pietrișul coboară spre iarbă și se rărește în ea pe ~1,4 m.
+    * **Balta** are contur neregulat. De sus nu mai e o pată neagră: fundul mâlos se vede prin apă (~0,09), iar din unghiuri joase domină reflexia.
+    * **Aproximat**: fața dubiței nu se vede în pozele tale; am pus facelift-ul (2006–2009). Varianta de dinainte diferă doar la faruri, grilă și bare.
   * **Aproximat**:
     * pozițiile exacte se pot abate cu 1–3 m: camerele, liniile și distanțele sunt reconstituite din poze, cu o eroare de câțiva metri;
     * modelele sunt făcute după poze, nu după planurile fabricantului;
@@ -734,6 +752,7 @@ src/main.js           bucla jocului, camere, intrare/ieșire din mașină
 src/hero.js           casa din poze (fațadă, prispă, verandă, foișor, poartă, țevi de gaz)
 src/world.js          stradă, vecini, stâlpi, fire, mașini parcate, vegetație
 src/cars.js           caroserii parametrice   src/vehicle.js  fizica mașinii
+src/maybach.js        Mercedes-Maybach GLS 600   src/doblo.js  Fiat Doblò Cargo (dubița de la sonde)
 src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare

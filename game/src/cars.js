@@ -142,9 +142,9 @@ export function profileAt(m, s) {
   return { belt, roof, yb, hw, cab: Math.min(1, (roof - belt) / 0.25) };
 }
 
-function section(m, s) {
+export function section(m, s) {
   const { belt, roof, yb, hw, cab } = profileAt(m, s);
-  const hwr = Math.min(m.hwr, hw * 0.9);
+  const hwr = Math.min(m.hwrAt ? interp(m.hwrAt, s) : m.hwr, hw * 0.9);      // (a van: the glass leans in, the box does not)
   const mid = (yb + belt) / 2;
   const R = [
     [0, yb], [hw * 0.86, yb], [hw * 0.985, yb + 0.07], [hw * 1.0, mid], [hw * 0.985, belt - 0.05], [hw * 0.93, belt],
@@ -184,8 +184,8 @@ function carBodyGeometry(m) {
       let g = 'body';
       if (seg === 0) g = 'under';
       else if ((seg === 6) && p.cab > 0.5) {
-        g = inR(s, m.side) ? 'glass' : 'trim';
-        for (const pl of m.pillars) if (Math.abs(s - pl) < 0.055) g = 'trim';
+        g = inR(s, m.side) ? 'glass' : m.pillarPaint ? 'body' : 'trim';
+        for (const pl of m.pillars) if (Math.abs(s - pl) < 0.055 && (g === 'glass' || !m.pillarPaint)) g = 'trim';
       } else if (seg === 8 && p.cab > 0.3) {
         if (inR(s, m.wind) || inR(s, m.rear)) g = 'glass';      // seg 7 stays body => A/C pillars
       } else if (seg === 5 && p.cab > 0.5 && inR(s, m.side)) g = 'trim';   // window seal line
@@ -323,23 +323,21 @@ export function buildCar(modelKey, paint, plateKey) {
   const pg = new THREE.PlaneGeometry(0.52, 0.112);
   const [pfy, pfz] = m.plates?.front ?? [0.42, zAt(0) - 0.012], [pry, prz] = m.plates?.rear ?? [m.belt[m.belt.length - 1][1] - 0.05, zAt(m.L) + 0.012];
   add(pg, plateMat, 0, pfy, pfz, m.plates?.frontTilt ?? 0, Math.PI, 0);
-  add(pg, plateMat, 0, pry, prz, m.plates?.rearTilt ?? 0);
-  // mirrors
-  for (const sg of [-1, 1]) {
+  add(pg, plateMat, m.plates?.rearX ?? 0, pry, prz, m.plates?.rearTilt ?? 0);
+  // mirrors, door handles and shut lines (a model with sides of its own draws them itself: doblo.js)
+  if (!m.ownSides) for (const sg of [-1, 1]) {
     const s = m.wind[0] + 0.12;
     const p = profileAt(m, s);
     const [mw, mh] = m.mirror ?? [0.2, 0.12];
     add(roundedRectGeo(mw, mh, 0.04, 0.08), paint, sg * (p.hw + 0.07 + (mw - 0.2) / 2), p.belt + 0.07, zAt(s), 0, Math.PI / 2, 0);
     add(new THREE.BoxGeometry(0.08, 0.04, 0.05), S.trim, sg * (p.hw - 0.01), p.belt + 0.04, zAt(s));
   }
-  // door handles
-  for (const sg of [-1, 1]) for (const s of [m.pillars[0] - 0.2, m.pillars[1] - 0.25]) {
+  if (!m.ownSides) for (const sg of [-1, 1]) for (const s of [m.pillars[0] - 0.2, m.pillars[1] - 0.25]) {
     const p = profileAt(m, s);
     add(new THREE.BoxGeometry(0.02, 0.025, 0.13), m.chromeHandles ? S.chrome : paint, sg * (p.hw * 0.99 + 0.005), p.belt - 0.08, zAt(s));
   }
-  // door shut lines
   const seamMat = S.trim;
-  for (const sg of [-1, 1]) for (const s of [m.wind[0] + 0.12, m.pillars[0] + 0.03, m.pillars[1] - 0.02]) {
+  if (!m.ownSides) for (const sg of [-1, 1]) for (const s of [m.wind[0] + 0.12, m.pillars[0] + 0.03, m.pillars[1] - 0.02]) {
     const p = profileAt(m, s);
     const y0 = Math.max(p.yb + 0.06, profileAt(m, s - 0.1).yb + 0.06, profileAt(m, s + 0.1).yb + 0.06), y1 = p.belt - 0.015;
     if (y1 - y0 < 0.1) continue;
@@ -359,17 +357,19 @@ export function buildCar(modelKey, paint, plateKey) {
     add(new THREE.BoxGeometry(0.5, 0.14, 0.5), seatMat, sg * 0.38, seatY, zAt(m.pillars[0] + 0.1));
     add(new THREE.BoxGeometry(0.48, 0.62, 0.12), seatMat, sg * 0.38, seatY + 0.36, zAt(m.pillars[0] + 0.35), -0.2, 0, 0);
   }
-  add(new THREE.BoxGeometry(1.3, 0.14, 0.5), seatMat, 0, seatY, zAt(m.pillars[1] - 0.25));
-  add(new THREE.BoxGeometry(1.3, 0.58, 0.12), seatMat, 0, seatY + 0.34, zAt(m.pillars[1] - 0.02), -0.25, 0, 0);
+  if (!m.cargo) {                                    // (a panel van: the load space behind the seats)
+    add(new THREE.BoxGeometry(1.3, 0.14, 0.5), seatMat, 0, seatY, zAt(m.pillars[1] - 0.25));
+    add(new THREE.BoxGeometry(1.3, 0.58, 0.12), seatMat, 0, seatY + 0.34, zAt(m.pillars[1] - 0.02), -0.25, 0, 0);
+  }
   const pw = profileAt(m, m.wind[0] + 0.2);
   add(new THREE.BoxGeometry(m.W - 0.25, 0.2, 0.55), dashMat, 0, pw.belt - 0.1, zAt(m.wind[0] + 0.28));
   // headliner + door cards so the cockpit view is enclosed
   const pr = profileAt(m, (m.wind[1] + m.rear[0]) / 2);
-  const cabL = m.rear[0] - m.wind[1] + 0.3;
+  const l0 = m.linerFrom ?? m.wind[1] - 0.15, l1 = m.rear[0] + 0.15;       // (a van's: from where the roof is high enough)
   const liner = new THREE.MeshStandardMaterial({ color: m.interior === 0x9c8e76 ? 0xb9ad98 : 0x5a5a5c, roughness: 0.95, side: THREE.DoubleSide });
   // (under the roof: never rained on, whatever the map of tops still says while the car moves)
   seatMat.userData.noWet = dashMat.userData.noWet = liner.userData.noWet = true;
-  add(new THREE.BoxGeometry(m.hwr * 2 - 0.1, 0.02, cabL), liner, 0, pr.roof - 0.07, zAt((m.wind[1] + m.rear[0]) / 2));
+  add(new THREE.BoxGeometry(m.hwr * 2 - 0.1, 0.02, l1 - l0), liner, 0, pr.roof - 0.07, zAt((l0 + l1) / 2));
   for (const sg of [-1, 1]) add(new THREE.BoxGeometry(0.04, pr.belt - 0.25, m.rear[0] - m.wind[0]), dashMat, sg * (m.W / 2 - 0.1), (pr.belt + 0.25) / 2, zAt((m.wind[0] + m.rear[0]) / 2));
   const steer = new THREE.Group();
   steer.position.set(-0.38, pw.belt - 0.06, zAt(m.wind[0] + 0.6));

@@ -23,7 +23,11 @@ uniform vec2 uSun;
 uniform float uAspect, uThr, uAir;
 varying vec2 vUv;
 void main() {
+  // (the scene as drawn, before post.js' guard: a sun glint on glass can overflow a half float, and one Inf here,
+  // smeared along the rays and then by the bloom, blacked out the whole frame)
   vec4 c = texture2D(tColor, vUv);
+  if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0);
+  c.rgb = min(c.rgb, vec3(64.0));
   float d = texture2D(tDepth, vUv).r, sky = step(0.99999, d) * step(c.a, 1.5);
   vec2 dv = (vUv - uSun) * vec2(uAspect, 1.0);
   float near = exp(-dot(dv, dv) * 5.0);                              // (the sky's glow around the sun only)

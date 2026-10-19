@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { GEO, gridHeight, heightAt, addFineZone, addHolePoly, addFloorPoly, forestCode, polyDist } from './data.js';
+import { GEO, gridHeight, heightAt, addFineZone, addHolePoly, addFloorPoly, forestCode, polyDist, inPoly } from './data.js';
 import { Acc } from './bridge.js';
 import { ribbonPath } from './roads.js';
-import { addForestMix, TREE_T } from './trees.js';
+import { addForestMix, keepClearArea, TREE_T } from './trees.js';
 import { M } from '../materials.js';
 import { SNOW } from '../rain.js';
 import { rng } from '../util.js';
@@ -20,7 +20,7 @@ import { canvas, tex, grain, blobs, boxAt, cyl, tuft, merged, clamp01, pairs, ro
 //    its stuffing box, flowline and valves under the horsehead;
 //  * between the fences the white electrical cabinets and a perforated concrete pole with a floodlight; safety signs
 //    on the fences; a strip of dry grass between the gravel and the fences, tall grass with wild carrot inside them and
-//    in the meadow to the south; a red Kangoo parked on the pad; a broad shallow puddle that mirrors the rusty unit.
+//    in the meadow to the south; the red Fiat Doblò Cargo parked on the pad; a broad shallow puddle that mirrors the rusty unit.
 // Neither unit is in OSM. The layout is resected from the photos: both beams side-on in both (the line square to the
 // view), the Vulcan farther in photo 84 and nearer in 85, the morning sun (~48-55 deg high) in the middle of photo 85
 // -> the camera looks ~110 deg (ESE), the line runs ~195 deg; sizes from the pivots' heights over the horizon (the
@@ -75,7 +75,16 @@ function roadPts() {
   const P = pairs(r.p);
   const d0 = Math.hypot(P[0][0] - P0[0], P[0][1] - P0[1]), d1 = Math.hypot(P[P.length - 1][0] - P0[0], P[P.length - 1][1] - P0[1]);
   if (d0 < d1) P.reverse();                                        // (from the village to the wells)
-  return [...P, at(-1, -2), site(-16, 8)];
+  // (the turn from the OSM way's end onto the track down to the pad rounded like a lorry's track: corner cutting, 3
+  // passes, from 20 m before it; the track's first point lies on its line, so the turn rounds onto it)
+  const c = P[P.length - 1], b = P[P.length - 2], l = Math.hypot(b[0] - c[0], b[1] - c[1]) || 1, k = Math.min(20, l * 0.5) / l;
+  let T = [[c[0] + (b[0] - c[0]) * k, c[1] + (b[1] - c[1]) * k], c, site(-16, 8)];
+  for (let it = 0; it < 3; it++) {
+    const Q = [T[0]];
+    for (let i = 0; i < T.length - 1; i++) { const [a, b] = [T[i], T[i + 1]]; Q.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); }
+    Q.push(T[T.length - 1]); T = Q;
+  }
+  return [...P.slice(0, -1), ...T];
 }
 const segDist = (P, x, z) => {
   let d = Infinity;
@@ -105,10 +114,13 @@ export function prepareSonda() {
   let sum = 0, n = 0;
   for (let s = -16; s <= 16; s += 4) for (let t = -3; t <= 20; t += 4) { sum += gridHeight(GEO, ...site(s, t)); n++; }
   FLOOR = sum / n;
-  const E = 8, S0 = -18, S1 = 22, T0 = -6, T1 = 24;
-  const cs = [site(S0 - E, T0 - E), site(S1 + E, T0 - E), site(S1 + E, T1 + E), site(S0 - E, T1 + E)];
+  // (the zone reaches a cell beyond the blend: the 5 m cells it cuts out along its edge then lie where its height is
+  // the ground's own, so the edges they share with the kept cells, drawn from the coarse grid, are where heightAt says;
+  // ending right at the blend, the grass there stood above the levelled height: the road's gravel hid under it)
+  const E = 8, M = E + 6, S0 = -18, S1 = 22, T0 = -6, T1 = 24;
+  const cs = [site(S0 - M, T0 - M), site(S1 + M, T0 - M), site(S1 + M, T1 + M), site(S0 - M, T1 + M)];
   addFineZone({ x0: Math.min(...cs.map(p => p[0])), x1: Math.max(...cs.map(p => p[0])), z0: Math.min(...cs.map(p => p[1])), z1: Math.max(...cs.map(p => p[1])),
-    test: (x, z) => { const [s, t] = st(x, z); return s > S0 - E && s < S1 + E && t > T0 - E && t < T1 + E; },
+    test: (x, z) => { const [s, t] = st(x, z); return s > S0 - M && s < S1 + M && t > T0 - M && t < T1 + M; },
     h: (x, z) => {
       const [s, t] = st(x, z), g0 = gridHeight(GEO, x, z), d = Math.max(S0 - s, s - S1, T0 - t, t - T1, 0);
       // (the pad's own unevenness: the puddle's hollow, ruts and bumps of a few cm, a slight fall to the wood)
@@ -146,6 +158,8 @@ export function prepareSonda() {
       }
       for (const k of fill) B[k >> 2] = (B[k >> 2] & ~(3 << ((k & 3) << 1))) | (1 << ((k & 3) << 1));
       addFloorPoly(band(W, 13));
+      // the gravel and its first metre clear of the understory and the edge bushes too (photo 86: nothing grows on it)
+      keepClearArea(x0 - 5, z0 - 5, x1 + 5, z1 + 5, (x, z) => segDist(W, x, z) < 2.8);
       // the trees by the road: forest-grown (clear boles, high crowns), not the leafy stand edge; none within 3 m of
       // the road's middle
       const bx0 = x0 - 20, bx1 = x1 + 20, bz0 = z0 - 20, bz1 = z1 + 20;
@@ -153,7 +167,7 @@ export function prepareSonda() {
       addForestMix((x, z, ty, edge, code, h1) => {
         if (x < bx0 || x > bx1 || z < bz0 || z > bz1) return ty;
         const d = segDist(W, x, z);
-        if (d < 2.9) return -1;
+        if (d < 3.1) return -1;
         if (d < 16 && (ty === TREE_T.edge || ty === TREE_T.spruceLow)) return kind[Math.floor(h1 * kind.length)];
         return ty;
       });
@@ -202,16 +216,16 @@ function mats() {
   };
   // the pad's gravel (1 tile = 1.6 m), a few weeds
   const gravC = canvas(512, 512), gg = gravC.getContext('2d'), gravB = canvas(512, 512), gbb = gravB.getContext('2d');
-  gg.fillStyle = '#6c675e'; gg.fillRect(0, 0, 512, 512); gbb.fillStyle = '#404040'; gbb.fillRect(0, 0, 512, 512);
-  stones(gg, gbb, 512, 512, 3400, 1, false);
-  stones(gg, gbb, 512, 512, 140, 1.9, false, 70, 110);
+  gg.fillStyle = '#8a857b'; gg.fillRect(0, 0, 512, 512); gbb.fillStyle = '#404040'; gbb.fillRect(0, 0, 512, 512);
+  stones(gg, gbb, 512, 512, 3400, 1, false, 92, 100);
+  stones(gg, gbb, 512, 512, 140, 1.9, false, 84, 115);
   for (let i = 0; i < 170; i++) { gg.strokeStyle = `rgba(${70 + R() * 40},${100 + R() * 40},40,0.7)`; gg.lineWidth = 1.5; const x = R() * 512, y = R() * 512; for (let k = 0; k < 5; k++) { gg.beginPath(); gg.moveTo(x, y); gg.lineTo(x + (R() - 0.5) * 14, y - 4 - R() * 10); gg.stroke(); } }
   grain(gg, 512, 512, 12, R);
   // the forest road across its 3.6 m (u) and 3.6 m along (v): the verges' leaves, two compacted ruts of finer darker
   // gravel, a crown of coarser stones with a few leaves on it
   const roadC = canvas(512, 512), rd = roadC.getContext('2d'), roadB = canvas(512, 512), rb = roadB.getContext('2d');
-  rd.fillStyle = '#6b655b'; rd.fillRect(0, 0, 512, 512); rb.fillStyle = '#404040'; rb.fillRect(0, 0, 512, 512);
-  stones(rd, rb, 512, 512, 6500, 0.42, true, 72, 80);
+  rd.fillStyle = '#8a8479'; rd.fillRect(0, 0, 512, 512); rb.fillStyle = '#404040'; rb.fillRect(0, 0, 512, 512);
+  stones(rd, rb, 512, 512, 6500, 0.42, true, 90, 85);
   for (const [u0, u1] of [[0.17, 0.36], [0.64, 0.83]]) {
     const x0 = u0 * 512, x1 = u1 * 512, gr = rd.createLinearGradient(x0, 0, x1, 0);
     gr.addColorStop(0, 'rgba(70,62,52,0)'); gr.addColorStop(0.25, 'rgba(70,62,52,0.55)'); gr.addColorStop(0.75, 'rgba(70,62,52,0.55)'); gr.addColorStop(1, 'rgba(70,62,52,0)');
@@ -228,7 +242,7 @@ function mats() {
   grain(rd, 512, 512, 12, R);
   // the old slabs: pale weathered concrete, the aggregate showing, dark cracks with moss and grit
   const slabC = canvas(512, 512), sg = slabC.getContext('2d');
-  sg.fillStyle = '#918e87'; sg.fillRect(0, 0, 512, 512);
+  sg.fillStyle = '#a7a39b'; sg.fillRect(0, 0, 512, 512);
   blobs(sg, 0, 0, 512, 512, 80, 10, 80, ['rgba(90,88,80,0.14)', 'rgba(230,228,220,0.18)', 'rgba(120,110,90,0.12)'], R);
   for (let i = 0; i < 9000; i++) { const v = 70 + R() * 110; sg.fillStyle = `rgba(${v},${v},${v - 6},0.5)`; sg.fillRect(R() * 512, R() * 512, 1 + R() * 3, 1 + R() * 3); }
   const crack = (x, y, a, len) => { sg.beginPath(); sg.moveTo(x, y); for (let k = 0; k < len; k++) { a += (R() - 0.5) * 0.7; x += Math.cos(a) * 6; y += Math.sin(a) * 6; sg.lineTo(x, y); } sg.stroke(); };
@@ -298,7 +312,7 @@ function mats() {
     foundation: std({ map: tex(slabC, { repeat: true }), roughness: 0.92, color: 0x9d9a93 }),
     gravel: off(std({ map: tex(gravC, { repeat: true }), bumpMap: tex(gravB, { repeat: true, srgb: false }), bumpScale: 2, roughness: 0.95, vertexColors: true }), -4),
     road: off(std({ map: tex(roadC, { repeat: true }), bumpMap: tex(roadB, { repeat: true, srgb: false }), bumpScale: 2, roughness: 0.95 }), -5),
-    slab: off(std({ map: tex(slabC, { repeat: true }), bumpMap: tex(gravB, { repeat: true, srgb: false }), bumpScale: 0.6, roughness: 0.92, color: 0xaeaba4 }), -6),
+    slab: off(std({ map: tex(slabC, { repeat: true }), bumpMap: tex(gravB, { repeat: true, srgb: false }), bumpScale: 0.6, roughness: 0.92, color: 0xf0eee8 }), -6),
     mesh: std({ map: tex(meshC, { repeat: true }), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.45, metalness: 0.6 }),
     sign: std({ map: tex(signC), roughness: 0.5 }),
     logo: std({ map: tex(logoC), roughness: 0.55, metalness: 0.3, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
@@ -315,7 +329,7 @@ function mats() {
   MT.slab.userData.wet = 'road';
   // the puddle: still water over a dark muddy bottom; a mirror for the screen-space reflections (post.js: alpha = 1 -
   // how much it mirrors)
-  MT.puddle = off(std({ color: 0x3b3d36, roughness: 0.04, metalness: 0.0 }), -8);
+  MT.puddle = off(std({ color: 0x57554b, roughness: 0.04, metalness: 0.0 }), -8);    // (its muddy bottom through ~3 cm of water: ~0.09)
   MT.puddle.userData.noWet = true;
   MT.puddle.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  gl_FragColor.a = 0.06;'); };
   MT.puddle.customProgramCacheKey = () => 'sondaPuddle';
@@ -632,12 +646,43 @@ export function buildSonda(B, world) {
         emit(a, ab, ca); emit(ab, b, bc); emit(ca, bc, c); emit(ab, bc, ca); return;
       }
       const cr = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);         // (< 0: facing up as given)
-      for (const [x, z] of cr < 0 ? [a, b, c] : [a, c, b]) { gp.push(x, Y(x, z) + lift, z); gn.push(0, 1, 0); guv.push(x / 1.6, z / 1.6); gc.push(...shade(x, z)); }
+      // (its edge settles into the grass: lifted less there, no step where it ends)
+      for (const [x, z] of cr < 0 ? [a, b, c] : [a, c, b]) { gp.push(x, Y(x, z) + lift * (0.4 + 0.6 * clamp01(polyDist(P, x, z) / 1.5)), z); gn.push(0, 1, 0); guv.push(x / 1.6, z / 1.6); gc.push(...shade(x, z)); }
     };
     for (const [i, j, k] of faces) emit(P[i], P[j], P[k]);
   };
   drapeC(PAD, 0.045, 0.7);
   B.tris(Mt.gravel, gp, gn, guv, gc, { noCast: true });
+  // round it the gravel thins out into the grass over ~1.4 m (the same gravel, fading: no edge like a laid carpet)
+  const fringe = (() => {
+    const W = 1.4, n = PAD.length, out = [];
+    for (let i = 0; i < n; i++) {
+      const p = PAD[i], a = PAD[(i + n - 1) % n], b = PAD[(i + 1) % n];
+      let nx = -(b[1] - a[1]), nz = b[0] - a[0];
+      const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
+      if (inPoly(PAD, p[0] + nx * W, p[1] + nz * W)) { nx = -nx; nz = -nz; }
+      out.push([[p[0], p[1]], [p[0] + nx * W * 0.5, p[1] + nz * W * 0.5], [p[0] + nx * W, p[1] + nz * W]]);
+    }
+    const P = [], C = [], U = [], lift = [0.018, 0.012, 0.007], alpha = [1, 0.4, 0];
+    const v = (q, r) => { const [x, z] = q[r]; P.push(x, Y(x, z) + lift[r], z); U.push(x / 1.6, z / 1.6); C.push(...shade(x, z), alpha[r]); };
+    for (let i = 0; i < n; i++) {
+      const q0 = out[i], q1 = out[(i + 1) % n];
+      for (let r = 0; r < 2; r++) {
+        const tri = [[q0, r], [q1, r], [q1, r + 1], [q0, r], [q1, r + 1], [q0, r + 1]];
+        // (facing up: the winding by the outline's own turn)
+        const [ax, az] = q0[r], [bx, bz] = q1[r], [cx, cz] = q1[r + 1], up = (bx - ax) * (cz - az) - (bz - az) * (cx - ax) < 0;
+        for (const [q, rr] of up ? tri : [tri[0], tri[2], tri[1], tri[3], tri[5], tri[4]]) v(q, rr);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(C, 4));
+    g.computeVertexNormals();
+    const m = Mt.gravel.clone(); Object.assign(m, { transparent: true, depthWrite: false, polygonOffsetUnits: -5 });
+    const mesh = new THREE.Mesh(g, m); mesh.receiveShadow = true; mesh.userData.noAO = true; mesh.renderOrder = 1;
+    return mesh;
+  })();
   // the old slabs: two rows in front of the camera of photo 84, each draped on the ground, a little turned
   for (const [s0, t0, w, l, rot] of [[5.6, 11.3, 1.4, 2.6, -0.7], [3.9, 10.9, 1.3, 2.4, -0.66], [4.6, 8.7, 1.3, 2.0, -0.68], [2.9, 8.9, 1.2, 1.7, -0.62], [4.4, 14.1, 2.4, 0.9, -0.1], [-3.6, 11.4, 1.1, 0.7, 0.2]]) {
     const c = Math.cos(rot), sn = Math.sin(rot), Q = (a, b) => site(s0 + a * c - b * sn, t0 + a * sn + b * c);
@@ -841,7 +886,7 @@ export function buildSonda(B, world) {
   for (const p of PAD) grow(p[0], p[1], 2);
 
   // ---- the puddle: its own mesh (a mirror; hidden under the snow)
-  const pts = []; for (let k = 0; k < 20; k++) { const a = k / 20 * 6.283, r = 1 + 0.16 * Math.sin(a * 3 + 1) + 0.09 * Math.sin(a * 5 + 0.4); pts.push(site(PUDDLE.s + Math.cos(a) * PUDDLE.a * r, PUDDLE.t + Math.sin(a) * PUDDLE.b * r)); }
+  const pts = []; for (let k = 0; k < 56; k++) { const a = k / 56 * 6.283, r = 1 + 0.16 * Math.sin(a * 3 + 1) + 0.09 * Math.sin(a * 5 + 0.4) + 0.05 * Math.sin(a * 9 + 2.1) + 0.025 * Math.sin(a * 17 + 0.7); pts.push(site(PUDDLE.s + Math.cos(a) * PUDDLE.a * r, PUDDLE.t + Math.sin(a) * PUDDLE.b * r)); }
   const pg = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z))));
   pg.rotateX(-Math.PI / 2); pg.translate(0, FLOOR - 0.005, 0);
   const puddle = new THREE.Mesh(pg, Mt.puddle); puddle.receiveShadow = true; puddle.userData.noAO = true;
@@ -856,16 +901,15 @@ export function buildSonda(B, world) {
       for (let d = 0; d < L; d += 3 + R() * 6) {
         const e = toEN(a[0] + dx * d, a[1] + dz * d)[0];
         if (e < WOOD_E[0] || e > WOOD_E[1]) continue;
-        const side = R() < 0.5 ? -1 : 1, o = side * (2.7 + R() * 1.8), x = a[0] + dx * d - dz * o, z = a[1] + dz * d + dx * o;
+        const k0 = R(), side = R() < 0.5 ? -1 : 1, o = side * (k0 < 0.55 ? 3.4 + R() * 1.8 : 4.0 + R() * 1.5), x = a[0] + dx * d - dz * o, z = a[1] + dz * d + dx * o;
         if (!forestCode(x - dz * side * 6, z + dx * side * 6)) continue;           // (the wood beyond)
-        const k = R();
-        add.push(k < 0.55 ? [x, z, TREE_T.shrubTall, 0.6 + R() * 0.7] : [x, z, k < 0.8 ? TREE_T.hornbeamF : TREE_T.beech, 0.35 + R() * 0.3]);
+        add.push(k0 < 0.55 ? [x, z, TREE_T.shrubTall, 0.45 + R() * 0.4] : [x, z, k0 < 0.8 ? TREE_T.hornbeamF : TREE_T.beech, 0.3 + R() * 0.2]);
       }
       // the grown trees lining it on both sides, their crowns meeting over it
       for (const side of [-1, 1]) for (let d = R() * 4; d < L; d += 3.5 + R() * 3.5) {
         const e = toEN(a[0] + dx * d, a[1] + dz * d)[0];
         if (e < WOOD_E[0] || e > WOOD_E[1]) continue;
-        const o = side * (2.7 + R() * 1.6), x = a[0] + dx * d - dz * o, z = a[1] + dz * d + dx * o;
+        const o = side * (3.1 + R() * 1.6), x = a[0] + dx * d - dz * o, z = a[1] + dz * d + dx * o;
         if (!forestCode(x - dz * side * 6, z + dx * side * 6)) continue;
         const k = R();
         // (slender: mostly hornbeams and young beeches, the odd oak)
@@ -880,7 +924,7 @@ export function buildSonda(B, world) {
     }
   }
 
-  // ---- the views (photos 84-86) and the red Kangoo on the pad (photo 85)
+  // ---- the views (photos 84-86) and the red Doblò on the pad (photo 85; oxidised paint: the bonnet in photo 86)
   const camView = (c, n, label, fov) => { const [x, z] = site(c.s, c.t), d = dirOf(c.az); return { n, from: [x, z], to: [x + d[0] * 20, z + d[1] * 20], pitch: c.pitch, fov, eye: c.eye, label }; };
   const views = [camView(CAM[84], 84, 'Poza 84 — sondele din pădure: unitatea Vulcan și balansierul ruginit', 59), camView(CAM[85], 85, 'Poza 85 — sondele din pădure: platforma de pietriș cu balta', 59)];
   if (RP) {
@@ -894,8 +938,8 @@ export function buildSonda(B, world) {
   const kd = site(VAN.s, VAN.t), kdir = dirOf(VAN.az);
   return {
     type: 'sonda', name: 'Sondele din pădure', bbox: bb, units, views,
-    cars: [{ x: kd[0], z: kd[1], h: Math.atan2(-kdir[0], -kdir[1]), model: 'kangoo', paint: 0xb3121a }],
-    groups: [...units.map(u => u.group), puddle],
+    cars: [{ x: kd[0], z: kd[1], h: Math.atan2(-kdir[0], -kdir[1]), model: 'doblo', paint: 0xa8161c, dusty: 0.6 }],
+    groups: [...units.map(u => u.group), puddle, fringe],
     // the puddle mirrors the scene in any weather (the screen-space reflections are otherwise on only in the wet)
     mirrorNear: (cam) => puddle.visible && Math.hypot(cam.x - pcx, cam.z - pcz) < 70,
     // both units pump all the time; drawn within ~600 m, worked out within ~400 m

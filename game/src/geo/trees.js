@@ -447,7 +447,12 @@ export function addForestMix(fn) { MIX.push(fn); }
 // spots kept free of trees, bushes and deadwood: a car parked on the verge (main.js: the Maybach)
 const CLEARINGS = [];
 export function keepClear(x, z, r) { CLEARINGS.push([x, z, r * r]); }
-export const cleared = (x, z) => CLEARINGS.length > 0 && CLEARINGS.some(([cx, cz, r2]) => (x - cx) * (x - cx) + (z - cz) * (z - cz) < r2);
+// and areas kept free the same way: test(x, z) within the box [x0, x1] x [z0, z1] (sonda.js: the forest road's gravel,
+// where the understory and the stand's edge bushes would otherwise grow on the road)
+const CLEAR_AREAS = [];
+export function keepClearArea(x0, z0, x1, z1, test) { CLEAR_AREAS.push([x0, z0, x1, z1, test]); }
+export const cleared = (x, z) => (CLEARINGS.length > 0 && CLEARINGS.some(([cx, cz, r2]) => (x - cx) * (x - cx) + (z - cz) * (z - cz) < r2)) ||
+  (CLEAR_AREAS.length > 0 && CLEAR_AREAS.some(([x0, z0, x1, z1, test]) => x >= x0 && x <= x1 && z >= z0 && z <= z1 && test(x, z)));
 // every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
 function eachForestTree(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / SP); j <= Math.floor(z1 / SP); j++) for (let i = Math.floor(x0 / SP); i <= Math.floor(x1 / SP); i++) {
