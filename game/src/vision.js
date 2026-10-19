@@ -10,8 +10,8 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 //  * the rods' share s (CIE 191:2010 mesopic range, 0.005-5 cd/m2: 1 below, 0 above, linear in log L between);
 //  * the rods' luminance from CIE XYZ, V = Y (1.33 (1 + (Y + Z) / X) - 1.68) (Larson, Rushmeier & Piatko 1997;
 //    Jensen et al. 2000), scaled so a neutral grey keeps its luminance;
-//  * shown as a grey shifted half way to the blue of rod vision, chromaticity (0.25, 0.25) (Thompson, Shirley &
-//    Ferwerda 2002): (0.85, 0.99, 1.45) in linear sRGB, luminance kept.
+//  * shown as a grey shifted a third of the way to the blue of rod vision, chromaticity (0.25, 0.25) (Thompson,
+//    Shirley & Ferwerda 2002): (0.9, 0.99, 1.32) in linear sRGB, luminance kept (half way read as a film's blue night).
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
 const FRAG = /* glsl */`
 uniform sampler2D tDiffuse;
@@ -23,7 +23,7 @@ void main() {
   float X = dot(L, vec3(0.4124, 0.3576, 0.1805)), Y = dot(L, vec3(0.2126, 0.7152, 0.0722)), Z = dot(L, vec3(0.0193, 0.1192, 0.9505));
   float s = clamp((0.699 - log2(max(Y * uAbs, 1e-6)) * 0.30103) / 3.0, 0.0, 1.0);
   float V = Y * (1.33 * (1.0 + (Y + Z) / max(X, 1e-6)) - 1.68) / 2.573;
-  gl_FragColor = vec4(mix(L, max(V, 0.0) * vec3(0.85, 0.99, 1.45), s), c.a);
+  gl_FragColor = vec4(mix(L, max(V, 0.0) * vec3(0.9, 0.99, 1.32), s), c.a);
 }`;
 
 export class VisionPass extends Pass {

@@ -138,6 +138,49 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
     * efectul de cinema din filmări (profunzimea câmpului, estomparea) citea o adâncime ștearsă de trecerile anterioare, deci nu făcea nimic; acum adâncimea e copiată imediat după desenarea scenei.
   * **Verificare**: 10 combinații de vreme și oră (senin 11:30, 18:30 și 23:30; ploaie 15:00 și 22:00; rafale 11:30 și 16:11; ninsoare 11:30; viscol 20:00; zăpadă cu senin 13:00), fiecare în 5 locuri (strada, satul de sus, crucea, pădurea, sondele), plus o secundă la volan: zero erori și zero avertismente în consolă, niciun cadru negru sau ars. Pe zăpadă mașina face 2,3 m în prima secundă față de 7,2 m pe uscat, cum e gândită aderența (~0,3).
   * **Limite**: razele se fac din ce e pe ecran, deci un obstacol din afara cadrului nu aruncă raze și ele se sting când soarele iese din cadru. Privind spre un soare jos peste o culme, aerul de deasupra pantei primește o strălucire caldă, ca în contre-jour.
+* **Noaptea, zăpada, culorile și ploaia, după cele reale (V66)**:
+  * **Noaptea are lumina în rapoartele reale.**
+    * Luna plină dă ~0,25 lx și e sursa principală.
+    * Cerul din jurul ei adaugă o cincime până la un sfert din lumina ei, ca cerul de zi față de soare. De aceea umbrele lunii sunt adânci.
+    * Sub plafonul înnorat nu e lumină directă, doar strălucirea difuză a norilor.
+    * Lumina lunii are culoarea soarelui, puțin mai roșie (~4100 K). Albastrul nopții vine din ochi, nu din lumină (mai jos).
+  * **Bugul principal al nopții.** Jumătatea de jos a luminii de mediu (lumina pe care o întoarce solul) era fixă la valoarea de zi, 0,33, adică de ~5 ori cât luna.
+    * Efectul: noaptea, iarba și frunzele străluceau în culori, iar umbrele erau spălate.
+    * Acum valoarea e albedoul solului (~0,2) înmulțit cu lumina care ajunge efectiv la el.
+    * Măsurat separat pe fiecare sursă, pe strada casei la 23:30: lumina de mediu dădea aproape toată imaginea, luna singură aproape nimic.
+  * **Dealul crucii** nu mai primește pe cer senin de 9 ori lumina lunii din restul hărții. Raza de lună rămâne doar sub plafonul de furtună, prin spărtura din nori, și doar cât lumina lunii pe cer senin.
+  * **Ochiul noaptea** (`src/vision.js`).
+    * Sub ~5 cd/m² conurile cedează locul bastonașelor, care nu văd culori (zona mezopică CIE 191:2010, între 0,005 și 5 cd/m²).
+    * Pentru fiecare pixel se calculează cât din imagine o văd bastonașele și luminanța lor, din CIE XYZ (Larson, Rushmeier & Piatko 1997; Jensen et al. 2000).
+    * Rezultatul se afișează ca un gri deplasat spre albastrul vederii nocturne (Thompson, Shirley & Ferwerda 2002).
+    * Ce luminează doar luna devine gri-albăstrui, iar roșul se închide aproape de negru (efectul Purkinje). Ce e luminat puternic, ca lanterna sau becurile, își păstrează culoarea.
+  * **Surse false de lumină, oprite noaptea:**
+    * stopurile tuturor mașinilor parcate (aveau o emisie roșie permanentă);
+    * fațadele construite din poze (aveau lumina pozei adăugată și noaptea).
+  * **Lanterna și farurile.** Lanterna are 30 cd (avea 12, abia mai mult decât luna din jur) și face o pată clară pe asfalt. Farurile au 80.
+  * **Măsurat la 23:30, senin** (media cadrului, sRGB 0–255):
+    * strada casei: 36 → ~22;
+    * iarba de pe dealul crucii: (30, 28, 15), oliv → (15, 17, 22), gri-albăstrui;
+    * drumul luminat de lună: ~35, cu umbrele copacilor pe el;
+    * umbrele lunii: 2–4.
+  * **Zăpada.**
+    * Coroanele golașe nu mai au un nor de puncte negre în jur. Fiecare carton de rămurele are acum mip-uri care păstrează acoperirea (după Castaño, „Computing alpha mipmaps”, 2010), iar rămurelele nu mai pornesc dintr-un nod gros: de departe coroana e o pânză fină.
+    * Zăpada de pe crengile molizilor urmează arcul crengii, intră sub ace și are bulgări de 2–6 cm. De aproape nu mai e o placă albă plată cu margine zimțată.
+    * Crucea și stâlpii de înaltă tensiune sunt zăbrele prin care zăpada și ploaia cad liber. Soclul crucii are betonul lui, nu pe cel al drumurilor, care se transformă în zloată. Acum soclul e alb, cu umbrele zăbrelelor pe el.
+    * Zăpada de pe geamurile mașinilor e opacă și în pete, ca pe caroserie, nu o peliculă albă străvezie prin care se vedeau volanul și scaunele. Mașina condusă își păstrează geamurile curate.
+    * Iarna, florile din jardiniere și din strat sunt uscate, oțetarii (Rhus typhina, pozele 7, 19, 22–23) n-au frunze, iar iarba și plantele joase sunt în repaus (pai, oliv-brun) unde zăpada le lasă la vedere.
+  * **Culorile, verificate pe pozele tale.** Am folosit raportul liniar asfalt/cer, care nu depinde de expunerea camerei.
+    * În pozele 1 și 7 raportul era 0,29 și 0,32; în joc ieșea 0,28 și 0,42.
+    * Acum asfaltul are albedo ~0,17 (asfaltul îmbătrânit are 0,10–0,18, iar cel nou 0,05).
+    * Betonul și bordurile au un gri-bej cald, ca trotuarul din poza 7.
+    * Scoarța generică are ~0,06 (avea 0,03, aproape de cărbune).
+    * Restul măsurătorilor e în intervalele reale: tencuiala albă 0,64, zăpada ~0,9, iarba ~0,07, frunzele 0,10–0,18, molidul 0,02–0,04 (în poza 1 molidul e la fel de închis).
+  * **Ploaia.** O suprafață poroasă udă se închide mai mult pe canalele de culoare mai închise (Ångström 1925; Lekner & Dorf 1988: A_ud = A / (n² − (n² − 1)·A), cu n = 1,33). De aceea materialele ude par mai saturate, ca în realitate: cărămida mai roșie, pământul mai brun. Întunecarea medie rămâne la ~0,45–0,65 din albedoul uscat, cât s-a măsurat pentru pământ, beton și asfalt îmbibate.
+  * **Limite.**
+    * Felinarele stradale strălucesc, se reflectă în asfaltul ud și luminează ploaia și ninsoarea, dar nu luminează suprafețele.
+    * Vederea de noapte se calculează per pixel, fără adaptare locală. O suprafață închisă sub lanternă poate ieși la fel de gri ca una deschisă sub lună.
+    * De foarte aproape (sub ~2 m), crengile molizilor sunt cartoane plate.
+    * Sub pădurea de foioase golașe, la începutul ninsorii, solul rămâne în mare parte brun, cu pete de zăpadă. O primă corecție (să treacă mai multă zăpadă printre crengi) n-a schimbat nimic în imagine, deci n-am păstrat-o: cauza e în altă parte.
 * **Ninsoare** și **Zăpadă, senin** (ultimele două vremi din **T**): iarna, pe 1 februarie 2026. Soarele e jos (26° la 11:30, răsare pe la 7:40 și apune la 17:25), iar noaptea e lună plină sus pe cer („luna zăpezii”, 22:09 UTC): 49° la 22:00, verificat cu aceeași teorie a lunii.
   * **Ninsoarea**: plafon gri-alb, ceață (vizibilitate ~2 km) și ~56 000 de fulgi în două straturi în jurul tău (aproape și mai departe). Fulgii cad încet (0,75–1,35 m/s, cât cade zăpada reală), plutesc fiecare în felul lui și sunt purtați de rafale. Rămân pe loc în lume când te miști și nu cad sub copaci, streșini sau poduri (aceeași hartă de sus ca la ploaie). Lanterna îi luminează noaptea.
   * **Zăpada se așază și se adună în timp**: în ~1 minut de ninsoare devin albe toate suprafețele orientate în sus și sub cerul liber (acoperișuri, sol, ziduri, garduri, capote, crengi). Apoi stratul crește cu ~8 cm pe minut, până la 60 cm. În realitate o ninsoare grea aduce 2–8 cm pe oră, deci jocul accelerează timpul. Adâncimea apare lângă hartă („zăpadă 25 cm”). *Zăpadă, senin* e a doua zi: are cel puțin 25 cm, cerul e albastru adânc și soarele de iarnă face umbre lungi. Pereții verticali și locurile de sub streșini, coroane și mașini rămân fără zăpadă. Pe zăpada proaspătă sclipesc cristale la soare. La altă vreme zăpada se topește cu ~1 cm/s (în ploaie cu 2,5 cm/s), iar ultimul strat alb dispare în ~40 s (~15 s în ploaie).
