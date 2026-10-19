@@ -41,10 +41,11 @@ export function buildMaterials() {
   const n = (t, s = 1) => new THREE.Vector2(s, s);
 
   // --- ground ---
-  std('asphalt', { map: TEX.asphalt, normalMap: TEX.asphaltN, normalScale: n(0, 0.9), roughness: 0.93, color: 0xf2f2f2 });
+  // (albedo ~0.17: aged asphalt 0.10-0.18; against the overcast sky as in the user's photos 1 and 7)
+  std('asphalt', { map: TEX.asphalt, normalMap: TEX.asphaltN, normalScale: n(0, 0.9), roughness: 0.93, color: 0xe3e3e3 });
   std('pavers', { map: TEX.pavers, normalMap: TEX.paversN, roughness: 0.9, color: 0xe8e6e2 });
-  std('curb', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.88, color: 0xd6d4cf });
-  std('concrete', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.92, color: 0xe6e4df });
+  std('curb', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.88, color: 0xd8d1c3 });
+  std('concrete', { map: TEX.concrete, normalMap: TEX.concreteN, roughness: 0.92, color: 0xe9e2d3 });   // (weathered concrete: a warm grey-beige, photo 7)
   // hard road surfaces: puddles on the level and water running downhill when it rains (rain.js; clones inherit it)
   for (const k of ['asphalt', 'pavers', 'concrete']) M[k].userData.wet = 'road';
   std('gravel', { map: TEX.gravel, normalMap: TEX.gravelN, normalScale: n(0, 1.2), roughness: 0.97 });

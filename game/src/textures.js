@@ -690,7 +690,7 @@ function genBark() {
   });
   const map = paint(w, h, (x, y, p) => {
     const v = 0.35 + 0.65 * H[y * w + x];
-    p[0] = 92 * v; p[1] = 80 * v; p[2] = 70 * v;
+    p[0] = 128 * v; p[1] = 112 * v; p[2] = 98 * v;            // (albedo ~0.06: a grey-brown bark, not a charred one)
   });
   TEX.bark = tex(map);
   TEX.barkN = tex(heightToNormalCanvas(H, w, h, 5), { srgb: false });

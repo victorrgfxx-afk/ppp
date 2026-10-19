@@ -94,7 +94,9 @@ export class Flashlight {
     scene.add(l, l.target);
     this.on = false;
   }
-  set(on) { this.on = on; this.light.intensity = on ? 12 : 0; this.light.shadow.autoUpdate = on; }
+  // (30: a clear pool a few metres ahead on the dark asphalt - against the moon's light, which is the night's key; 12 was
+  // barely more than the moonlight around it)
+  set(on) { this.on = on; this.light.intensity = on ? 30 : 0; this.light.shadow.autoUpdate = on; }
   get info() { const l = this.light; return { on: this.on, pos: l.position, dir: l.target.position.clone().sub(l.position).normalize() }; }
   update(camera) {
     if (!this.on) return;
@@ -114,7 +116,7 @@ export class Headlights {
     scene.add(l, l.target);
     this.on = false;
   }
-  set(on) { if (on === this.on) return; this.on = on; this.light.intensity = on ? 40 : 0; }
+  set(on) { if (on === this.on) return; this.on = on; this.light.intensity = on ? 80 : 0; }   // (low beams: well over the torch)
   get info() { const l = this.light; return { on: this.on, pos: l.position, dir: l.target.position.clone().sub(l.position).normalize() }; }
   // v: the vehicle (x, z, h, car.group, car.half)
   update(v) {
