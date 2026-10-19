@@ -55,7 +55,7 @@ export class ShaftsPass extends Pass {
     this.blurMat = mat(BLUR, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uLen: { value: 0.9 }, uDecay: { value: 0.96 } });
     this.compMat = mat(COMP, { tDiffuse: { value: null }, tShafts: { value: null }, uK: { value: 0 } });
     this.quad = new FullScreenQuad(null);
-    this.sunUv = new THREE.Vector2(); this.k = 0; this.hasMask = false;
+    this.sunUv = new THREE.Vector2(); this.k = 0; this.hasMask = false; this.thr = 0.25;
     this.hook = (r, rb) => this.takeMask(r, rb);
     this.enabled = false;
   }
@@ -80,8 +80,9 @@ export class ShaftsPass extends Pass {
     if (!rb.depthTexture) return;
     const u = this.maskMat.uniforms;
     u.tColor.value = rb.texture; u.tDepth.value = rb.depthTexture; u.uSun.value.copy(this.sunUv); u.uAspect.value = rb.width / rb.height;
-    // (only what stands out of the sky around the sun: its glow and the clear sky, not a dull deck)
-    u.uThr.value = 1.2;
+    // (only the bright sky around the sun - its glow, the clear sky between crowns - not dark cloud bases; the sky's
+    // radiance before the exposure is ~0.2-1 by day)
+    u.uThr.value = this.thr;
     this.quad.material = this.maskMat;
     renderer.setRenderTarget(this.mask); this.quad.render(renderer);
     this.hasMask = true;
