@@ -9,11 +9,14 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { WindshieldPass } from './windshield.js';
 import { CinePass } from './cinepass.js';
+import { ShaftsPass } from './shafts.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
+// (hooks: passes further on that need the scene as the scene pass leaves it - its depth, its sky - take it here, before
+// the full-screen passes in between overwrite that buffer's depth with their quads')
 class DepthTap extends Pass {
-  constructor() { super(); this.needsSwap = false; this.tex = null; this.onTap = null; }
-  render(renderer, writeBuffer, readBuffer) { this.tex = readBuffer.depthTexture; this.onTap?.(renderer, readBuffer); }
+  constructor() { super(); this.needsSwap = false; this.tex = null; this.hooks = new Set(); }
+  render(renderer, writeBuffer, readBuffer) { this.tex = readBuffer.depthTexture; for (const h of this.hooks) h(renderer, readBuffer); }
 }
 
 // GTAO that ignores alpha-tested foliage/grass (they would render as solid quads in its normal pass).
@@ -315,6 +318,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // the softness of distant things in the haze (after the passes that read the scene's depth through this buffer)
   const aerial = new AerialBlurPass(camera);
   composer.addPass(aerial);
+  // the sun's shafts through the haze (on while the sun shines into the frame: shafts.js)
+  const shafts = q.shafts && tap ? new ShaftsPass(camera, tap) : null;
+  if (shafts) composer.addPass(shafts);
   // a film lens and shutter for recorded cinematics (off in play)
   const cine = new CinePass(camera, tap);
   composer.addPass(cine);
@@ -336,5 +342,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, cine, shield, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, setSize };
 }

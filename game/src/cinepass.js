@@ -92,7 +92,7 @@ export class CinePass extends Pass {
   get enabled() { return this._on; }
   set enabled(on) {
     this._on = on;
-    if (this.tap) this.tap.onTap = on ? (r, rb) => this.keepDepth(r, rb) : null;
+    if (this.tap) { this.hook ??= (r, rb) => this.keepDepth(r, rb); on ? this.tap.hooks.add(this.hook) : this.tap.hooks.delete(this.hook); }
     if (!on) this.hasLin = this.hasPrev = false;
   }
   keepDepth(renderer, rb) {

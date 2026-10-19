@@ -169,6 +169,10 @@ async function main() {
   let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
   // the leaves: autumn colours (mid-October, as in the user's drone photos) or the summer's green (season.js; menu)
   let foliage = FOLIAGE[store.get('foliage', 'toamna')] !== undefined ? store.get('foliage', 'toamna') : 'toamna';
+  // the camera's motion blur in play (post.js CinePass: the shutter of a film camera, 0.5 = 180 degrees); on Ultra a
+  // light one by default
+  let mblur = +store.get('mblur', qKey === 'ultra' ? 0.3 : 0) || 0;
+  const lastCam = new THREE.Vector3(), lastQ = new THREE.Quaternion();
   let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a gale: the blizzard or the squall)
   // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
   // the gale with the snow flying in it (STORM.uStorm: the flakes, the drift, the plastered snow)
@@ -640,6 +644,14 @@ async function main() {
     el.addEventListener('change', (e) => {
       foliage = e.target.value; store.set('foliage', foliage); SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];
       for (const s2 of ['', '2']) if ($('foliage' + s2)) $('foliage' + s2).value = foliage;
+    });
+  }
+  for (const sfx of ['', '2']) {
+    const el = $('mblur' + sfx); if (!el) continue;
+    el.value = String(mblur);
+    el.addEventListener('change', (e) => {
+      mblur = +e.target.value || 0; store.set('mblur', mblur);
+      for (const s2 of ['', '2']) if ($('mblur' + s2)) $('mblur' + s2).value = String(mblur);
     });
   }
   $('mute').addEventListener('click', () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? 'Sunet: oprit' : 'Sunet: pornit'; });
@@ -1254,6 +1266,19 @@ async function main() {
     post.grade.uniforms.uTime.value = t;
     scene.updateMatrixWorld();
     post.shield.update(paused ? 0 : dt, { on: mode === 'car' && !!active && camMode === 'cockpit', rate: (weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value, car: active, camera, pupil: rainFX.pupil.value });
+    // the camera's motion blur (a recording that sets the lens itself marks it manual); a jump of the camera - a view
+    // picked, into or out of a car, another camera mode - is a cut, not a smear
+    if (!post.cine.manual) {
+      const on = mblur > 0 && !paused;
+      if (post.cine.enabled !== on) post.cine.enabled = on;
+      if (on) {
+        const cut = camera.position.distanceTo(lastCam) > 6 || 2 * Math.acos(Math.min(1, Math.abs(camera.quaternion.dot(lastQ)))) > 0.6;
+        post.cine.params = { shutter: mblur, cut };
+      }
+      lastCam.copy(camera.position); lastQ.copy(camera.quaternion);
+    }
+    // the sun's shafts: by the share of its light that comes straight (the weather's), above the horizon, by day
+    if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.55); }
     post.composer.render(dt);
     perf.end();
     input.endFrame();
