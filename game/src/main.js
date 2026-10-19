@@ -172,6 +172,12 @@ async function main() {
   // the camera's motion blur in play (post.js CinePass: the shutter of a film camera, 0.5 = 180 degrees); on Ultra a
   // light one by default
   let mblur = +store.get('mblur', qKey === 'ultra' ? 0.3 : 0) || 0;
+  // the tone curve (the colours): ACES, the game's own (its light was tuned under it), AgX (a film's softer roll-off,
+  // less saturated) or Khronos PBR Neutral (the hues kept); each with the exposure that keeps a scene's mean the same
+  // (measured on the street at a low sun: ACES 64.6, AgX 71.4, Neutral 54.9 out of 255 at one exposure)
+  const TONEMAPS = { aces: [THREE.ACESFilmicToneMapping, 1], agx: [THREE.AgXToneMapping, 0.9], neutral: [THREE.NeutralToneMapping, 1.18] };
+  let tonemap = TONEMAPS[store.get('tonemap', 'aces')] ? store.get('tonemap', 'aces') : 'aces', baseExposure = 0.92;
+  const exposeTo = (e) => { baseExposure = e; renderer.toneMapping = TONEMAPS[tonemap][0]; renderer.toneMappingExposure = e * TONEMAPS[tonemap][1]; };
   const lastCam = new THREE.Vector3(), lastQ = new THREE.Quaternion();
   let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a gale: the blizzard or the squall)
   // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
@@ -251,7 +257,7 @@ async function main() {
       const b = (w.galeFrom + 180) * Math.PI / 180, th = GEO.meta.origin.bearing * Math.PI / 180, e = Math.sin(b), nn = Math.cos(b);
       galeAng = Math.atan2(e * Math.sin(th) + nn * Math.cos(th), -e * Math.cos(th) + nn * Math.sin(th));
     } else galeAng = Math.atan2(-0.9986, 0.052);
-    renderer.toneMappingExposure = THREE.MathUtils.lerp(w.exposure * (1 + 0.7 * (1 - d)), 2.6, night);   // like a camera: it opens up when the light is low
+    exposeTo(THREE.MathUtils.lerp(w.exposure * (1 + 0.7 * (1 - d)), 2.6, night));   // like a camera: it opens up when the light is low
     scene.environment?.dispose();
     scene.environment = buildEnvironment(renderer, sky);
     scene.environmentIntensity = baseEnv = w.env * (0.35 + 0.65 * d);
@@ -644,6 +650,14 @@ async function main() {
     el.addEventListener('change', (e) => {
       foliage = e.target.value; store.set('foliage', foliage); SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];
       for (const s2 of ['', '2']) if ($('foliage' + s2)) $('foliage' + s2).value = foliage;
+    });
+  }
+  for (const sfx of ['', '2']) {
+    const el = $('tonemap' + sfx); if (!el) continue;
+    el.value = tonemap;
+    el.addEventListener('change', (e) => {
+      tonemap = TONEMAPS[e.target.value] ? e.target.value : 'aces'; store.set('tonemap', tonemap); exposeTo(baseExposure);
+      for (const s2 of ['', '2']) if ($('tonemap' + s2)) $('tonemap' + s2).value = tonemap;
     });
   }
   for (const sfx of ['', '2']) {
