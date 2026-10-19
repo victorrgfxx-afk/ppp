@@ -178,7 +178,7 @@ async function main() {
   const TONEMAPS = { aces: [THREE.ACESFilmicToneMapping, 1], agx: [THREE.AgXToneMapping, 0.9], neutral: [THREE.NeutralToneMapping, 1.18] };
   let tonemap = TONEMAPS[store.get('tonemap', 'aces')] ? store.get('tonemap', 'aces') : 'aces', baseExposure = 0.92;
   const exposeTo = (e) => { baseExposure = e; renderer.toneMapping = TONEMAPS[tonemap][0]; renderer.toneMappingExposure = e * TONEMAPS[tonemap][1]; };
-  const lastCam = new THREE.Vector3(), lastQ = new THREE.Quaternion();
+  const lastCam = new THREE.Vector3(), lastQ = new THREE.Quaternion(), _kv = new THREE.Vector3(), _kb = new THREE.Vector4();
   let storm = 0, stormTarget = 0, baseFog = 0, gust = 1, windSpeed = 0;       // (a gale: the blizzard or the squall)
   // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
   // the gale with the snow flying in it (STORM.uStorm: the flakes, the drift, the plastered snow)
@@ -1287,9 +1287,21 @@ async function main() {
       if (post.cine.enabled !== on) post.cine.enabled = on;
       if (on) {
         const cut = camera.position.distanceTo(lastCam) > 6 || 2 * Math.acos(Math.min(1, Math.abs(camera.quaternion.dot(lastQ)))) > 0.6;
-        // (in a car: nothing up to its far end smears - it moves with the camera)
-        const keep = mode === 'car' && active && !window.__game?.cam ? camera.position.distanceTo(active.car.group.position) + 2.6 : 0;
-        post.cine.params = { shutter: mblur, cut, keep };
+        // (in a car: nothing up to its far end, inside its outline on the screen, smears - it moves with the camera)
+        let keep = 0, keepBox = null;
+        if (mode === 'car' && active && !window.__game?.cam) {
+          const grp = active.car.group; grp.updateMatrixWorld();
+          keep = camera.position.distanceTo(grp.position) + 2.6;
+          let x0 = 1, y0 = 1, x1 = 0, y1 = 0, behind = false;
+          for (let i = 0; i < 8; i++) {
+            _kv.set(i & 1 ? 1.15 : -1.15, i & 2 ? 1.8 : -0.1, i & 4 ? 2.7 : -2.7).applyMatrix4(grp.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+            if (_kv.z > -0.05) { behind = true; break; }
+            _kv.applyMatrix4(camera.projectionMatrix);
+            x0 = Math.min(x0, _kv.x * 0.5 + 0.5); x1 = Math.max(x1, _kv.x * 0.5 + 0.5); y0 = Math.min(y0, _kv.y * 0.5 + 0.5); y1 = Math.max(y1, _kv.y * 0.5 + 0.5);
+          }
+          keepBox = behind ? _kb.set(0, 0, 1, 1) : _kb.set(x0, y0, x1, y1);
+        }
+        post.cine.params = { shutter: mblur, cut, keep, keepBox };
       }
       lastCam.copy(camera.position); lastQ.copy(camera.quaternion);
     }
