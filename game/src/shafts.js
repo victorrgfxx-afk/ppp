@@ -14,6 +14,7 @@ const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionM
 const MASK = /* glsl */`
 uniform sampler2D tColor, tDepth;
 uniform vec2 uSun;
+uniform vec3 uCol;
 uniform float uAspect, uThr;
 varying vec2 vUv;
 void main() {
@@ -22,7 +23,7 @@ void main() {
   vec2 dv = (vUv - uSun) * vec2(uAspect, 1.0);
   float near = exp(-dot(dv, dv) * 5.0);                              // (the sky's glow around the sun only)
   float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-  gl_FragColor = vec4(c.rgb * sky * near * smoothstep(uThr, uThr * 2.5, l), 1.0);
+  gl_FragColor = vec4(uCol * l * sky * near * smoothstep(uThr, uThr * 2.5, l), 1.0);   // (the sun's colour: the shafts are its light)
 }`;
 const BLUR = /* glsl */`
 uniform sampler2D tSrc;
@@ -51,16 +52,18 @@ export class ShaftsPass extends Pass {
     const rt = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.mask = rt(); this.b1 = rt(); this.b2 = rt();
     const mat = (fs, u) => new THREE.ShaderMaterial({ uniforms: u, vertexShader: VERT, fragmentShader: fs, depthTest: false, depthWrite: false });
-    this.maskMat = mat(MASK, { tColor: { value: null }, tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uThr: { value: 1 } });
+    this.maskMat = mat(MASK, { tColor: { value: null }, tDepth: { value: null }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uThr: { value: 1 }, uCol: { value: new THREE.Color(1, 1, 1) } });
     this.blurMat = mat(BLUR, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uLen: { value: 0.9 }, uDecay: { value: 0.96 } });
     this.compMat = mat(COMP, { tDiffuse: { value: null }, tShafts: { value: null }, uK: { value: 0 } });
     this.quad = new FullScreenQuad(null);
-    this.sunUv = new THREE.Vector2(); this.k = 0; this.hasMask = false; this.thr = 0.25;
+    this.sunUv = new THREE.Vector2(); this.k = 0; this.hasMask = false; this.thr = 0.18;
     this.hook = (r, rb) => this.takeMask(r, rb);
     this.enabled = false;
   }
-  // every frame: the direction to the sun (world), how much of its light comes straight (0..1: 0 overcast or night)
-  set(sunDir, direct, strength = 1) {
+  // every frame: the direction to the sun (world), how much of its light comes straight (0..1: 0 overcast or night),
+  // its colour (scaled to a brightest channel of 1)
+  set(sunDir, direct, strength = 1, color = null) {
+    if (color) { const m = Math.max(color.r, color.g, color.b, 1e-4); this.maskMat.uniforms.uCol.value.setRGB(color.r / m, color.g / m, color.b / m); }
     const cam = this.camera, v = new THREE.Vector3().copy(sunDir).multiplyScalar(1e4).add(cam.position).applyMatrix4(cam.matrixWorldInverse);
     let k = 0;
     if (v.z < 0 && direct > 0.02) {
@@ -81,7 +84,7 @@ export class ShaftsPass extends Pass {
     const u = this.maskMat.uniforms;
     u.tColor.value = rb.texture; u.tDepth.value = rb.depthTexture; u.uSun.value.copy(this.sunUv); u.uAspect.value = rb.width / rb.height;
     // (only the bright sky around the sun - its glow, the clear sky between crowns - not dark cloud bases; the sky's
-    // radiance before the exposure is ~0.2-1 by day)
+    // radiance before the exposure is ~0.2-1 by day: tried 0.15-1.2 in a wood at mid-afternoon)
     u.uThr.value = this.thr;
     this.quad.material = this.maskMat;
     renderer.setRenderTarget(this.mask); this.quad.render(renderer);

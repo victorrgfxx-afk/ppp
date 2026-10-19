@@ -1278,7 +1278,7 @@ async function main() {
       lastCam.copy(camera.position); lastQ.copy(camera.quaternion);
     }
     // the sun's shafts: by the share of its light that comes straight (the weather's), above the horizon, by day
-    if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.55); }
+    if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.85, sun.color); }
     post.composer.render(dt);
     perf.end();
     input.endFrame();
