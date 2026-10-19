@@ -436,6 +436,37 @@ function genLeaves(kind = 'broad') {
   TEX[kind === 'broad' ? 'leaves' : kind === 'autumn' ? 'leavesAutumn' : kind === 'dense' ? 'leavesDense' : 'leavesSmall'] = t;
 }
 
+// A mip chain that keeps a sparse cut-out's coverage (after Castano, "Computing alpha mipmaps", 2010): each level is the
+// one above halved, its colour averaged over the covered texels only, and its alpha dithered to 0 or 1 so that the
+// share of texels the alpha test keeps is the share the strokes cover. (A plain mip averages a thin twig's alpha below
+// the test: from ~10 m only the thickest bits, the forks, were left - a cloud of dark dots around a bare crown.)
+function coverageMips(c, seed) {
+  let w = c.width, h = c.height, A = new Float32Array(w * h), P = new Float32Array(w * h * 3);
+  const d0 = c.getContext('2d').getImageData(0, 0, w, h).data, r = rng(seed), levels = [c];
+  for (let i = 0; i < w * h; i++) { const a = d0[i * 4 + 3] / 255; A[i] = a; for (let k = 0; k < 3; k++) P[i * 3 + k] = d0[i * 4 + k] * a; }
+  while (w > 1 || h > 1) {
+    const w2 = Math.max(1, w >> 1), h2 = Math.max(1, h >> 1), A2 = new Float32Array(w2 * h2), P2 = new Float32Array(w2 * h2 * 3);
+    for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+      const i = y * w2 + x;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const j = Math.min(h - 1, 2 * y + dy) * w + Math.min(w - 1, 2 * x + dx);
+        A2[i] += A[j] / 4; for (let k = 0; k < 3; k++) P2[i * 3 + k] += P[j * 3 + k] / 4;
+      }
+    }
+    const cv = document.createElement('canvas'); cv.width = w2; cv.height = h2;
+    const g = cv.getContext('2d'), img = g.createImageData(w2, h2);
+    for (let i = 0; i < w2 * h2; i++) {
+      const a = A2[i];
+      for (let k = 0; k < 3; k++) img.data[i * 4 + k] = a > 1e-4 ? Math.min(255, P2[i * 3 + k] / a) : 0;
+      img.data[i * 4 + 3] = r() < a ? 255 : 0;
+    }
+    g.putImageData(img, 0, 0);
+    levels.push(cv);
+    A = A2; P = P2; w = w2; h = h2;
+  }
+  return levels;
+}
+
 function genTwigs() {
   // Bare winter crown card: twigs forking out from the card's middle, thinning to fine shoots, grey-brown bark
   // (the deciduous trees in the snow modes, rain.js / main.js: the leaf cards switch to this)
@@ -458,9 +489,14 @@ function genTwigs() {
       branch(x1, y1, a + da, len * (0.62 + r() * 0.18), w * 0.66, depth + 1);
     }
   };
-  for (let i = 0; i < 5; i++) branch(n / 2 + (r() - 0.5) * 30, n / 2 + (r() - 0.5) * 30, i / 5 * Math.PI * 2 + r() * 0.8, 50 + r() * 14, 7, 0);
+  // (the five shoots start apart and thin, not from one thick knot: the card's middle read as a dark blob)
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2 + r() * 0.8, d = 18 + r() * 22;
+    branch(n / 2 + Math.cos(a) * d, n / 2 + Math.sin(a) * d, a + (r() - 0.5) * 0.4, 50 + r() * 14, 4.2, 0);
+  }
   const t = tex(c, { repeat: false });
   t.premultiplyAlpha = false;
+  t.mipmaps = coverageMips(c, 432); t.generateMipmaps = false;   // (main.js: the leaf textures take these in winter)
   TEX.twigs = t;
 }
 
@@ -969,6 +1005,35 @@ function genFlowers() {
     g.fillStyle = '#f5d33a'; g.beginPath(); g.arc(x, y, s * 0.3, 0, 7); g.fill();
   }
   TEX.flowers = tex(c, { repeat: false });
+  // winter: the same boxes with the summer's plants frozen and dried - brown curled leaves and bare stalks, no flower
+  const d = document.createElement('canvas'); d.width = d.height = n;
+  const gd = d.getContext('2d'), rd = rng(506);
+  gd.lineCap = 'round';
+  for (let i = 0; i < 40; i++) {
+    const x = 30 + rd() * 196, y = 60 + rd() * 170, a = -Math.PI / 2 + (rd() - 0.5) * 1.4, L = 20 + rd() * 40;
+    gd.strokeStyle = `rgb(${92 + rd() * 30 | 0},${74 + rd() * 20 | 0},${52 + rd() * 14 | 0})`; gd.lineWidth = 1.6 + rd();
+    gd.beginPath(); gd.moveTo(x, y); gd.lineTo(x + Math.cos(a) * L, y + Math.sin(a) * L); gd.stroke();
+  }
+  for (let i = 0; i < 46; i++) {
+    const x = 20 + rd() * 216, y = 40 + rd() * 196, a = rd() * 6.28, v = 0.75 + rd() * 0.5;
+    gd.fillStyle = `rgb(${86 * v | 0},${66 * v | 0},${44 * v | 0})`;
+    gd.save(); gd.translate(x, y); gd.rotate(a); gd.beginPath(); gd.ellipse(0, 0, 6 + rd() * 3, 2.5, 0, 0, 7); gd.fill(); gd.restore();
+  }
+  TEX.flowersDry = d;
+}
+
+// Snow lying on a spruce branch, 0.4 m to the tile: clumps of 2-6 cm and fine grain (geo/firs.js); the colour only
+// varies a little (fresh snow reflects ~95 % of visible light, a little less in the hollows)
+function genSnowLumps() {
+  const n = 256, H = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const c = fbm(x / 20, y / 20, 3, n / 20, 61), f = fbm(x / 5, y / 5, 2, n / 5, 62);
+    H[y * n + x] = Math.pow(c, 1.4) * 0.85 + f * 0.15;
+  }
+  const c = paint(n, n, (x, y, p) => { const v = 226 + 29 * H[y * n + x]; p[0] = v - 4; p[1] = v - 2; p[2] = v; p[3] = 255; });
+  TEX.snowLump = tex(c);
+  const nt = tex(heightToNormalCanvas(H, n, n, 5), { srgb: false });
+  TEX.snowLumpN = nt;
 }
 
 // Red-brown garden trellis lattice with alpha (photo 14)
@@ -1077,7 +1142,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
   genPlate('PH 77 XXS', 'plate508');
   genPlate('PH 22 PXZ', 'plateFocus');   // photos 18-20
   genPlate('PH 71 GRK', 'plateBMW1');    // photo 19
-  genDoorMat(); genHorezu(); genLattice(); genFlowers();
+  genDoorMat(); genHorezu(); genLattice(); genFlowers(); genSnowLumps();
   genHouseNo('10', 'houseNo10');
   genHouseNo('111', 'houseNo111');   // photo 22 (old number 12 next to it)
   genHouseNo('12', 'houseNo12');

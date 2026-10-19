@@ -234,9 +234,13 @@ export function roundedRectGeo(w, h, r, depth) {
 }
 
 const shared = {};
+// an unlit tail lamp's lens shows its red only in daylight (its slight emissive stands for the light it bounces back):
+// k follows the day (main.js applyWeather), 0 at night, when only headlights make it glow; every lens made is here
+export const DAYLIGHT = { k: 1, tails: [] };
 function sharedMats() {
   if (shared.ready) return shared;
   shared.glass = new THREE.MeshPhysicalMaterial({ color: 0x05070a, roughness: 0.03, metalness: 0.0, transparent: true, opacity: 0.86, envMapIntensity: 1.8, clearcoat: 1, clearcoatRoughness: 0.02, side: THREE.DoubleSide, depthWrite: false });
+  shared.glass.userData.glass = true;                  // (rain.js: snow lies on it opaque, as on the paint)
   shared.trim = new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.35, metalness: 0.2 });
   shared.under = new THREE.MeshStandardMaterial({ color: 0x151516, roughness: 0.95 });
   shared.tire = new THREE.MeshStandardMaterial({ color: 0x1a1a1b, roughness: 0.88 });
@@ -294,7 +298,8 @@ export function buildCar(modelKey, paint, plateKey) {
     const x = sg * Math.min(hx, p.hw - hw / 2 - 0.03);
     headL.push(add(roundedRectGeo(hw, hh, 0.03, 0.12), headMat, x, hy, zAt(s0) + 0.035, -0.35, sg * 0.25, 0));
   }
-  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x7a0a0a, roughness: 0.15, clearcoat: 1, emissive: 0xff1a10, emissiveIntensity: 0.15 });
+  const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x7a0a0a, roughness: 0.15, clearcoat: 1, emissive: 0xff1a10, emissiveIntensity: 0.15 * DAYLIGHT.k });
+  DAYLIGHT.tails.push(tailMat);
   const [, ty, tx, tw, th] = m.lights.tail;
   if (!m.details) for (const sg of [-1, 1]) {
     const s0 = surfaceS(sg * tx, ty, false);

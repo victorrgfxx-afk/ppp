@@ -152,13 +152,17 @@ export function buildLandmarks(B, world) {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),
     rust: new THREE.MeshStandardMaterial({ color: 0x7b4a2f, roughness: 0.8, metalness: 0.35 }),
   };
+  // (an open lattice: the snow and the rain fall through it onto the slab - main.js occSkip)
+  mats.white.userData.rainThrough = mats.rust.userData.rainThrough = true;
+  // the slab: concrete, but not a road's (M.concrete is one: its snow trodden to slush by wheels - rain.js WET_ROAD)
+  mats.slab = new THREE.MeshStandardMaterial({ map: M.concrete.map, normalMap: M.concrete.normalMap, roughness: 0.92, color: 0xe6e4df });
   for (const lm of lms) {
     if (lm.type !== 'cross') continue;
     const g = crossGeometry();
     const T = new THREE.Matrix4().makeRotationY(lm.rot).setPosition(lm.x, lm.y, lm.z);
     B.geo(mats.white, g.white, T);
     B.geo(mats.rust, g.rust, T, null, { noCast: true });
-    B.geo(M.concrete, g.concrete, T);
+    B.geo(mats.slab, g.concrete, T);
     // walkable slab (a height region) and solid column / legs
     const { slab, slabTop, a } = DIM, h = slab / 2, c = Math.cos(lm.rot), s = Math.sin(lm.rot);
     const R = h * (Math.abs(c) + Math.abs(s));

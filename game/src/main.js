@@ -18,7 +18,7 @@ import { laneAt, CLIP } from './geo/urcus.js';
 import { SCENE_SPOT } from './geo/hillwood.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
-import { buildCar, paintMaterial } from './cars.js';
+import { buildCar, paintMaterial, DAYLIGHT } from './cars.js';
 import { buildATV } from './atv.js';
 import { buildMaybach, MAYBACH_TUNE } from './maybach.js';
 import { keepClear } from './geo/trees.js';
@@ -35,7 +35,7 @@ import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
 import { AIR_GLSL, AIR_H0, HAZE_H, hazeFor, visibilityOf } from './air.js';
-import { SEASON, FOLIAGE } from './season.js';
+import { SEASON, FOLIAGE, dormant } from './season.js';
 import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR } from './geo/index.js';
 
 // The air between the eye and every point (air.js): molecules and haze, each with its own fall-off with height, per
@@ -213,7 +213,7 @@ async function main() {
     }
     return Math.max(0.9 * best, Math.min(0.6, trees * 0.05));
   };
-  let moonBeam = null, flashlight = null, headlights = null, bear = null, gradeU = null;   // (made once the map is built)
+  let moonBeam = null, flashlight = null, headlights = null, bear = null, gradeU = null, vision = null;   // (made once the map is built)
   const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   // night palettes: a clear moonlit sky, or the low deck of a night storm
   const NIGHT = {
@@ -236,18 +236,29 @@ async function main() {
     // the light (and its cascaded shadows) comes from the moon at night
     sunDir.copy(night > 0.5 ? moonInfo.dir : sunInfo.dir);
     const N = overcast ? NIGHT.deck : NIGHT.clear, sunVis = THREE.MathUtils.smoothstep(sunInfo.el, -3, 1);
-    setSkyWeather(sky, { ...w, sunColor: mul(w.sunColor, L.color).map(v => v * sunVis),
+    // Night light, in the ratios of the real one (the frame's exposure stays where the lamps, the torch and the sky
+    // were set). The full moon gives ~0.25 lux; here 0.48 on a surface facing it (moonlit grass ~20/255 on the screen,
+    // a moonlit wall or snow ~100, the moon's shadows near black). The sky around it adds a fifth to a
+    // quarter of that, as the daytime sky does to the sun (the same air scattering the same light): the moon's
+    // shadows are deep. Under an overcast deck no direct light, the deck's diffuse glow only. The ground's light
+    // bounced back into the image-based light was a fixed daytime 0.33 (5x the moon: the night's grass and leaves
+    // glowed in colour, its shadows washed out): it is the ground's albedo (~0.2) times the light that reaches it.
+    const moonSin = Math.max(0, Math.sin(moonInfo.el * Math.PI / 180)), moonKey = 0.48 * moonUp;
+    const moonDir = moonKey * (overcast ? 0.06 : 1), skyAmb = moonKey * (overcast ? 0.3 : 0.22) * Math.max(moonSin, 0.3) + 0.004;
+    const dayGround = 0.35 + 0.65 * d, nightGround = 0.2 * (moonDir * moonSin + skyAmb) / Math.PI / 0.32;
+    const gk = THREE.MathUtils.lerp(dayGround, nightGround, night);
+    setSkyWeather(sky, { ...w, envGround: (w.envGround ?? [0.33, 0.33, 0.31]).map(v => v * gk), sunColor: mul(w.sunColor, L.color).map(v => v * sunVis),
       zenith: mixA(w.zenith, N.zenith, night), horizon: mixA(mul(w.horizon, warm), N.horizon, night),
       cloudLit: mixA(mul(w.cloudLit, warm), N.cloudLit, night), cloudDark: mixA(w.cloudDark, N.cloudDark, night),
       bright: THREE.MathUtils.lerp(w.bright * (0.3 + 0.7 * d), 1, night) });
     const su = sky.material.uniforms;
     su.uNight.value = night; su.uMoonDir.value.copy(moonInfo.dir); su.uMoonCol.value.set(0.9, 0.93, 1).multiplyScalar(moonUp);
     su.uHole.value = night * (overcast ? 1 : 0);                              // the moon looks through a gap above the hill
-    if (night > 0.5) { sun.color.setRGB(0.6, 0.7, 1); sun.intensity = 0.05 * moonUp * (overcast ? 0.4 : 1); }   // moonlight elsewhere: barely
+    if (night > 0.5) { sun.color.setRGB(1, 0.94, 0.86); sun.intensity = moonDir; }   // (sunlight off the moon, a little redder, ~4100 K: the blue of a moonlit night is the eye's - vision.js)
     else { sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; }
     sun.shadow.intensity = w.shadow;
     hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night));
-    hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), 0.25, night);
+    hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), skyAmb * 0.55 / 0.2, night);   // (the image-based light gives the rest)
     fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
     scene.fog.near = baseFog = hazeFor(w.vis) * (horror ? 1.3 : 1);
     scene.fog.far = w.hazeH ?? HAZE_H;
@@ -264,7 +275,15 @@ async function main() {
     FAR.uAmb.value.fromArray(mixA(w.zenith, w.horizon, 0.6)).multiplyScalar(baseEnv * 1.6 * (1 - 0.85 * night)); FAR.uWinter.value = w.winter ? 1 : 0;
     // street lamps on at night; the moon's shaft on the hill of the cross; the bear's eyes catch the light
     M.lampGlass.emissive.setRGB(1, 0.78, 0.5); M.lampGlass.emissiveIntensity = 4 * (1 - THREE.MathUtils.smoothstep(sunInfo.el, -6, 1));
-    moonBeam?.set(night > 0.5 && moonUp > 0.1, moonInfo.dir, 0.45 * moonUp, rainTarget > 0 ? 1 : overcast ? 0.6 : 0.3, scene.fog.near);
+    // (the hill of the cross under a night deck gets the moon through its gap, as it would under a clear sky: no more;
+    // with no deck the whole land has it and there is no shaft to see)
+    moonBeam?.set(night > 0.5 && moonUp > 0.1 && overcast, moonInfo.dir, moonKey - moonDir, rainTarget > 0 ? 1 : 0.6, scene.fog.near);
+    // what stands for daylight in an unlit tail lens and in the photo facades' own baked light: gone at night
+    const dayK = (1 - night) * (0.35 + 0.65 * d);
+    DAYLIGHT.k = dayK; for (const m of DAYLIGHT.tails) m.emissiveIntensity = 0.15 * dayK;
+    M.facadePorch.emissiveIntensity = 0.42 * dayK; M.facadeVeranda.emissiveIntensity = 0.38 * dayK; M.kneeWall.emissiveIntensity = 0.18 * dayK;
+    // the eye: cd/m2 per unit of the scene's light (the sun's ~3.8 is ~100 000 lux, the moon's 0.48 ~0.25 lux)
+    if (vision) { vision.abs = Math.exp(THREE.MathUtils.lerp(Math.log(26000), Math.log(0.25 / 0.48), night)); vision.enabled = night > 0.02; }
     if (bear) bear.eyeMat.emissiveIntensity = 3 * night;                     // eyeshine in the dark
     if (gradeU) { gradeU.uVig.value = horror ? 0.5 : 0.28; gradeU.uGrain.value = horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
   };
@@ -395,6 +414,7 @@ async function main() {
   const audio = new Audio();
   const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
   const post = createComposer(renderer, scene, camera, Q, farScene);
+  vision = post.vision;
   gradeU = post.grade.uniforms;
   // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
@@ -551,7 +571,7 @@ async function main() {
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
-  const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || (winter && leafTex.includes(m.map))); };
+  const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
   // the flying snow blows through leaves, needles, a crown's dense core, the snow on the branches, chain-link and
   // lattice (all cut out of cards), and through lines and glows; it does not through the rest. (The ground and the
   // water are left out too: the map keeps nothing that low anyway.)
@@ -565,13 +585,24 @@ async function main() {
   // winter (the snow modes): the broadleaves stand bare - every leaf texture shows twigs (one image swap reaches every
   // material and clone that uses it), and the far billboards and forest roof go bare too (geo/trees.js, canopy.js)
   const leafTex = [TEX.leaves, TEX.leavesSmall, TEX.leavesDense, TEX.leavesPinnate, TEX.leavesAutumn, TEX.leavesBeech, TEX.leavesHornbeam, TEX.leavesOak].filter(Boolean);
-  const summerImg = new Map(leafTex.map(t => [t, t.image]));
+  const summerImg = new Map(leafTex.map(t => [t, t.image])), flowersImg = TEX.flowers.image;
   // (each texture's GPU copy is let go first: one already uploaded kept drawing its leaves after the image swap -
   // measured in the snow modes, the near broadleaves stayed green - while a fresh upload takes the new image)
+  // (the twigs bring their own mip chain, which keeps the fine shoots from ~10 m on - textures.js coverageMips; the
+  // window boxes' and the flower strip's plants are dried up, the staghorn sumacs' fronds gone)
   setWinter = (on) => {
-    for (const t of leafTex) { t.image = on ? TEX.twigs.image : summerImg.get(t); t.dispose(); t.needsUpdate = true; }
+    for (const t of leafTex) {
+      t.image = on ? TEX.twigs.image : summerImg.get(t); t.mipmaps = on ? TEX.twigs.mipmaps : []; t.generateMipmaps = !on;
+      t.dispose(); t.needsUpdate = true;
+    }
+    TEX.flowers.image = on ? TEX.flowersDry : flowersImg; TEX.flowers.dispose(); TEX.flowers.needsUpdate = true;
+    M.sumac.visible = !on;
+    SEASON.uDormant.value = on ? 1 : 0;
     geoWorld.setWinter(on);
   };
+  // the grass and the low plants turn dormant in winter where the snow leaves them showing (season.js)
+  for (const m of UNDER_SNOW) dormant(m);
+  for (const gm of built.grass) dormant(gm.material);
   if (winter) setWinter(true);
   // a game started in the snow finds it already lying (a few cm while it snows, 25 cm the clear day after) and falling
   if (snowCover > 0 || snowFall > 0) SNOW.uSnow.value = 1;

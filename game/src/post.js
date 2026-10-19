@@ -10,6 +10,7 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { WindshieldPass } from './windshield.js';
 import { CinePass } from './cinepass.js';
 import { ShaftsPass } from './shafts.js';
+import { VisionPass } from './vision.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 // (hooks: passes further on that need the scene as the scene pass leaves it - its depth, its sky - take it here, before
@@ -327,6 +328,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // the rain on the windshield, from the driver's seat (windshield.js; off but in a car's cockpit in the rain)
   const shield = new WindshieldPass();
   composer.addPass(shield);
+  // the eye at night: rods instead of cones below ~5 cd/m2 (vision.js; off by day)
+  const vision = new VisionPass();
+  composer.addPass(vision);
   if (q.bloom) {
     // only really bright things (sun glints, lamps) bloom: a bright overcast sky must not veil the view
     bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.1, 0.4, 1.3);
@@ -342,5 +346,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, setSize };
 }

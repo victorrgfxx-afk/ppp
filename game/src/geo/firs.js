@@ -123,24 +123,28 @@ export function spruceDetail(spec) {
       });
       for (let j = 0; j < 3; j++) needle.quad(C[j][0], C[j + 1][0], C[j][1], C[j + 1][1], out);
     }
-    // the snow lying along it: a lumpy pillow on the spray, thickest mid-branch; every section collapses to its
-    // centre line when there is no snow (or it has been shaken off)
+    // the snow lying along it: a lumpy pillow on the spray, thickest mid-branch, its edges tucked just under the
+    // needles of the spray's arch (above them, close by, it read as a flat white slab with a sawn edge); 9 sections
+    // of 7 across, its thickness wandering smoothly along; every section collapses to its centre line when there is
+    // no snow (or it has been shaken off). uv in metres / 0.4 for the clumps' texture (textures.js genSnowLumps)
     const T = (0.05 + 0.055 * Math.min(1, L / 2.4)) * (0.8 + 0.4 * r()) * (small ? 0.7 : 1);
-    const gap = r() < 0.35 ? 2 + Math.floor(r() * 2) : -1;                // (now and then two lumps, not one)
+    const gap = r() < 0.35 ? 0.4 + 0.2 * r() : -1;                       // (now and then two lumps, not one)
+    const ph = r() * 6.3, wk = 0.38 + 0.2 * r(), u0 = r() * 3, NJ = 8, O = [-1, -0.72, -0.4, 0, 0.4, 0.72, 1];
     const ring = [];
-    for (let j = 0; j <= 5; j++) {
-      const u = 0.14 + j / 5 * 0.8, c = pt(u), w = hw(u) * (0.38 + 0.2 * r()), f = flex(u);
-      const th = j === gap ? 0 : T * Math.pow(Math.sin(Math.PI * j / 5), 0.7) * (0.55 + 0.7 * r());
-      const off = (r() - 0.5) * 0.3 * w;                                     // (not quite on the middle)
-      const anchor = c.clone().add(V3(0, 0.05 + 0.1 * hw(u), 0));
+    for (let j = 0; j <= NJ; j++) {
+      const t = j / NJ, u = 0.14 + t * 0.8, c = pt(u), ws = hw(u), w = ws * (wk + 0.06 * Math.sin(ph + t * 7)), f = flex(u);
+      const th = T * Math.pow(Math.sin(Math.PI * t), 0.7) * (0.8 + 0.35 * Math.sin(ph * 1.7 + t * 9)) * (gap > 0 ? Math.min(1, Math.abs(t - gap) * 9) : 1);
+      const off = 0.12 * w * Math.sin(ph + t * 4);                       // (not quite on the middle)
+      const anchor = c.clone().add(V3(0, 0.05 + 0.1 * ws, 0));
       const row = [];
-      for (const o of [-1, -0.5, 0, 0.5, 1]) {
-        const h = th * Math.pow(1 - o * o, 0.6) + (Math.abs(o) > 0.9 ? -0.01 : 0.012);
-        row.push(snow.v(c.clone().addScaledVector(side, o * w + off).add(V3(0, 0.035 + 0.1 * hw(u) * (1 - Math.abs(o)) + h, 0)), UP, 0, 0, f, anchor));
+      for (const o of O) {
+        const x = o * w + off, top = 0.025 + 0.12 * ws - 0.27 * Math.abs(x);   // (the spray's arch under it)
+        const h = Math.abs(o) > 0.9 ? -0.014 : th * Math.pow(1 - o * o, 0.55) + 0.006;
+        row.push(snow.v(c.clone().addScaledVector(side, x).add(V3(0, top + h, 0)), UP, x / 0.4 + u0, u * L / 0.4, f, anchor));
       }
       ring.push(row);
     }
-    for (let j = 0; j < 5; j++) for (let o = 0; o < 4; o++) snow.quad(ring[j][o], ring[j][o + 1], ring[j + 1][o], ring[j + 1][o + 1], UP);
+    for (let j = 0; j < NJ; j++) for (let o = 0; o < O.length - 1; o++) snow.quad(ring[j][o], ring[j][o + 1], ring[j + 1][o], ring[j + 1][o + 1], UP);
   };
   // whorls every ~0.42 m (a year's growth), 5-6 branches each, and a couple of smaller ones between the whorls
   for (let y = low; y < H - 0.7; y += 0.38 + r() * 0.09) {
@@ -235,7 +239,7 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
     this.mats = {
       wood: inject(bark, false, 'firWood'),
       needle: inject(new THREE.MeshStandardMaterial({ map: TEX.spruceAtlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.74, color: 0xe2f0d6 }), false, 'firNeedle'),
-      snow: inject(new THREE.MeshStandardMaterial({ roughness: 0.85, color: new THREE.Color().setRGB(0.87, 0.9, 0.94) }), true, 'firSnow'),
+      snow: inject(new THREE.MeshStandardMaterial({ roughness: 0.85, map: TEX.snowLump, normalMap: TEX.snowLumpN, normalScale: new THREE.Vector2(0.9, 0.9), color: new THREE.Color().setRGB(0.95, 0.96, 0.99) }), true, 'firSnow'),
     };
     this.mats.needle.userData.snow = 0.8;                       // (rain.js: the needles' tops whiten too)
     this.mats.snow.userData.noWet = true;

@@ -30,7 +30,7 @@ export function makePropMaterials() {
       { m: cut(TEX.fenceWoodOld, TEX.fenceWoodOldN), h: 1.6, tile: 1 },
     ],
     pole: M.concretePole, metal: M.galv, lamp: M.lampGlass, insulator: M.ceramicWhite,
-    tower: new THREE.MeshStandardMaterial({ color: 0x8e959b, roughness: 0.55, metalness: 0.6 }),
+    tower: Object.assign(new THREE.MeshStandardMaterial({ color: 0x8e959b, roughness: 0.55, metalness: 0.6 }), { userData: { rainThrough: true } }),   // (a lattice: rain and snow fall through)
     wire: fadingLines(new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true })),
   };
 }

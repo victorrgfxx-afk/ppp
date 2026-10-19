@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Box, boxBox } from './collision.js';
 import { clamp, damp } from './util.js';
 import { W } from './config.js';
+import { DAYLIGHT } from './cars.js';
 
 // Arcade-realistic car: bicycle-model steering, tyre grip with handbrake drift,
 // 5-speed gearbox for the engine sound, per-wheel ground sampling for pitch/roll.
@@ -204,7 +205,7 @@ export class Vehicle {
     this.resolveStatic();
     // lights
     const tl = this.car.lights.tailMat;
-    tl.emissiveIntensity = this.brake ? 3.0 : (this.lightsOn ? 0.9 : 0.12);
+    tl.emissiveIntensity = this.brake ? 3.0 : (this.lightsOn ? 0.9 : 0.12 * DAYLIGHT.k);
     this.place(dt);
   }
   resolveStatic() {

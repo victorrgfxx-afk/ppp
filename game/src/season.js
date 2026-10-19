@@ -10,7 +10,28 @@ import * as THREE from 'three';
 // SEASON.uAutumn: 0 the summer green; 0.5 mid-October in the Prahova Subcarpathians at 400-700 m (the user's drone
 // photos of 18 Oct: about a quarter of the broadleaves in full colour, as many again turning, the rest olive or still
 // green, the oaks the last). The game's day stays 26 September (its sun and its real full moon): the leaves are a setting.
-export const SEASON = { uAutumn: { value: 0 } };
+export const SEASON = { uAutumn: { value: 0 }, uDormant: { value: 0 } };
+// winter (the snow modes): the grass and the low plants dormant - straw and olive-brown where the snow leaves them
+// showing (February's meadows and verges in the Subcarpathians), the same dry colour as autumn's patches (terrain.js).
+// dormant(m): on a grass, herb or fern material; only its green texels turn
+export function dormant(m) {
+  if (!m || m.userData.dormant) return;
+  m.userData.dormant = true;
+  const prev = m.onBeforeCompile, key0 = m.customProgramCacheKey.bind(m);
+  m.onBeforeCompile = function (sh, r) {
+    prev.call(this, sh, r);
+    sh.uniforms.uDormant = SEASON.uDormant;
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uDormant;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  if (uDormant > 0.0) {
+    vec3 dc = diffuseColor.rgb;
+    float dL = dot(dc, vec3(0.2126, 0.7152, 0.0722)), dg = smoothstep(0.02, 0.2, (dc.g - max(dc.r, dc.b)) / max(dc.g, 1e-4));
+    diffuseColor.rgb = mix(dc, dL * vec3(1.32, 1.0, 0.55), dg * uDormant * 0.85);
+  }`);
+  };
+  m.customProgramCacheKey = () => key0() + '|dorm';
+  m.needsUpdate = true;
+}
 export const FOLIAGE = { toamna: 0.5, vara: 0 };
 
 // per leaf material: two colours a tree picks between (sRGB hex, brightness over its green), how early it turns

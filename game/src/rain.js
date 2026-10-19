@@ -211,7 +211,10 @@ if (uWet > 0.001) {
   // porous things darken when soaked (soil, plaster, asphalt), metal and paint hardly; everything gets glossier
   float por = clamp((roughnessFactor - 0.25) / 0.6, 0.0, 1.0) * (1.0 - metalnessFactor);
 #ifndef WET_LEAF
-  diffuseColor.rgb *= 1.0 - wet * por * mix(0.3, 0.5, upF);
+  // (the water in the pores darkens the darker channels more than the lighter ones, so a wet thing is deeper in colour:
+  // A_wet = A / (n^2 - (n^2 - 1) A), n = 1.33 - Angstrom 1925, Lekner & Dorf 1988 - here scaled to the ~0.45-0.65 of
+  // the dry albedo measured for soaked soil, concrete and asphalt)
+  diffuseColor.rgb *= 1.0 - wet * por * mix(0.3, 0.5, upF) * (1.15 - 0.6 * clamp(diffuseColor.rgb, 0.0, 1.0));
 #endif
   roughnessFactor = mix(roughnessFactor, roughnessFactor * mix(0.7, 0.32, upF), wet);
   vec2 slopeW = vec2(0.0);
@@ -359,7 +362,7 @@ if (uSnow > 0.001) {
   sc *= 1.0 - 0.6 * sTr.r;
   // snow is opaque: where it lies only in part it lies in flakes and patches with the ground between, never as a
   // see-through white film (the part covered becomes a share of fine, crisp patches; far off, a few pixels, it blends)
-#ifndef WET_LEAF
+#if !defined(WET_LEAF) || defined(WET_GLASS)
   float sFine = wetNoise(sp.xz * 23.0 + 1.7) * 0.6 + wetNoise(sp.xz * 61.0 + 5.3) * 0.4;
   float sCrisp = smoothstep(0.08 + 0.84 * sFine - 0.06, 0.08 + 0.84 * sFine + 0.06, sc);
   sc = mix(sCrisp, sc, smoothstep(12.0, 30.0, length(sp - cameraPosition)));
@@ -376,12 +379,23 @@ if (uSnow > 0.001) {
     sc = max(sc, smoothstep(1.0 - uSnowPlaster, 1.06 - uSnowPlaster, pl));
   }
 #endif
+#ifdef WET_GLASS
+  // (the car you drive: its wipers and its heater keep the windows clear)
+  if (uSnowCar.w > 0.5) {
+    vec2 gc = sp.xz - uSnowCar.xy, gs = vec2(cos(uSnowCar.z), sin(uSnowCar.z));
+    vec2 gq = abs(vec2(dot(gc, vec2(gs.x, -gs.y)), dot(gc, gs.yx))) - uSnowCarSize - 0.1;
+    if (max(gq.x, gq.y) < 0.0 && sp.y < uSnowCarY.x + uSnowCarY.y + 0.3) sc = 0.0;
+  }
+#endif
   if (sc > 0.002) {
     vec3 snowCol = vec3(0.87, 0.9, 0.94) * (0.93 + 0.07 * sn) * (1.0 - 0.1 * sTr.r);
 #ifdef WET_ROAD
     snowCol = mix(vec3(0.5, 0.51, 0.52), snowCol, smoothstep(0.35, 0.8, sn));
 #endif
     diffuseColor.rgb = mix(diffuseColor.rgb, snowCol, sc);
+#ifdef WET_GLASS
+    diffuseColor.a = mix(diffuseColor.a, 1.0, sc);      // (snow on a windscreen is opaque: never a see-through white film)
+#endif
     roughnessFactor = mix(roughnessFactor, 0.82, sc);
     metalnessFactor = mix(metalnessFactor, 0.0, sc);
     // smoother than what it covers, lumpy at the decimetre scale
@@ -409,7 +423,7 @@ if (snowGlintK > 0.001) {
 #endif
 `;
 
-function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK) {
+function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false) {
   const v = sh.vertexShader, f = sh.fragmentShader;
   if (v.includes('vWetP')) return;                 // already in (a material cloned from a patched one keeps its hook)
   if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>') || !f.includes('#include <lights_fragment_end>')) return;
@@ -424,7 +438,7 @@ function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK) {
 #endif
     vWetP = (modelMatrix * wetW).xyz; }`);
   const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : kind === 'ground' ? '#define WET_GROUND\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
-    `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '');
+    `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '') + (glass ? '#define WET_GLASS\n' : '');
   sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS + GLINT_GLSL)
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
     .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN + SNOW_MAIN)
@@ -442,13 +456,15 @@ export function wetMaterial(m) {
   if (!m.isMeshStandardMaterial || m.userData.noWet) return;
   const kind = m.userData.wet === 'road' ? 'road' : (m.alphaTest > 0 || m.transparent) ? 'leaf' : m.userData.wet === 'ground' ? 'ground' : 'solid';
   // userData.snow: how much of it gets covered (leaf cards and the trees' far billboards only partly); noSnow: never
-  const snowK = m.userData.snow ?? (kind === 'leaf' ? 0.45 : 1), snowSkip = !!m.userData.noSnow;
+  // (userData.glass: a car's windows - the snow lies on a windscreen as on the bonnet, opaque)
+  const glass = !!m.userData.glass;
+  const snowK = m.userData.snow ?? (kind === 'leaf' && !glass ? 0.45 : 1), snowSkip = !!m.userData.noSnow;
   const plasterK = m.userData.bark ? 1 : 0.45;                 // (how well a blizzard's snow sticks: bark best)
   const key0 = m.customProgramCacheKey();
   const prev = m.onBeforeCompile;
   const opaque = !m.transparent;
-  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip, plasterK); };
-  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '') + '|p' + plasterK;
+  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass); };
+  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + (glass ? 'g' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '') + '|p' + plasterK;
   m.needsUpdate = true;
 }
 export function wetScene(root) {

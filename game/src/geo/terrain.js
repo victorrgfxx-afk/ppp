@@ -34,7 +34,7 @@ function terrainMaterial(ortho, splat, ext) {
     uGrass: { value: TEX.grass }, uSoil: { value: TEX.soil }, uGravel: { value: TEX.gravel },
     uGrassN: { value: TEX.grassN },
     uAvgG: { value: avgColor(TEX.grass) }, uAvgS: { value: avgColor(TEX.soil) }, uAvgR: { value: avgColor(TEX.gravel) },
-    uExt: { value: ext }, uAutumn: SEASON.uAutumn,
+    uExt: { value: ext }, uAutumn: SEASON.uAutumn, uDormant: SEASON.uDormant,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
@@ -46,7 +46,7 @@ function terrainMaterial(ortho, splat, ext) {
 varying vec3 vGeoW;
 uniform sampler2D uOrtho, uSplat, uGrass, uSoil, uGravel;
 uniform vec3 uAvgG, uAvgS, uAvgR;
-uniform float uExt, uAutumn;`)
+uniform float uExt, uAutumn, uDormant;`)
       .replace('#include <map_fragment>', `
   vec2 guv = (vGeoW.xz + uExt) / (2.0 * uExt);
   vec3 sp = texture2D(uSplat, guv).rgb;                 // forest floor, farmland, gravel
@@ -75,13 +75,15 @@ uniform float uExt, uAutumn;`)
   diffuseColor.rgb *= mix(nearCol, farCol, farK * (1.0 - 0.9 * wf / ws));
   // autumn (season.js): the grass dries in patches to olive and straw (the pastures on the hills in the drone photos;
   // the mown lawns by the houses stay greener: the patches are tens of metres across)
-  if (uAutumn > 0.0) {
+  // (winter, season.js uDormant: dry nearly everywhere, the patches only a little greener)
+  if (uAutumn > 0.0 || uDormant > 0.0) {
     vec2 q = vGeoW.xz;
     float k = 0.5 + 0.25 * (sin(dot(q, vec2(0.031, 0.017)) + 1.8 * sin(dot(q, vec2(-0.012, 0.027)))) + sin(dot(q, vec2(0.019, -0.041)) + 1.3 * sin(dot(q, vec2(0.044, 0.008)))));
     vec3 c = diffuseColor.rgb;
     float L = dot(c, vec3(0.2126, 0.7152, 0.0722)), gr = smoothstep(0.02, 0.2, (c.g - max(c.r, c.b)) / max(c.g, 1e-4));
     vec3 dry = L * vec3(1.32, 1.0, 0.55);
-    diffuseColor.rgb = mix(c, dry, gr * (wg / ws) * uAutumn * (0.25 + 0.75 * smoothstep(0.3, 0.75, k)) * 0.9);
+    float dk = max(uAutumn * (0.25 + 0.75 * smoothstep(0.3, 0.75, k)), uDormant * (0.75 + 0.25 * smoothstep(0.3, 0.75, k)));
+    diffuseColor.rgb = mix(c, dry, gr * (wg / ws) * dk * 0.9);
   }
 `);
   };
