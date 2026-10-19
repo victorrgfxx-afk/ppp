@@ -49,7 +49,7 @@ const MB = /* glsl */`
 uniform sampler2D tDiffuse, tDepth;
 uniform mat4 uInvProj, uCamWorld, uPrevVP;
 uniform vec2 uRes;
-uniform float uShutter;
+uniform float uShutter, uKeep;
 varying vec2 vUv;
 void main() {
   vec4 c0 = texture2D(tDiffuse, vUv);
@@ -58,9 +58,12 @@ void main() {
   vec4 ray = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0); ray.xyz /= ray.w;
   vec3 v = ray.xyz * (texture2D(tDepth, vUv).r / -ray.z);
   vec4 wp = uCamWorld * vec4(v, 1.0);
+  // (what rides with the camera - the car it follows, the cockpit - is not the still world the reprojection assumes: no
+  // smear within uKeep metres)
+  float keep = smoothstep(uKeep, uKeep + 1.5, -v.z);
   vec4 pc = uPrevVP * wp;
   vec2 prev = pc.xy / pc.w * 0.5 + 0.5;
-  vec2 mv = (vUv - prev) * uShutter;
+  vec2 mv = (vUv - prev) * uShutter * keep;
   float L = length(mv * uRes);
   if (pc.w <= 0.0 || L < 0.5) { gl_FragColor = c0; return; }
   mv *= min(1.0, 48.0 / L);
@@ -73,10 +76,10 @@ export class CinePass extends Pass {
   constructor(camera, tap) {
     super();
     this.camera = camera; this.tap = tap;
-    this.params = null;                    // { focus: m, blur: px, shutter: 0..1, cut: bool }
+    this.params = null;                    // { focus: m, blur: px, shutter: 0..1, cut: bool, keep: m (no smear nearer) }
     this.dof = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uTexel: { value: new THREE.Vector2() }, uFocus: { value: 10 }, uBlur: { value: 0 } },
       vertexShader: VERT, fragmentShader: DOF, depthTest: false, depthWrite: false });
-    this.mb = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() }, uRes: { value: new THREE.Vector2() }, uShutter: { value: 0.5 } },
+    this.mb = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uPrevVP: { value: new THREE.Matrix4() }, uRes: { value: new THREE.Vector2() }, uShutter: { value: 0.5 }, uKeep: { value: 0 } },
       vertexShader: VERT, fragmentShader: MB, depthTest: false, depthWrite: false });
     this.mid = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.mid2 = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
@@ -123,7 +126,7 @@ export class CinePass extends Pass {
       // (with no motion either - a cut, or no shutter set - the same pass copies it through at a shutter of 0)
       const u = this.mb.uniforms;
       u.tDiffuse.value = src; u.tDepth.value = depth ?? null; u.uInvProj.value.copy(cam.projectionMatrixInverse); u.uCamWorld.value.copy(cam.matrixWorld);
-      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = doMb ? p.shutter : 0;
+      u.uPrevVP.value.copy(this.prevVP); u.uRes.value.set(readBuffer.width, readBuffer.height); u.uShutter.value = doMb ? p.shutter : 0; u.uKeep.value = p.keep ?? 0;
       this.quad.material = this.mb;
       renderer.setRenderTarget(this.mid2);
       this.quad.render(renderer);

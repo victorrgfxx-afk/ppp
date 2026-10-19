@@ -1287,7 +1287,9 @@ async function main() {
       if (post.cine.enabled !== on) post.cine.enabled = on;
       if (on) {
         const cut = camera.position.distanceTo(lastCam) > 6 || 2 * Math.acos(Math.min(1, Math.abs(camera.quaternion.dot(lastQ)))) > 0.6;
-        post.cine.params = { shutter: mblur, cut };
+        // (in a car: nothing up to its far end smears - it moves with the camera)
+        const keep = mode === 'car' && active && !window.__game?.cam ? camera.position.distanceTo(active.car.group.position) + 2.6 : 0;
+        post.cine.params = { shutter: mblur, cut, keep };
       }
       lastCam.copy(camera.position); lastQ.copy(camera.quaternion);
     }
