@@ -985,6 +985,7 @@ async function main() {
     audio.door();
     active.vx *= 0.2; active.vz *= 0.2;
     active.car.glass.opacity = 0.86;
+    active.car.cabin?.update(active, false);
     if (active.car.rider) active.car.rider.visible = false;
     mode = 'foot'; active = null;
   };
@@ -1096,6 +1097,8 @@ async function main() {
         if (input.hit('KeyV')) { camMode = camMode === 'chase' ? 'cockpit' : 'chase'; store.set('camMode', camMode); }
         hornOn = input.down('KeyH');
         active?.update(dt, ctl);
+        // the instruments: the needles follow the speed and the revs; the dials lit with the headlights, or at night
+        active?.car.cabin?.update(active, true, active.lightsOn || night > 0.5 ? 1 : 0);
         if (active && active.impact > 2.5) { audio.crash(active.impact); shake = Math.min(0.35, active.impact * 0.03); }
       }
       // parked cars (and cars pushed by collisions) settle
@@ -1185,7 +1188,11 @@ async function main() {
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
       if (egg && Math.hypot(pos0().x - egg.x, pos0().z - egg.z) < egg.r) { hillEggFound = true; hud.toast('Easter egg: ai găsit scheletul din pădurea de pe dealul crucii!', 6); }
-      for (const v of vehicles) v.car.group.visible = v === active || Math.hypot(v.x - camera.position.x, v.z - camera.position.z) < 320;
+      for (const v of vehicles) {
+        const d = Math.hypot(v.x - camera.position.x, v.z - camera.position.z);
+        v.car.group.visible = v === active || d < 320;
+        if (v.car.cabin) v.car.cabin.group.visible = v === active || d < 16;    // (a cabin shows only through the glass of a car close by)
+      }
     }
 
     // HUD

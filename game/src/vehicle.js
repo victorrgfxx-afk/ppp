@@ -73,7 +73,10 @@ export class Vehicle {
     // wheels
     this.car.setWheels(this.spin, this.steer);
     // the steering wheel (7 turns of it to the wheels' angle), or an ATV's bars, about their leaning column
-    if (this.car.steer) { if (this.m.steerRatio) this.car.steer.rotation.y = -this.steer * this.m.steerRatio; else this.car.steer.rotation.z = this.steer * 7; }
+    if (this.car.steer) {
+      if (this.m.steerRatio) this.car.steer.rotation.y = -this.steer * this.m.steerRatio; else this.car.steer.rotation.z = this.steer * 7;
+      if (!this.car.steer.matrixAutoUpdate && this.car.steer.rotation.z !== this.car.steer.userData.rz) { this.car.steer.userData.rz = this.car.steer.rotation.z; this.car.steer.updateMatrix(); }
+    }
     this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
     void dt;
   }

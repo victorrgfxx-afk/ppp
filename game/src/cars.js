@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { TEX } from './textures.js';
 import { M } from './materials.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildCabin } from './interior.js';
 
 // Geometry pieces [geometry, material (or one per group), matrix?] -> one non-indexed geometry with a single group
 // (one draw call) per material, in the order the materials first appear. The same triangles as separate meshes.
@@ -45,7 +46,7 @@ export const MODELS = {
     belt: P([[0, 0.56], [0.04, 0.66], [0.12, 0.75], [0.35, 0.8], [0.8, 0.845], [1.3, 0.885], [1.62, 0.92], [3.95, 0.99], [4.1, 1.0], [4.35, 0.99], [4.47, 0.93], [4.52, 0.8]]),
     roof: P([[1.62, 0.92], [1.9, 1.12], [2.15, 1.29], [2.35, 1.38], [2.7, 1.42], [3.0, 1.41], [3.25, 1.36], [3.5, 1.22], [3.75, 1.07], [3.95, 0.99]]),
     bottom: P([[0, 0.36], [0.1, 0.26], [0.35, 0.18], [4.15, 0.2], [4.38, 0.3], [4.52, 0.4]]),
-    hwr: 0.66, wind: [1.66, 2.34], rear: [3.3, 3.93], side: [1.72, 3.6], pillars: [2.62, 3.52], interior: 0x9c8e76,
+    hwr: 0.66, wind: [1.66, 2.34], rear: [3.3, 3.93], side: [1.72, 3.6], pillars: [2.62, 3.52], eyeY: 1.13,
     lights: { head: [0.1, 0.7, 0.62, 0.42, 0.11], tail: [4.47, 0.88, 0.62, 0.36, 0.13] }, grille: 'kidney',
   },
   // Opel Corsa C 5-door (silver, "PH 13 KLI")
@@ -54,7 +55,7 @@ export const MODELS = {
     belt: P([[0, 0.55], [0.05, 0.66], [0.15, 0.73], [0.5, 0.81], [0.9, 0.875], [1.05, 0.9], [3.7, 0.98], [3.78, 0.95], [3.82, 0.78]]),
     roof: P([[1.05, 0.9], [1.3, 1.1], [1.55, 1.28], [1.8, 1.4], [2.3, 1.445], [2.9, 1.43], [3.35, 1.39], [3.55, 1.3], [3.66, 1.12], [3.72, 0.98]]),
     bottom: P([[0, 0.36], [0.12, 0.24], [0.35, 0.18], [3.5, 0.2], [3.7, 0.3], [3.82, 0.4]]),
-    hwr: 0.6, wind: [1.08, 1.78], rear: [3.36, 3.7], side: [1.14, 3.4], pillars: [2.25, 3.08], interior: 0x3a3b3e,
+    hwr: 0.6, wind: [1.08, 1.78], rear: [3.36, 3.7], side: [1.14, 3.4], pillars: [2.25, 3.08], eyeY: 1.19,
     lights: { head: [0.1, 0.72, 0.56, 0.36, 0.12], tail: [3.77, 0.95, 0.62, 0.14, 0.3] }, grille: 'opel',
   },
   // Peugeot 508 sedan (gray, "PH 77 XXS", photos 6-8)
@@ -63,7 +64,7 @@ export const MODELS = {
     belt: P([[0, 0.58], [0.05, 0.68], [0.15, 0.75], [0.5, 0.81], [1.0, 0.86], [1.65, 0.93], [4.2, 1.01], [4.45, 1.02], [4.66, 0.99], [4.75, 0.93], [4.79, 0.8]]),
     roof: P([[1.65, 0.93], [1.95, 1.13], [2.25, 1.32], [2.5, 1.43], [2.9, 1.46], [3.3, 1.45], [3.6, 1.38], [3.9, 1.2], [4.2, 1.01]]),
     bottom: P([[0, 0.36], [0.12, 0.25], [0.4, 0.18], [4.4, 0.2], [4.62, 0.31], [4.79, 0.41]]),
-    hwr: 0.66, wind: [1.69, 2.47], rear: [3.56, 4.18], side: [1.76, 3.84], pillars: [2.8, 3.7], interior: 0x2a2a2c,
+    hwr: 0.66, wind: [1.69, 2.47], rear: [3.56, 4.18], side: [1.76, 3.84], pillars: [2.8, 3.7], eyeY: 1.15,
     lights: { head: [0.1, 0.73, 0.63, 0.44, 0.1], tail: [4.75, 0.95, 0.6, 0.36, 0.13] }, grille: 'plain',
   },
   // Dark compact SUV (behind the Opel in photo 1)
@@ -72,7 +73,7 @@ export const MODELS = {
     belt: P([[0, 0.72], [0.06, 0.86], [0.2, 0.95], [0.6, 1.02], [1.1, 1.06], [1.35, 1.08], [4.3, 1.14], [4.45, 1.12], [4.5, 1.0]]),
     roof: P([[1.35, 1.08], [1.6, 1.3], [1.85, 1.48], [2.1, 1.61], [2.6, 1.66], [3.6, 1.64], [4.1, 1.58], [4.3, 1.46], [4.4, 1.25], [4.45, 1.12]]),
     bottom: P([[0, 0.48], [0.12, 0.34], [0.4, 0.25], [4.1, 0.26], [4.35, 0.38], [4.5, 0.5]]),
-    hwr: 0.74, wind: [1.38, 2.08], rear: [4.12, 4.42], side: [1.45, 4.12], pillars: [2.62, 3.62], interior: 0x2c2c2e,
+    hwr: 0.74, wind: [1.38, 2.08], rear: [4.12, 4.42], side: [1.45, 4.12], pillars: [2.62, 3.62], eyeY: 1.33,
     lights: { head: [0.07, 0.9, 0.66, 0.4, 0.09], tail: [4.47, 1.08, 0.72, 0.34, 0.1] }, grille: 'suv',
   },
   // Generic sedan (Dacia Logan-like)
@@ -81,7 +82,7 @@ export const MODELS = {
     belt: P([[0, 0.6], [0.05, 0.7], [0.15, 0.78], [0.5, 0.84], [1.0, 0.89], [1.45, 0.93], [3.75, 1.0], [3.9, 1.02], [4.15, 1.0], [4.25, 0.94], [4.29, 0.8]]),
     roof: P([[1.45, 0.93], [1.7, 1.15], [1.95, 1.36], [2.2, 1.48], [2.6, 1.52], [3.0, 1.5], [3.25, 1.42], [3.5, 1.24], [3.75, 1.0]]),
     bottom: P([[0, 0.36], [0.12, 0.25], [0.35, 0.19], [4.0, 0.21], [4.2, 0.31], [4.29, 0.4]]),
-    hwr: 0.64, wind: [1.5, 2.2], rear: [3.28, 3.72], side: [1.56, 3.4], pillars: [2.5, 3.3], interior: 0x333336,
+    hwr: 0.64, wind: [1.5, 2.2], rear: [3.28, 3.72], side: [1.56, 3.4], pillars: [2.5, 3.3], eyeY: 1.22,
     lights: { head: [0.08, 0.74, 0.6, 0.34, 0.12], tail: [4.26, 0.9, 0.6, 0.3, 0.13] }, grille: 'plain',
   },
   // Generic hatchback (Dacia Sandero-like)
@@ -90,7 +91,7 @@ export const MODELS = {
     belt: P([[0, 0.6], [0.05, 0.71], [0.15, 0.79], [0.5, 0.86], [0.95, 0.92], [1.15, 0.95], [3.95, 1.03], [4.02, 1.0], [4.07, 0.82]]),
     roof: P([[1.15, 0.95], [1.4, 1.16], [1.65, 1.36], [1.9, 1.49], [2.4, 1.53], [3.2, 1.51], [3.65, 1.46], [3.85, 1.34], [3.95, 1.12], [3.98, 1.03]]),
     bottom: P([[0, 0.37], [0.12, 0.25], [0.35, 0.2], [3.8, 0.22], [3.97, 0.33], [4.07, 0.42]]),
-    hwr: 0.63, wind: [1.18, 1.88], rear: [3.66, 3.97], side: [1.24, 3.65], pillars: [2.4, 3.3], interior: 0x303033,
+    hwr: 0.63, wind: [1.18, 1.88], rear: [3.66, 3.97], side: [1.24, 3.65], pillars: [2.4, 3.3], eyeY: 1.23,
     lights: { head: [0.08, 0.76, 0.6, 0.36, 0.12], tail: [4.03, 1.0, 0.64, 0.12, 0.28] }, grille: 'plain',
   },
   // Renault Kangoo II (the red one on Str. Uzinei, photos 81 and 83): short bonnet, tall box, vertical tailgate
@@ -99,7 +100,7 @@ export const MODELS = {
     belt: P([[0, 0.62], [0.05, 0.74], [0.16, 0.84], [0.45, 0.93], [0.8, 0.99], [0.95, 1.02], [4.05, 1.1], [4.16, 1.08], [4.21, 0.95]]),
     roof: P([[0.95, 1.02], [1.2, 1.3], [1.45, 1.55], [1.7, 1.74], [2.0, 1.81], [3.8, 1.82], [4.08, 1.8], [4.16, 1.7], [4.19, 1.1]]),
     bottom: P([[0, 0.4], [0.12, 0.27], [0.35, 0.21], [3.9, 0.23], [4.1, 0.35], [4.21, 0.46]]),
-    hwr: 0.8, wind: [0.97, 1.74], rear: [4.1, 4.19], side: [1.0, 4.0], pillars: [2.25, 3.25], interior: 0x2e2e30,
+    hwr: 0.8, wind: [0.97, 1.74], rear: [4.1, 4.19], side: [1.0, 4.0], pillars: [2.25, 3.25], eyeY: 1.36,
     lights: { head: [0.07, 0.86, 0.64, 0.42, 0.13], tail: [4.18, 1.15, 0.8, 0.1, 0.42] }, grille: 'plain',
   },
   // VW Transporter T5 (the white one parked on Str. Uzinei, photo 80)
@@ -108,7 +109,7 @@ export const MODELS = {
     belt: P([[0, 0.66], [0.05, 0.78], [0.2, 0.9], [0.55, 1.0], [0.9, 1.07], [1.05, 1.1], [4.75, 1.16], [4.85, 1.12], [4.89, 1.0]]),
     roof: P([[1.05, 1.1], [1.35, 1.42], [1.65, 1.72], [1.95, 1.93], [2.3, 1.98], [4.6, 1.98], [4.8, 1.95], [4.86, 1.8], [4.88, 1.16]]),
     bottom: P([[0, 0.42], [0.12, 0.3], [0.4, 0.23], [4.5, 0.25], [4.75, 0.38], [4.89, 0.5]]),
-    hwr: 0.86, wind: [1.07, 1.95], rear: [4.78, 4.87], side: [1.1, 4.7], pillars: [2.3, 3.4], interior: 0x2c2c2e,
+    hwr: 0.86, wind: [1.07, 1.95], rear: [4.78, 4.87], side: [1.1, 4.7], pillars: [2.3, 3.4], eyeY: 1.55,
     lights: { head: [0.06, 0.95, 0.68, 0.42, 0.12], tail: [4.87, 1.2, 0.85, 0.1, 0.4] }, grille: 'plain',
   },
 };
@@ -348,37 +349,11 @@ export function buildCar(modelKey, paint, plateKey) {
   // a model's own details (grille, lamps, trim, its cabin: maybach.js), merged with the body like the rest
   m.details?.({ add, S, paint, zAt, prof: (s) => profileAt(m, s), surfaceS, headMat, tailMat, rigid });
 
-  // simple interior (visible through the glass)
-  const seatMat = new THREE.MeshStandardMaterial({ color: m.interior, roughness: 0.8 });
-  const dashMat = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.7 });
-  const pm = profileAt(m, (m.wind[1] + m.pillars[0]) / 2);
-  const seatY = pm.belt - 0.35;
-  for (const sg of [-1, 1]) {
-    add(new THREE.BoxGeometry(0.5, 0.14, 0.5), seatMat, sg * 0.38, seatY, zAt(m.pillars[0] + 0.1));
-    add(new THREE.BoxGeometry(0.48, 0.62, 0.12), seatMat, sg * 0.38, seatY + 0.36, zAt(m.pillars[0] + 0.35), -0.2, 0, 0);
-  }
-  if (!m.cargo) {                                    // (a panel van: the load space behind the seats)
-    add(new THREE.BoxGeometry(1.3, 0.14, 0.5), seatMat, 0, seatY, zAt(m.pillars[1] - 0.25));
-    add(new THREE.BoxGeometry(1.3, 0.58, 0.12), seatMat, 0, seatY + 0.34, zAt(m.pillars[1] - 0.02), -0.25, 0, 0);
-  }
-  const pw = profileAt(m, m.wind[0] + 0.2);
-  add(new THREE.BoxGeometry(m.W - 0.25, 0.2, 0.55), dashMat, 0, pw.belt - 0.1, zAt(m.wind[0] + 0.28));
-  // headliner + door cards so the cockpit view is enclosed
-  const pr = profileAt(m, (m.wind[1] + m.rear[0]) / 2);
-  const l0 = m.linerFrom ?? m.wind[1] - 0.15, l1 = m.rear[0] + 0.15;       // (a van's: from where the roof is high enough)
-  const liner = new THREE.MeshStandardMaterial({ color: m.interior === 0x9c8e76 ? 0xb9ad98 : 0x5a5a5c, roughness: 0.95, side: THREE.DoubleSide });
-  // (under the roof: never rained on, whatever the map of tops still says while the car moves)
-  seatMat.userData.noWet = dashMat.userData.noWet = liner.userData.noWet = true;
-  add(new THREE.BoxGeometry(m.hwr * 2 - 0.1, 0.02, l1 - l0), liner, 0, pr.roof - 0.07, zAt((l0 + l1) / 2));
-  for (const sg of [-1, 1]) add(new THREE.BoxGeometry(0.04, pr.belt - 0.25, m.rear[0] - m.wind[0]), dashMat, sg * (m.W / 2 - 0.1), (pr.belt + 0.25) / 2, zAt((m.wind[0] + m.rear[0]) / 2));
-  const steer = new THREE.Group();
-  steer.position.set(-0.38, pw.belt - 0.06, zAt(m.wind[0] + 0.6));
-  steer.rotation.x = -1.1;
-  // rim, hub and 3 spokes: one mesh
-  const wheelParts = [[new THREE.TorusGeometry(0.18, 0.02, 8, 24), dashMat], [new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), dashMat, pose(0, 0, 0, Math.PI / 2, 0, 0)]];
-  for (const a of [0, 2.1, 4.2]) wheelParts.push([new THREE.BoxGeometry(0.16, 0.02, 0.015), dashMat, pose(Math.cos(a) * 0.08, Math.sin(a) * 0.08, 0, 0, 0, a)]);
-  steer.add(new THREE.Mesh(mergeByMaterial(wheelParts).geo, dashMat));
-  bodyPivot.add(steer);
+  // the cabin (interior.js): dashboard and instruments, steering wheel, seats, door cards, headliner - its own meshes,
+  // which a car far away hides (main.js)
+  const cabin = buildCabin(modelKey, m, raw.body, raw.caps);
+  bodyPivot.add(cabin.group);
+  const steer = cabin.steer;
 
   // wheels
   const wheels = [];
@@ -462,11 +437,19 @@ export function buildCar(modelKey, paint, plateKey) {
   };
   setWheels(0, 0);
   const merged = mergeByMaterial(rigid);
+  // the windows: a mesh of their own, which casts no shadow - the sun shines in through them onto the cabin (whose
+  // inside skin, interior.js, shades it under the roof and the doors); inner faces first, then the outer ones
   const gIn = merged.geo.groups.find(r => merged.mats[r.materialIndex] === glassIn);
-  merged.geo.addGroup(gIn.start, gIn.count, merged.mats.push(glassOut) - 1);        // (outer faces after the inner ones)
+  merged.geo.groups.splice(merged.geo.groups.indexOf(gIn), 1);
+  const glassGeo = new THREE.BufferGeometry();
+  for (const k of ['position', 'normal', 'uv']) { const a = merged.geo.attributes[k]; glassGeo.setAttribute(k, new THREE.BufferAttribute(a.array.slice(gIn.start * a.itemSize, (gIn.start + gIn.count) * a.itemSize), a.itemSize)); }
+  glassGeo.addGroup(0, gIn.count, 0); glassGeo.addGroup(0, gIn.count, 1);
+  glassGeo.computeBoundingSphere();
+  const glassMesh = new THREE.Mesh(glassGeo, [glassIn, glassOut]);
+  glassMesh.receiveShadow = true;
   const bodyMesh = new THREE.Mesh(merged.geo, merged.mats);
   bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
-  bodyPivot.add(bodyMesh);
+  bodyPivot.add(bodyMesh, glassMesh);
 
   // soft contact shadow (grounds the car like ambient occlusion)
   if (!shared.blob) {
@@ -487,7 +470,7 @@ export function buildCar(modelKey, paint, plateKey) {
   group.add(blob);
 
   return {
-    group, bodyPivot, wheels, setWheels, steer, model: m,
+    group, bodyPivot, wheels, setWheels, steer, cabin, model: m,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,
     half: { w: m.W / 2 + 0.05, l: m.L / 2 },
   };

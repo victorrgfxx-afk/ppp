@@ -120,7 +120,7 @@ export const GLS_MODEL = {
   belt: [[0, 0.99], [0.04, 1.02], [0.15, 1.045], [0.4, 1.06], [0.9, 1.09], [1.6, 1.15], [3.0, 1.17], [4.5, 1.2], [5.08, 1.215], [5.16, 1.19], [5.205, 1.04]],
   roof: [[1.6, 1.15], [1.85, 1.35], [2.1, 1.54], [2.35, 1.7], [2.6, 1.785], [2.95, 1.825], [3.6, 1.838], [4.4, 1.83], [4.8, 1.812], [4.98, 1.775], [5.06, 1.66], [5.12, 1.48], [5.155, 1.3], [5.165, 1.2]],
   bottom: [[0, 0.4], [0.14, 0.31], [0.5, 0.215], [4.7, 0.225], [5.0, 0.33], [5.205, 0.47]],
-  hwr: 0.79, wind: [1.63, 2.5], rear: [4.99, 5.16], side: [1.72, 4.86], pillars: [2.98, 4.14], interior: 0xb39f82,
+  hwr: 0.79, wind: [1.63, 2.5], rear: [4.99, 5.16], side: [1.72, 4.86], pillars: [2.98, 4.14],
   lights: { head: [0.1, 0.95, 0.66, 0.5, 0.15], tail: [5.18, 1.08, 0.7, 0.5, 0.15] }, grille: 'maybach',
   mirror: [0.27, 0.17], chromeHandles: true, eyeY: 1.56, chase: [7.4, 1.6],
   plates: { front: [0.48, -5.205 / 2 - 0.035], rear: [0.83, 5.205 / 2 + 0.014] },
@@ -143,11 +143,7 @@ function mats() {
     alu: new THREE.MeshStandardMaterial({ color: 0xb9bcc0, roughness: 0.35, metalness: 1 }),
     amber: new THREE.MeshStandardMaterial({ color: 0x8a5a10, roughness: 0.2, emissive: 0xff9a20, emissiveIntensity: 0.05 }),
     reflector: new THREE.MeshStandardMaterial({ color: 0x5a0606, roughness: 0.25 }),
-    wood: new THREE.MeshStandardMaterial({ color: 0x5b3820, roughness: 0.3, metalness: 0 }),
-    screen: new THREE.MeshStandardMaterial({ color: 0x050608, roughness: 0.08, metalness: 0.3, emissive: 0x1a2a40, emissiveIntensity: 0.6 }),
-    nappa: new THREE.MeshStandardMaterial({ color: 0xb39f82, roughness: 0.62 }),
   };
-  MAT.wood.userData.noWet = MAT.screen.userData.noWet = MAT.nappa.userData.noWet = true;     // (the cabin's: dry)
   return MAT;
 }
 
@@ -253,15 +249,7 @@ function details({ add, S, paint, zAt, prof, surfaceS, headMat, tailMat, rigid }
   const sp = prof(4.97);
   add(new THREE.BoxGeometry(1.24, 0.026, 0.1), paint, 0, sp.roof + 0.006, zAt(5.0), -0.06, 0, 0);
   add(new THREE.BoxGeometry(0.5, 0.012, 0.006), tailMat, 0, sp.roof + 0.004, zAt(5.05) + 0.004);
-
-  // ---- the cabin: the MBUX widescreen and the wood across the dash, the executive console between the rear seats
-  const pw = prof(m.wind[0] + 0.2);
-  add(new THREE.BoxGeometry(0.66, 0.13, 0.02), X.screen, -0.28, pw.belt + 0.06, zAt(m.wind[0] + 0.46), -0.18, 0, 0);
-  add(new THREE.BoxGeometry(1.72, 0.035, 0.03), X.wood, 0, pw.belt - 0.05, zAt(m.wind[0] + 0.56));
-  add(new THREE.BoxGeometry(0.24, 0.3, 0.75), X.wood, 0, pw.belt - 0.38, zAt(m.wind[0] + 0.9));
-  const pr = prof(m.pillars[1] - 0.25);
-  add(new THREE.BoxGeometry(0.34, 0.3, 0.8), X.nappa, 0, pr.belt - 0.52, zAt(m.pillars[1] - 0.25));
-  add(new THREE.BoxGeometry(0.3, 0.02, 0.6), X.wood, 0, pr.belt - 0.36, zAt(m.pillars[1] - 0.25));
+  // (the cabin - the MBUX screens, the wood, the executive rear seats: interior.js)
 }
 GLS_MODEL.details = details;
 MODELS.maybach = GLS_MODEL;

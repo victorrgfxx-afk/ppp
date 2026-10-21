@@ -631,7 +631,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Fața**: grila Maybach cu ramă cromată, bare verticale fine cromate și inscripția MAYBACH; steaua în picioare pe capotă; farurile MULTIBEAM LED (lumina de zi pe margine, modulele LED, semnalizarea); prizele de aer cu modelul Maybach în ramă cromată; scutul de jos cromat.
   * **Lateral**: crom în jurul geamurilor, emblema Maybach pe stâlpul C, mânere cromate, treptele electrice strânse sub prag, ornament cromat pe prag; jante forjate de 22″ cu 20 de spițe subțiri, pe anvelope 285/45 R22 față și 325/40 R22 spate. Anvelopele au flancuri reale, iar janta se vede adâncită în ele.
   * **Spatele**: stopurile facelift-ului, cu trei blocuri orizontale de lumină; ornamentul cromat dintre ele, steaua, evacuările integrate în bară cu rame cromate, ornamentul cromat al difuzorului, eleronul cu a treia lampă de frână.
-  * Vopsea negru obsidian metalizat; interior bej din piele nappa, cu lemn, ecranul lat MBUX și consola dintre cele două scaune din spate.
+  * Vopsea negru obsidian metalizat; interior bej din piele nappa, cu lemn, cele două ecrane MBUX sub o singură sticlă și cele două scaune separate din spate, cu consola dintre ele (V68: `src/interior.js`).
   * **Merge ca cel real**: V8 biturbo de 4,0 l, 410 kW (557 CP) plus EQ Boost pe 48 V, ~2,8 t, tracțiune 4MATIC, cutie 9G-TRONIC cu 9 trepte. Verificat în simulare, cu același cod ca în joc:
     * 0–100 km/h în 4,92 s (oficial 4,9 s), 0–200 km/h în 18 s;
     * viteza limitată la 250 km/h;
@@ -701,6 +701,25 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * pițigoii trec în cârduri mici prin coroanele de la margine, cu zborul lor în salturi;
   * în pădure se aude din când în când o ciocănitoare pestriță bătând în trunchi.
 * **Mașinile** sunt modelate parametric după profilele reale (E90, Corsa C, SUV, Logan, Sandero) — nu sunt modele comerciale scanate.
+* **Interioarele tuturor mașinilor (V68)** (`src/interior.js`): fiecare model are habitaclul lui, construit pe aceeași caroserie și după fotografii ale interioarelor reale (BMW E90, Opel Corsa C, Peugeot 508, Renault Kangoo II, VW T5 — Wikimedia Commons — și poza ta 86, din Doblò). **V** în mașină trece pe privirea șoferului.
+  * **Măsurat de la ochii șoferului**, ca la proiectarea unei mașini: punctul H al scaunului la 0,64 m sub ochi și 0,17 m în spate, centrul volanului ~0,57 m în față și ~0,27 m mai jos, înclinat 23–35° (mai culcat la dube), ceasurile la ~0,8 m, văzute prin partea de sus a volanului. Înălțimea ochilor vine din podeaua și plafonul fiecărui model: 1,13 m în BMW, 1,15 m în 508, 1,19 m în Corsa, 1,22–1,23 m în Logan/Sandero, 1,33 m în SUV, 1,36 m în Kangoo, 1,47 m în Doblò, 1,55 m în T5, 1,56 m în Maybach.
+  * **Căptușeala caroseriei** (plafon, stâlpi, panourile ușilor) stă la 3–8 cm în interiorul tablei, cu garniturile negre în jurul geamurilor. Soarele intră doar prin geamuri, care nu mai aruncă umbră; plafonul și ușile umbresc interiorul. Prin geam, de afară, nu se mai vede prin mașină până de partea cealaltă.
+  * **Planșa de bord**, în două tonuri, merge de la baza parbrizului până la genunchi și sub ea până la perete. Are fantele de dezaburire, gurile de aer laterale (rotunde sau dreptunghiulare, după model), torpedoul și ornamentul: nuc la BMW, aluminiu periat la 508, lemn la Maybach.
+  * **Ceasurile mărcii** sunt pictate (scale, cifre, zona roșie, inele cromate, afișaje) și stau sub capota lor:
+    * BMW: iluminare portocalie;
+    * Corsa: cadrane argintii și afișajul de pe bord;
+    * Kangoo și Sandero: trei cadrane;
+    * 508 și T5: afișajul din mijloc;
+    * Maybach: cele două ecrane MBUX sub aceeași sticlă.
+
+    **Acele sunt reale**: urmăresc viteza și turația când conduci. Cadranele se aprind ziua doar cu acele; noaptea sau cu farurile aprinse se luminează tot.
+  * **Volanul** are spițele mărcii, airbagul cu sigla, coloana și manetele, și se rotește cu roțile.
+  * **Consola centrală**: guri de aer, radio, butoanele climei, ecranul (508, SUV, Maybach). Maneta de viteze e manuală, automată (BMW, SUV) sau pe planșă (Kangoo, Doblò, T5). Mai are frâna de mână și cotiera.
+  * **Scaunele sunt modelate**: pernă, laterale, spătar și tetieră pe tije. Bancheta din spate e așezată automat cât de în spate încape sub plafon, cu tetiere înalte sau joase după cât loc e. Mai sunt centurile pe stâlpii B, tapițeriile ușilor (cotieră, mâner, buzunar, difuzor, comenzile geamurilor), mocheta, pedalele, oglinda retrovizoare, parasolarele și plafoniera.
+  * **Costul**: interiorul unui model se construiește o singură dată și e folosit de toate mașinile de același model. Se desenează doar la mașinile până la 16 m (prin geamurile fumurii nu se vede mai departe). Umbrele scaunelor și ale bordului le are doar mașina pe care o conduci; la celelalte doar plafonul și ușile umbresc interiorul.
+  * **Ce e aproximat**:
+    * culoarea iluminării bordului e verificată doar la BMW (portocaliu); la celelalte e albă-neutră;
+    * butoanele mici, cusăturile și grafica ecranelor sunt pictate, nu modelate.
 
 ## Grafică
 
@@ -753,6 +772,7 @@ src/hero.js           casa din poze (fațadă, prispă, verandă, foișor, poart
 src/world.js          stradă, vecini, stâlpi, fire, mașini parcate, vegetație
 src/cars.js           caroserii parametrice   src/vehicle.js  fizica mașinii
 src/maybach.js        Mercedes-Maybach GLS 600   src/doblo.js  Fiat Doblò Cargo (dubița de la sonde)
+src/interior.js       interioarele mașinilor: bord, ceasuri cu ace, volan, scaune, uși, căptușeală
 src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare

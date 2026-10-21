@@ -28,9 +28,9 @@ export const DOBLO_MODEL = {
   bottom: [[0, 0.3], [0.1, 0.25], [0.35, 0.22], [3.95, 0.23], [4.15, 0.28], [4.253, 0.32]],
   // the door glass leans in, the load box above the crease stands upright
   hwr: 0.755, hwrAt: [[0, 0.7], [2.3, 0.7], [2.5, 0.755], [L, 0.755]],
-  wind: [1.0, 1.68], rear: [4.05, 4.05], side: [1.5, 2.36], pillars: [2.4, 3.25], interior: 0x3c3d3f,
+  wind: [1.0, 1.68], rear: [4.05, 4.05], side: [1.5, 2.36], pillars: [2.4, 3.25],
   lights: { head: [0.06, 0.94, 0.56, 0.4, 0.17], tail: [4.25, 1.12, 0.79, 0.08, 0.5] }, grille: 'doblo',
-  ownSides: true, pillarPaint: true, cargo: true, linerFrom: 1.8, eyeY: 1.47, chase: [7.0, 1.7],
+  ownSides: true, pillarPaint: true, eyeY: 1.47, chase: [7.0, 1.7],
   plates: { front: [0.47, -L / 2 - 0.036], rear: [0.71, L / 2 + 0.008], rearX: -0.17 },
 };
 
@@ -106,10 +106,9 @@ function mats() {
     badge: new THREE.MeshStandardMaterial({ map: badge(), alphaTest: 0.4, metalness: 0.5, roughness: 0.25 }),
     word: new THREE.MeshStandardMaterial({ map: script('Doblò', 'italic bold 46px Georgia, "Times New Roman", serif'), alphaTest: 0.45, metalness: 1, roughness: 0.2, color: 0xd9dbde }),
     cargo: new THREE.MeshStandardMaterial({ map: script('CARGO', 'bold 40px Arial, Helvetica, sans-serif'), alphaTest: 0.45, metalness: 1, roughness: 0.2, color: 0xd9dbde }),
-    dash: new THREE.MeshStandardMaterial({ color: 0x585957, roughness: 0.85 }),
     dashDark: new THREE.MeshStandardMaterial({ color: 0x1b1c1d, roughness: 0.9 }),
   };
-  MAT.dash.userData.noWet = MAT.dashDark.userData.noWet = true;           // (the cabin's: dry)
+  MAT.dashDark.userData.noWet = true;           // (the cabin's: dry)
   return MAT;
 }
 
@@ -281,15 +280,8 @@ function details({ add, S, paint, zAt, headMat, tailMat, rigid }) {
   put(new THREE.CircleGeometry(0.04, 28), X.badge, pose(-0.34, 1.0, rearZ(-0.34, 1.0) + 0.006));
   put(new THREE.PlaneGeometry(0.2, 0.05), X.word, pose(-0.45, 0.88, rearZ(-0.45, 0.88) + 0.006));
 
-  // ---- the cabin: the grey dashboard of the photo (the demister slots along the glass, the open bin on top, the hood
-  // over the dials), the bulkhead behind the seats
-  const pd = 1.33, yd = 1.1;
-  box(m.W - 0.3, 0.05, 0.42, X.dash, 0, yd, zAt(pd), -0.12, 0, 0);
-  for (const x of [-0.58, -0.2, 0.2, 0.58]) box(0.22, 0.008, 0.012, X.dashDark, x, yd + 0.03, zAt(1.16));
-  box(0.5, 0.012, 0.22, X.dashDark, 0.22, yd + 0.035, zAt(1.4));
-  for (const x of [-0.03, 0.47]) box(0.02, 0.06, 0.24, X.dash, x, yd + 0.055, zAt(1.4));
-  box(0.5, 0.06, 0.02, X.dash, 0.22, yd + 0.055, zAt(1.52));
-  put(new THREE.CylinderGeometry(0.13, 0.13, 0.34, 20, 1, true, 0, Math.PI), X.dash, pose(-0.38, yd - 0.03, zAt(1.46), 0, 0, Math.PI / 2));
+  // ---- the bulkhead behind the seats (the cabin itself - the grey dashboard of photo 86 with its demister slots and the
+  // hood over the dials: interior.js)
   box(m.W - 0.25, 1.15, 0.03, X.dashDark, 0, 1.2, zAt(2.86));
 }
 DOBLO_MODEL.details = details;
