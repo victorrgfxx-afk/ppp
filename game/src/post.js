@@ -11,6 +11,7 @@ import { WindshieldPass } from './windshield.js';
 import { CinePass } from './cinepass.js';
 import { ShaftsPass } from './shafts.js';
 import { VisionPass } from './vision.js';
+import { TAAPass, TAAJitter } from './taa.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 // (hooks: passes further on that need the scene as the scene pass leaves it - its depth, its sky - take it here, before
@@ -100,8 +101,8 @@ void main() {
   float d = texture2D(tDepth, vUv).r;
   vec3 p = viewPos(vUv, d);
   vec3 fn = normalize(cross(dFdx(p), dFdy(p)));                  // (derivatives before any branch)
-  gl_FragColor = vec4(c.rgb, max(c.a, 1.0));                     // (> 1: the haze's share, for the distance blur)
-  float refl = clamp(1.0 - c.a, 0.0, 1.0);
+  gl_FragColor = vec4(c.rgb, c.a < 0.0 ? min(c.a, -1.0) : max(c.a, 1.0));   // (> 1: the haze's share, for the distance blur; < 0: what sways, taa.js)
+  float refl = c.a < 0.0 ? 0.0 : clamp(1.0 - c.a, 0.0, 1.0);
   if (refl < 0.02 || d >= 1.0 || abs(dot(fn, uUp)) < 0.8) return; // wet, level surfaces only
   vec3 n = normalize(uUp), v = normalize(p);
   vec3 r = reflect(v, n);
@@ -197,7 +198,7 @@ uniform float uFirst;
 varying vec2 vUv;
 vec4 tap(vec2 o) {
   vec4 c = texture2D(tSrc, vUv + o * uTexel);
-  if (uFirst > 0.5) { float h = clamp(c.a - 1.0, 0.0, 1.0); return vec4(c.rgb * h, h); }   // (premultiplied by the haze)
+  if (uFirst > 0.5) { float h = clamp(abs(c.a) - 1.0, 0.0, 1.0); return vec4(c.rgb * h, h); }   // (premultiplied by the haze)
   return c;
 }
 void main() {
@@ -211,7 +212,7 @@ varying vec2 vUv;
 vec4 lv(sampler2D t, vec2 tx) { return (texture2D(t, vUv + tx * vec2(-0.5, -0.5)) + texture2D(t, vUv + tx * vec2(0.5, -0.5)) + texture2D(t, vUv + tx * vec2(-0.5, 0.5)) + texture2D(t, vUv + tx * vec2(0.5, 0.5))) * 0.25; }
 void main() {
   vec4 c = texture2D(tDiffuse, vUv);
-  float h = clamp(c.a - 1.0, 0.0, 0.999);
+  float h = clamp(abs(c.a) - 1.0, 0.0, 0.999);
   gl_FragColor = vec4(c.rgb, 1.0);
   if (h < 0.02) return;
   float tau = -log(1.0 - h);
@@ -267,7 +268,7 @@ class AerialBlurPass extends Pass {
 class FarPass extends Pass {
   constructor(scene, camera) {
     super();
-    this.scene = scene; this.camera = camera; this.needsSwap = false;
+    this.scene = scene; this.camera = camera; this.needsSwap = false; this.jitter = null;
     this.cam = new THREE.PerspectiveCamera(70, 1, 30, 430000);              // (the outer relief ring reaches 300 km)
   }
   render(renderer, writeBuffer, readBuffer) {
@@ -275,12 +276,16 @@ class FarPass extends Pass {
     c.position.copy(m.position); c.quaternion.copy(m.quaternion);
     if (c.fov !== m.fov || c.aspect !== m.aspect || c.zoom !== m.zoom) { c.fov = m.fov; c.aspect = m.aspect; c.zoom = m.zoom; c.updateProjectionMatrix(); }
     c.updateMatrixWorld();
+    // (the anti-aliasing's sub-pixel shift, the same as the main camera's: taa.js)
+    const e = c.projectionMatrix.elements, e8 = e[8], e9 = e[9];
+    if (this.jitter) { e[8] += this.jitter.x; e[9] += this.jitter.y; }
     const ac = renderer.autoClear;
     renderer.autoClear = false;
     renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
     renderer.clear();
     renderer.render(this.scene, c);
     renderer.autoClear = ac;
+    e[8] = e8; e[9] = e9;
   }
 }
 
@@ -289,8 +294,12 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // (with a depth texture: the wet-ground reflections march through it)
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ssr ? new THREE.DepthTexture(size.x, size.y) : null });
   const composer = new EffectComposer(renderer, rt);
+  // the temporal anti-aliasing (taa.js): it needs the scene's depth, so not on the lowest setting (SMAA there)
+  const taa = q.ssr ? new TAAPass(camera, null, null) : null;
+  if (taa) composer.addPass(new TAAJitter(taa));
+  let far = null;
   if (farScene) {
-    composer.addPass(new FarPass(farScene, camera));
+    composer.addPass(far = new FarPass(farScene, camera));
     const rp = new RenderPass(scene, camera);
     rp.clear = false; rp.clearDepth = true;              // (over the far relief)
     composer.addPass(rp);
@@ -300,6 +309,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // (the scene's depth: for the AO when it reuses it, and for the cinematics' lens and shutter, cinepass.js)
   const tap = q.ssr ? new DepthTap() : null;
   if (tap) composer.addPass(tap);
+  if (taa) taa.attach(tap, far);
   if (q.ssr) { ssr = new WetSSRPass(camera); composer.addPass(ssr); }
   // AO straight after the reflections: no pass in between may draw into the buffer whose depth it reads
   if (q.ao) {
@@ -316,6 +326,8 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0); gl_FragColor = min(c, vec4(64.0)); }',
   }));
+  // the anti-aliasing: after the reflections and the AO (smoothed with the rest), before the haze's blur and the bloom
+  if (taa) composer.addPass(taa);
   // the softness of distant things in the haze (after the passes that read the scene's depth through this buffer)
   const aerial = new AerialBlurPass(camera);
   composer.addPass(aerial);
@@ -337,7 +349,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     composer.addPass(bloom);
   }
   composer.addPass(new OutputPass());
-  if (q.smaa) { smaa = new SMAAPass(); composer.addPass(smaa); }
+  if (q.smaa) { smaa = new SMAAPass(); smaa.enabled = !taa; composer.addPass(smaa); }
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   const setSize = (w, h) => {
@@ -346,5 +358,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, setSize };
+  // the anti-aliasing on or off (the menu): SMAA while TAA is off
+  const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, setTAA, setSize };
 }

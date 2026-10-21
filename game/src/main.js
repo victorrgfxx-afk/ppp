@@ -174,6 +174,8 @@ async function main() {
   // the camera's motion blur in play (post.js CinePass: the shutter of a film camera, 0.5 = 180 degrees); on Ultra a
   // light one by default
   let mblur = +store.get('mblur', qKey === 'ultra' ? 0.3 : 0) || 0;
+  // the edges and the distance: smoothed over time (TAA, taa.js) or within the frame (SMAA); TAA but on the lowest setting
+  let aa = store.get('aa', 'taa') === 'smaa' ? 'smaa' : 'taa';
   // the tone curve (the colours): ACES, the game's own (its light was tuned under it), AgX (a film's softer roll-off,
   // less saturated) or Khronos PBR Neutral (the hues kept); each with the exposure that keeps a scene's mean the same
   // (measured on the street at a low sun: ACES 64.6, AgX 71.4, Neutral 54.9 out of 255 at one exposure)
@@ -418,6 +420,7 @@ async function main() {
   const audio = new Audio();
   const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
   const post = createComposer(renderer, scene, camera, Q, farScene);
+  const taaMover = { obj: null, min: new THREE.Vector3(), max: new THREE.Vector3() };
   vision = post.vision;
   gradeU = post.grade.uniforms;
   // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
@@ -606,6 +609,8 @@ async function main() {
     firs.addSource((x, z, Rr, out) => { for (const r of yard) if (Math.abs(r.x - x) < Rr && Math.abs(r.z - z) < Rr) out.push(r); });
   }
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
+  // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
+  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
@@ -726,6 +731,15 @@ async function main() {
     el.addEventListener('change', (e) => {
       tonemap = TONEMAPS[e.target.value] ? e.target.value : 'aces'; store.set('tonemap', tonemap); exposeTo(baseExposure);
       for (const s2 of ['', '2']) if ($('tonemap' + s2)) $('tonemap' + s2).value = tonemap;
+    });
+  }
+  post.setTAA(aa === 'taa');
+  for (const sfx of ['', '2']) {
+    const el = $('aa' + sfx); if (!el) continue;
+    el.value = aa; el.disabled = !post.taa;
+    el.addEventListener('change', (e) => {
+      aa = e.target.value === 'smaa' ? 'smaa' : 'taa'; store.set('aa', aa); post.setTAA(aa === 'taa');
+      for (const s2 of ['', '2']) if ($('aa' + s2)) $('aa' + s2).value = aa;
     });
   }
   for (const sfx of ['', '2']) {
@@ -1387,6 +1401,14 @@ async function main() {
     }
     // the sun's shafts: by the share of its light that comes straight (the weather's), above the horizon, by day
     if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.85, sun.color); }
+    // (the car you drive moves with the camera: the anti-aliasing follows it by its own motion)
+    if (post.taa) {
+      if (mode === 'car' && active) {
+        const hw = active.car.half.w + 0.3, hl = active.car.half.l + 0.3;
+        taaMover.obj = active.car.group; taaMover.min.set(-hw, -0.4, -hl); taaMover.max.set(hw, 2.6, hl);
+        post.taa.mover = taaMover;
+      } else post.taa.mover = null;
+    }
     post.composer.render(dt);
     perf.end();
     input.endFrame();

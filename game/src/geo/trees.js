@@ -7,6 +7,7 @@ import { rng } from '../util.js';
 import { spruceDetail } from './firs.js';
 import { broadTree } from './broadgen.js';
 import { SEASON, autumnize } from '../season.js';
+import { DITHER, DITHER_GLSL } from '../taa.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
 // Sentinel-2 shows vegetation). Near: light 3D trees per 200 m chunk; far: impostor billboards
@@ -195,6 +196,10 @@ function pineModel(t, seed) {
 
 // ---- distance switch in the vertex shader (per instance) ----
 // near side: hidden beyond `near`; far side: hidden inside `near` and (dithered per tree) beyond `far`
+// (with the temporal anti-aliasing on, the switch is a dissolve over LOD_BAND m either side: both are drawn there, each
+// pixel showing one or the other by a threshold that changes every frame - taa.js DITHER - which the anti-aliasing turns
+// into a cross-fade; off, it is a hard switch)
+const LOD_BAND = 5;
 function withSwitch(material, near, farSide, key, far = 0) {
   const m = material.clone();
   const prev = material.onBeforeCompile;
@@ -202,13 +207,19 @@ function withSwitch(material, near, farSide, key, far = 0) {
     if (prev) prev.call(m, sh, r);
     sh.uniforms.uSwitch = { value: near };
     sh.uniforms.uFar = { value: far };
+    Object.assign(sh.uniforms, DITHER);
     sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+  vLodT = ${farSide ? '1.0' : '0.0'};
 #ifdef USE_INSTANCING
   { vec3 ip = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    float dd = distance(ip.xz, cameraPosition.xz);
+    float dd = distance(ip.xz, cameraPosition.xz), band = uDitherOn > 0.5 ? ${LOD_BAND.toFixed(1)} : 0.0;
     float hh = fract(sin(dot(floor(ip.xz), vec2(12.9898, 78.233))) * 43758.5453);
-    if (${farSide ? 'dd < uSwitch || (uFar > 0.0 && dd > uFar * (0.78 + 0.22 * hh))' : 'dd > uSwitch'}) transformed *= 0.0; }
-#endif`).replace('#include <common>', '#include <common>\nuniform float uSwitch, uFar;');
+    vLodT = band > 0.0 ? smoothstep(uSwitch - band, uSwitch + band, dd) : ${farSide ? '1.0' : '0.0'};
+    if (${farSide ? 'dd < uSwitch - band || (uFar > 0.0 && dd > uFar * (0.78 + 0.22 * hh))' : 'dd > uSwitch + band'}) transformed *= 0.0; }
+#endif`).replace('#include <common>', '#include <common>\nuniform float uSwitch, uFar, uDitherOn;\nvarying float vLodT;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uDitherOn, uDitherFrame;\nvarying float vLodT;\n' + DITHER_GLSL)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+  if (uDitherOn > 0.5 && ${farSide ? 'ditherIGN() >= vLodT' : 'ditherIGN() < vLodT'}) discard;`);
   };
   m.customProgramCacheKey = () => key + (material.customProgramCacheKey ? material.customProgramCacheKey() : '');
   return m;

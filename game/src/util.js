@@ -160,4 +160,4 @@ export class Batcher {
 }
 
 // Shared wind uniform used by foliage/grass shaders.
-export const WIND = { time: { value: 0 }, strength: { value: 1 } };
+export const WIND = { time: { value: 0 }, strength: { value: 1 }, mark: { value: 0 } };   // (mark: taa.js, while the scene pass draws)

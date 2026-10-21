@@ -733,9 +733,83 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
 
 ## Grafică
 
-Three.js r186 (inclus în `vendor/`, merge offline): materiale PBR cu hărți de normale generate din poze, iluminare de cer înnorat (IBL din cerul procedural), umbre soft, ambient occlusion (GTAO) pe Înaltă/Ultra, bloom discret, SMAA, gradare „fotografică” (vignetă, grain), iarbă 3D și frunziș care se mișcă în vânt. Sunetul (vânt, păsări, pași pe asfalt/pietriș/iarbă/gresie, motor, derapaj, claxon, impact) e sintetizat procedural.
+Three.js r186 (inclus în `vendor/`, merge offline): materiale PBR cu hărți de normale generate din poze, iluminare de cer înnorat (IBL din cerul procedural), umbre soft, ambient occlusion (GTAO) pe Înaltă/Ultra, bloom discret, anti-aliasing temporal (TAA; SMAA pe Scăzută), gradare „fotografică” (vignetă, grain), iarbă 3D și frunziș care se mișcă în vânt. Sunetul (vânt, păsări, pași pe asfalt/pietriș/iarbă/gresie, motor, derapaj, claxon, impact) e sintetizat procedural.
 
 Calitatea implicită e aleasă automat (Scăzută pe telefon, Medie/Înaltă pe PC) și se poate schimba din meniu.
+
+### Depărtarea netedă (V70)
+
+Departe, jocul arăta „ascuțit” și fals: pădurea de pe dealuri era un purici de pixeli colorați, firele de curent se
+rupeau în puncte, iarba de la câteva zeci de metri fâșâia. Cauza nu era lipsa de ceață sau de blur, ci **aliasing-ul**:
+fiecare pixel lua un singur eșantion, din centrul lui. Un lucru mai mic decât un pixel (o crenguță la 300 m, un cablu
+de 2 cm la 100 m, un fir de iarbă la 40 m) ori cădea pe acel punct și apărea întreg, ori nu și lipsea, iar asta se
+schimba de la un cadru la altul. Ochiul și obiectivul unui aparat adună lumina de pe toată suprafața, deci văd
+amestecul (o pădure ca o masă de coroane, un cablu ca o linie fină).
+
+**Anti-aliasing temporal (TAA, `src/taa.js`)**, după Karis 2014 (*High Quality Temporal Supersampling*), Salvi 2016
+și Pedersen 2016:
+- la fiecare cadru proiecția (și a reliefului îndepărtat) se mută cu o fracțiune de pixel, după șirul Halton (2,3), 8 poziții;
+- cadrul nou e reeșantionat în centrele pixelilor cu un filtru gaussian (aproximarea Blackman-Harris) pe vecinii 3×3;
+- rezultatul de dinainte e luat de unde era punctul acestui pixel cu un cadru în urmă. Punctul se află din adâncimea
+  lui, proiectată prin camera de atunci. Mașina pe care o conduci urmează propria mișcare, deci cabina și mașina din
+  fața camerei nu se întind. Cerul și relieful îndepărtat urmează direcția. Citirea se face cu filtru Catmull-Rom, ca
+  imaginea să nu se înmoaie de la cadru la cadru;
+- istoria e tăiată la gama de culori a vecinătății de acum (variance clipping în YCoCg), deci ce s-a mișcat sau a apărut nu lasă fantome;
+- în rezultat intră ~10 % din cadrul nou (tot cadrul nou unde istoria e în afara ecranului sau după o tăietură de cadru).
+
+Ploaia, zăpada, stropii de la roți, apa de pe streașini și pudra de zăpadă de pe molizi se mișcă prea repede ca să fie
+urmărite. De aceea se desenează după TAA, peste rezultat, cu adâncimea scenei. Reflexiile din ud și umbrirea de contact
+(AO) sunt calculate înainte, deci se netezesc și ele.
+
+Frunzele și iarba se leagănă în vânt, iar reproiectarea nu știe de mișcarea asta. Fără o corecție, coroana unui copac
+din apropiere ar lăsa o dâră. Materialele care se leagănă își marchează pixelii (alfa negativ, doar în trecerea
+principală a scenei). Acolo TAA păstrează mai puțin din cadrele trecute, cât să rămână cel mult ~1 px de urmă. Un vârf de
+coroană se mișcă cel mult ~0,24 m la 3,5 rad/s, deci ponderea cadrului nou e 7/distanța (m) × tăria vântului, între 10 %
+și 50 %. Lângă tine frunzele rămân clare, iar de la ~70 m în colo se netezesc complet.
+
+**Verificat pe o margine de test** (alb pe negru, înclinată, 256×128, `_taatest.html`), față de aceeași margine randată
+la 16×16 poziții în fiecare pixel și mediată (referința):
+
+| | treptele (abaterea de la linia dreaptă) | deplasarea marginii | lățimea (σ) |
+|---|---|---|---|
+| fără AA | 0,29 px | — | 0,29 px (trepte) |
+| referința 16×16 | 0,06 px | 0 | 0,41 px |
+| TAA, cameră fixă | **0,03 px** | 0,06 px | 0,51 px |
+| TAA, 0,5 px/cadru | 0,14 px | 0,01 px | 0,66 px |
+| TAA, 2 px/cadru | 0,03 px | 0,11 px | 0,52 px |
+
+Cu semnul deplasării inversat, toate cifrele ies mai rele (0,8 px deplasare), deci convenția e cea corectă. Ponderea
+pentru culorile foarte luminoase e 1/(1 + L/4): cu 1/(1 + L), cum e în articolul lui Karis, marginea alb-negru se muta
+cu 0,2 px spre alb, iar un cablu închis pe cer apărea mai gros și mai negru decât e.
+
+**Trecerile de detaliu, fără margini:**
+- copacii trec de la modelul 3D la imagine (la 110–260 m, după calitate) printr-o dizolvare pe ±5 m, nu dintr-odată.
+  În zonă se desenează amândouă formele, iar fiecare pixel arată una sau alta după un prag care se schimbă la fiecare
+  cadru (zgomot cu gradient întrețesut, Jimenez 2014). TAA-ul transformă asta într-o trecere lină;
+- pe pajiștile dealului Crucii, fânul se desenează până la 45–140 m. Mai departe, solul are culoarea fânului: media
+  texturii firelor, în lumină liniară, înmulțită cu nuanța locului (mai uscat pe petice, pai unde e călcat) și cu cât
+  se întunecă fânul văzut de departe. Firele se umbresc unele pe altele și li se văd bazele, deci factorul e 0,71 / 0,63
+  / 0,64 pe R/G/B, măsurat pe randare. Înainte solul avea verdele închis al ortofotografiei de vară, deci iarba se
+  termina într-o linie;
+- fiecare inel de iarbă se rărește pe ultimii ~20 m până la desimea inelului următor, smoc cu smoc, fiecare la o
+  distanță a lui; ultimul inel se rărește până la zero.
+
+**Verificat în joc** (1280 px, Înaltă, pași de 60 cadre/s), înainte și după, pe 7 vederi: strada casei (Poza 1),
+steagul de pe deal (Poza 60), valea de la Cruce, satul văzut de sus, aceeași stradă în ploaie, mașina din spate și din
+cabină. Pădurea de pe dealuri
+devine o masă de coroane, nu mai e purici. Firele de curent sunt linii continue, iar munții din depărtare nu mai
+fâșâie. Coroana din apropiere rămâne clară în vânt. Cabina rămâne clară în mers: ceasurile și navigația se citesc.
+Ploaia și reflexiile din ud arată la fel, iar consola nu are nicio eroare. Pe pajiștea de la steag, solul de dincolo de
+fân a ieșit întâi prea verde, (115, 123, 66) față de fânul (102, 104, 57). După măsurare l-am calibrat la (95, 97, 56),
+cu fânul la (97, 98, 54).
+
+**Cost**: măsurat doar în randarea software de test (Chromium + SwiftShader, strada casei, alternând de două ori):
+11,0 s pe cadru cu SMAA și 11,7 s cu TAA, adică +6 %, la un zgomot de ±4 % între repetări. TAA ia locul SMAA-ului, tot
+cu trei treceri pe ecran. Harta culorii pajiștilor se calculează o dată, la încărcare (376×326 celule, 0,34 s).
+Testul automat (`tools/geo-test.mjs`) dă 0 erori și avertismente, iar mersul cu mașina trece.
+
+Din meniu, **Netezire**: Temporală (TAA, implicit) sau Doar margini (SMAA, ca înainte). Pe Scăzută rămâne SMAA, fiindcă
+acolo scena nu are adâncimea de care are nevoie TAA.
 
 ### Performanță
 
@@ -787,6 +861,7 @@ src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridi
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
+src/taa.js            anti-aliasing-ul temporal: deplasarea sub-pixel, reproiecția, istoria; ploaia și zăpada desenate după el
 src/rain.js           ploaia și zăpada: suprafețe ude / acoperite, fulgii, viscolul și harta lui văzută din vânt, stratul de zăpadă
 src/snowtrail.js      urmele de pași și de roți în zăpadă (harta lor, ștampilele, umplerea cât ninge)
 src/castgeo.js        personajele (pădurea, clipul IMG_0725): geometria (sculptate SDF, ponderile scheletului), fără three.js

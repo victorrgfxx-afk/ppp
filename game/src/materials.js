@@ -32,6 +32,12 @@ export function addWind(material, amp = 0.08, freq = 1.3) {
           transformed.x += s * ${amp.toFixed(3)} * h * uWind * gust;
           transformed.z += cos(uTime * ${(freq * 0.8).toFixed(2)} + ph) * ${(amp * 0.6).toFixed(3)} * h * uWind * gust;
         }`);
+    // (a negative alpha in the scene buffer marks what sways: the anti-aliasing, taa.js, keeps less of its past there -
+    // it moves with no motion the reprojection knows of; the passes reading the alpha take its magnitude)
+    // (only in the frame's scene pass: WIND.mark; an impostor baked from these leaves must keep its alpha)
+    shader.uniforms.uSwayMark = WIND.mark;
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uSwayMark;')
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n#ifdef OPAQUE\n  if (uSwayMark > 0.5) gl_FragColor.a = -abs(gl_FragColor.a);\n#endif');
   };
   material.customProgramCacheKey = () => 'wind' + amp + freq;
   return material;

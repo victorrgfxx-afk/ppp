@@ -6,6 +6,7 @@ import { UNDER_SNOW } from '../rain.js';
 import { canvas, tex } from './pitigaia.js';
 import { valueNoise2 } from './trees.js';
 import { hillOpen, HILL_BOX, trackAt, trackPoint, drapelSpots } from './drapel.js';
+import { MEADOW } from './terrain.js';
 
 // The wood and the meadows of the hill of the cross (photos 24 and 60) up close.
 // - The meadows (the open ground traced from the aerial): dense grass, a short sward of green and drying blades and the
@@ -269,6 +270,40 @@ export function branchGeo() {
   return mergeGeometries(parts);
 }
 
+// ------------------------------------------------------------------ the meadows' ground (terrain.js MEADOW)
+// The hay is drawn only near you (QUAL: 45-140 m): past that the terrain is all there is of a meadow, and it has to be
+// the colour the hay gives the meadow, or the drawn grass ends at a line. So, over the hill in 4 m texels: where the
+// hay grows (site(): the open meadow, not the wood, the roads or the tracks' ruts), its mean colour - the grass
+// texture's (over the blades that pass its alpha test, in linear light) times the tint the tufts there get (drier in
+// patches, straw where trodden) - and how much of the ground it covers.
+function meadowGround(img) {
+  const t0 = performance.now();
+  const d = img.getContext('2d').getImageData(0, 0, img.width, img.height).data;
+  const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const enc = (v) => Math.round(255 * Math.min(1, v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i + 3] >= 0.42 * 255) { r += lin(d[i]); g += lin(d[i + 1]); b += lin(d[i + 2]); n++; }
+  if (!n) return;
+  // (seen from afar the hay is darker and less green than its blades' mean colour: at a grazing view they shade one
+  // another and their darker bases fill in. Measured on the render at the flagpole, photo 60: the ground beyond the
+  // drawn hay came out at sRGB (115, 123, 66) against the hay's (102, 104, 57); this brings it to the hay's)
+  const SEEN = [0.71, 0.63, 0.64];
+  r = r / n * SEEN[0]; g = g / n * SEEN[1]; b = b / n * SEEN[2];
+  const S = 4, W = Math.ceil((HB.x1 - HB.x0) / S) + 1, H = Math.ceil((HB.z1 - HB.z0) / S) + 1, px = new Uint8Array(W * H * 4);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const x = HB.x0 + i * S, z = HB.z0 + j * S, s = site(x, z), k = (j * W + i) * 4;
+    if (!s || s.forest) continue;
+    const dry = valueNoise2(x, z, 14, 77), c = trodden(x, z) ? [1.05, 0.96, 0.7] : [0.8 + 0.28 * dry, 0.9 + 0.08 * dry, 0.62 + 0.1 * dry];
+    px[k] = enc(r * c[0]); px[k + 1] = enc(g * c[1]); px[k + 2] = enc(b * c[2]); px[k + 3] = Math.round(255 * 0.9 * Math.min(1, s.tk));
+  }
+  const tx = new THREE.DataTexture(px, W, H, THREE.RGBAFormat);
+  tx.colorSpace = THREE.SRGBColorSpace; tx.magFilter = tx.minFilter = THREE.LinearFilter; tx.needsUpdate = true;
+  MEADOW.uMeadow.value = tx;
+  MEADOW.uMeadowBox.value.set(HB.x0 - S / 2, HB.z0 - S / 2, HB.x0 - S / 2 + W * S, HB.z0 - S / 2 + H * S);
+  MEADOW.uMeadowOn.value = 1;
+  console.log('[geo]', 'pajiștile dealului', W + '×' + H, Math.round(performance.now() - t0), 'ms', [r, g, b].map(v => v.toFixed(3)).join(' '));
+}
+
 // ------------------------------------------------------------------ the ground cover around the player
 const QUAL = { 'Scăzută': { d: 0.4, rn: 14, rf: 30, rv: 45 }, 'Medie': { d: 0.65, rn: 20, rf: 42, rv: 70 }, 'Înaltă': { d: 1, rn: 26, rf: 55, rv: 110 }, 'Ultra': { d: 1.35, rn: 32, rf: 70, rv: 140 } };
 
@@ -276,13 +311,37 @@ export function buildHillwood(scene, world, quality) {
   if (!GEO.forestBits || !BL) return { update() {}, count: () => 0 };
   const Q = QUAL[quality.label] ?? QUAL['Înaltă'];
   const plant = (map, amp, freq, extra = {}) => addWind(new THREE.MeshStandardMaterial({ map, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.9, ...extra }), amp, freq);
-  const Mt = {
-    grass: plant(grassTexture(), 0.2, 1.7), flower: plant(flowerTexture(), 0.16, 1.5), fern: plant(fernTexture(), 0.05, 1.1),
-    bramble: plant(brambleTexture(), 0.03, 1.2),
-    litter: new THREE.MeshStandardMaterial({ map: litterTexture(), alphaTest: 0.35, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-    branch: M.bark,
+  // each ring thins out over its last ~20 m to the next one's density (none past the last), tuft by tuft, each at a
+  // distance of its own: no edge where the dense sward gives way to the sparser hay, nor where the hay ends
+  const thin = (m, law) => {
+    if (!law) return m;
+    const [r0, r1, k] = law, prev = m.onBeforeCompile, key = m.customProgramCacheKey();
+    m.onBeforeCompile = (sh, r) => {
+      prev.call(m, sh, r);
+      sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `#ifdef USE_INSTANCING
+  { vec3 ip = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    float hh = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453);
+    if (hh > mix(1.0, ${k.toFixed(3)}, smoothstep(${r0.toFixed(1)}, ${r1.toFixed(1)}, distance(ip.xz, cameraPosition.xz)))) transformed = vec3(0.0); }
+#endif
+#include <project_vertex>`);
+    };
+    m.customProgramCacheKey = () => key + '|thin' + r0 + ',' + r1 + ',' + k;
+    return m;
   };
-  for (const k of ['grass', 'flower', 'fern']) UNDER_SNOW.add(Mt[k]);           // (the brambles keep their canes)
+  const TX = { grass: grassTexture(), flower: flowerTexture(), fern: fernTexture(), bramble: brambleTexture(), litter: litterTexture() };
+  // [from, to (m), the share kept past it] per ring (the densities: buildTile)
+  const n0 = [Q.rn - 6, Q.rn + 16], n1 = [Q.rf - 6, Q.rf + 16];
+  const LAW = [{ grass: [...n0, 1.25 / 8.5], flower: [...n0, 0], fern: [...n0, 0.5] },
+    { grass: [...n1, 0.4 / 1.25], fern: [...n1, 0], bramble: [...n1, 0], litter: [...n1, 0] },
+    { grass: [Q.rv - 30, Q.rv + 8, 0] }];
+  const Mts = LAW.map((law) => ({
+    grass: thin(plant(TX.grass, 0.2, 1.7), law.grass), flower: thin(plant(TX.flower, 0.16, 1.5), law.flower), fern: thin(plant(TX.fern, 0.05, 1.1), law.fern),
+    bramble: thin(plant(TX.bramble, 0.03, 1.2), law.bramble),
+    litter: thin(new THREE.MeshStandardMaterial({ map: TX.litter, alphaTest: 0.35, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), law.litter),
+    branch: M.bark,
+  }));
+  for (const Mt of Mts) for (const k of ['grass', 'flower', 'fern']) UNDER_SNOW.add(Mt[k]);   // (the brambles keep their canes)
+  meadowGround(TX.grass.image);
   const G = { grass: starGeo(1), flower: starGeo(0.6), fern: fernGeo(), bramble: starGeo(1.4), litter: new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), branch: branchGeo() };
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qy = new THREE.Quaternion(), p = new THREE.Vector3(), sv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), nv = new THREE.Vector3(), col = new THREE.Color();
   const tiles = new Map();
@@ -357,7 +416,7 @@ export function buildHillwood(scene, world, quality) {
     let n = 0;
     for (const key of Object.keys(L)) {
       const list = L[key]; if (!list.length) continue;
-      const im = new THREE.InstancedMesh(G[key], Mt[key], list.length);
+      const im = new THREE.InstancedMesh(G[key], Mts[lv][key], list.length);
       list.forEach((e, i) => {
         const y = heightAt(e.x, e.z);
         qy.setFromAxisAngle(up, e.ry);

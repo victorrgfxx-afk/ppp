@@ -27,6 +27,11 @@ export async function loadGeoTextures(base) {
   return { ortho, orthoFar, splat, orthoW, splatW, horizon, horizon2 };
 }
 
+// the meadows of the hill of the cross, where the hay grows (hillwood.js sets these): seen from further than the hay is
+// drawn, the ground there is the hay's colour (a field is the colour of what grows on it, not of the soil under it), so
+// where the drawn grass ends there is no edge
+export const MEADOW = { uMeadow: { value: null }, uMeadowBox: { value: new THREE.Vector4(0, 0, 1, 1) }, uMeadowOn: { value: 0 } };
+
 function terrainMaterial(ortho, splat, ext) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, color: 0xffffff });
   const uni = {
@@ -34,7 +39,7 @@ function terrainMaterial(ortho, splat, ext) {
     uGrass: { value: TEX.grass }, uSoil: { value: TEX.soil }, uGravel: { value: TEX.gravel },
     uGrassN: { value: TEX.grassN },
     uAvgG: { value: avgColor(TEX.grass) }, uAvgS: { value: avgColor(TEX.soil) }, uAvgR: { value: avgColor(TEX.gravel) },
-    uExt: { value: ext }, uAutumn: SEASON.uAutumn, uDormant: SEASON.uDormant,
+    uExt: { value: ext }, uAutumn: SEASON.uAutumn, uDormant: SEASON.uDormant, ...MEADOW,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
@@ -46,7 +51,9 @@ function terrainMaterial(ortho, splat, ext) {
 varying vec3 vGeoW;
 uniform sampler2D uOrtho, uSplat, uGrass, uSoil, uGravel;
 uniform vec3 uAvgG, uAvgS, uAvgR;
-uniform float uExt, uAutumn, uDormant;`)
+uniform float uExt, uAutumn, uDormant, uMeadowOn;
+uniform sampler2D uMeadow;
+uniform vec4 uMeadowBox;`)
       .replace('#include <map_fragment>', `
   vec2 guv = (vGeoW.xz + uExt) / (2.0 * uExt);
   vec3 sp = texture2D(uSplat, guv).rgb;                 // forest floor, farmland, gravel
@@ -84,6 +91,10 @@ uniform float uExt, uAutumn, uDormant;`)
     vec3 dry = L * vec3(1.32, 1.0, 0.55);
     float dk = max(uAutumn * (0.25 + 0.75 * smoothstep(0.3, 0.75, k)), uDormant * (0.75 + 0.25 * smoothstep(0.3, 0.75, k)));
     diffuseColor.rgb = mix(c, dry, gr * (wg / ws) * dk * 0.9);
+  }
+  if (uMeadowOn > 0.5) {
+    vec2 mq = (vGeoW.xz - uMeadowBox.xy) / (uMeadowBox.zw - uMeadowBox.xy);
+    if (mq.x > 0.0 && mq.y > 0.0 && mq.x < 1.0 && mq.y < 1.0) { vec4 md = texture2D(uMeadow, mq); diffuseColor.rgb = mix(diffuseColor.rgb, md.rgb, md.a); }
   }
 `);
   };
