@@ -14,7 +14,8 @@ import { Wildlife } from './wildlife.js';
 import { Birds } from './birds.js';
 import { ForestScene } from './forest.js';
 import { Hikers } from './hikers.js';
-import { laneAt, CLIP } from './geo/urcus.js';
+import { laneAt, laneLength, CLIP } from './geo/urcus.js';
+import { HILL_BOX } from './geo/drapel.js';
 import { SCENE_SPOT } from './geo/hillwood.js';
 import { CollisionWorld } from './collision.js';
 import { buildWorld } from './world.js';
@@ -422,10 +423,38 @@ async function main() {
   // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
-  // no GPS signal on the hill of the cross: within 380 m of the cross (the hilltop, its meadows and its wood; the
-  // first houses are ~400 m away). Driving in, the navigation - the car's, your phone's, the minimap - loses it after
-  // ~1 s; driving out, it finds it again after ~3 s
-  const noSignalZone = (x, z) => !!crossAt && Math.hypot(x - crossAt.x, z - crossAt.z) < 380;
+  // no GPS signal on the hill of the cross: the hill (its meadows and wood, geo/drapel.js) and the whole lane over it
+  // (urcus.js: the walkers' clip, the Maybach), wherever it is more than 150 m from a house (the last houses of Strada
+  // Măgurii stand ~280 m below the cross); a 10 m raster. Driving in, the navigation - the car's, your phone's, the
+  // minimap - loses it after ~1 s; driving out, it finds it again after ~3 s
+  const noSignalZone = (() => {
+    const H = HILL_BOX, R = 60, NEAR = 150, S = 10, pts = [];
+    for (let s = 0, n = laneLength(); s <= n; s += 5) { const p = laneAt(s); pts.push([p.x, p.z]); }
+    let x0 = H.x0, x1 = H.x1, z0 = H.z0, z1 = H.z1;
+    for (const [x, z] of pts) { x0 = Math.min(x0, x - R); x1 = Math.max(x1, x + R); z0 = Math.min(z0, z - R); z1 = Math.max(z1, z + R); }
+    const nx = Math.ceil((x1 - x0) / S) + 1, nz = Math.ceil((z1 - z0) / S) + 1, M = new Uint8Array(nx * nz);
+    const stamp = (x, z, r, v) => {
+      for (let j = Math.max(0, Math.floor((z - r - z0) / S)); j <= Math.min(nz - 1, Math.ceil((z + r - z0) / S)); j++)
+        for (let i = Math.max(0, Math.floor((x - r - x0) / S)); i <= Math.min(nx - 1, Math.ceil((x + r - x0) / S)); i++)
+          if (Math.hypot(x0 + i * S - x, z0 + j * S - z) < r) M[j * nx + i] = v;
+    };
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const x = x0 + i * S, z = z0 + j * S; if (x >= H.x0 && x <= H.x1 && z >= H.z0 && z <= H.z1) M[j * nx + i] = 1; }
+    for (const [x, z] of pts) stamp(x, z, R, 1);
+    for (const b of GEO.buildings) {
+      let bx = 0, bz = 0; for (let i = 0; i < b.p.length; i += 2) { bx += b.p[i]; bz += b.p[i + 1]; }
+      bx /= b.p.length / 2; bz /= b.p.length / 2;
+      if (bx > x0 - NEAR && bx < x1 + NEAR && bz > z0 - NEAR && bz < z1 + NEAR) stamp(bx, bz, NEAR, 0);
+    }
+    // (only the ground joined to the cross: no stray corner of the hill's box beyond the houses)
+    if (crossAt) {
+      const q = [Math.round((crossAt.z - z0) / S) * nx + Math.round((crossAt.x - x0) / S)];
+      for (let k = 0; k < q.length; k++) {
+        const c = q[k]; if (M[c] !== 1) continue; M[c] = 2;
+        const i = c % nx; if (i > 0) q.push(c - 1); if (i < nx - 1) q.push(c + 1); if (c >= nx) q.push(c - nx); if (c < nx * (nz - 1)) q.push(c + nx);
+      }
+    }
+    return (x, z) => { const i = Math.round((x - x0) / S), j = Math.round((z - z0) / S); return i >= 0 && j >= 0 && i < nx && j < nz && M[j * nx + i] === 2; };
+  })();
   let noSignal = false, signalT = 0;
   // the ATV of the hill of the cross (atv.js): on open, nearly level ground a few metres from the cross's slab, its
   // nose away from it; built for the snow (knobby tyres, 4x4), the blizzard's ride

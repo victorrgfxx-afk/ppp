@@ -714,7 +714,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
 
     **Acele sunt reale**: urmăresc viteza și turația când conduci. Cadranele se aprind ziua doar cu acele; noaptea sau cu farurile aprinse se luminează tot.
   * **Navigația (V69)**: 508, SUV-ul și Maybach-ul (pe ecranul din dreapta al MBUX) o au pe ecranul lor. În celelalte mașini (BMW, Corsa, Logan, Sandero, Kangoo, T5, Doblò) apare telefonul tău cu navigația, prins pe gura de aer din mijloc, doar cât conduci tu mașina. Cu motorul oprit ecranul e negru.
-  * **Fără semnal pe dealul Crucii (V69)**: în 380 m în jurul crucii (dealul, pajiștile și pădurea lui; primele case sunt la ~400 m), cu orice mașină:
+  * **Fără semnal pe dealul Crucii (V69)**: pe tot dealul (crucea, pajiștile, pădurea, steagul) și pe toată ulița peste deal (1,3 km, cu locul scenei drumeților și Maybach-ul), oriunde ești la peste 150 m de o casă (ultimele case de pe Strada Măgurii sunt la ~280 m sub cruce). Cu orice mașină:
     * navigația arată **NO SIGNAL**, cu harta înghețată și întunecată în spate;
     * minimapa din colț arată purici și **NO SIGNAL**;
     * semnalul se pierde la ~1 s după ce intri în zonă și revine la ~3 s după ce ieși, ca la un GPS real;
