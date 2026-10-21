@@ -422,6 +422,11 @@ async function main() {
   // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
+  // no GPS signal on the hill of the cross: within 380 m of the cross (the hilltop, its meadows and its wood; the
+  // first houses are ~400 m away). Driving in, the navigation - the car's, your phone's, the minimap - loses it after
+  // ~1 s; driving out, it finds it again after ~3 s
+  const noSignalZone = (x, z) => !!crossAt && Math.hypot(x - crossAt.x, z - crossAt.z) < 380;
+  let noSignal = false, signalT = 0;
   // the ATV of the hill of the cross (atv.js): on open, nearly level ground a few metres from the cross's slab, its
   // nose away from it; built for the snow (knobby tyres, 4x4), the blizzard's ride
   let atv = null;
@@ -968,6 +973,7 @@ async function main() {
   };
   const enterCar = (v) => {
     mode = 'car'; active = v;
+    noSignal = noSignalZone(v.x, v.z); signalT = 0;                      // (the navigation starts up where you are)
     if ((night > 0.5 || storm > 0.3) && !v.lightsOn) v.setLights(true);   // (headlights on at night and in a gale)
     audio.door();
     orbit.yaw = 0; orbit.pitch = 0.18;
@@ -1100,7 +1106,11 @@ async function main() {
         hornOn = input.down('KeyH');
         active?.update(dt, ctl);
         // the instruments: the needles follow the speed and the revs; the dials lit with the headlights, or at night
-        active?.car.cabin?.update(active, true, active.lightsOn || night > 0.5 ? 1 : 0);
+        if (active) {
+          const lost = noSignalZone(active.x, active.z);
+          if (lost !== noSignal) { signalT += dt; if (signalT > (lost ? 1 : 3)) { noSignal = lost; signalT = 0; } } else signalT = 0;
+        }
+        active?.car.cabin?.update(active, true, active.lightsOn || night > 0.5 ? 1 : 0, noSignal);
         if (active && active.impact > 2.5) { audio.crash(active.impact); shake = Math.min(0.35, active.impact * 0.03); }
       }
       // parked cars (and cars pushed by collisions) settle
@@ -1202,7 +1212,7 @@ async function main() {
     const yaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
     const dHome = Math.hypot(pos.x - 6, pos.z - 0);
     hud.update(dt, {
-      prompt, driving: mode === 'car', kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
+      prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +

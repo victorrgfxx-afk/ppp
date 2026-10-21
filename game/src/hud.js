@@ -82,6 +82,27 @@ export class HUD {
     if (G.W) this.sheets.push(sheet(G.W.ext, Math.min(0.6, 1600 / G.W.ext), orthoWImg || orthoImg));
     this.useSheet(this.sheets[0]);
   }
+  // the minimap without GPS (main.js: on the hill of the cross, in a car): static, NO SIGNAL
+  noSignal(dt) {
+    const g = this.ctx, w = this.map.width, h = this.map.height;
+    this.noise ??= [0, 1, 2].map(() => {
+      const c = document.createElement('canvas'); c.width = w / 2; c.height = h / 2;
+      const x = c.getContext('2d'), d = x.createImageData(c.width, c.height);
+      for (let i = 0; i < d.data.length; i += 4) { const v = 25 + Math.random() * 80; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+      x.putImageData(d, 0, 0); return c;
+    });
+    this.noiseT = (this.noiseT ?? 0) + dt;
+    g.save();
+    g.clearRect(0, 0, w, h);
+    g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2); g.clip();
+    g.imageSmoothingEnabled = false;
+    g.drawImage(this.noise[Math.floor(this.noiseT * 12) % 3], 0, 0, w, h);
+    g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#fff'; g.font = `bold ${Math.round(w * 0.1)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('NO SIGNAL', w / 2, h / 2);
+    g.fillStyle = '#b8c2cf'; g.font = `${Math.round(w * 0.06)}px system-ui`; g.fillText('GPS', w / 2, h / 2 + w * 0.1);
+    g.restore();
+  }
   useSheet(s) { this.sheet = s; this.static = s.c; this.S = s.S; this.X0 = s.X0; this.Z0 = s.Z0; }
   toast(msg, t = 2.5) { this.el.toast.textContent = msg; this.el.toast.classList.add('on'); this.toastT = t; }
   update(dt, st) {
@@ -96,6 +117,7 @@ export class HUD {
       this.el.carName.textContent = st.carName;
     }
     this.el.loc.textContent = st.location;
+    if (st.noSignal) { this.noSignal(dt); return; }
     // minimap
     if (this.sheets && this.sheets.length > 1) {
       const inNear = Math.max(Math.abs(st.x), Math.abs(st.z)) < this.sheets[0].ext - 400;

@@ -451,6 +451,44 @@ function makeAtlas(spec) {
   return { map, em, cluster: cl, knobs };
 }
 
+// ---- the navigation's screen (the car's own, or your phone in its clip on a vent): the map; NO SIGNAL on the hill of
+// the cross (main.js), the map frozen and dimmed behind it; dark with the engine off. Shared by every car: each switches
+// its own material between them
+let NAVT = null;
+function navTextures() {
+  if (NAVT) return NAVT;
+  const mk = (draw) => {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+    const e = document.createElement('canvas'); e.width = 256; e.height = 128;
+    const g = c.getContext('2d'), h = e.getContext('2d');
+    h.scale(0.5, 0.5);
+    draw(g, false); draw(h, true);
+    const map = new THREE.CanvasTexture(c), em = new THREE.CanvasTexture(e);
+    map.colorSpace = em.colorSpace = THREE.SRGBColorSpace; map.anisotropy = 4;
+    return { map, em };
+  };
+  NAVT = {
+    on: mk((c, lit) => screen(c, 0, 0, 512, 256, 'nav', '#e8eef6', lit)),
+    off: mk((c, lit) => { c.fillStyle = lit ? '#000' : '#060708'; c.fillRect(0, 0, 512, 256); }),
+    nosig: mk((c, lit) => {
+      screen(c, 0, 0, 512, 256, 'nav', '#e8eef6', lit);
+      c.fillStyle = lit ? 'rgba(0,0,0,0.8)' : 'rgba(8,10,14,0.8)'; c.fillRect(0, 0, 512, 256);
+      // the satellite (its body, two panels), struck through
+      c.save(); c.translate(256, 84); c.rotate(-Math.PI / 4);
+      c.fillStyle = lit ? '#c8d2e0' : '#b8c4d4';
+      c.fillRect(-11, -11, 22, 22); c.fillRect(-46, -8, 28, 16); c.fillRect(18, -8, 28, 16);
+      c.fillRect(-18, -2, 7, 4); c.fillRect(11, -2, 7, 4);
+      c.restore();
+      c.strokeStyle = lit ? '#ff4a2e' : '#ff5a3c'; c.lineWidth = 7; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(220, 50); c.lineTo(292, 118); c.stroke();
+      c.fillStyle = lit ? '#ffffff' : '#f4f6f8'; c.font = font(58); c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText('NO SIGNAL', 256, 168);
+      c.fillStyle = lit ? '#9aa8bc' : '#8e9cb0'; c.font = font(24, 'normal'); c.fillText('GPS', 256, 214);
+    }),
+  };
+  return NAVT;
+}
+
 // ---- the surface textures, grey, tinted by each material's colour (shared by all the models)
 const TX = {};
 function surfTex(key) {
@@ -508,6 +546,8 @@ function cabinMats(spec, atlas) {
     accent: spec.accent ? acc[spec.accent]() : null,
     atlas: mk({ map: atlas.map, emissiveMap: atlas.em, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.35 }),
     needle: mk({ color: cl.needle, emissive: cl.needle, emissiveIntensity: 0, roughness: 0.4 }),
+    nav: mk({ map: navTextures().off.map, emissiveMap: navTextures().off.em, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.2 }),
+    phone: mk({ color: 0x0b0b0c, roughness: 0.18, metalness: 0.4 }),
   };
 }
 
@@ -643,8 +683,8 @@ export function buildCabin(key, m, body, caps) {
   if (!spec) return null;
   const k = CACHE[key] ??= makeCabin(m, spec, body, caps);
   // this car's own meshes on the model's geometry, and its own copy of the lit materials (its dials alone light up)
-  const atlas = k.mats.atlas.clone(), needle = k.mats.needle.clone();
-  const own = (mats) => mats.map(x => x === k.mats.atlas ? atlas : x === k.mats.needle ? needle : x);
+  const atlas = k.mats.atlas.clone(), needle = k.mats.needle.clone(), nav = k.mats.nav.clone();
+  const own = (mats) => mats.map(x => x === k.mats.atlas ? atlas : x === k.mats.needle ? needle : x === k.mats.nav ? nav : x);
   const group = new THREE.Group();
   const shell = new THREE.Mesh(k.shell, k.mats.shell), rigid = new THREE.Mesh(k.rigid.geo, own(k.rigid.mats));
   for (const o of [shell, rigid]) { o.castShadow = true; o.receiveShadow = true; }
@@ -655,22 +695,27 @@ export function buildCabin(key, m, body, caps) {
   const face = new THREE.Group(); face.matrix.copy(k.faceM);
   const needles = k.dials.map(d => { const p = new THREE.Object3D(); p.position.set(d.lx, d.ly, 0.004); p.add(new THREE.Mesh(d.geo, needle)); face.add(p); return { p, d }; });
   group.add(shell, rigid, steer, face);
+  const phone = k.phone && new THREE.Mesh(k.phone.geo, own(k.phone.mats));
+  if (phone) group.add(phone);
   // (nothing in a cabin moves but the wheel and the needles, which are updated where they turn: vehicle.js, update())
   group.traverse(o => { if (o !== face) o.updateMatrix(); o.matrixAutoUpdate = false; });
   let state = '';
   const cabin = {
     group, steer, info: k.info,
     // the needles: the speed, the revs, the fuel and the temperature (at rest with the engine off); the dials' light
-    // (by day the needles and a little of the scales, at night all of it)
-    update(v, on, night = 0) {
+    // (by day the needles and a little of the scales, at night all of it); the navigation: its map, or NO SIGNAL
+    update(v, on, night = 0, noSignal = false) {
       for (const { p, d } of needles) {
         const f = !on ? 0 : d.k === 'speed' ? Math.abs(v.speed) * 3.6 / d.max : d.k === 'rpm' ? v.rpm / 1000 / d.max : d.k === 'fuel' ? 0.68 : d.k === 'temp' ? 0.5 : 0.3;
         p.rotation.z = -(d.a0 + clamp(f, 0, 1.02) * (d.a1 - d.a0)); p.updateMatrix();
       }
-      const s = on ? (night > 0.5 ? 'n' : 'd') : 'o';
+      const s = (on ? (night > 0.5 ? 'n' : 'd') : 'o') + (on && noSignal ? 'x' : '');
       if (s !== state) {
         state = s; atlas.emissiveIntensity = on ? (night > 0.5 ? 1 : 0.25) : 0; needle.emissiveIntensity = on ? (night > 0.5 ? 1.4 : 0.6) : 0;
         rigid.castShadow = wm.castShadow = on;        // (the seats', the dash's shadows inside: in the car you drive)
+        const t = navTextures()[!on ? 'off' : noSignal ? 'nosig' : 'on'];
+        nav.map = t.map; nav.emissiveMap = t.em; nav.emissiveIntensity = on ? (night > 0.5 ? 0.9 : 0.75) : 0;
+        if (phone) phone.visible = on;                  // (you take your phone with you)
       }
     },
   };
@@ -700,6 +745,7 @@ function makeCabin(m, spec, body, caps) {
   const inner = (s, y, t = 0.045) => Math.max(0.12, halfAt(s, y) - t);
   const glassY = (s) => profileAt(m, s).roof;
   const parts = [], put = (g, mat, M) => { if (mat) parts.push([g, mat, M]); };
+  let hasNav = false;
 
   // ---- the dashboard
   let T = spec.T, D = spec.D;
@@ -786,7 +832,8 @@ function makeCabin(m, spec, body, caps) {
     const M = new THREE.Matrix4().lookAt(eyeP, c, V3(0, 1, 0)).setPosition(c);
     put(rbox(0.68, 0.16, 0.02, 0.008), mats.trim, M);
     put(rbox(0.4, 0.06, 0.04, 0.01), mats.trim, at(M, 0, -0.07, -0.02));
-    put(inAtlas(new THREE.PlaneGeometry(0.27, 0.135), AT.DP), mats.atlas, at(M, 0.18, 0, 0.0105));
+    put(new THREE.PlaneGeometry(0.27, 0.135), mats.nav, at(M, 0.18, 0, 0.0105));
+    hasNav = true;
     faceM = at(M, -0.155, 0, 0.0105);
   }
   put(inAtlas(new THREE.PlaneGeometry(CW, CH), AT.CL), mats.atlas, faceM);
@@ -814,6 +861,12 @@ function makeCabin(m, spec, body, caps) {
     put(inAtlas(grid(panel, eyeP, { uvAt: (i, j) => [j, 1 - i / NS] }), AT.ST), mats.atlas);
     for (const j of [0, 1]) put(grid(Array.from({ length: NS + 1 }, (_, i) => [rowAt(i, 0)[j], rowAt(i, off)[j]]), P3(0.3, -T - 0.2, (j ? 1 : -1) * 2)), mats.trim);
     put(grid([rowAt(0, 0), rowAt(0, off)], V3(0, ey + 1, zA(es))), mats.trim);
+    for (const f of STACKS[spec.stack]) if (f[0] === 'screen' && f[5] === 'nav') {
+      const [, u0, v0, u1, v1] = f, NR = 3, o2 = off + 0.0015;
+      const rows = Array.from({ length: NR + 1 }, (_, i) => { const h = lerp(h0, h1, lerp(v0, v1, i / NR)), q = faceAt(h); return [u0, u1].map(u => P3(q.d + q.n[0] * o2, h + q.n[1] * o2, (u - 0.5) * sw)); });
+      put(grid(rows, eyeP, { uvAt: (i, j) => [j, 1 - i / NR] }), mats.nav);
+      hasNav = true;
+    }
     for (const kb of atlas.knobs) {
       const h = lerp(h0, h1, kb.v), o = onFace(h, (kb.u - 0.5) * sw, off + 0.009), r = kb.r * sw;
       const q = new THREE.Quaternion().setFromUnitVectors(V3(0, 1, 0), o.n);
@@ -997,10 +1050,16 @@ function makeCabin(m, spec, body, caps) {
     put(rbox(0.2, 0.022, 0.1, 0.008), mats.trim, pose(0, y, zA(s)));
   }
 
+  let phone = null;
+  if (!hasNav) {
+    const o = onFace(-T - 0.085, -0.02, 0.047), Mp = new THREE.Matrix4().lookAt(eyeP, o.p, V3(0, 1, 0)).setPosition(o.p);
+    phone = mergeByMaterial([[rbox(0.152, 0.073, 0.009, 0.006, 2), mats.phone, Mp], [new THREE.PlaneGeometry(0.142, 0.066), mats.nav, at(Mp, 0, 0, 0.0047)],
+      ...[-1, 1].map(sg => [rbox(0.012, 0.03, 0.022, 0.004), mats.trim, at(Mp, sg * 0.081, 0, -0.004)]), [rbox(0.05, 0.035, 0.045, 0.008), mats.trim, at(Mp, 0, 0, -0.025)]]);
+  }
   const rigid = mergeByMaterial(parts);
   const wheel = mergeByMaterial(wp);
   const shell = shellGeo(m, body, caps, spec.col);
   const info = { T, D, dG: +dG.toFixed(3), hsR: hsR && +hsR.toFixed(2), rear: rearFit, tris: (rigid.geo.attributes.position.count + wheel.geo.attributes.position.count + shell.attributes.position.count) / 3,
     draws: rigid.geo.groups.length + 1 + wheel.geo.groups.length + dials.length };
-  return { mats, rigid, wheel, shell, wheelAt, tilt, faceM, dials, info };
+  return { mats, rigid, wheel, shell, phone, wheelAt, tilt, faceM, dials, info };
 }
