@@ -304,6 +304,7 @@ async function main() {
   // ---------- parked cars exactly as in the photos ----------
   progress(0.93, 'Parchez mașinile…');
   await new Promise(r => setTimeout(r, 20));
+  const tCars = performance.now();
   const vehicles = [];
   const park = (model, paint, plate, x, z, h, opts) => {
     const car = buildCar(model, paint, plate);
@@ -406,6 +407,7 @@ async function main() {
     }
   }
   for (const v of vehicles) v.update(0.016, null);
+  console.log('[geo]', 'mașini ' + vehicles.length, Math.round(performance.now() - tCars), 'ms');
   // the neighbour walking home with a yellow bag (photo 7)
   const walkers = [new Walker(scene, world, { x: -0.4, z0: 40, z1: 104 })];
 

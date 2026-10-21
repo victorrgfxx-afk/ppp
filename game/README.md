@@ -717,6 +717,10 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Consola centrală**: guri de aer, radio, butoanele climei, ecranul (508, SUV, Maybach). Maneta de viteze e manuală, automată (BMW, SUV) sau pe planșă (Kangoo, Doblò, T5). Mai are frâna de mână și cotiera.
   * **Scaunele sunt modelate**: pernă, laterale, spătar și tetieră pe tije. Bancheta din spate e așezată automat cât de în spate încape sub plafon, cu tetiere înalte sau joase după cât loc e. Mai sunt centurile pe stâlpii B, tapițeriile ușilor (cotieră, mâner, buzunar, difuzor, comenzile geamurilor), mocheta, pedalele, oglinda retrovizoare, parasolarele și plafoniera.
   * **Costul**: interiorul unui model se construiește o singură dată și e folosit de toate mașinile de același model. Se desenează doar la mașinile până la 16 m (prin geamurile fumurii nu se vede mai departe). Umbrele scaunelor și ale bordului le are doar mașina pe care o conduci; la celelalte doar plafonul și ușile umbresc interiorul.
+    Măsurat în testul automat, pe aceeași mașină de test, V67 față de V68:
+    * cele 117 mașini parcate se construiesc în 3,4 s în loc de 2,5 s, adică ~1 s în plus la încărcare;
+    * în vederea 1, desenările scad de la 1 236 la 1 182, pentru că interiorul vechi se desena la toate mașinile vizibile;
+    * triunghiurile cresc cu 0,8 % (5,03 → 5,07 milioane).
   * **Ce e aproximat**:
     * culoarea iluminării bordului e verificată doar la BMW (portocaliu); la celelalte e albă-neutră;
     * butoanele mici, cusăturile și grafica ecranelor sunt pictate, nu modelate.
