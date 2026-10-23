@@ -730,6 +730,18 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Ce e aproximat**:
     * culoarea iluminării bordului e verificată doar la BMW (portocaliu); la celelalte e albă-neutră;
     * butoanele mici, cusăturile și grafica ecranelor sunt pictate, nu modelate.
+* **Interioarele corectate și parbrizul real (V73)** (`src/interior.js`, `src/cars.js`):
+  * **Stâlpii și parbrizul nu mai sunt ondulați.** Profilele caroseriei erau unite între puncte cu o curbă care încetinea la fiecare punct, așa că marginile parbrizului și ale stâlpilor ieșeau în valuri. Acum curba e o spline monotonă (Fritsch–Carlson): trece prin aceleași puncte, fără colțuri și fără să depășească valorile dintre ele. Se vede și pe capotă, care e mai netedă.
+  * **Stâlpii A au panoul lor**: un ornament mulat de la marginea parbrizului până la geamul ușii, bombat ~2 cm spre interior, de la bord până în plafon. Înainte erau un tub subțire în fața unei benzi negre largi.
+  * **Căptușeala** stă la 2,2 cm în interiorul tablei pe laterale și pe stâlpi și la ~6 cm sub plafon, deci garniturile negre de la geamuri sunt înguste. Ornamentul negru de afară (colțul de lângă oglindă, de sub stâlpi) e negru și pe dinăuntru.
+  * **Parbrizul văzut din scaun** e un strat la 4 mm în interiorul sticlei, peste toată suprafața ei:
+    * **banda ceramică neagră** de pe margini, ca la orice parbriz real: plină pe 6,5 cm sus, 8 cm jos și 3,2 cm pe laterale, apoi puncte într-o rețea hexagonală de 4,2 mm care se micșorează spre interior pe ~3,5 cm. Mai are pata din spatele piciorului oglinzii. Punctele mai mici decât un pixel se văd ca media lor, deci nu sclipesc;
+    * **nuanța sticlei laminate**, puțin verzuie. Împreună cu geamul caroseriei lasă să treacă ~80–85 % din lumină;
+    * **reflexia bordului** în sticlă: unghiul parbrizului trimite privirea în jos, pe planșă. Reflexia e cât de luminată e planșa: cu soarele care intră prin parbriz și cerul văzut prin el, după Fresnel pentru cele două fețe ale sticlei. Pe ea se văd fantele de dezaburire. În rest se reflectă habitaclul, slab;
+    * se desenează doar când ești în scaun (V, sau pasager la prieten), în 2 desenări; din afară parbrizul rămâne cum era.
+  * **Oglinzile exterioare** erau o cutie vopsită întoarsă cu fața spre ușă. Acum carcasa e lată și joasă, pe un picior negru la colțul ușii. Sticla e pe spatele carcasei, întoarsă ~11° spre șofer: din scaun vezi oglinda, nu carcasa.
+  * **Parasolarele** sunt căptușite, cu colțuri rotunde, lungi cât încap sub plafon (de la piciorul oglinzii până la ~5 cm de stâlp). Au tija balamalei care intră în plafon la capătul dinspre ușă și clema de la capătul dinspre oglindă.
+  * **Fără frunze în mașină**: o mașină parcată lângă un tufiș sau sub un copac avea frunzele lui în habitaclu, pe ușă și pe bord (se vedea la Peugeot-ul de la poartă). Acum frunzele nu se desenează în interiorul caroseriei mașinii în care ești, la volan sau ca pasager la prieten, cum nu apar nici picăturile și fulgii. Pe dinafară mașina rămâne în tufiș.
 
 ## Multiplayer (alpha, V71–V72): tu și un prieten în aceeași lume
 

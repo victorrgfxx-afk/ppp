@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mergeByMaterial, profileAt, section } from './cars.js';
+import { mergeByMaterial, profileAt, section, windscreenSpan } from './cars.js';
 
 // The cars' cabins, from the driver's seat (V) and through the windows: built for each model from its lofted body
 // (cars.js) and the layout of the real interior (photos of the E90, the Corsa C, the 508, the Kangoo II, the T5 and
@@ -616,18 +616,23 @@ function slab(w, h, d, r, p, n, up = V3(0, 1, 0)) {
 // coloured by height: the headliner and pillars above the belt, the door tops, the door cards
 function shellGeo(m, body, caps, C) {
   const pos = [], nor = [], col = [], uv = [], c = new THREE.Color();
-  const cLiner = new THREE.Color(C.liner), cDoor = new THREE.Color(C.door), cTop = new THREE.Color(C.top);
-  const vert = (x, y, z, nx, ny, nz) => {
-    const off = 0.03 + 0.05 * Math.max(0, ny), px = x - nx * off, py = y - ny * off, pz = z - nz * off, s = pz + m.L / 2;
+  const cLiner = new THREE.Color(C.liner), cDoor = new THREE.Color(C.door), cTop = new THREE.Color(C.top), cTrim = new THREE.Color(C.trim);
+  // (2.2 cm in at the sides and pillars, ~6 cm under the roof: the headliner hangs below the roof's skin and its
+  // bows; the window seals between stay narrow)
+  const offAt = (ny) => 0.022 + 0.04 * Math.max(0, ny);
+  const vert = (x, y, z, nx, ny, nz, trim) => {
+    const off = offAt(ny), px = x - nx * off, py = y - ny * off, pz = z - nz * off, s = pz + m.L / 2;
     pos.push(px, py, pz); nor.push(nx, ny, nz); uv.push(s * 3, (Math.abs(px) + py) * 3);
     const b = profileAt(m, s).belt;
-    c.copy(py > b + 0.02 ? cLiner : py > b - 0.09 ? cTop : cDoor);
+    // (the black of the trim panel outside the sail by the mirror is black inside too; a blacked-out B pillar is not:
+    // inside it is the headliner's trim)
+    c.copy(trim && py > b - 0.03 && s < m.wind[1] + 0.15 ? cTrim : py > b + 0.02 ? cLiner : py > b - 0.09 ? cTop : cDoor);
     col.push(c.r, c.g, c.b);
   };
   const P = body.attributes.position, N = body.attributes.normal, I = body.index.array;
   for (const gr of body.groups) {
     if (gr.materialIndex === 1 || gr.materialIndex === 3) continue;
-    for (let k = gr.start; k < gr.start + gr.count; k++) { const i = I[k]; vert(P.getX(i), P.getY(i), P.getZ(i), N.getX(i), N.getY(i), N.getZ(i)); }
+    for (let k = gr.start; k < gr.start + gr.count; k++) { const i = I[k]; vert(P.getX(i), P.getY(i), P.getZ(i), N.getX(i), N.getY(i), N.getZ(i), gr.materialIndex === 2); }
   }
   // the window frames: round every edge between glass and paint, a strip from the outside surface to the inside skin
   // (the seals, black), so no gap shows the world past the glass's edge
@@ -642,7 +647,7 @@ function shellGeo(m, body, caps, C) {
   }
   for (const { a, b, glass, paint } of edges.values()) {
     if (!glass || !paint) continue;
-    const q = [a, b].map(i => { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), off = 0.03 + 0.05 * Math.max(0, ny);
+    const q = [a, b].map(i => { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), off = offAt(ny);
       return { o: [x, y, z], i: [x - nx * off, y - ny * off, z - nz * off], n: [nx, ny, nz] }; });
     const quad = [q[0].o, q[1].o, q[1].i, q[0].o, q[1].i, q[0].i];
     for (const tri of [quad, [...quad].reverse()]) for (const p of tri) { pos.push(...p); nor.push(...q[0].n); uv.push(0, 0); col.push(cSeal.r, cSeal.g, cSeal.b); }
@@ -655,6 +660,129 @@ function shellGeo(m, body, caps, C) {
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.computeBoundingSphere();
   return g;
+}
+
+// ---- the windscreen seen from inside (V73): a skin 4 mm inside the body's glass, exactly over it, which draws what a
+// real one shows from the driver's seat:
+//  * the black ceramic band fired onto its edges (the frit: it hides the glue and the pillars' edges), solid then in
+//    dots that thin out inward (a 4 mm hexagonal halftone) - wider at the top and bottom than at the sides - and the
+//    patch behind the mirror's foot at the top;
+//  * the laminated glass's tint (it passes ~80-86 %, a little more green than red);
+//  * the dashboard mirrored in it (the veil: from inside, the glass's slope sends the eye's rays down onto the dash),
+//    as bright as the dash is lit, by Fresnel for two faces of glass at that angle; elsewhere the dim cabin.
+// Two draws over the same triangles: one multiplies what is behind (tint, the band's black), one adds the reflection.
+// Each point carries (across, up the slope, to the side edge, to the top edge) in metres.
+function windscreenGeo(m, eye, zA) {
+  const [s0, s1] = windscreenSpan(m);
+  if (s0 === null) return null;
+  const NS = 30, NX = 40, f = (s) => { const R = section(m, s); return { x8: R[8][0], y8: R[8][1], y9: R[9][1] }; };
+  // the length up the slope along its middle, from the foot
+  const len = [0];
+  for (let i = 1; i <= NS; i++) {
+    const a = s0 + (s1 - s0) * (i - 1) / NS, b = s0 + (s1 - s0) * i / NS;
+    len.push(len[i - 1] + Math.hypot(b - a, f(b).y9 - f(a).y9));
+  }
+  const L = len[NS], P = [], E = [];
+  for (let i = 0; i <= NS; i++) {
+    const s = s0 + (s1 - s0) * i / NS, q = f(s), slant = Math.hypot(1, (q.y8 - q.y9) / Math.max(0.05, q.x8));
+    for (let j = 0; j <= NX; j++) {
+      const u = -1 + 2 * j / NX, x = u * q.x8;
+      P.push(V3(x, q.y9 + (q.y8 - q.y9) * Math.abs(u), zA(s)));
+      E.push(x, len[i], (q.x8 - Math.abs(x)) * slant, L - len[i]);
+    }
+  }
+  // normals from the neighbours, toward the eye; the skin 4 mm in from the glass
+  const id = (i, j) => i * (NX + 1) + j, pos = [], nor = [];
+  for (let i = 0; i <= NS; i++) for (let j = 0; j <= NX; j++) {
+    const a = P[id(Math.max(0, i - 1), j)], b = P[id(Math.min(NS, i + 1), j)], c = P[id(i, Math.max(0, j - 1))], d = P[id(i, Math.min(NX, j + 1))];
+    const n = b.clone().sub(a).cross(d.clone().sub(c)).normalize();
+    if (n.dot(eye.clone().sub(P[id(i, j)])) < 0) n.negate();
+    const p = P[id(i, j)].clone().addScaledVector(n, 0.004);
+    pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z);
+  }
+  const idx = [];
+  for (let i = 0; i < NS; i++) for (let j = 0; j < NX; j++) idx.push(id(i, j), id(i + 1, j), id(i, j + 1), id(i + 1, j), id(i + 1, j + 1), id(i, j + 1));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('aE', new THREE.Float32BufferAttribute(E, 4)); g.setIndex(idx);
+  g.addGroup(0, idx.length, 0); g.addGroup(0, idx.length, 1);
+  g.computeBoundingSphere();
+  return g;
+}
+const WS_VERT = /* glsl */`
+attribute vec4 aE;
+varying vec4 vE; varying vec3 vP, vN;
+void main() { vE = aE; vP = position; vN = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const WS_COMMON = /* glsl */`
+uniform vec4 uFrit;                   // the band's solid widths: top, sides, foot; the width its dots fade over (m)
+uniform vec3 uPatch;                  // the patch behind the mirror: half width at the top, at its foot; its height
+varying vec4 vE; varying vec3 vP, vN;
+// the distance to the nearest dot centre of a hexagonal grid of pitch p
+float hexD(vec2 q, float p) {
+  vec2 r = vec2(p, p * 1.7320508), h = r * 0.5;
+  return min(length(mod(q, r) - h), length(mod(q - h, r) - h));
+}
+// how much of a point is black: 1 in the solid band, dots whose area shrinks to 0 inward
+float frit() {
+  float band = uFrit.w;
+  float fT = 1.0 - clamp((vE.w - uFrit.x) / band, 0.0, 1.0);
+  float fS = 1.0 - clamp((vE.z - uFrit.y) / band, 0.0, 1.0);
+  float fB = 1.0 - clamp((vE.y - uFrit.z) / band, 0.0, 1.0);
+  float hw = mix(uPatch.x, uPatch.y, clamp(vE.w / uPatch.z, 0.0, 1.0));
+  float fP = 1.0 - clamp(max(abs(vE.x) - hw, vE.w - uPatch.z) / (band * 0.6), 0.0, 1.0);
+  float f = max(max(fT, fS), max(fB, fP));
+  if (f >= 0.999) return 1.0;
+  if (f <= 0.001) return 0.0;
+  const float P = 0.0042;
+  float r = 0.5 * P * sqrt(f);                            // (the dots' area grows with f; they touch at f = 1)
+  float d = hexD(vE.xy, P), w = fwidth(vE.y) * 0.7 + 1e-6;
+  float sharp = 1.0 - smoothstep(r - w, r + w, d);
+  return mix(sharp, f, clamp((w / P - 0.2) * 2.5, 0.0, 1.0));   // (dots finer than the pixels: their average)
+}`;
+const WS_MUL = /* glsl */`
+uniform vec3 uTint;
+${WS_COMMON}
+void main() { gl_FragColor = vec4(mix(uTint, vec3(0.0), frit()), 1.0); }`;
+const WS_ADD = /* glsl */`
+uniform vec3 uCam;                    // the eye, in the car's frame
+uniform vec4 uDash;                   // the dash's top: its height at the lip, its slope (dy/dz), the lip's z, the glass foot's z
+uniform float uDashW;
+uniform vec3 uDashRad, uCabRad;       // how bright the dash's top is; the rest of the cabin
+${WS_COMMON}
+void main() {
+  vec3 V = normalize(vP - uCam), N = normalize(vN);
+  if (dot(N, V) > 0.0) N = -N;
+  float c = clamp(-dot(V, N), 0.0, 1.0);
+  float F = min(1.0, (0.04 + 0.96 * pow(1.0 - c, 5.0)) * 1.9);   // (two faces)
+  vec3 R = reflect(V, N), refl = uCabRad;
+  float den = R.y - uDash.y * R.z;
+  if (abs(den) > 1e-4) {
+    float t = (uDash.x + uDash.y * (vP.z - uDash.z) - vP.y) / den;
+    vec3 h = vP + t * R;
+    if (t > 0.0 && h.z < uDash.z && h.z > uDash.w && abs(h.x) < uDashW) {
+      // (the demister's slots, dark lines along the glass's foot)
+      float g = h.z - uDash.w, slot = step(0.04, g) * step(g, 0.1) * step(0.5, fract(h.x * 9.0));
+      refl = uDashRad * (1.0 - 0.7 * slot);
+    }
+  }
+  vec3 col = F * refl;
+  gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+function windscreenMats(spec, dash) {
+  const u = {
+    uFrit: { value: new THREE.Vector4(...(spec.frit ?? [0.065, 0.032, 0.08, 0.035])) },
+    uPatch: { value: new THREE.Vector3(0.085, 0.055, spec.patch ?? 0.1) },
+  };
+  const mul = new THREE.ShaderMaterial({ vertexShader: WS_VERT, fragmentShader: WS_MUL, uniforms: { ...u, uTint: { value: new THREE.Color(0.91, 0.97, 0.945) } },
+    transparent: true, depthWrite: false, blending: THREE.MultiplyBlending, premultipliedAlpha: true, toneMapped: false });
+  const add = new THREE.ShaderMaterial({ vertexShader: WS_VERT, fragmentShader: WS_ADD, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { ...u, uCam: { value: V3() }, uDash: { value: new THREE.Vector4(...dash.plane) }, uDashW: { value: dash.w },
+      uDashRad: { value: new THREE.Color(0, 0, 0) }, uCabRad: { value: new THREE.Color(0, 0, 0) } } });
+  for (const m of [mul, add]) { m.side = THREE.DoubleSide; m.userData.noWet = true; }
+  add.userData.dashAlbedo = new THREE.Color(spec.col.top);              // (sRGB in, linear here)
+  return [mul, add];
 }
 
 // ---- a seat about its H-point (forward -z): cushion, bolsters, backrest, its plastic back, the headrest on posts
@@ -697,11 +825,32 @@ export function buildCabin(key, m, body, caps) {
   group.add(shell, rigid, steer, face);
   const phone = k.phone && new THREE.Mesh(k.phone.geo, own(k.phone.mats));
   if (phone) group.add(phone);
+  // the windscreen's inside (from a seat in this car only: main.js), after the body's glass
+  let screen = null;
+  if (k.screen) {
+    screen = new THREE.Mesh(k.screen, k.screenMats);
+    screen.renderOrder = 2; screen.visible = false; screen.frustumCulled = false; screen.userData.noAO = true; screen.userData.ueSkip = 'cabin';
+    const inv = new THREE.Matrix4(), cam = V3();
+    screen.onBeforeRender = (r, sc, camera) => { k.screenMats[1].uniforms.uCam.value.copy(cam.setFromMatrixPosition(camera.matrixWorld).applyMatrix4(inv.copy(screen.matrixWorld).invert())); };
+    group.add(screen);
+  }
   // (nothing in a cabin moves but the wheel and the needles, which are updated where they turn: vehicle.js, update())
   group.traverse(o => { if (o !== face) o.updateMatrix(); o.matrixAutoUpdate = false; });
   let state = '';
   const cabin = {
-    group, steer, info: k.info,
+    group, steer, info: k.info, screen,
+    // the light on the dash the windscreen mirrors (main.js): the sun's direction in the car's frame, its light and
+    // the sky's (irradiance, as three.js has it: a surface's radiance is albedo / pi times it)
+    lightGlass(sunLocal, sunC, skyC) {
+      const u = k.screenMats?.[1].uniforms, a = k.screenMats?.[1].userData.dashAlbedo;
+      if (!u) return;
+      // (the sun reaches the dash's top only through the windscreen: from ahead and above it; the roof and pillars
+      // leave the dash under ~40 % of the sky, the rest of the cabin under a fraction of that)
+      const vis = Math.min(1, Math.max(0, -sunLocal.z * 2.5)) * Math.min(1, Math.max(0, sunLocal.y * 6)) * Math.min(1, Math.max(0, 1.6 - 1.4 * Math.abs(sunLocal.x)));
+      const d = vis * Math.max(0, sunLocal.y) / Math.PI;
+      u.uDashRad.value.setRGB(a.r * (sunC.r * d + skyC.r * 0.4 / Math.PI), a.g * (sunC.g * d + skyC.g * 0.4 / Math.PI), a.b * (sunC.b * d + skyC.b * 0.4 / Math.PI));
+      u.uCabRad.value.copy(skyC).multiplyScalar(0.12 * 0.12 / Math.PI);
+    },
     // the needles: the speed, the revs, the fuel and the temperature (at rest with the engine off); the dials' light
     // (by day the needles and a little of the scales, at night all of it); the navigation: its map, or NO SIGNAL
     update(v, on, night = 0, noSignal = false) {
@@ -1027,16 +1176,38 @@ function makeCabin(m, spec, body, caps) {
     put(rbox(0.03, 0.02, s1 - s0 - 0.04, 0.008), mats.trim, pose(xi(sm, yS2) - sg * 0.012, yS2, zA(sm)));
   }
 
-  // ---- the A pillars' trims: a rounded moulding along each, inside the windscreen's edge (the body gives only its skin)
-  for (const sg of [-1, 1]) {
-    const pts = [];
-    for (let i = 0; i <= 10; i++) {
-      const s = lerp(m.wind[0] + 0.06, m.wind[1] - 0.02, i / 10), R = sec(s);
-      if (profileAt(m, s).cab < 0.35) continue;
-      const x = (R[7][0] + R[8][0]) / 2, y = (R[7][1] + R[8][1]) / 2;
-      pts.push(V3(sg * (x - 0.045), y - 0.04, zA(s)));
+  // ---- the A pillars' trims: a moulded panel over each, from the windscreen's edge to the door glass's, swelling 2 cm
+  // into the cabin in its middle (the body gives only its skin), from the dash up into the headliner
+  {
+    const NS = 18, NA = 8, sA = m.wind[0] + 0.04, sB = m.wind[1] + 0.03;
+    for (const sg of [-1, 1]) {
+      const pos = [], idx = [];
+      let rows = 0;
+      for (let i = 0; i <= NS; i++) {
+        const s = lerp(sA, sB, i / NS), R = sec(s);
+        if (profileAt(m, s).cab < 0.3) continue;
+        const A = R[8], B = R[7], ex2 = B[0] - A[0], ey2 = B[1] - A[1], l = Math.hypot(ex2, ey2) || 1;
+        const nx = -ey2 / l, ny = ex2 / l;                              // (across the strip, inward when flipped below)
+        const inX = nx > 0 ? -nx : nx, inY = nx > 0 ? -ny : ny;        // (toward the cabin: -x on this side's half)
+        for (let j = 0; j <= NA; j++) {
+          const t = j / NA, bulge = 0.024 + 0.022 * Math.sin(Math.PI * t);
+          const x = lerp(A[0], B[0], t) + inX * bulge, y = lerp(A[1], B[1], t) + inY * bulge;
+          pos.push(sg * x, y, zA(s));
+        }
+        rows++;
+      }
+      for (let i = 0; i < rows - 1; i++) for (let j = 0; j < NA; j++) {
+        const a = i * (NA + 1) + j, b = a + NA + 1;
+        if (sg > 0) idx.push(a, b, a + 1, b, b + 1, a + 1); else idx.push(a, a + 1, b, b, a + 1, b + 1);
+      }
+      if (rows > 2) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+        g.setAttribute('uv', new THREE.Float32BufferAttribute(pos.map((v, k) => k % 3 === 2 ? 0 : v * 3).filter((_, k) => k % 3 !== 2), 2));
+        g.computeVertexNormals();
+        put(g.toNonIndexed(), mats.liner);
+      }
     }
-    if (pts.length > 3) put(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.032, 10), mats.liner);
   }
 
   // ---- under the roof: the mirror on the windscreen, the sun visors, the dome light
@@ -1045,9 +1216,21 @@ function makeCabin(m, spec, body, caps) {
     put(rbox(0.25, 0.07, 0.035, 0.02, 2), mats.trim, pose(0, yR - 0.14, zA(sM + 0.02), -0.05, -0.12));
     put(new THREE.PlaneGeometry(0.23, 0.055), mats.mirror, pose(0, yR - 0.14, zA(sM + 0.038), -0.05, -0.12));
     put(new THREE.CylinderGeometry(0.008, 0.01, 0.1, 8), mats.trim, pose(0, yR - 0.08, zA(sM - 0.01), 0.5));
-    for (const sg of [-1, 1]) { const s = m.wind[1] + 0.1, y = glassY(s) - 0.08 - 0.014; put(rbox(0.37, 0.022, 0.17, 0.01), mats.liner, pose(sg * 0.35, y, zA(s), 0.12)); }
+    // (the sun visors folded up flat under the headliner: padded, round-cornered, their hinge rod going up into the
+    // roof at the outer end, a clip holding the inner one)
+    // (from the mirror's foot to ~5 cm short of the pillar, where the headliner still runs flat enough)
+    for (const sg of [-1, 1]) {
+      const s = m.wind[1] + 0.1, y = glassY(s) - 0.08 - 0.016, xo = Math.min(0.53, sec(s)[8][0] - 0.05), xi = 0.16, w = xo - xi, x0 = sg * (xo + xi) / 2;
+      put(pillow(w, 0.026, 0.165, 0.012, { seg: 3 }), mats.liner, pose(x0, y, zA(s), 0.12));
+      put(new THREE.CylinderGeometry(0.0055, 0.0055, 0.05, 8), mats.trim, pose(x0 + sg * (w / 2 + 0.01), y + 0.002, zA(s - 0.07), 0, 0, Math.PI / 2));
+      put(rbox(0.03, 0.02, 0.03, 0.006), mats.liner, pose(x0 + sg * (w / 2 + 0.035), y + 0.014, zA(s - 0.07)));
+      put(rbox(0.024, 0.016, 0.022, 0.005), mats.liner, pose(x0 - sg * (w / 2 + 0.01), y + 0.012, zA(s - 0.065)));
+    }
+    // (the dome light: its housing and its frosted lens in the headliner's colour, two switches)
     const s = m.wind[1] + 0.16, y = glassY(s) - 0.08 - 0.012;
-    put(rbox(0.2, 0.022, 0.1, 0.008), mats.trim, pose(0, y, zA(s)));
+    put(rbox(0.2, 0.022, 0.1, 0.008, 2), mats.liner, pose(0, y, zA(s)));
+    put(rbox(0.12, 0.008, 0.05, 0.004, 2), mats.liner, pose(0, y - 0.012, zA(s + 0.01)));
+    for (const sg of [-1, 1]) put(rbox(0.018, 0.008, 0.012, 0.003), mats.trim, pose(sg * 0.075, y - 0.012, zA(s - 0.02)));
   }
 
   let phone = null;
@@ -1059,7 +1242,10 @@ function makeCabin(m, spec, body, caps) {
   const rigid = mergeByMaterial(parts);
   const wheel = mergeByMaterial(wp);
   const shell = shellGeo(m, body, caps, spec.col);
+  // the windscreen from inside, and the dash's top it mirrors: its height at the lip, slope, lip and foot
+  const screen = windscreenGeo(m, eyeP, zA);
+  const dashPlane = [ey - T, 0.05, zA(es - D), zA(es - dG)], dashW = Math.max(0.3, halfAt(es - (D + dG) / 2, ey - T) - 0.06);
   const info = { T, D, dG: +dG.toFixed(3), hsR: hsR && +hsR.toFixed(2), rear: rearFit, tris: (rigid.geo.attributes.position.count + wheel.geo.attributes.position.count + shell.attributes.position.count) / 3,
     draws: rigid.geo.groups.length + 1 + wheel.geo.groups.length + dials.length };
-  return { mats, rigid, wheel, shell, phone, wheelAt, tilt, faceM, dials, info };
+  return { mats, rigid, wheel, shell, phone, wheelAt, tilt, faceM, dials, info, screen, screenMats: screen && windscreenMats(spec, { plane: dashPlane, w: dashW }) };
 }

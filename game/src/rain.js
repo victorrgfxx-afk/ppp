@@ -25,7 +25,7 @@ export const SNOW = {
   uSnowLight: { value: 1 },    // daylight on the snow (the sparkle of its crystals)
   uSnowDepth: { value: 0 },    // how deep it lies in the open, in metres (it builds up while it snows: main.js)
   uSnowField: { value: null }, // the lying snow's shape around the camera (RainOcclusion)
-  uSnowCar: { value: new THREE.Vector4() },        // the driven car: x, z, heading, 1 when driving (it ploughs through)
+  uSnowCar: { value: new THREE.Vector4() },        // the car you are in: x, z, heading, 1 when in one (it ploughs through)
   uSnowCarSize: { value: new THREE.Vector2(1, 2.4) },   // its half width and half length (m)
   uSnowPlaster: { value: 0 },  // a blizzard's snow plastered on the windward faces (0..1, builds up in ~1.5 min)
   uSnowWindDir: { value: new THREE.Vector2(0.052, -0.9986).normalize() },   // the prevailing wind (downwind: the crivăț, from the NE)
@@ -423,7 +423,7 @@ if (snowGlintK > 0.001) {
 #endif
 `;
 
-function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false) {
+function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false, cut = false) {
   const v = sh.vertexShader, f = sh.fragmentShader;
   if (v.includes('vWetP')) return;                 // already in (a material cloned from a patched one keeps its hook)
   if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>') || !f.includes('#include <lights_fragment_end>')) return;
@@ -438,8 +438,10 @@ function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false) {
 #endif
     vWetP = (modelMatrix * wetW).xyz; }`);
   const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : kind === 'ground' ? '#define WET_GROUND\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
-    `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '') + (glass ? '#define WET_GLASS\n' : '');
+    `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '') + (glass ? '#define WET_GLASS\n' : '') + (cut ? '#define CABIN_CUT\n' : '');
   sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS + GLINT_GLSL)
+    // (a leaf of a bush or a tree a car stands in: not inside the car you are in - as the rain and the snow are not)
+    .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n#ifdef CABIN_CUT\n  if (inCar(vWetP)) discard;\n#endif')
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
     .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + WET_MAIN + SNOW_MAIN)
     .replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\n' + GLINT_MAIN)
@@ -463,8 +465,10 @@ export function wetMaterial(m) {
   const key0 = m.customProgramCacheKey();
   const prev = m.onBeforeCompile;
   const opaque = !m.transparent;
-  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass); };
-  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + (glass ? 'g' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '') + '|p' + plasterK;
+  // (leaf cards, not a car's own glass, lenses or badges: buildCar tags its materials)
+  const cut = kind === 'leaf' && !glass && !m.userData.car;
+  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass, cut); };
+  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + (glass ? 'g' : '') + (cut ? 'c' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '') + '|p' + plasterK;
   m.needsUpdate = true;
 }
 export function wetScene(root) {

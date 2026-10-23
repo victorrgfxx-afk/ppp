@@ -114,17 +114,41 @@ export const MODELS = {
   },
 };
 
+// a profile [[s, value], ...] at s: a monotone cubic through its points (Fritsch-Carlson), smooth (no kinks, so the
+// windscreen and its pillars run in clean lines) and never overshooting them (no bumps between two equal points)
+const SLOPES = new WeakMap();
+function slopesOf(arr) {
+  let m = SLOPES.get(arr);
+  if (m) return m;
+  const n = arr.length, d = [], h = [];
+  for (let i = 0; i < n - 1; i++) { h[i] = arr[i + 1][0] - arr[i][0]; d[i] = h[i] > 0 ? (arr[i + 1][1] - arr[i][1]) / h[i] : 0; }
+  m = new Array(n).fill(0);
+  for (let i = 1; i < n - 1; i++) {
+    if (d[i - 1] * d[i] <= 0) continue;
+    const w1 = 2 * h[i] + h[i - 1], w2 = h[i] + 2 * h[i - 1];
+    m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]);
+  }
+  const end = (h0, h1, d0, d1) => {
+    if (h0 + h1 <= 0) return d0;
+    let e = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1);
+    if (Math.sign(e) !== Math.sign(d0)) e = 0; else if (Math.sign(d0) !== Math.sign(d1) && Math.abs(e) > 3 * Math.abs(d0)) e = 3 * d0;
+    return e;
+  };
+  if (n > 2) { m[0] = end(h[0], h[1], d[0], d[1]); m[n - 1] = end(h[n - 2], h[n - 3], d[n - 2], d[n - 3]); }
+  else if (n === 2) m[0] = m[1] = d[0];
+  SLOPES.set(arr, m);
+  return m;
+}
 function interp(arr, s) {
   if (s <= arr[0][0]) return arr[0][1];
-  for (let i = 1; i < arr.length; i++) {
-    if (s <= arr[i][0]) {
-      const [s0, v0] = arr[i - 1], [s1, v1] = arr[i];
-      const t = (s - s0) / (s1 - s0);
-      const k = t * t * (3 - 2 * t) * 0.5 + t * 0.5;   // slightly eased
-      return v0 + (v1 - v0) * k;
-    }
-  }
-  return arr[arr.length - 1][1];
+  const n = arr.length;
+  if (s >= arr[n - 1][0]) return arr[n - 1][1];
+  let i = 1;
+  while (s > arr[i][0]) i++;
+  const [s0, v0] = arr[i - 1], [s1, v1] = arr[i], h = s1 - s0;
+  if (h <= 0) return v1;
+  const m = slopesOf(arr), t = (s - s0) / h, t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * v0 + (t3 - 2 * t2 + t) * h * m[i - 1] + (-2 * t3 + 3 * t2) * v1 + (t3 - t2) * h * m[i];
 }
 
 export function profileAt(m, s) {
@@ -160,10 +184,27 @@ export function section(m, s) {
   return R;
 }
 
-function carBodyGeometry(m) {
+// where the body is lofted: every 3.5 cm at the ends, every 6 cm between
+function stationsOf(m) {
   const stations = [];
   for (let s = 0; s <= m.L + 1e-6; s += (s < 0.4 || s > m.L - 0.4) ? 0.035 : 0.06) stations.push(Math.min(s, m.L));
   if (stations[stations.length - 1] < m.L) stations.push(m.L);
+  return stations;
+}
+// the windscreen's glass as the body has it (its strips between stations): [from s, to s] - for the cabin's inside of
+// it (interior.js), whose black border must sit exactly on the glass's edges
+export function windscreenSpan(m) {
+  const st = stationsOf(m);
+  let a = null, b = null;
+  for (let j = 0; j < st.length - 1; j++) {
+    const s = (st[j] + st[j + 1]) / 2;
+    if (s >= m.wind[0] && s <= m.wind[1] && profileAt(m, s).cab > 0.3) { a ??= st[j]; b = st[j + 1]; }
+  }
+  return [a, b];
+}
+
+function carBodyGeometry(m) {
+  const stations = stationsOf(m);
   const ring = 10 + 8;
   const pos = [], uvs = [];
   for (const s of stations) {
@@ -248,6 +289,7 @@ function sharedMats() {
   shared.chrome = new THREE.MeshStandardMaterial({ color: 0xdadde0, roughness: 0.12, metalness: 1.0 });
   shared.headGlass = new THREE.MeshPhysicalMaterial({ color: 0xcfd6dc, roughness: 0.05, metalness: 0.6, clearcoat: 1, emissive: 0xfff6e0, emissiveIntensity: 0.0 });
   shared.plastic = new THREE.MeshStandardMaterial({ color: 0x19191a, roughness: 0.55 });
+  shared.mirror = new THREE.MeshStandardMaterial({ color: 0xa6aaae, roughness: 0.05, metalness: 1.0 });   // (a door mirror's glass: ~40-50 %)
   shared.ready = true;
   return shared;
 }
@@ -326,12 +368,16 @@ export function buildCar(modelKey, paint, plateKey) {
   add(pg, plateMat, 0, pfy, pfz, m.plates?.frontTilt ?? 0, Math.PI, 0);
   add(pg, plateMat, m.plates?.rearX ?? 0, pry, prz, m.plates?.rearTilt ?? 0);
   // mirrors, door handles and shut lines (a model with sides of its own draws them itself: doblo.js)
+  // (a door mirror: its painted shell, wider than tall, out from the door's front corner on a black foot; its glass on
+  // the back, turned a little toward the driver - what the driver sees of it)
   if (!m.ownSides) for (const sg of [-1, 1]) {
     const s = m.wind[0] + 0.12;
     const p = profileAt(m, s);
     const [mw, mh] = m.mirror ?? [0.2, 0.12];
-    add(roundedRectGeo(mw, mh, 0.04, 0.08), paint, sg * (p.hw + 0.07 + (mw - 0.2) / 2), p.belt + 0.07, zAt(s), 0, Math.PI / 2, 0);
-    add(new THREE.BoxGeometry(0.08, 0.04, 0.05), S.trim, sg * (p.hw - 0.01), p.belt + 0.04, zAt(s));
+    const cx = sg * (p.hw + 0.05 + mw / 2), cy = p.belt + 0.075, cz = zAt(s), ry = -sg * 0.2;
+    add(roundedRectGeo(mw, mh, Math.min(0.045, mh / 2 - 0.01), 0.06), paint, cx, cy, cz, 0, ry, 0);
+    add(new THREE.PlaneGeometry(mw - 0.024, mh - 0.024), S.mirror, cx + Math.sin(ry) * 0.04, cy, cz + Math.cos(ry) * 0.04, 0, ry, 0);
+    add(new THREE.BoxGeometry(0.1, 0.04, 0.06), S.trim, sg * (p.hw + 0.03), p.belt + 0.045, cz);
   }
   if (!m.ownSides) for (const sg of [-1, 1]) for (const s of [m.pillars[0] - 0.2, m.pillars[1] - 0.25]) {
     const p = profileAt(m, s);
@@ -469,6 +515,8 @@ export function buildCar(modelKey, paint, plateKey) {
   blob.rotation.x = -Math.PI / 2; blob.position.y = 0.02; blob.renderOrder = 1;
   group.add(blob);
 
+  // (a car's materials are its own: rain.js leaves its lenses and badges alone inside the car you are in)
+  group.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.userData.car = true; });
   return {
     group, bodyPivot, wheels, setWheels, steer, cabin, model: m,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,

@@ -551,6 +551,8 @@ async function main() {
   let mode = 'foot';       // 'foot' | 'car'
   let active = null;       // vehicle being driven
   let camMode = store.get('camMode', 'chase');
+  let glassCar = null;
+  const glassQ = new THREE.Quaternion(), glassSun = new THREE.Vector3(), glassSunC = new THREE.Color(), glassSky = new THREE.Color();
   let photoFov = null;      // zoomed photo views keep the lens' field of view until you walk away
   const orbit = { yaw: 0, pitch: 0.18, idle: 0 };
   const cockpitLook = { yaw: 0, pitch: 0 };
@@ -1465,9 +1467,11 @@ async function main() {
     eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
-    if (mode === 'car' && active) {
-      SNOW.uSnowCar.value.set(active.x, active.z, active.h, 1); SNOW.uSnowCarSize.value.set(active.car.half.w, active.car.half.l);
-      SNOW.uSnowCarY.value.set(active.car.group.position.y, active.m.roofH ??= Math.max(...active.m.roof.map(p => p[1])));
+    // the car you are in (at the wheel, or riding with the friend): no flakes, drops or leaves inside it (rain.js)
+    const inCar = mode === 'car' && active ? active : riding;
+    if (inCar) {
+      SNOW.uSnowCar.value.set(inCar.x, inCar.z, inCar.h, 1); SNOW.uSnowCarSize.value.set(inCar.car.half.w, inCar.car.half.l);
+      SNOW.uSnowCarY.value.set(inCar.car.group.position.y, inCar.m.roofH ??= Math.max(...inCar.m.roof.map(p => p[1])));
     } else SNOW.uSnowCar.value.w = 0;
     // the prints: the car's tyres (yours on foot come with each step: player.onStep), the villager's steps; they fill in
     // while it snows (in ~2.5 min, a blizzard's drift in ~1)
@@ -1504,6 +1508,19 @@ async function main() {
     }
     post.grade.uniforms.uTime.value = t;
     scene.updateMatrixWorld();
+    // the windscreen's inside (interior.js) only from a seat in the car, the dash it mirrors lit as the light outside
+    // falls on it (the sun or the moon in the car's frame, the sky's light, as the far land has it: geo/terrain.js)
+    {
+      const seat = mode === 'car' && active && camMode === 'cockpit' ? active : riding;
+      if (glassCar !== seat) { if (glassCar?.car.cabin?.screen) glassCar.car.cabin.screen.visible = false; glassCar = seat; }
+      const cab = seat?.car.cabin;
+      if (cab?.screen) {
+        cab.screen.visible = true;
+        glassSun.copy(sunDir).applyQuaternion(cab.group.getWorldQuaternion(glassQ).invert());
+        glassSky.copy(hemi.color).multiplyScalar(hemi.intensity).add(FAR.uAmb.value);
+        cab.lightGlass(glassSun, glassSunC.copy(sun.color).multiplyScalar(sun.intensity * sun.shadow.intensity), glassSky);
+      }
+    }
     post.shield.update(paused ? 0 : dt, { on: mode === 'car' && !!active && camMode === 'cockpit', rate: (weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value, car: active, camera, pupil: rainFX.pupil.value });
     // the camera's motion blur (a recording that sets the lens itself marks it manual); a jump of the camera - a view
     // picked, into or out of a car, another camera mode - is a cut, not a smear
