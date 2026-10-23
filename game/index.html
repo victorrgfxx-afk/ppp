@@ -54,6 +54,12 @@
   #carName { font-size: 13px; color: var(--muted); }
   #fps { position: absolute; right: 12px; top: 10px; font-size: 12px; color: var(--muted); }
   #fps.detail { top: 66px; color: #fff; background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; text-align: right; white-space: pre; }
+  #chat { position: absolute; left: 16px; bottom: 228px; width: min(440px, calc(100vw - 32px)); }
+  #chatLog div { background: var(--panel); margin-top: 4px; padding: 4px 9px; border-radius: 6px; font-size: 14px; width: fit-content; max-width: 100%; overflow-wrap: anywhere; }
+  #chatIn { display: none; pointer-events: auto; -webkit-user-select: text; user-select: text; width: 100%; margin-top: 6px; font: inherit; font-size: 14px; color: var(--text); background: rgba(20,22,26,.9); border: 1px solid var(--accent); border-radius: 8px; padding: 7px 10px; outline: none; }
+  #chatIn.on { display: block; }
+  .mp input { font: inherit; color: var(--text); background: #262a31; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; width: 9em; -webkit-user-select: text; user-select: text; }
+  .mp .st { color: var(--muted); font-size: 13px; }
   #menuBtn { position: absolute; right: 12px; top: 30px; pointer-events: auto; padding: 6px 10px; font-size: 13px; background: var(--panel); }
   #touch { display: none; }
   @media (pointer: coarse) {
@@ -101,6 +107,7 @@
       <div><b>N</b> noclip: zbor liber prin orice (Space sus, C jos, Shift rapid)</div>
       <div><b>T</b> vremea: senin / parțial noros / înnorat / ploaie / ninsoare / viscol / zăpadă · <b>O</b> ora din zi (soarele real, 26 septembrie; iarna 1 februarie)</div>
       <div><b>P</b> captură ecran · <b>G</b> contor de performanță · <b>Esc</b> meniu</div>
+      <div><b>J</b> la prieten (lângă el, sau pasager dacă el conduce) · <b>Enter</b> mesaj pentru prieten (multiplayer)</div>
       <div><b>K</b> scena din pădurea de lângă cruce: doar la 23:30, pe vreme înnorată (pornește când intri în luminiș; K te duce la marginea lui)</div>
       <div>Scena din clipul IMG_0725 (ulița prin pădure, la ~1 km de Strada Măgurii): doar la 16:11, pe senin; vederea „Clipul IMG_0725” din listă te duce în locul și momentul din clip</div>
     </div>
@@ -119,6 +126,11 @@
       <label>Culori <select id="tonemap"><option value="aces">Contrast (ACES)</option><option value="agx">Naturale, de film (AgX)</option><option value="neutral">Fidele (Khronos Neutral)</option></select></label>
       <label title="Temporală: marginile și depărtarea netede, ca prin ochi sau obiectiv (pe Scăzută nu există)">Netezire <select id="aa"><option value="taa">Temporală (TAA)</option><option value="smaa">Doar margini (SMAA)</option></select></label>
       <label>Estompare de mișcare <select id="mblur"><option value="0">Oprită</option><option value="0.3">Ușoară</option><option value="0.5">Cinematică (obturator 180°)</option></select></label>
+    </div>
+    <div class="row mp">
+      <label title="Joacă împreună cu un prieten: amândoi deschideți jocul din claude.ai (el invitat la acest artefact) și scrieți același cod">Multiplayer (alpha) · camera <input id="mpCode" maxlength="32" autocomplete="off" spellcheck="false"></label>
+      <label title="Numele tău, pentru prieten (în claude.ai el vede numele contului tău)">numele tău <input id="mpNick" maxlength="24" autocomplete="off" spellcheck="false" placeholder="opțional"></label>
+      <span class="st" id="mpStatus">pornește la „Joacă”</span>
     </div>
     <div id="views"></div>
     <p class="credits">Date: © OpenStreetMap contributors (ODbL) · relief EU-DEM / SRTM (AWS Terrain Tiles) și Copernicus GLO-30 · culoarea solului: Sentinel-2 cloudless 2023 by EOX (CC BY-NC-SA 4.0, date Copernicus Sentinel modificate)</p>
@@ -144,6 +156,11 @@
       <label title="Temporală: marginile și depărtarea netede, ca prin ochi sau obiectiv (pe Scăzută nu există)">Netezire <select id="aa2"><option value="taa">Temporală (TAA)</option><option value="smaa">Doar margini (SMAA)</option></select></label>
       <label>Estompare de mișcare <select id="mblur2"><option value="0">Oprită</option><option value="0.3">Ușoară</option><option value="0.5">Cinematică (obturator 180°)</option></select></label>
     </div>
+    <div class="row mp">
+      <label title="Joacă împreună cu un prieten: amândoi deschideți jocul din claude.ai (el invitat la acest artefact) și scrieți același cod">Multiplayer (alpha) · camera <input id="mpCode2" maxlength="32" autocomplete="off" spellcheck="false"></label>
+      <label title="Numele tău, pentru prieten (în claude.ai el vede numele contului tău)">numele tău <input id="mpNick2" maxlength="24" autocomplete="off" spellcheck="false" placeholder="opțional"></label>
+      <span class="st" id="mpStatus2">pornește la „Joacă”</span>
+    </div>
     <p style="margin-top:14px">Tastele 1–9 și 0 (și lista din ecranul de start) te duc exact în locurile din care au fost făcute fotografiile, ca să compari.</p>
   </div>
 </div>
@@ -152,6 +169,7 @@
   <div id="cross"></div>
   <div id="prompt"></div>
   <div id="toast"></div>
+  <div id="chat"><div id="chatLog"></div><input id="chatIn" maxlength="140" autocomplete="off" spellcheck="false" placeholder="Mesaj pentru prieten — Enter trimite, Esc închide"></div>
   <canvas id="minimap" width="340" height="340"></canvas>
   <div id="loc">Acasă</div>
   <div id="speed"><div><span id="speedVal">0</span><small> km/h</small><span id="gear">1</span></div><div id="carName"></div></div>

@@ -731,6 +731,61 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * culoarea iluminării bordului e verificată doar la BMW (portocaliu); la celelalte e albă-neutră;
     * butoanele mici, cusăturile și grafica ecranelor sunt pictate, nu modelate.
 
+## Multiplayer (alpha, V71): tu și un prieten în aceeași lume
+
+**Cum intrați:**
+1. Proprietarul artefactului (tu) îl invită pe prieten: în claude.ai, butonul **Share** al artefactului → invită-l prin
+   adresa lui de email. Prietenul trebuie să aibă cont claude.ai și să fie conectat.
+2. Amândoi deschideți jocul în pagina artefactului din claude.ai, nu ca pagină separată și nu dintr-o copie locală.
+   În meniu, la **Multiplayer · camera**, scrieți același cod (implicit „prieteni”), apoi **Joacă**.
+3. Când intră prietenul, apare un mesaj: „… a intrat în joc — J te duce la el”.
+
+Rândul Multiplayer din meniu arată starea: prietenul și cât de departe e, „singur în camera …” cât timp nu e nimeni,
+sau „claude.ai nu a deschis camera” când pagina nu are acces (link public, cont deconectat, jocul deschis în afara
+paginii artefactului, sau un invitat din afara contului tău pe care claude.ai nu îl admite).
+
+Doar persoanele cărora le e partajat artefactul pot intra în cameră: tu și cei invitați. Cine are doar linkul public
+poate juca, dar singur, fără să se poată conecta. Nu trece nimic printr-un server al nostru și nu se salvează nimic.
+
+**Ce vezi:**
+- prietenul, ca un om care merge sau aleargă, cu geaca în culoarea lui;
+- numele lui deasupra, vizibil și prin pereți;
+- un punct pe minimapă, la marginea ei când e departe, în direcția lui;
+- mașina condusă de el se mișcă și la tine. E aceeași mașină: nu poți urca la volanul ei. Dacă urcați amândoi deodată,
+  ea rămâne unuia singur;
+- **J**: te duce lângă prieten, sau pe locul din dreapta în mașina lui, dacă el conduce (**F** cobori);
+- **Enter**: un mesaj scurt pentru prieten;
+- vremea și ora sunt comune: le stabilește cine le schimbă ultimul. Până atunci rămân ale celui care a intrat primul;
+- mașinile mutate (conduse sau împinse) rămân unde le-a lăsat cel care le-a mutat, și pentru cine intră mai târziu.
+
+**Cum funcționează** (`src/net.js`, `src/remote.js`). Fiecare joc își trimite starea jucătorului de ~15 ori pe
+secundă: pieton, șofer sau pasager, poziția, privirea, mașina (poziție, înclinare, volan, roți, faruri, frână). Starea
+merge ca *presence* în camera artefactului, prin capabilitatea `room` din claude.ai. Celălalt joc o desenează cu
+120 ms în urmă, între cele două actualizări din jurul acelui moment (interpolare de stări), deci mișcarea e lină
+oricât ar varia rețeaua. Mașinile au aceeași cheie în ambele jocuri: numele și ordinea lor pe hartă. Într-o copie
+locală (`python3 -m http.server`), filele aceluiași browser se găsesc între ele printr-un `BroadcastChannel`, pentru
+încercări.
+
+**Limite (alpha):**
+- personajele nu se ciocnesc între ele (nici cu mașinile);
+- nu se aude motorul mașinii prietenului și nu i se vede lanterna;
+- scenele (pădurea de la cruce, clipul de pe uliță), animalele, păsările și fulgerele sunt ale fiecărui joc.
+
+**Testat** cu două jocuri în același browser, prin canalul local, cadru cu cadru:
+- se văd unul pe altul, cu numele deasupra; **J** te duce la 2,00 m de prieten;
+- mersul: prietenul apare unde e (diferență de 1 cm);
+- mașina condusă de prieten: aceeași poziție la amândoi, iar tu nu poți urca la volanul ei. În mers o vezi cu 7–12 cm
+  în urmă (cele 120 ms). Oprită, poziția e identică la amândoi;
+- **J** te urcă pe locul din dreapta în mașina în mers, iar camera stă pe scaunul pasagerului. **F** te coboară, iar
+  mașina rămâne parcată în același loc la amândoi;
+- ploaia pusă de unul apare și la celălalt;
+- chat: primul mesaj și următoarele ajung. Cine intră mai târziu nu primește mesajele vechi;
+- cine iese dispare la celălalt; starea trimisă are ~230 de octeți din cei 4096 permiși; 0 erori în pagini;
+- `net.js` și cu o cameră claude.ai simulată (18/18 verificări): o intrare eșuată temporar se reîncearcă, o cameră
+  pierdută se redeschide, „revoked” e definitiv, iar fără camere numite se folosește camera comună.
+
+Canalul real din claude.ai nu l-am putut încerca eu: e nevoie de două conturi conectate. Primul test cu el e al vostru.
+
 ## Grafică
 
 Three.js r186 (inclus în `vendor/`, merge offline): materiale PBR cu hărți de normale generate din poze, iluminare de cer înnorat (IBL din cerul procedural), umbre soft, ambient occlusion (GTAO) pe Înaltă/Ultra, bloom discret, anti-aliasing temporal (TAA; SMAA pe Scăzută), gradare „fotografică” (vignetă, grain), iarbă 3D și frunziș care se mișcă în vânt. Sunetul (vânt, păsări, pași pe asfalt/pietriș/iarbă/gresie, motor, derapaj, claxon, impact) e sintetizat procedural.
@@ -861,6 +916,8 @@ src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridi
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
+src/net.js            multiplayer: camera din claude.ai (sau filele unui browser), starea trimisă și interpolată
+src/remote.js         prietenul în lume: omul care merge, mașina condusă de el, numele, locul de pasager
 src/taa.js            anti-aliasing-ul temporal: deplasarea sub-pixel, reproiecția, istoria; ploaia și zăpada desenate după el
 src/rain.js           ploaia și zăpada: suprafețe ude / acoperite, fulgii, viscolul și harta lui văzută din vânt, stratul de zăpadă
 src/snowtrail.js      urmele de pași și de roți în zăpadă (harta lor, ștampilele, umplerea cât ninge)

@@ -146,6 +146,17 @@ export class HUD {
       g.fillRect(-0.9 * S, -2.2 * S, 1.8 * S, 4.4 * S);
       g.restore();
     }
+    // the friends (multiplayer): a dot in their colour where they are, or at the edge pointing to them
+    for (const f of st.friends || []) {
+      const lx = (f.x - st.x) * S * zoom, lz = (f.z - st.z) * S * zoom;
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.translate(w / 2, h / 2); g.rotate(st.yaw);
+      const r = Math.hypot(lx, lz), R = w / 2 - 12, k = r > R ? R / r : 1;
+      g.fillStyle = '#' + f.color.toString(16).padStart(6, '0'); g.strokeStyle = '#fff'; g.lineWidth = 2;
+      g.beginPath(); g.arc(lx * k, lz * k, k < 1 ? 5 : 7, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.restore();
+    }
     g.restore();
     // player arrow
     g.save();

@@ -31,6 +31,8 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { createComposer } from './post.js';
+import { Net, clean } from './net.js';
+import { RemotePlayers, seatPos } from './remote.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
@@ -513,6 +515,8 @@ async function main() {
       maybach.update(0.016, null);
     }
   }
+  // multiplayer (alpha): the friend in this world (net.js: the room; remote.js: their figure, their car, their name)
+  const mp = new Net(), others = new RemotePlayers(scene, vehicles);
   flashlight = new Flashlight(scene);
   headlights = new Headlights(scene);
   // the forest scene of the user's two clips, live in the clearing of the wood by the cross (+z of its stage points back
@@ -547,6 +551,8 @@ async function main() {
   const orbit = { yaw: 0, pitch: 0.18, idle: 0 };
   const cockpitLook = { yaw: 0, pitch: 0 };
   let paused = true, started = false, hornOn = false;
+  let riding = null;       // a friend's car you ride in as the passenger (multiplayer)
+  const rideLook = { yaw: 0, pitch: 0 };
   let shake = 0;
   let riverT = 0, riverK = 0;                // the river's rush where you are (geo/water.js), looked up twice a second
 
@@ -610,7 +616,7 @@ async function main() {
   }
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
-  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder]);
+  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder, others.tags]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
@@ -670,8 +676,16 @@ async function main() {
     if (night > 0.5 && !flashlight.on && mode === 'foot') { flashlight.set(true); hud.toast('E noapte: lanterna e aprinsă (L o stinge)', 3); }
     if (night < 0.5 && flashlight.on) flashlight.set(false);
   };
-  const setWeather = (key) => { applyWeather(key); store.set('weather', key); $('weather').value = key; $('weather2').value = key; torchForNight(); };
-  const setHour = (h) => { applyWeather(weatherKey, h); store.set('hour', h); $('hour').value = h; $('hour2').value = h; torchForNight(); };
+  const setWeather = (key) => { applyWeather(key); store.set('weather', key); $('weather').value = key; $('weather2').value = key; torchForNight(); mp.worldChanged(weatherKey, hour); };
+  const setHour = (h) => { applyWeather(weatherKey, h); store.set('hour', h); $('hour').value = h; $('hour2').value = h; torchForNight(); mp.worldChanged(weatherKey, hour); };
+  // (the friend's, when they set it later than you: net.js)
+  mp.world.k = weatherKey; mp.world.h = hour;
+  mp.onWorld = (k, h) => {
+    const was = weatherKey + hour;
+    if (WEATHER[k] && k !== weatherKey) setWeather(k);
+    if (typeof h === 'number' && h >= 0 && h < 24 && h !== hour) setHour(h);
+    if (weatherKey + hour !== was) hud.toast('Vremea și ora comune cu prietenul: ' + WEATHER[weatherKey].label + ', ' + hourLabel(hour), 3);
+  };
   torchForNight();                                              // (a game started at night)
   for (const id of ['weather', 'weather2']) {
     $(id).innerHTML = WEATHER_ORDER.map(k => `<option value="${k}">${WEATHER[k].label}</option>`).join('');
@@ -690,6 +704,7 @@ async function main() {
     input.enabled = true;
     input.requestLock();
     paused = false; started = true;
+    if (!mp.room && mp.status === 'oprit') mp.start(mpCode, mpNick);     // (the room asks for nothing before the first join)
     $('start').classList.remove('on');
     $('pause').classList.remove('on');
     $('hud').classList.add('on');
@@ -732,6 +747,23 @@ async function main() {
       tonemap = TONEMAPS[e.target.value] ? e.target.value : 'aces'; store.set('tonemap', tonemap); exposeTo(baseExposure);
       for (const s2 of ['', '2']) if ($('tonemap' + s2)) $('tonemap' + s2).value = tonemap;
     });
+  }
+  // multiplayer: the room's code (the same for both of you) and, outside claude.ai, your name
+  let mpCode = store.get('mpCode', 'prieteni'), mpNick = store.get('mpNick', '');
+  for (const sfx of ['', '2']) {
+    const c = $('mpCode' + sfx), n = $('mpNick' + sfx); if (!c) continue;
+    c.value = mpCode; n.value = mpNick;
+    c.addEventListener('change', (e) => {
+      mpCode = e.target.value.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '').slice(0, 32) || 'prieteni'; store.set('mpCode', mpCode);
+      for (const s2 of ['', '2']) if ($('mpCode' + s2)) $('mpCode' + s2).value = mpCode;
+      if (started) mp.start(mpCode, mpNick);
+    });
+    n.addEventListener('change', (e) => {
+      mpNick = e.target.value.trim().slice(0, 24); store.set('mpNick', mpNick);
+      for (const s2 of ['', '2']) if ($('mpNick' + s2)) $('mpNick' + s2).value = mpNick;
+      mp.publish({ n: clean(mpNick, 24) });
+    });
+    for (const el of [c, n]) el.addEventListener('keydown', (e) => e.stopPropagation());
   }
   post.setTAA(aa === 'taa');
   for (const sfx of ['', '2']) {
@@ -1006,6 +1038,7 @@ async function main() {
   const nearestCar = () => {
     let best = null, bd = 2.6;
     for (const v of vehicles) {
+      if (v.remote) continue;                               // (a friend drives it: J rides along)
       for (const side of [-1, 1]) {
         const d = v.doorPos(side);
         const dist = Math.hypot(d.x - player.pos.x, d.z - player.pos.z);
@@ -1053,6 +1086,71 @@ async function main() {
     const k = Math.min(1, Math.max(0.04, 5 / Math.max(d, 1)));            // fainter with the distance
     if (n === 'shriek') audio.shriek(k); else if (n === 'thud') audio.thud(k); else if (n === 'growl') audio.bear(false, d); else audio.rustle(n === 'rustle-big' ? 9 : 4, k);
   };
+  // ---------- multiplayer: riding along, going to the friend, a line of chat ----------
+  const ride = (car, who) => {
+    if (mode === 'car') exitCar(true);
+    if (player.noclip) player.setNoclip(false);
+    riding = car; rideLook.yaw = 0; rideLook.pitch = 0;
+    car.car.glass.opacity = 0.12;
+    audio.door();
+    hud.toast(`Ești pasager lângă ${who} — mouse: privești, F: cobori`, 4);
+  };
+  const unride = (msg) => {
+    const car = riding; if (!car) return;
+    riding = null;
+    car.car.glass.opacity = 0.86;
+    const d = car.doorPos(1);
+    player.setPose(d.x, d.z, car.h, 0); player.collide();
+    player.pos.y = world.groundHeight(player.pos.x, player.pos.z);
+    audio.door();
+    if (msg) hud.toast(msg, 3);
+  };
+  // J: to the nearest friend - into their car beside them if they drive, else next to them, facing them
+  const joinFriend = () => {
+    const fr = others.list(mp, pos0())[0];
+    if (!fr) { hud.toast(mp.room ? 'Niciun prieten în joc acum (camera „' + mp.code + '”)' : 'Multiplayer oprit (Meniu)', 3); return; }
+    const st = fr.r.now, car = st.v ? others.byKey.get(st.v) : null;
+    if (st.f === 1 && car && car.remote === fr.r.peer) { if (riding !== car) ride(car, fr.name); return; }
+    if (riding) unride(null);
+    if (mode === 'car') exitCar(true);
+    if (player.noclip) player.setNoclip(false);
+    let x = st.p[0] - Math.sin(st.a[0]) * 2, z = st.p[2] - Math.cos(st.a[0]) * 2, yaw = st.a[0] + Math.PI;
+    if (car) { const d = car.doorPos(-1); x = d.x - Math.sin(car.h + Math.PI / 2) * 1.2; z = d.z - Math.cos(car.h + Math.PI / 2) * 1.2; yaw = Math.atan2(-(car.x - x), -(car.z - z)); }
+    player.setPose(x, z, yaw, 0); player.collide();
+    hud.toast('Lângă ' + fr.name, 2);
+  };
+  const chatLog = $('chatLog'), chatIn = $('chatIn');
+  const chatLine = (who, text, mine) => {
+    if (!chatLog) return;
+    const d = document.createElement('div'), b = document.createElement('b');
+    b.textContent = who + ': '; b.style.color = mine ? '#9fd3ff' : '#ffd23f';
+    d.append(b, document.createTextNode(text));
+    chatLog.append(d);
+    while (chatLog.children.length > 6) chatLog.firstChild.remove();
+    setTimeout(() => d.remove(), 12000);
+  };
+  mp.onChat = (r, text) => { chatLine(mp.nameOf(r), text, false); audio.burst({ f: 1600, q: 8, dur: 0.09, gain: 0.06 }); };
+  let chatOpen = false;
+  const openChat = () => {
+    if (!chatIn || !mp.room) return;
+    chatOpen = true; input.enabled = false; input.keys.clear();
+    chatIn.value = ''; chatIn.classList.add('on'); chatIn.focus();
+  };
+  const closeChat = () => { chatOpen = false; chatIn.classList.remove('on'); chatIn.blur(); if (started && !paused) input.enabled = true; };
+  chatIn?.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      const t = chatIn.value.trim();
+      const sent = t && mp.chat(t);
+      if (sent) chatLine(mpNick || 'Eu', sent, true);
+      closeChat();
+    } else if (e.code === 'Escape') closeChat();
+  });
+  addEventListener('keydown', (e) => { if ((e.code === 'Enter' || e.code === 'NumpadEnter') && started && !paused && !chatOpen && mp.room) { e.preventDefault(); openChat(); } });
+  // who came, who left (a line in the corner)
+  const mpSeen = new Map();
+  let mpStatusT = 0;
+
   const goToForest = () => {
     if (!sceneTime()) { hud.toast('Scena din pădure are loc doar la ora 23:30, pe vreme înnorată (O schimbă ora, T vremea)', 4.5); return; }
     if (!forest.arm()) { hud.toast('Scena din pădure se pregătește (câteva secunde)…', 3); return; }
@@ -1118,16 +1216,24 @@ async function main() {
         setHour(HOURS[(HOURS.indexOf(hour) + 1) % HOURS.length]);
         hud.toast(night > 0.5 ? `Ora ${hourLabel(hour)} · noapte, lună plină la ${Math.round(moonInfo.el)}°${horror ? ' · furtună: ursul a ieșit pe dealul crucii' : ''}` : `Ora ${hourLabel(hour)} · soarele la ${Math.round(sunInfo.el)}° deasupra orizontului`, 3.5);
       }
+      // J: to the friend (multiplayer)
+      if (input.hit('KeyJ')) joinFriend();
       // N: noclip, free flight to look around the map quickly (from a car too: you step out first)
       if (input.hit('KeyN')) {
+        if (riding) unride(null);
         if (mode === 'car') exitCar(true);
         if (mode === 'foot') {
           player.setNoclip(!player.noclip);
           hud.toast(player.noclip ? 'Noclip pornit — zbori liber: Space sus, C jos, Shift rapid (N oprește)' : 'Noclip oprit');
         }
       }
-      if (mode === 'foot') {
-        for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) gotoView(i);
+      if (mode === 'foot' && riding) {
+        // a passenger in the friend's car: the view from the seat beside them (set once their car has moved, below)
+        prompt = 'F — coboară';
+        if (input.hit('KeyF') || input.hit('KeyE')) unride(null);
+        else if (riding.remote === null || riding.remote === undefined) unride('Prietenul a coborât din mașină');
+      } else if (mode === 'foot') {
+        for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) { if (riding) unride(null); gotoView(i); }
         if (input.hit('KeyL')) { flashlight.set(!flashlight.on); hud.toast(flashlight.on ? 'Lanterna aprinsă' : 'Lanterna stinsă'); }
         player.update(dt, input, audio, sens());
         // a dog right next to you wins over a car parked beyond the fence (nothing to use while flying)
@@ -1157,7 +1263,7 @@ async function main() {
         if (active && active.impact > 2.5) { audio.crash(active.impact); shake = Math.min(0.35, active.impact * 0.03); }
       }
       // parked cars (and cars pushed by collisions) settle
-      for (const v of vehicles) if (v !== active) v.update(dt, null);
+      for (const v of vehicles) if (v !== active && !v.remote) v.update(dt, null);   // (a friend's car moves as they drive it: remote.js)
       for (const w of walkers) w.update(dt);
     }
     dogs.update(dt, t, camera.position);
@@ -1250,6 +1356,39 @@ async function main() {
       }
     }
 
+    // multiplayer: this player to the friend (net.js), the friend into this world (remote.js)
+    {
+      const g = active?.car.group.position;
+      const meNow = mode === 'car' && active ? { f: 1, p: [g.x, g.y, g.z], a: [active.h, 0], v: active.mpKey,
+        c: [active.x, active.z, active.h, active.pitch, active.roll, active.steer, active.spin % (2 * Math.PI), active.speed, active.lightsOn ? 1 : 0, active.brake ? 1 : 0] }
+        : riding ? { f: 2, p: [riding.x, riding.car.group.position.y, riding.z], a: [riding.h + rideLook.yaw, rideLook.pitch], v: riding.mpKey }
+          : { f: 0, p: [player.pos.x, player.pos.y, player.pos.z], a: [player.yaw, player.pitch] };
+      mp.update(dt, started ? meNow : null);
+      // (both got in at the wheel of the same car at once: it goes to the one whose label sorts first)
+      for (const c of others.update(dt, mp, { active, riding, fov: camera.fov })) if (mp.myPeer && c.peer < mp.myPeer && c.car === active) { exitCar(true); hud.toast('Prietenul tău a urcat primul la volan', 3); }
+      const movedCars = others.moved(active);
+      if (movedCars) mp.carsMoved(movedCars);
+      if (riding) {
+        const m = paused ? { x: 0, y: 0 } : input.consumeMouse();
+        rideLook.yaw = clamp(rideLook.yaw - m.x * sens(), -2.4, 2.4); rideLook.pitch = clamp(rideLook.pitch - m.y * sens(), -0.8, 0.6);
+        seatPos(riding, camera.position);
+        camera.rotation.set(rideLook.pitch - 0.06 + riding.pitch + riding.car.group.rotation.x, riding.h + rideLook.yaw, -riding.roll * 0.6, 'YXZ');
+        player.pos.set(riding.x, riding.car.group.position.y, riding.z);
+        if (riding.car.cabin) riding.car.cabin.group.visible = true;
+      }
+      // who came and who left
+      for (const r of mp.remotes.values()) if (r.now && !mpSeen.has(r.peer)) { mpSeen.set(r.peer, mp.nameOf(r)); hud.toast(mp.nameOf(r) + ' a intrat în joc — J te duce la el', 4); }
+      for (const [peer, name] of mpSeen) if (!mp.remotes.has(peer)) { mpSeen.delete(peer); hud.toast(name + ' a ieșit din joc', 3); }
+      if ((mpStatusT -= dt) <= 0) {
+        mpStatusT = 0.5;
+        const fr = others.list(mp, pos0());
+        const txt = !mp.room ? (mp.status === 'oprit' ? 'pornește la „Joacă”' : mp.status)
+          : mp.status.startsWith('întrerupt') ? mp.status
+          : (mp.room.connected && !mp.room.connected() ? 'se conectează… · ' : '') + (mp.kind === 'local' ? (mp.note ? mp.note + ' · doar filele acestui browser · ' : 'local (doar filele acestui browser) · ') : '') + (fr.length ? fr.map(f => `${f.name} la ${f.d < 1000 ? Math.round(f.d) + ' m' : (f.d / 1000).toFixed(1) + ' km'}`).join(', ') : 'singur în camera „' + mp.code + '”');
+        for (const sfx of ['', '2']) { const el = $('mpStatus' + sfx); if (el && el.textContent !== txt) el.textContent = txt; }
+      }
+    }
+
     // HUD
     const pos = mode === 'car' && active ? active.car.group.position : player.pos;
     const yaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
@@ -1257,7 +1396,8 @@ async function main() {
     hud.update(dt, {
       prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
       x: pos.x, z: pos.z, yaw,
-      cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active })),
+      cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active || v === riding })),
+      friends: others.list(mp, pos),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
         (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
@@ -1403,9 +1543,10 @@ async function main() {
     if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.85, sun.color); }
     // (the car you drive moves with the camera: the anti-aliasing follows it by its own motion)
     if (post.taa) {
-      if (mode === 'car' && active) {
-        const hw = active.car.half.w + 0.3, hl = active.car.half.l + 0.3;
-        taaMover.obj = active.car.group; taaMover.min.set(-hw, -0.4, -hl); taaMover.max.set(hw, 2.6, hl);
+      const mv = mode === 'car' && active ? active : riding;
+      if (mv) {
+        const hw = mv.car.half.w + 0.3, hl = mv.car.half.l + 0.3;
+        taaMover.obj = mv.car.group; taaMover.min.set(-hw, -0.4, -hl); taaMover.max.set(hw, 2.6, hl);
         post.taa.mover = taaMover;
       } else post.taa.mover = null;
     }
@@ -1426,7 +1567,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {
