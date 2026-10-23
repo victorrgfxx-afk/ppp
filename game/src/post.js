@@ -338,7 +338,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   const cine = new CinePass(camera, tap);
   composer.addPass(cine);
   // the rain on the windshield, from the driver's seat (windshield.js; off but in a car's cockpit in the rain)
-  const shield = new WindshieldPass();
+  const shield = new WindshieldPass(tap);
   composer.addPass(shield);
   // the eye at night: rods instead of cones below ~5 cd/m2 (vision.js; off by day)
   const vision = new VisionPass();

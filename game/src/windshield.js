@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { profileAt } from './cars.js';
+import { wiperGlass, WIPER_REST, WIPER_TOP } from './cars.js';
 
 // The windshield in the rain (V63), from the driver's seat. The drops are worked out on the glass itself (a plane
 // through the windshield of the car you drive, in metres), so they stay on it when you look round.
@@ -34,6 +34,8 @@ uniform float uPupil, uLam, uLv, uRunD, uRunDir, uDim;
 uniform vec2 uTan, uHw, uAng, uAngV;
 uniform vec3 uO, uU, uV, uN;          // the glass in view space: its bottom middle, across, up the slope, its normal
 uniform vec4 uW0, uW1;                // each wiper: its pivot (across, up the slope; m), its blade from, to (m)
+uniform sampler2D uMask;              // where something in the car is between the eye and the glass (1)
+uniform float uHasMask;
 varying vec2 vUv;
 float h21(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 // since a point g of the glass was last wiped by one wiper: (s, drops per m², water in m)
@@ -123,6 +125,7 @@ void main() {
   float e = max(uPupil * 0.5, px * 0.7);
   float hw = mix(uHw.x, uHw.y, clamp(g.y / uLv, 0.0, 1.0));
   float inG = clamp((g.y + e) / (2.0 * e), 0.0, 1.0) * clamp((uLv - g.y + e) / (2.0 * e), 0.0, 1.0) * clamp((hw - abs(g.x) + e) / (2.0 * e), 0.0, 1.0);
+  if (uHasMask > 0.5) inG *= 1.0 - texture2D(uMask, vUv).r;
   if (inG <= 0.0) return;
   vec3 s0 = since(g, uW0, 0), s1 = since(g, uW1, 1), s = min(s0, s1);
   vec4 best = vec4(0.0);
@@ -155,11 +158,26 @@ void main() {
   gl_FragColor.rgb = mix(base.rgb, col, inG);
 }`;
 
-const _B = new THREE.Vector3(), _T = new THREE.Vector3(), _X = new THREE.Vector3(), _MV = new THREE.Matrix4(), _n = new THREE.Vector3();
+// the windscreen's inside (interior.js) drawn over the scene's depth as the scene pass leaves it: 1 where the scene is
+// nearer than the glass (the rear-view mirror, the visors, the wheel's rim), so the rain stays behind them
+const MASK_VERT = 'varying float vZ; void main(){ vec4 p = modelViewMatrix * vec4(position, 1.0); vZ = -p.z; gl_Position = projectionMatrix * p; }';
+const MASK_FRAG = /* glsl */`
+uniform sampler2D tDepth;
+uniform mat4 uInvProj;
+uniform vec2 uRes;
+varying float vZ;
+void main() {
+  vec2 uv = gl_FragCoord.xy / uRes;
+  vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, texture2D(tDepth, uv).r * 2.0 - 1.0, 1.0);
+  gl_FragColor = vec4(-v.z / v.w < vZ - 0.004 ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+}`;
+
+const _B = new THREE.Vector3(), _T = new THREE.Vector3(), _X = new THREE.Vector3(), _MV = new THREE.Matrix4(), _n = new THREE.Vector3(), _cc = new THREE.Color();
 
 export class WindshieldPass extends Pass {
-  constructor() {
+  constructor(tap = null) {
     super();
+    this.tap = tap;
     this.wipe = new THREE.DataTexture(new Float32Array(NB * 2 * 4), NB, 2, THREE.RGBAFormat, THREE.FloatType);
     this.wipe.needsUpdate = true;
     const v2 = () => ({ value: new THREE.Vector2() }), v3 = () => ({ value: new THREE.Vector3() });
@@ -168,31 +186,39 @@ export class WindshieldPass extends Pass {
       uPupil: { value: 0.003 }, uLam: { value: 2 }, uLv: { value: 0.9 }, uRunD: { value: 0 }, uRunDir: { value: -1 }, uDim: { value: 0.96 },
       uTan: v2(), uHw: v2(), uAng: v2(), uAngV: v2(), uO: v3(), uU: v3(), uV: v3(), uN: v3(),
       uW0: { value: new THREE.Vector4() }, uW1: { value: new THREE.Vector4() },
+      uMask: { value: null }, uHasMask: { value: 0 },
     };
+    // (with the scene's depth only: Medium and up)
+    if (tap) {
+      this.mask = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+      this.u.uMask.value = this.mask.texture;
+      this.maskMat = new THREE.ShaderMaterial({ uniforms: { tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uRes: { value: new THREE.Vector2() } },
+        vertexShader: MASK_VERT, fragmentShader: MASK_FRAG, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
+      this.maskMesh = new THREE.Mesh(undefined, this.maskMat);
+      this.maskMesh.matrixAutoUpdate = false; this.maskMesh.matrixWorldAutoUpdate = false; this.maskMesh.frustumCulled = false;
+      this.hook = (r, rb) => this.keepMask(r, rb);
+    }
     this.material = new THREE.ShaderMaterial({ uniforms: this.u, vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false });
     this.quad = new FullScreenQuad(this.material);
     this.enabled = false;
     this.now = null;                 // [s, drops per m², water m] since the car was in the rain
-    this.phase = 0; this.pause = 0; this.ang = [0.07, 0.07]; this.mode = 'off'; this.model = null; this.s0 = 0;
+    this.phase = 0; this.pause = 0; this.ang = [0.07, 0.07]; this.mode = 'off';
   }
   // o: { on (in a car's cockpit), rate (mm/h), car (the Vehicle), camera, pupil (m) }
   update(dt, o) {
     const car = o.car, m = car?.m;
     const on = !!(o.on && m && m.wind && !m.seat && o.rate > 0.05);
     this.enabled = on;
+    const screen = on && this.tap ? car.car.cabin?.screen : null;
+    this.screen = screen; this.cam = o.camera;
+    if (this.tap) screen ? this.tap.hooks.add(this.hook) : this.tap.hooks.delete(this.hook);
+    this.u.uHasMask.value = 0;                  // (keepMask: 1 once it has drawn this frame's)
     if (!on) return;
     const u = this.u, cam = o.camera;
-    // the glass: a plane from the middle of the windshield's lower edge (where the body turns to glass: cars.js) to the
-    // middle of its upper edge (car frame); the wipers sized by its full width, at the top
-    if (this.model !== m) {
-      let s0 = m.wind[0];
-      while (s0 < m.wind[1] - 0.2 && profileAt(m, s0).cab < 0.3) s0 += 0.01;
-      this.model = m; this.s0 = s0;
-    }
-    const s0 = this.s0, s1 = m.wind[1] - 0.03, p0 = profileAt(m, s0), p1 = profileAt(m, s1);
-    const hwOf = (p) => { const hwr = Math.min(m.hwr, p.hw * 0.9); return p.hw * 0.25 + (hwr * 0.84 - p.hw * 0.25) * Math.min(1, p.cab); };
-    _B.set(0, p0.roof + 0.008, s0 - m.L / 2); _T.set(0, p1.roof + 0.008, s1 - m.L / 2);
-    const Lv = _B.distanceTo(_T), hwB = hwOf(p0), hwT = hwOf(p1), Wg = 2 * hwT;
+    // the glass: a plane from the middle of the windshield's lower edge (where the body turns to glass) to the middle of
+    // its upper edge (car frame), and the wipers on it - cars.js, which parks the same ones there
+    const wg = wiperGlass(m), Lv = wg.Lv, hwB = wg.hwB, hwT = wg.hwT;
+    _B.copy(wg.B); _T.copy(wg.T);
     // its outward normal (forward and up) in the car's frame, for how hard the rain hits it
     _n.subVectors(_T, _B).cross(_X.set(1, 0, 0)).normalize();
     const R = o.rate, lam = 4.1 * Math.pow(R, -0.21), Dm = 0.25 + 1 / lam;
@@ -214,8 +240,7 @@ export class WindshieldPass extends Pass {
     const t1 = 1 / Math.max(1e-6, flux * 0.0045 * 0.0045);
     this.mode = t1 < 2.2 ? 'fast' : t1 < 9 ? 'slow' : 'int';
     const period = this.mode === 'fast' ? 60 / 55 : 60 / 38;
-    const W = [[-0.3 * Wg, -0.04, 0.18 * Wg, Math.min(0.66 * Wg, 1.02 * Lv)], [0.06 * Wg, -0.04, 0.12 * Wg, Math.min(0.48 * Wg, 0.82 * Lv)]];
-    const top = [1.85, 1.65], A0 = 0.07;
+    const W = wg.W, top = WIPER_TOP, A0 = WIPER_REST;
     const prev = this.ang.slice(), av = [0, 0];
     if (this.pause > 0) this.pause -= dt;
     else {
@@ -252,10 +277,25 @@ export class WindshieldPass extends Pass {
     const ty = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
     u.uTan.value.set(ty * cam.aspect, ty);
   }
+  keepMask(r, rb) {
+    if (!rb.depthTexture || !this.screen) return;
+    if (this.mask.width !== rb.width || this.mask.height !== rb.height) this.mask.setSize(rb.width, rb.height);
+    const mu = this.maskMat.uniforms, mesh = this.maskMesh;
+    mu.tDepth.value = rb.depthTexture; mu.uInvProj.value.copy(this.cam.projectionMatrixInverse); mu.uRes.value.set(rb.width, rb.height);
+    mesh.geometry = this.screen.geometry; mesh.matrixWorld.copy(this.screen.matrixWorld);
+    const ac = r.autoClear, ca = r.getClearAlpha();
+    r.getClearColor(_cc);
+    r.autoClear = false; r.setClearColor(0x000000, 1);
+    r.setRenderTarget(this.mask);
+    r.clear(true, false, false);
+    r.render(mesh, this.cam);
+    r.setClearColor(_cc, ca); r.autoClear = ac;
+    this.u.uHasMask.value = 1;
+  }
   render(renderer, writeBuffer, readBuffer) {
     this.u.tDiffuse.value = readBuffer.texture;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
   }
-  dispose() { this.material.dispose(); this.quad.dispose(); this.wipe.dispose(); }
+  dispose() { this.material.dispose(); this.quad.dispose(); this.wipe.dispose(); this.mask?.dispose(); this.maskMat?.dispose(); this.tap?.hooks.delete(this.hook); }
 }

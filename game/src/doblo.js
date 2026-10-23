@@ -134,7 +134,7 @@ function band(pts, y0, y1, d) {
 }
 
 // the details, in the car's frame (forward -z, right +x, the ground y = 0; s from the nose)
-function details({ add, S, paint, zAt, headMat, tailMat, rigid }) {
+function details({ add, S, paint, zAt, headMat, tailMat, rigid, mirrors }) {
   const X = mats(), m = DOBLO_MODEL;
   const put = (g, mat, M) => rigid.push([g, mat, M]);
   const box = (w, h, d, mat, x, y, z, rx = 0, ry = 0, rz = 0) => put(new THREE.BoxGeometry(w, h, d), mat, pose(x, y, z, rx, ry, rz));
@@ -249,6 +249,7 @@ function details({ add, S, paint, zAt, headMat, tailMat, rigid }) {
     for (const y of [1.13, 1.27]) box(0.17, 0.025, 0.035, X.plastic, sg * (xm + 0.085), y, zAt(sm));
     box(0.17, 0.28, 0.08, X.plastic, sg * (xm + 0.2), 1.2, zAt(sm + 0.02));
     box(0.15, 0.26, 0.005, X.mirror, sg * (xm + 0.2), 1.2, zAt(sm + 0.02) + 0.042);
+    mirrors.push({ w: 0.15, h: 0.26, side: sg, m: pose(sg * (xm + 0.2), 1.2, zAt(sm + 0.02) + 0.0446) });   // (its glass: mirror.js)
   }
   // the fuel cap on the left quarter panel, the CARGO badge on the right sliding door
   put(new THREE.CylinderGeometry(0.06, 0.06, 0.006, 24), paint, pose(-(sideX(3.62, 0.97) + 0.003), 0.97, zAt(3.62), 0, 0, Math.PI / 2));

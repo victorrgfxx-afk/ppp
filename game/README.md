@@ -742,6 +742,18 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Oglinzile exterioare** erau o cutie vopsită întoarsă cu fața spre ușă. Acum carcasa e lată și joasă, pe un picior negru la colțul ușii. Sticla e pe spatele carcasei, întoarsă ~11° spre șofer: din scaun vezi oglinda, nu carcasa.
   * **Parasolarele** sunt căptușite, cu colțuri rotunde, lungi cât încap sub plafon (de la piciorul oglinzii până la ~5 cm de stâlp). Au tija balamalei care intră în plafon la capătul dinspre ușă și clema de la capătul dinspre oglindă.
   * **Fără frunze în mașină**: o mașină parcată lângă un tufiș sau sub un copac avea frunzele lui în habitaclu, pe ușă și pe bord (se vedea la Peugeot-ul de la poartă). Acum frunzele nu se desenează în interiorul caroseriei mașinii în care ești, la volan sau ca pasager la prieten, cum nu apar nici picăturile și fulgii. Pe dinafară mașina rămâne în tufiș.
+* **Oglinzile, ștergătoarele, praful de pe parbriz și tu la volan (V74)** (`src/mirror.js`, `src/driver.js`, `src/interior.js`, `src/cars.js`):
+  * **Oglinzile arată ce e în spate.** Din scaun, retrovizoarea și cele două oglinzi laterale arată lumea cum o reflectă sticla lor spre ochii tăi: scena e randată din ochiul tău oglindit în planul sticlei, prin dreptunghiul sticlei (un tronc de piramidă asimetric cu sticla drept ecran, Kooima 2008). Planul apropiat e chiar sticla, deci carcasa și parbrizul nu intră în imagine. În retrovizoare se văd tetierele din spate, stâlpii și luneta, apoi drumul. Oglinda din dreapta e convexă, ca la mașinile europene (ECE R46), deci arată mai larg. Retrovizoarea reflectă ~80 % din lumină, cele laterale ~50 %.
+    * **Costul și setarea.** Se randează câte o oglindă la două cadre, până la 200 m în spate; dincolo se vede relieful îndepărtat și cerul. Retrovizoarea primește jumătate din aceste randări, deci la 60 FPS are 15 imagini pe secundă, iar fiecare oglindă laterală 7,5. Merge pe Medie și mai sus. Măsurat în cockpitul Corsei, pe strada casei: o oglindă desenează ~390 de obiecte, adică în medie ~+8 % desenări pe cadru: 2 177 → 2 371 pe Medie, 2 460 → 2 662 pe Înaltă. Timpul cadrului crește cu ~7 % (în randarea software de test). O oglindă la fiecare cadru ar fi însemnat +16 % (2 460 → 2 852), așa că am ales una la două cadre. Din meniu, **Oglinzi: Simple** le întoarce la reflexia cerului, fără cost.
+  * **Oglinzile sunt reglate ca de un șofer**, din poziția ochilor fiecărui model. Normala sticlei e la jumătatea unghiului dintre ochi și direcția spre care trebuie să privească: în oglinzile laterale, înapoi, la orizont, cu flancul mașinii la marginea dinăuntru; în retrovizoare, mijlocul lunetei.
+  * **Ștergătoarele parcate** stau la baza parbrizului la toate modelele (Doblò le avea deja): brațul, lamela și capacul pivotului, exact unde le pornește trecerea de ploaie (`src/windshield.js` și `src/cars.js` folosesc aceeași geometrie a sticlei). Din scaun li se vede marginea de sus peste banda neagră. Când plouă și le vezi din scaun mișcându-se, cele parcate dispar, ca să nu fie două perechi.
+  * **Pelicula de praf de pe parbriz.** Un parbriz real împrăștie ~1 % din lumina care trece prin el (praf, urme de ștergător; „haze” în sensul ASTM D1003). Lumina soarelui e împrăștiată înainte (funcție de fază Henyey–Greenstein, g = 0,7), deci când conduci spre un soare jos parbrizul se voalează, cu arcurile ștergătoarelor în el. Zonele șterse sunt mai curate, colțurile pe unde lamelele nu trec sunt mai murdare. Cu soarele în spate nu se vede nimic.
+  * **Picăturile stau pe geam, nu peste ce e în fața lui.** Până acum, ploaia de pe parbriz se desena și peste retrovizoare, parasolare și marginea de sus a volanului. Acum, după trecerea scenei, partea dinăuntru a parbrizului e desenată peste adâncimea scenei: unde ceva din mașină e mai aproape de ochi decât sticla, picăturile și ștergătoarele nu se mai desenează. Merge pe Medie și mai sus, unde există adâncimea scenei.
+  * **Tu la volan.** În mașina pe care o conduci stă un șofer cu dimensiunile unui adult (umăr–cot 0,31 m, cot–încheietură 0,29 m, șold–genunchi 0,46 m, genunchi–gleznă 0,45 m), așezat după cotele modelului: ochii, punctul H al scaunului, volanul, pedalele.
+    * Mâinile țin volanul puțin deasupra spițelor („9 și 3”), cu dosul palmei pe partea din afară și degetul mare peste partea dinspre tine. Se rotesc cu volanul până la ~60° și de acolo alunecă pe el, ca la o mână reală.
+    * Brațele ajung la ele de la umeri, cu coatele în jos și în afară (cinematică inversă pe două segmente, la fiecare cadru).
+    * Piciorul drept e pe accelerație, stângul lângă pedale.
+    * Privind în jos îți vezi brațele, genunchii și picioarele. Din spatele mașinii (V) se vede șoferul întreg, cu cap, prin geamuri.
 
 ## Multiplayer (alpha, V71–V72): tu și un prieten în aceeași lume
 
@@ -952,7 +964,9 @@ src/hero.js           casa din poze (fațadă, prispă, verandă, foișor, poart
 src/world.js          stradă, vecini, stâlpi, fire, mașini parcate, vegetație
 src/cars.js           caroserii parametrice   src/vehicle.js  fizica mașinii
 src/maybach.js        Mercedes-Maybach GLS 600   src/doblo.js  Fiat Doblò Cargo (dubița de la sonde)
-src/interior.js       interioarele mașinilor: bord, ceasuri cu ace, volan, scaune, uși, căptușeală
+src/interior.js       interioarele mașinilor: bord, ceasuri cu ace, volan, scaune, uși, căptușeală, parbrizul văzut din scaun
+src/mirror.js         oglinzile: retrovizoarea și oglinzile laterale arată ce e în spate (randate din ochiul oglindit)
+src/driver.js         tu la volan: mâinile pe volan, brațele, picioarele pe pedale
 src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { TEX } from './textures.js';
 import { M } from './materials.js';
-import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
+import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildCabin } from './interior.js';
 
 // Geometry pieces [geometry, material (or one per group), matrix?] -> one non-indexed geometry with a single group
@@ -203,6 +203,54 @@ export function windscreenSpan(m) {
   return [a, b];
 }
 
+// the windscreen as its wipers know it (windshield.js draws them sweeping in the rain, buildCar parks them): a plane
+// from the middle of its lower edge B (where the body turns to glass) up to the middle of its upper edge T, its
+// half widths there, and the two wipers in tandem (left-hand drive) - each [pivot across, pivot up the slope (m),
+// blade from, to (m from the pivot)], parked at 0.07 rad, sweeping up to 1.85 / 1.65
+export const WIPER_REST = 0.07, WIPER_TOP = [1.85, 1.65];
+const WIPER_GLASS = new WeakMap();
+export function wiperGlass(m) {
+  let w = WIPER_GLASS.get(m);
+  if (w) return w;
+  let s0 = m.wind[0];
+  while (s0 < m.wind[1] - 0.2 && profileAt(m, s0).cab < 0.3) s0 += 0.01;
+  const s1 = m.wind[1] - 0.03, p0 = profileAt(m, s0), p1 = profileAt(m, s1);
+  const hwOf = (p) => { const hwr = Math.min(m.hwr, p.hw * 0.9); return p.hw * 0.25 + (hwr * 0.84 - p.hw * 0.25) * Math.min(1, p.cab); };
+  const B = new THREE.Vector3(0, p0.roof + 0.008, s0 - m.L / 2), T = new THREE.Vector3(0, p1.roof + 0.008, s1 - m.L / 2);
+  const Lv = B.distanceTo(T), hwB = hwOf(p0), hwT = hwOf(p1), Wg = 2 * hwT;
+  const W = [[-0.3 * Wg, -0.04, 0.18 * Wg, Math.min(0.66 * Wg, 1.02 * Lv)], [0.06 * Wg, -0.04, 0.12 * Wg, Math.min(0.48 * Wg, 0.82 * Lv)]];
+  w = { s0, s1, B, T, Lv, hwB, hwT, Wg, W };
+  WIPER_GLASS.set(m, w);
+  return w;
+}
+// the wipers parked at the windscreen's foot (a model's own sides bring their own: doblo.js): each arm from its pivot
+// cap on the scuttle to the blade's middle, the blade with its rubber lying on the glass - one mesh per model
+const WIPERS = new WeakMap();
+function wiperGeometry(m) {
+  if (WIPERS.has(m)) return WIPERS.get(m);
+  const { B, T, W } = wiperGlass(m);
+  const V = T.clone().sub(B).normalize(), U = new THREE.Vector3(1, 0, 0), N = new THREE.Vector3().crossVectors(V, U);   // (outward: forward and up)
+  const at = (x, y, h) => B.clone().addScaledVector(U, x).addScaledVector(V, y).addScaledVector(N, h);
+  const dir = U.clone().multiplyScalar(Math.cos(WIPER_REST)).addScaledVector(V, Math.sin(WIPER_REST)).normalize(), side = new THREE.Vector3().crossVectors(dir, N);
+  const bar = (len, thick, wide, x, y, h) => {
+    const g = new THREE.BoxGeometry(len, thick, wide);
+    g.applyMatrix4(new THREE.Matrix4().makeBasis(dir, N, side).setPosition(at(x, y, h)));
+    return g;
+  };
+  const parts = [];
+  for (const [px, py, b0, b1] of W) {
+    const c = Math.cos(WIPER_REST), s = Math.sin(WIPER_REST), along = (r) => [px + c * r, py + s * r];
+    parts.push(bar(b0 + 0.02, 0.012, 0.014, ...along((b0 + 0.02) / 2), 0.022));       // the arm
+    parts.push(bar(b1 - b0, 0.016, 0.02, ...along((b0 + b1) / 2), 0.009));             // the blade
+    const cap = new THREE.CylinderGeometry(0.017, 0.02, 0.025, 12);
+    cap.applyMatrix4(new THREE.Matrix4().makeBasis(side, N, dir).setPosition(at(px, py, 0.012)));
+    parts.push(cap);
+  }
+  const g = mergeGeometries(parts.map(p => p.toNonIndexed()));
+  WIPERS.set(m, g);
+  return g;
+}
+
 function carBodyGeometry(m) {
   const stations = stationsOf(m);
   const ring = 10 + 8;
@@ -368,15 +416,25 @@ export function buildCar(modelKey, paint, plateKey) {
   add(pg, plateMat, 0, pfy, pfz, m.plates?.frontTilt ?? 0, Math.PI, 0);
   add(pg, plateMat, m.plates?.rearX ?? 0, pry, prz, m.plates?.rearTilt ?? 0);
   // mirrors, door handles and shut lines (a model with sides of its own draws them itself: doblo.js)
+  const mirrors = [];
+  // (the driver's eyes, as vehicle.js headPos() has them: the door mirrors are set from there)
+  const eye = new THREE.Vector3(-0.37, m.eyeY ?? Math.max(...m.belt.map(b => b[1])) + 0.22, m.pillars[0] - 0.06 - m.L / 2);
   // (a door mirror: its painted shell, wider than tall, out from the door's front corner on a black foot; its glass on
   // the back, turned a little toward the driver - what the driver sees of it)
   if (!m.ownSides) for (const sg of [-1, 1]) {
     const s = m.wind[0] + 0.12;
     const p = profileAt(m, s);
     const [mw, mh] = m.mirror ?? [0.2, 0.12];
-    const cx = sg * (p.hw + 0.05 + mw / 2), cy = p.belt + 0.075, cz = zAt(s), ry = -sg * 0.2;
+    const cx = sg * (p.hw + 0.05 + mw / 2), cy = p.belt + 0.075, cz = zAt(s);
+    // set as a driver sets it: its glass's normal halves the angle between the eye and a level ray back past the car's
+    // flank, a few degrees out (the flank just at the glass's inner edge; the passenger's convex one shows more)
+    const toEye = eye.clone().sub(new THREE.Vector3(cx, cy, cz)).normalize(), back = new THREE.Vector3(sg * (sg < 0 ? 0.055 : 0.09), 0, 1).normalize();
+    const nG = toEye.add(back).normalize(), ry = Math.atan2(nG.x, nG.z), rx = -Math.asin(nG.y);
+    const glass = (o) => new THREE.Matrix4().compose(new THREE.Vector3(cx + Math.sin(ry) * o, cy, cz + Math.cos(ry) * o),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, 0, 'YXZ')), new THREE.Vector3(1, 1, 1));
     add(roundedRectGeo(mw, mh, Math.min(0.045, mh / 2 - 0.01), 0.06), paint, cx, cy, cz, 0, ry, 0);
-    add(new THREE.PlaneGeometry(mw - 0.024, mh - 0.024), S.mirror, cx + Math.sin(ry) * 0.04, cy, cz + Math.cos(ry) * 0.04, 0, ry, 0);
+    rigid.push([new THREE.PlaneGeometry(mw - 0.024, mh - 0.024), S.mirror, glass(0.04)]);
+    mirrors.push({ w: mw - 0.024, h: mh - 0.024, side: sg, m: glass(0.041) });   // (its glass: mirror.js)
     add(new THREE.BoxGeometry(0.1, 0.04, 0.06), S.trim, sg * (p.hw + 0.03), p.belt + 0.045, cz);
   }
   if (!m.ownSides) for (const sg of [-1, 1]) for (const s of [m.pillars[0] - 0.2, m.pillars[1] - 0.25]) {
@@ -393,12 +451,16 @@ export function buildCar(modelKey, paint, plateKey) {
   // exhaust
   if (!m.details) add(new THREE.CylinderGeometry(0.035, 0.035, 0.15, 10), S.chrome, -0.5, 0.26, zAt(m.L) + 0.02, Math.PI / 2, 0, 0);
   // a model's own details (grille, lamps, trim, its cabin: maybach.js), merged with the body like the rest
-  m.details?.({ add, S, paint, zAt, prof: (s) => profileAt(m, s), surfaceS, headMat, tailMat, rigid });
+  m.details?.({ add, S, paint, zAt, prof: (s) => profileAt(m, s), surfaceS, headMat, tailMat, rigid, mirrors });
 
   // the cabin (interior.js): dashboard and instruments, steering wheel, seats, door cards, headliner - its own meshes,
   // which a car far away hides (main.js)
   const cabin = buildCabin(modelKey, m, raw.body, raw.caps);
   bodyPivot.add(cabin.group);
+  // the parked wipers, with the cabin (drawn up to 16 m away, like it: main.js); the rain's sweeping ones replace them
+  // in the cockpit (windshield.js)
+  const wipers = m.ownSides || !m.wind ? null : new THREE.Mesh(wiperGeometry(m), S.trim);
+  if (wipers) { wipers.castShadow = true; wipers.receiveShadow = true; cabin.group.add(wipers); }
   const steer = cabin.steer;
 
   // wheels
@@ -518,7 +580,7 @@ export function buildCar(modelKey, paint, plateKey) {
   // (a car's materials are its own: rain.js leaves its lenses and badges alone inside the car you are in)
   group.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.userData.car = true; });
   return {
-    group, bodyPivot, wheels, setWheels, steer, cabin, model: m,
+    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,
     half: { w: m.W / 2 + 0.05, l: m.L / 2 },
   };

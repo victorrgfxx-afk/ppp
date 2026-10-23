@@ -33,6 +33,8 @@ import { HUD } from './hud.js';
 import { createComposer } from './post.js';
 import { Net, clean } from './net.js';
 import { RemotePlayers, seatPos } from './remote.js';
+import { Mirrors } from './mirror.js';
+import { Driver } from './driver.js';
 import { Share } from './share.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
@@ -423,6 +425,9 @@ async function main() {
   const audio = new Audio();
   const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
   const post = createComposer(renderer, scene, camera, Q, farScene);
+  const mirrors = Q.ssr ? new Mirrors(renderer, scene, farScene) : null;   // (the mirrors' images: Medium and up)
+  if (mirrors) mirrors.off = store.get('mirrors', 'real') !== 'real';
+  const driver = new Driver();
   const taaMover = { obj: null, min: new THREE.Vector3(), max: new THREE.Vector3() };
   vision = post.vision;
   gradeU = post.grade.uniforms;
@@ -551,7 +556,7 @@ async function main() {
   let mode = 'foot';       // 'foot' | 'car'
   let active = null;       // vehicle being driven
   let camMode = store.get('camMode', 'chase');
-  let glassCar = null;
+  let glassCar = null, wipedCar = null;
   const glassQ = new THREE.Quaternion(), glassSun = new THREE.Vector3(), glassSunC = new THREE.Color(), glassSky = new THREE.Color();
   let photoFov = null;      // zoomed photo views keep the lens' field of view until you walk away
   const orbit = { yaw: 0, pitch: 0.18, idle: 0 };
@@ -786,6 +791,14 @@ async function main() {
     el.addEventListener('change', (e) => {
       mblur = +e.target.value || 0; store.set('mblur', mblur);
       for (const s2 of ['', '2']) if ($('mblur' + s2)) $('mblur' + s2).value = String(mblur);
+    });
+  }
+  for (const sfx of ['', '2']) {
+    const el = $('mirrors' + sfx); if (!el) continue;
+    el.value = store.get('mirrors', 'real');
+    el.addEventListener('change', (e) => {
+      store.set('mirrors', e.target.value); if (mirrors) mirrors.off = e.target.value !== 'real';
+      for (const s2 of ['', '2']) if ($('mirrors' + s2)) $('mirrors' + s2).value = e.target.value;
     });
   }
   $('mute').addEventListener('click', () => { audio.setMuted(!audio.muted); $('mute').textContent = audio.muted ? 'Sunet: oprit' : 'Sunet: pornit'; });
@@ -1507,11 +1520,14 @@ async function main() {
       }
     }
     post.grade.uniforms.uTime.value = t;
+    // you at the wheel (driver.js): hands on the wheel as it turns, arms, legs; the head only seen from outside
+    driver.attach(mode === 'car' && active?.car.cabin ? active : null);
+    driver.update(camMode !== 'cockpit');
     scene.updateMatrixWorld();
     // the windscreen's inside (interior.js) only from a seat in the car, the dash it mirrors lit as the light outside
     // falls on it (the sun or the moon in the car's frame, the sky's light, as the far land has it: geo/terrain.js)
+    const seat = mode === 'car' && active && camMode === 'cockpit' ? active : riding;
     {
-      const seat = mode === 'car' && active && camMode === 'cockpit' ? active : riding;
       if (glassCar !== seat) { if (glassCar?.car.cabin?.screen) glassCar.car.cabin.screen.visible = false; glassCar = seat; }
       const cab = seat?.car.cabin;
       if (cab?.screen) {
@@ -1522,6 +1538,9 @@ async function main() {
       }
     }
     post.shield.update(paused ? 0 : dt, { on: mode === 'car' && !!active && camMode === 'cockpit', rate: (weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value, car: active, camera, pupil: rainFX.pupil.value });
+    // (the parked wipers give way to the sweeping ones the rain pass draws: cars.js, windshield.js)
+    const wiping = post.shield.enabled ? active : null;
+    if (wipedCar !== wiping) { if (wipedCar?.car.wipers) wipedCar.car.wipers.visible = true; if (wiping?.car.wipers) wiping.car.wipers.visible = false; wipedCar = wiping; }
     // the camera's motion blur (a recording that sets the lens itself marks it manual); a jump of the camera - a view
     // picked, into or out of a car, another camera mode - is a cut, not a smear
     if (!post.cine.manual) {
@@ -1558,6 +1577,9 @@ async function main() {
         post.taa.mover = taaMover;
       } else post.taa.mover = null;
     }
+    // the mirrors show what is behind (mirror.js): from a seat in the car, one of them each frame
+    // (one mirror every other frame, to 200 m: farther, a mirror shows the far relief and the sky)
+    if (mirrors) { mirrors.attach(seat, !mirrors.off); if (frameNo & 1) mirrors.update(camera, 200); }
     post.composer.render(dt);
     perf.end();
     input.endFrame();
@@ -1575,7 +1597,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

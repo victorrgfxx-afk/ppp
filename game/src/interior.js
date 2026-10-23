@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { mergeByMaterial, profileAt, section, windscreenSpan } from './cars.js';
+import { mergeByMaterial, profileAt, section, windscreenSpan, wiperGlass } from './cars.js';
 
 // The cars' cabins, from the driver's seat (V) and through the windows: built for each model from its lofted body
 // (cars.js) and the layout of the real interior (photos of the E90, the Corsa C, the 508, the Kangoo II, the T5 and
@@ -491,7 +491,7 @@ function navTextures() {
 
 // ---- the surface textures, grey, tinted by each material's colour (shared by all the models)
 const TX = {};
-function surfTex(key) {
+export function surfTex(key) {
   if (TX[key]) return TX[key];
   const n = key === 'wood' ? 512 : 256, c = document.createElement('canvas'); c.width = n; c.height = key === 'wood' ? 128 : n;
   const g = c.getContext('2d'), img = g.createImageData(c.width, c.height), D = img.data, r = rng(key.length * 977 + 3);
@@ -748,7 +748,21 @@ uniform vec3 uCam;                    // the eye, in the car's frame
 uniform vec4 uDash;                   // the dash's top: its height at the lip, its slope (dy/dz), the lip's z, the glass foot's z
 uniform float uDashW;
 uniform vec3 uDashRad, uCabRad;       // how bright the dash's top is; the rest of the cabin
+uniform vec3 uSunL, uSunE;            // the sun (or the moon) in the car's frame; its light
+uniform vec4 uW0, uW1;                // the wipers (cars.js wiperGlass): pivot across, up the slope; blade from, to (m)
+uniform float uWOff;                  // (their glass's foot, up the slope from this one's)
 ${WS_COMMON}
+float wsHash(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float wsNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(wsHash(i), wsHash(i + vec2(1.0, 0.0)), f.x), mix(wsHash(i + vec2(0.0, 1.0)), wsHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+// how much of a wiper's sweep a point is in (it parks at 0.07 rad and goes up to top)
+float swept(vec2 g, vec4 w, float top) {
+  vec2 d = g - vec2(w.x, w.y + uWOff);
+  float r = length(d), a = atan(d.y, d.x);
+  return smoothstep(w.z - 0.04, w.z, r) * (1.0 - smoothstep(w.w, w.w + 0.04, r)) * (1.0 - smoothstep(top, top + 0.06, a)) * smoothstep(-0.06, 0.04, a);
+}
 void main() {
   vec3 V = normalize(vP - uCam), N = normalize(vN);
   if (dot(N, V) > 0.0) N = -N;
@@ -766,6 +780,22 @@ void main() {
     }
   }
   vec3 col = F * refl;
+  // the film a windscreen gathers (dust, a wiper's smear; ~1 % of the light through it scattered: haze in ASTM D1003's
+  // sense - cleaner where the blades go, thicker in the corners they miss, the arcs of their strokes in it), lit by
+  // the sun from outside and scattering it forward (Henyey-Greenstein, g = 0.7): a veil toward a low sun, nothing
+  // away from it. Single scattering in a thin layer: the sun's light x its depth along the view x the phase.
+  float lit = smoothstep(0.0, 0.08, dot(-N, uSunL));
+  if (lit > 0.0) {
+    float mu = dot(V, uSunL), g = 0.7, hg = (1.0 - g * g) / (12.566 * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
+    vec2 q = vE.xy;
+    float sA = swept(q, uW0, 1.85), sB = swept(q, uW1, 1.65), sw = max(sA, sB);
+    float film = 0.55 + 0.7 * wsNoise(q * 7.0) * wsNoise(q * 23.0 + 3.1) + 0.25 * wsNoise(q * 61.0);
+    // (the arcs: the blade leaves fine concentric streaks where it wipes)
+    float r = sA >= sB ? length(q - vec2(uW0.x, uW0.y + uWOff)) : length(q - vec2(uW1.x, uW1.y + uWOff));
+    float arcs = 0.8 + 0.45 * wsNoise(vec2(r * 110.0, atan(q.y, q.x - uW0.x) * 4.0)) * wsNoise(vec2(r * 37.0 + 5.0, q.x * 6.0));
+    float tau = 0.012 * film * mix(1.6, 0.55 * arcs, sw);
+    col += uSunE * lit * tau * hg / max(0.15, abs(dot(N, V))) * (1.0 - frit());
+  }
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -779,7 +809,9 @@ function windscreenMats(spec, dash) {
     transparent: true, depthWrite: false, blending: THREE.MultiplyBlending, premultipliedAlpha: true, toneMapped: false });
   const add = new THREE.ShaderMaterial({ vertexShader: WS_VERT, fragmentShader: WS_ADD, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     uniforms: { ...u, uCam: { value: V3() }, uDash: { value: new THREE.Vector4(...dash.plane) }, uDashW: { value: dash.w },
-      uDashRad: { value: new THREE.Color(0, 0, 0) }, uCabRad: { value: new THREE.Color(0, 0, 0) } } });
+      uDashRad: { value: new THREE.Color(0, 0, 0) }, uCabRad: { value: new THREE.Color(0, 0, 0) },
+      uSunL: { value: V3(0, 1, 0) }, uSunE: { value: new THREE.Color(0, 0, 0) },
+      uW0: { value: new THREE.Vector4(...dash.wipers.W[0]) }, uW1: { value: new THREE.Vector4(...dash.wipers.W[1]) }, uWOff: { value: dash.wipers.off } } });
   for (const m of [mul, add]) { m.side = THREE.DoubleSide; m.userData.noWet = true; }
   add.userData.dashAlbedo = new THREE.Color(spec.col.top);              // (sRGB in, linear here)
   return [mul, add];
@@ -838,7 +870,7 @@ export function buildCabin(key, m, body, caps) {
   group.traverse(o => { if (o !== face) o.updateMatrix(); o.matrixAutoUpdate = false; });
   let state = '';
   const cabin = {
-    group, steer, info: k.info, screen,
+    group, steer, info: k.info, screen, mirror: k.mirrorAt, pkg: k.pkg,
     // the light on the dash the windscreen mirrors (main.js): the sun's direction in the car's frame, its light and
     // the sky's (irradiance, as three.js has it: a surface's radiance is albedo / pi times it)
     lightGlass(sunLocal, sunC, skyC) {
@@ -850,6 +882,7 @@ export function buildCabin(key, m, body, caps) {
       const d = vis * Math.max(0, sunLocal.y) / Math.PI;
       u.uDashRad.value.setRGB(a.r * (sunC.r * d + skyC.r * 0.4 / Math.PI), a.g * (sunC.g * d + skyC.g * 0.4 / Math.PI), a.b * (sunC.b * d + skyC.b * 0.4 / Math.PI));
       u.uCabRad.value.copy(skyC).multiplyScalar(0.12 * 0.12 / Math.PI);
+      u.uSunL.value.copy(sunLocal).normalize(); u.uSunE.value.copy(sunC);
     },
     // the needles: the speed, the revs, the fuel and the temperature (at rest with the engine off); the dials' light
     // (by day the needles and a little of the scales, at night all of it); the navigation: its map, or NO SIGNAL
@@ -1211,10 +1244,16 @@ function makeCabin(m, spec, body, caps) {
   }
 
   // ---- under the roof: the mirror on the windscreen, the sun visors, the dome light
+  let mirrorAt = null;
   {
-    const sM = m.wind[1] - 0.06, yR = glassY(m.wind[1]);
-    put(rbox(0.25, 0.07, 0.035, 0.02, 2), mats.trim, pose(0, yR - 0.14, zA(sM + 0.02), -0.05, -0.12));
-    put(new THREE.PlaneGeometry(0.23, 0.055), mats.mirror, pose(0, yR - 0.14, zA(sM + 0.038), -0.05, -0.12));
+    // (set as a driver sets it: its glass's normal halves the angle between the eye and the middle of the rear window)
+    const sM = m.wind[1] - 0.06, yR = glassY(m.wind[1]), sR = (m.rear[0] + m.rear[1]) / 2, pR = profileAt(m, sR);
+    const P = V3(0, yR - 0.14, zA(sM + 0.02)), nG = eyeP.clone().sub(P).normalize().add(V3(0, (pR.roof + pR.belt) / 2, zA(sR)).sub(P).normalize()).normalize();
+    const aim = (o) => new THREE.Matrix4().compose(P.clone().add(V3(0, 0, o).applyEuler(new THREE.Euler(-Math.asin(nG.y), Math.atan2(nG.x, nG.z), 0, 'YXZ'))),
+      new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.asin(nG.y), Math.atan2(nG.x, nG.z), 0, 'YXZ')), V3(1, 1, 1));
+    put(rbox(0.25, 0.07, 0.035, 0.02, 2), mats.trim, aim(0));
+    put(new THREE.PlaneGeometry(0.23, 0.055), mats.mirror, aim(0.018));
+    mirrorAt = { w: 0.23, h: 0.055, m: aim(0.019) };   // (its glass: mirror.js)
     put(new THREE.CylinderGeometry(0.008, 0.01, 0.1, 8), mats.trim, pose(0, yR - 0.08, zA(sM - 0.01), 0.5));
     // (the sun visors folded up flat under the headliner: padded, round-cornered, their hinge rod going up into the
     // roof at the outer end, a clip holding the inner one)
@@ -1244,8 +1283,13 @@ function makeCabin(m, spec, body, caps) {
   const shell = shellGeo(m, body, caps, spec.col);
   // the windscreen from inside, and the dash's top it mirrors: its height at the lip, slope, lip and foot
   const screen = windscreenGeo(m, eyeP, zA);
+  // (the wipers' glass, cars.js, measured from this one's foot)
+  const wg = wiperGlass(m), sF = windscreenSpan(m)[0];
+  const wOff = sF === null ? 0 : Math.sign(wg.s0 - sF) * Math.hypot(wg.s0 - sF, wg.B.y - 0.008 - section(m, sF)[9][1]);
   const dashPlane = [ey - T, 0.05, zA(es - D), zA(es - dG)], dashW = Math.max(0.3, halfAt(es - (D + dG) / 2, ey - T) - 0.06);
   const info = { T, D, dG: +dG.toFixed(3), hsR: hsR && +hsR.toFixed(2), rear: rearFit, tris: (rigid.geo.attributes.position.count + wheel.geo.attributes.position.count + shell.attributes.position.count) / 3,
     draws: rigid.geo.groups.length + 1 + wheel.geo.groups.length + dials.length };
-  return { mats, rigid, wheel, shell, phone, wheelAt, tilt, faceM, dials, info, screen, screenMats: screen && windscreenMats(spec, { plane: dashPlane, w: dashW }) };
+  return { mats, rigid, wheel, shell, phone, wheelAt, tilt, faceM, dials, info, screen, screenMats: screen && windscreenMats(spec, { plane: dashPlane, w: dashW, wipers: { W: wg.W, off: wOff } }), mirrorAt,
+    // (the driver's package, for the driver at the wheel: driver.js)
+    pkg: { eye: eyeP.clone(), hip: V3(ex, hy, zA(hs)), floor: yF, wheelAt: wheelAt.clone(), tilt, R, tube, pedalZ: zA(es - D - 0.2), accX: ex + 0.13, restX: spec.gear === 'auto' || spec.gear === 'column' ? ex - 0.2 : ex - 0.33 } };
 }
