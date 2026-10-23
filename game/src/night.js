@@ -130,21 +130,35 @@ export class Headlights {
 
 // Lightning in a night storm: a strike every 6-22 s, 2-4 flickers, thunder after the sound has travelled.
 export class Lightning {
-  constructor(onThunder) { this.next = 4; this.t = 0; this.seq = []; this.onThunder = onThunder; this.level = 0; }
+  constructor(onThunder) { this.next = 4; this.t = 0; this.seq = []; this.onThunder = onThunder; this.level = 0; this.n = 0; this.bolt = null; }
   update(dt, active) {
     this.level = 0;
     if (!active) { this.seq.length = 0; return 0; }
     this.t += dt;
     this.next -= dt;
-    if (this.next <= 0) {
+    // (with a friend's game running the world, its bolts: follow())
+    if (this.next <= 0 && !this.puppet) {
       this.next = 6 + Math.random() * 16;
       const n = 2 + Math.floor(Math.random() * 3), dist = 0.4 + Math.random() * 3.5;   // km
       let at = this.t;
-      for (let i = 0; i < n; i++) { this.seq.push([at, 0.05 + Math.random() * 0.07, i === 0 ? 1 : 0.4 + Math.random() * 0.6]); at += 0.07 + Math.random() * 0.16; }
+      const flashes = [];
+      for (let i = 0; i < n; i++) { const f = [at, 0.05 + Math.random() * 0.07, i === 0 ? 1 : 0.4 + Math.random() * 0.6]; this.seq.push(f); flashes.push(f); at += 0.07 + Math.random() * 0.16; }
       this.onThunder?.(dist / 0.343, dist);                       // seconds until it is heard
+      // the bolt for the friend's game: [id, km x 10, (start ms, length ms, strength %) each flash]
+      this.bolt = [++this.n, Math.round(dist * 10), flashes.flatMap(([a, l, k]) => [Math.round((a - this.t) * 1000), Math.round(l * 1000), Math.round(k * 100)])];
     }
     for (const [at, len, k] of this.seq) if (this.t >= at && this.t < at + len) this.level = Math.max(this.level, k);
     this.seq = this.seq.filter(([at, len]) => this.t < at + len + 0.01);
     return this.level;
+  }
+  // the host's bolt (share.js), when a new one comes: its flashes from now, its thunder
+  follow(b) {
+    // (none yet at the host: the first one to come is new)
+    if (!Array.isArray(b)) { this.seen ??= 0; return; }
+    if (b[0] === this.seen) return;
+    const first = this.seen === undefined; this.seen = b[0];
+    if (first) return;
+    for (let i = 0; i + 2 < b[2].length; i += 3) this.seq.push([this.t + b[2][i] / 1000, b[2][i + 1] / 1000, b[2][i + 2] / 100]);
+    this.onThunder?.(b[1] / 10 / 0.343, b[1] / 10);
   }
 }

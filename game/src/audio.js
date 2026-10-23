@@ -75,9 +75,27 @@ export class Audio {
     const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 120;
     const rg = ctx.createGain(); rg.gain.value = 0.03;
     rn.connect(rf).connect(rg).connect(this.master); rn.start();
-    // engine
-    this.eng = {};
-    const e = this.eng;
+    // engine (yours, and a friend's car: multiplayer)
+    this.eng = this.engine(ctx);
+    this.eng2 = this.engine(ctx);
+    // tyre squeal
+    const sq = ctx.createBufferSource(); sq.buffer = this.noise; sq.loop = true;
+    const sf = ctx.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 2400; sf.Q.value = 6;
+    this.squeal = ctx.createGain(); this.squeal.gain.value = 0;
+    sq.connect(sf).connect(this.squeal).connect(this.master); sq.start();
+    // horn (yours, a friend's)
+    this.horn = this.hornVoice(ctx);
+    this.horn2 = this.hornVoice(ctx);
+  }
+  hornVoice(ctx) {
+    const g = ctx.createGain(); g.gain.value = 0;
+    const hf = ctx.createBiquadFilter(); hf.type = 'lowpass'; hf.frequency.value = 1800;
+    for (const f of [415, 510]) { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(hf); o.start(); }
+    hf.connect(g).connect(this.master);
+    return g;
+  }
+  engine(ctx) {
+    const e = {};
     e.o1 = ctx.createOscillator(); e.o1.type = 'sawtooth';
     e.o2 = ctx.createOscillator(); e.o2.type = 'square';
     e.o3 = ctx.createOscillator(); e.o3.type = 'triangle';
@@ -91,16 +109,16 @@ export class Audio {
     e.o1.connect(e.g1).connect(e.shaper); e.o2.connect(e.g2).connect(e.shaper); e.o3.connect(e.g3).connect(e.shaper);
     e.shaper.connect(e.lp).connect(e.out).connect(this.master);
     e.o1.start(); e.o2.start(); e.o3.start();
-    // tyre squeal
-    const sq = ctx.createBufferSource(); sq.buffer = this.noise; sq.loop = true;
-    const sf = ctx.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 2400; sf.Q.value = 6;
-    this.squeal = ctx.createGain(); this.squeal.gain.value = 0;
-    sq.connect(sf).connect(this.squeal).connect(this.master); sq.start();
-    // horn
-    this.horn = ctx.createGain(); this.horn.gain.value = 0;
-    const hf = ctx.createBiquadFilter(); hf.type = 'lowpass'; hf.frequency.value = 1800;
-    for (const f of [415, 510]) { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(hf); o.start(); }
-    hf.connect(this.horn).connect(this.master);
+    return e;
+  }
+  // an engine voice at rpm and throttle, at gain k (0: silent)
+  drive(e, now, rpm, throttle, k) {
+    const f = rpm / 60 * 2;
+    e.o1.frequency.setTargetAtTime(f, now, 0.03);
+    e.o2.frequency.setTargetAtTime(f * 0.5, now, 0.03);
+    e.o3.frequency.setTargetAtTime(f * 2.02, now, 0.03);
+    e.lp.frequency.setTargetAtTime(350 + rpm * 0.28 + Math.abs(throttle) * 900, now, 0.05);   // (braking / reverse: the pedal is -1; a negative cutoff silenced the engine)
+    e.out.gain.setTargetAtTime((0.06 + Math.abs(throttle) * 0.1 + rpm / 60000) * k, now, 0.08);
   }
   setMuted(m) { this.muted = m; if (this.master) this.master.gain.value = m ? 0 : 0.9; }
   burst({ f = 1000, q = 1, dur = 0.07, gain = 0.2, type = 'bandpass', delay = 0, rate = 1 }) {
@@ -313,13 +331,12 @@ export class Audio {
     this.nextBird -= dt;
     if (this.nextBird <= 0) { if (rain < 0.2 && !(st.snow > 0.2) && !(st.night > 0.5)) this.chirp(Math.random() * 2 - 1); this.nextBird = (st.snowCover > 0.5 ? 6 : 1.5) + Math.random() * 6; }   // (no birdsong in a downpour, while it snows or at night; little in winter)
     const e = this.eng;
+    // the nearest friend's car (multiplayer): its engine and horn, fainter with the distance
+    const fr = st.friend, k2 = fr ? 1 / (1 + fr.d / 9) : 0;
+    if (fr) this.drive(this.eng2, now, fr.rpm, fr.throttle, k2); else this.eng2.out.gain.setTargetAtTime(0, now, 0.2);
+    this.horn2.gain.setTargetAtTime(fr?.horn ? 0.12 * k2 : 0, now, 0.01);
     if (st.driving) {
-      const f = st.rpm / 60 * 2;
-      e.o1.frequency.setTargetAtTime(f, now, 0.03);
-      e.o2.frequency.setTargetAtTime(f * 0.5, now, 0.03);
-      e.o3.frequency.setTargetAtTime(f * 2.02, now, 0.03);
-      e.lp.frequency.setTargetAtTime(350 + st.rpm * 0.28 + Math.abs(st.throttle) * 900, now, 0.05);   // (braking / reverse: the pedal is -1; a negative cutoff silenced the engine)
-      e.out.gain.setTargetAtTime(0.06 + Math.abs(st.throttle) * 0.1 + st.rpm / 60000, now, 0.08);
+      this.drive(e, now, st.rpm, st.throttle, 1);
       this.squeal.gain.setTargetAtTime(Math.max(0, Math.min(0.25, (Math.abs(st.slip) - 2.5) * 0.05)) * (1 - 0.85 * this.snowCover), now, 0.05);   // (no squeal on snow)
       this.horn.gain.setTargetAtTime(st.horn ? 0.12 : 0, now, 0.01);
     } else {

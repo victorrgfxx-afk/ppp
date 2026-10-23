@@ -33,6 +33,7 @@ import { HUD } from './hud.js';
 import { createComposer } from './post.js';
 import { Net, clean } from './net.js';
 import { RemotePlayers, seatPos } from './remote.js';
+import { Share } from './share.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
@@ -542,6 +543,9 @@ async function main() {
   // the animals of the woods and the birds (wildlife.js, birds.js)
   const wildlife = new Wildlife(scene, world, { audio, quality: Q.label });
   const birds = new Birds(scene, world, { audio });
+  // multiplayer: one game runs all of these for both of you, the other draws them as they are there (share.js)
+  const share = new Share({ wildlife, birds, bear, walkers, lightning, forest, hikers, dogs });
+  walkers.forEach((w, i) => { w.onHit = (car, push) => share.knocked(mp, i, car, push); });
   applyWeather(weatherKey);
 
   let mode = 'foot';       // 'foot' | 'car'
@@ -1086,7 +1090,7 @@ async function main() {
     const k = Math.min(1, Math.max(0.04, 5 / Math.max(d, 1)));            // fainter with the distance
     if (n === 'shriek') audio.shriek(k); else if (n === 'thud') audio.thud(k); else if (n === 'growl') audio.bear(false, d); else audio.rustle(n === 'rustle-big' ? 9 : 4, k);
   };
-  // ---------- multiplayer: riding along, going to the friend, a line of chat ----------
+  // ---------- multiplayer: riding along, going to the friend ----------
   const ride = (car, who) => {
     if (mode === 'car') exitCar(true);
     if (player.noclip) player.setNoclip(false);
@@ -1119,34 +1123,6 @@ async function main() {
     player.setPose(x, z, yaw, 0); player.collide();
     hud.toast('Lângă ' + fr.name, 2);
   };
-  const chatLog = $('chatLog'), chatIn = $('chatIn');
-  const chatLine = (who, text, mine) => {
-    if (!chatLog) return;
-    const d = document.createElement('div'), b = document.createElement('b');
-    b.textContent = who + ': '; b.style.color = mine ? '#9fd3ff' : '#ffd23f';
-    d.append(b, document.createTextNode(text));
-    chatLog.append(d);
-    while (chatLog.children.length > 6) chatLog.firstChild.remove();
-    setTimeout(() => d.remove(), 12000);
-  };
-  mp.onChat = (r, text) => { chatLine(mp.nameOf(r), text, false); audio.burst({ f: 1600, q: 8, dur: 0.09, gain: 0.06 }); };
-  let chatOpen = false;
-  const openChat = () => {
-    if (!chatIn || !mp.room) return;
-    chatOpen = true; input.enabled = false; input.keys.clear();
-    chatIn.value = ''; chatIn.classList.add('on'); chatIn.focus();
-  };
-  const closeChat = () => { chatOpen = false; chatIn.classList.remove('on'); chatIn.blur(); if (started && !paused) input.enabled = true; };
-  chatIn?.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-      const t = chatIn.value.trim();
-      const sent = t && mp.chat(t);
-      if (sent) chatLine(mpNick || 'Eu', sent, true);
-      closeChat();
-    } else if (e.code === 'Escape') closeChat();
-  });
-  addEventListener('keydown', (e) => { if ((e.code === 'Enter' || e.code === 'NumpadEnter') && started && !paused && !chatOpen && mp.room) { e.preventDefault(); openChat(); } });
   // who came, who left (a line in the corner)
   const mpSeen = new Map();
   let mpStatusT = 0;
@@ -1241,7 +1217,7 @@ async function main() {
         const near = dog || player.noclip ? null : nearestCar();
         if (dog) {
           prompt = 'E — mângâie câinele';
-          if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); hud.toast('Câinele dă fericit din coadă'); }
+          if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); share.petted(mp, dogs.dogs.indexOf(dog)); hud.toast('Câinele dă fericit din coadă'); }
         } else if (near) {
           prompt = 'F — urcă în ' + near.name;
           if (input.hit('KeyF') || input.hit('KeyE')) enterCar(near);
@@ -1264,9 +1240,10 @@ async function main() {
       }
       // parked cars (and cars pushed by collisions) settle
       for (const v of vehicles) if (v !== active && !v.remote) v.update(dt, null);   // (a friend's car moves as they drive it: remote.js)
-      for (const w of walkers) w.update(dt);
     }
-    dogs.update(dt, t, camera.position);
+    // the villager: walked here, unless a friend's game runs the world (share.js); hosting it, even with the menu open
+    if ((!paused || share.role === 'host') && share.role !== 'guest') for (const w of walkers) w.update(dt);
+    dogs.update(dt, t, camera.position, share.heads());
 
     // camera for driving
     const fov0 = baseFov();
@@ -1320,8 +1297,16 @@ async function main() {
     }
     if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = damp(camera.fov, fov, 6, dt); camera.updateProjectionMatrix(); }
 
-    if (!paused) forest.update(dt, { ok: sceneTime(), px: pos0().x, pz: pos0().z, camera, sound: forestSound });
-    if (!paused) hikers.update(dt, { ok: clipTime(), px: pos0().x, pz: pos0().z, camera });
+    // who the world minds: you and the friends in the room (share.js); the world runs here (alone, or for them too: even
+    // with your menu open), or comes from the friend's game that runs it
+    const camYaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : riding ? riding.h + rideLook.yaw : player.yaw;
+    const people = share.people({ x: pos0().x, y: pos0().y, z: pos0().z, yaw: camYaw, car: mode === 'car' || !!riding, run: mode === 'foot' && !riding && (input.down('ShiftLeft') || input.down('ShiftRight') || !!input.touchRun),
+      torch: flashlight.on, me: true, peer: mp.myPeer }, mp);
+    share.setRole(mp.role, mp);
+    const worldRuns = share.role !== 'guest' && (!paused || share.role === 'host');
+    const forestCtx = { ok: sceneTime(), px: pos0().x, pz: pos0().z, people, camera, sound: forestSound }, hikersCtx = { ok: clipTime(), px: pos0().x, pz: pos0().z, people, camera };
+    if (share.role === 'guest') share.scenes(dt, forestCtx, hikersCtx, mp);
+    else if (worldRuns) { forest.update(dt, forestCtx); hikers.update(dt, hikersCtx); }
     sky.position.copy(camera.position);
     sky.material.uniforms.uDip.value = Math.sqrt(2 * Math.max(0, camera.position.y + AIR_H0) / FAR.uREff.value);
     // grass only near the camera (distance culling per 16 m chunk)
@@ -1360,10 +1345,12 @@ async function main() {
     {
       const g = active?.car.group.position;
       const meNow = mode === 'car' && active ? { f: 1, p: [g.x, g.y, g.z], a: [active.h, 0], v: active.mpKey,
-        c: [active.x, active.z, active.h, active.pitch, active.roll, active.steer, active.spin % (2 * Math.PI), active.speed, active.lightsOn ? 1 : 0, active.brake ? 1 : 0] }
+        c: [active.x, active.z, active.h, active.pitch, active.roll, active.steer, active.spin % (2 * Math.PI), active.speed, active.lightsOn ? 1 : 0, active.brake ? 1 : 0, active.rpm || 0, active.throttle || 0, hornOn ? 1 : 0] }
         : riding ? { f: 2, p: [riding.x, riding.car.group.position.y, riding.z], a: [riding.h + rideLook.yaw, rideLook.pitch], v: riding.mpKey }
           : { f: 0, p: [player.pos.x, player.pos.y, player.pos.z], a: [player.yaw, player.pitch] };
-      mp.update(dt, started ? meNow : null);
+      if (flashlight.on) meNow.o = 1;
+      mp.update(dt, started ? meNow : null, (budget) => share.encode(budget));
+      share.events(mp);
       // (both got in at the wheel of the same car at once: it goes to the one whose label sorts first)
       for (const c of others.update(dt, mp, { active, riding, fov: camera.fov })) if (mp.myPeer && c.peer < mp.myPeer && c.car === active) { exitCar(true); hud.toast('Prietenul tău a urcat primul la volan', 3); }
       const movedCars = others.moved(active);
@@ -1405,7 +1392,7 @@ async function main() {
       riverT = 0.5; riverK = geoWorld.water?.sound(camera.position) ?? 0;
       geoWorld.water?.setSun(Math.min(1, sun.intensity / 3.8) * sun.shadow.intensity * (1 - night));   // (the caustics: only in sunshine)
     }
-    audio.update(dt, { river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0 });
+    audio.update(dt, { river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position) });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -1466,7 +1453,7 @@ async function main() {
     else snowLee.off();
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
     // (and in a squall by day: a flash under the deck, less to it in the daylight)
-    const flash = lightning.update(dt, (horror === 1 || squall) && !paused) * (horror === 1 ? 1 : 0.3 + 0.7 * night);
+    const flash = lightning.update(dt, (horror === 1 || squall) && (!paused || share.role !== 'solo')) * (horror === 1 ? 1 : 0.3 + 0.7 * night);
     sky.material.uniforms.uFlash.value = flash;
     hemi.intensity = baseHemi + flash * 2.2; scene.environmentIntensity = baseEnv + flash * 1.4;
     moonBeam?.update(t, camera);
@@ -1486,6 +1473,7 @@ async function main() {
     // while it snows (in ~2.5 min, a blizzard's drift in ~1)
     if (SNOW.uSnow.value > 0.05) {
       if (mode === 'car' && active) trail.car(active, SNOW.uSnowDepth.value);
+      others.prints(trail, SNOW.uSnowDepth.value);                      // (a friend's steps and tyres: remote.js)
       for (const w of walkers) {
         const k = Math.floor(w.phase / Math.PI);
         if (w.down <= 0 && k !== w.stepK) { if (w.stepK !== undefined) trail.step({ x: w.x, z: w.z }, w.h + Math.PI, k & 1 ? 1 : -1, false, SNOW.uSnowDepth.value, w.feet ??= {}); w.stepK = k; }
@@ -1504,12 +1492,15 @@ async function main() {
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, Math.max(RAIN.uWet.value, SNOW.uSnow.value > 0.4 ? 0.85 : 0), rainLight + flash * 0.6, camera.position);
     // reflections in wet ground only when there is any (or a still puddle near: the oil wells' pad)
     if (post.ssr) post.ssr.enabled = (RAIN.uWet.value > 0.01 || geoWorld.mirrorNear(camera.position)) && !window.__game?.noSSR;
-    if (!paused) {
-      const pp = mode === 'car' && active ? active.car.group.position : player.pos;
-      bear?.update(dt, t, { active: horror === 1, px: pp.x, pz: pp.z, inCar: mode === 'car', torch: flashlight.on, camX: camera.position.x, camZ: camera.position.z });
-      const camYaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
-      wildlife.update(dt, t, { px: pp.x, pz: pp.z, camX: camera.position.x, camZ: camera.position.z, camYaw, camera, inCar: mode === 'car', running: mode === 'foot' && (input.down('ShiftLeft') || input.down('ShiftRight') || !!input.touchRun), night, winter, horror: horror > 0.5 });
-      birds.update(dt, t, { px: pp.x, pz: pp.z, camX: camera.position.x, camZ: camera.position.z, day: 1 - night, rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value });
+    {
+      const pp = pos0(), cx = camera.position.x, cz = camera.position.z;
+      const st = { people, px: pp.x, pz: pp.z, camX: cx, camZ: cz, camera, night, winter, horror: horror > 0.5, day: 1 - night, rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value };
+      if (share.role === 'guest') share.follow(dt, t, st, mp);
+      else if (worldRuns) {
+        bear?.update(dt, t, { active: horror === 1, people, px: pp.x, pz: pp.z, camX: cx, camZ: cz });
+        wildlife.update(dt, t, st);
+        birds.update(dt, t, st);
+      }
     }
     post.grade.uniforms.uTime.value = t;
     scene.updateMatrixWorld();
@@ -1567,7 +1558,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

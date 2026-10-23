@@ -10,6 +10,9 @@ import { Actor, makeCast } from './cast.js';
 // flailing, he throws it, and it scrambles off on all fours into the dark, between the trunks and away from you, the two
 // men after it. Each of them is gone once you no longer see them; it can happen again after you have gone 60 m away.
 // The stage's frame: origin on the ground at the action, +z towards the cross, +x to its right seen from there.
+// With a friend (share.js): it starts for whichever of you comes near; the game that runs the world plays it and the
+// friend's game follows its clock (follow()), so both see the same moment; each game hides the men and the creature
+// leaving only where it does not see them.
 
 // ------------------------------------------------------------------ small helpers
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -290,6 +293,7 @@ const RUNS = {
 
 // ------------------------------------------------------------------ the scene
 const ORDER = ['creature', 'tank', 'tee'];
+const STATES = ['off', 'wait', 'play', 'after', 'gone'];
 const R_START = 16, R_WAIT = 80, R_REARM = 60, R_GONE = 22;      // m: it starts / they are drawn / again / out of sight
 export class ForestScene {
   // place: the stage's position (x, y, z) and yaw; ground(x, z) the terrain in world coordinates; world: the collision
@@ -304,7 +308,7 @@ export class ForestScene {
     this.leaves = new Leaves(this.stage, (x, z) => this.ground(x, z));
     this.state = 'off'; this.ready = false; this.t = T0; this.tn = 0; this.dt = 0; this.springs = {};
     this.events = EVENTS;                          // (a recording that jumps ahead in the scene skips the ones in between)
-    this.feet = {}; this.runs = {}; this.end = Infinity; this._q = []; this._f = new THREE.Frustum(); this._m = new THREE.Matrix4(); this._s = new THREE.Sphere();
+    this.feet = {}; this.runs = {}; this.runYou = {}; this.end = Infinity; this._q = []; this._f = new THREE.Frustum(); this._m = new THREE.Matrix4(); this._s = new THREE.Sphere();
   }
   // stage <-> world
   toWorld(x, z) { return [this.place.x + x * this.c + z * this.s, this.place.z - x * this.s + z * this.c]; }
@@ -370,11 +374,14 @@ export class ForestScene {
     return pts;
   }
   // ---------------- each frame (not while paused)
-  // ctx: ok (23:30 under clouds), px pz (you, world), camera, sound(name, distance)
+  // ctx: ok (23:30 under clouds), px pz (you, world), people (you and a friend: the nearest is the one it plays to),
+  // camera, sound(name, distance)
   update(dt, ctx) {
     this.dt = dt; this.tn += dt;
     if (ctx.ok) this.prepare();
-    const [sx, sz] = this.toStage(ctx.px, ctx.pz), dist = Math.hypot(sx, sz);
+    let [sx, sz] = this.toStage(ctx.px, ctx.pz), dist = Math.hypot(sx, sz);
+    for (const q of ctx.people ?? []) { const [qx, qz] = this.toStage(q.x, q.z), d = Math.hypot(qx, qz); if (d < dist) { sx = qx; sz = qz; dist = d; } }
+    const [hx, hz] = this.toStage(ctx.px, ctx.pz);                 // (what you hear, from where you are)
     this.you = [sx, sz];
     if (!ctx.ok) { if (this.state !== 'off') this.reset('off'); return; }
     if (!this.ready) return;
@@ -400,8 +407,8 @@ export class ForestScene {
         const t = this.t;
         while (this.ev < EVENTS.length && EVENTS[this.ev].t <= t) {
           const e = EVENTS[this.ev++], at = this.actors.creature.point('head', [0, 0, 0]);
-          if (e.leaves) { const [x, z, n, r, up, d] = e.leaves; this.leaves.burst(x, z, n, r, up, d); ctx.sound?.(n > 50 ? 'rustle-big' : 'rustle', Math.hypot(x - sx, z - sz)); }
-          if (e.sound) ctx.sound?.(e.sound, Math.hypot(at.x - sx, at.z - sz));
+          if (e.leaves) { const [x, z, n, r, up, d] = e.leaves; this.leaves.burst(x, z, n, r, up, d); ctx.sound?.(n > 50 ? 'rustle-big' : 'rustle', Math.hypot(x - hx, z - hz)); }
+          if (e.sound) ctx.sound?.(e.sound, Math.hypot(at.x - hx, at.z - hz));
         }
         this.pose(t);
         if (this.state === 'play' && t > this.end) this.state = 'after';
@@ -430,6 +437,63 @@ export class ForestScene {
       a.box.x = wx; a.box.z = wz; a.box.update();
     }
   }
+  // ---------------- with a friend (share.js)
+  // [state, t (cs), whom the entry and the escape ran from (dm, stage)]
+  encode() {
+    const y = (n) => this.runYou[n] ? this.runYou[n].map(v => Math.round(v * 10)) : 0;
+    return this.state === 'off' ? [0] : [STATES.indexOf(this.state), Math.round(this.t * 100), y('entry'), y('escape')];
+  }
+  // the host's scene here: its state and its clock (snapshots A and B, k of the way); ctx as update()'s
+  follow(A, B, k, dt, ctx) {
+    this.dt = dt; this.tn += dt;
+    if (ctx.ok) this.prepare();
+    const [sx, sz] = this.toStage(ctx.px, ctx.pz), dist = Math.hypot(sx, sz);
+    this.you = [sx, sz];
+    const state = STATES[B[0]] ?? 'off';
+    if (!ctx.ok || !this.ready) { if (!ctx.ok && this.state !== 'off') this.reset('off'); return; }
+    ctx.camera.updateMatrixWorld();
+    this._m.multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse); this._f.setFromProjectionMatrix(this._m);
+    this.stage.updateMatrixWorld();
+    for (const [i, n] of [[2, 'entry'], [3, 'escape']]) if (Array.isArray(B[i])) this.runYou[n] = B[i].map(v => v / 10);
+    const t = A[0] === B[0] && B[1] !== undefined ? (A[1] + (B[1] - A[1]) * k) / 100 : (B[1] ?? T0 * 100) / 100;
+    if (state !== this.state) {
+      if (state === 'play' || (state === 'after' && this.state !== 'play')) {
+        // (joining it under way: the moments already past are not played again)
+        const keep = this.runYou; this.reset(state); this.runYou = keep;
+        this.t = t; this.ev = EVENTS.findIndex(e => e.t > t); if (this.ev < 0) this.ev = EVENTS.length;
+        for (const kk of ORDER) this.show(kk, true);
+      } else if (state === 'after') this.state = 'after';
+      else { const keep = this.runYou; this.reset(state); if (state === 'wait') this.runYou = keep; }
+    }
+    if (this.state === 'wait') {
+      const show = dist < R_WAIT;
+      this.show('tank', show); this.show('tee', show); this.show('creature', false);
+      if (show) this.pose(T0);
+    } else if (this.state === 'play' || this.state === 'after') {
+      this.t = t;
+      while (this.ev < EVENTS.length && EVENTS[this.ev].t <= t) {
+        const e = EVENTS[this.ev++], at = this.actors.creature.point('head', [0, 0, 0]);
+        if (e.leaves) { const [x, z, n, r, up, d] = e.leaves; this.leaves.burst(x, z, n, r, up, d); ctx.sound?.(n > 50 ? 'rustle-big' : 'rustle', Math.hypot(x - sx, z - sz)); }
+        if (e.sound) ctx.sound?.(e.sound, Math.hypot(at.x - sx, at.z - sz));
+      }
+      this.pose(t);
+      // leaving: each is gone here once you no longer see them
+      if (this.state === 'after') for (const kk of ORDER) {
+        const a = this.actors[kk];
+        if (!a.mesh.visible) continue;
+        const h = a.point('hips', [0, 0, 0]);
+        if (Math.hypot(h.x - sx, h.z - sz) > R_GONE || !this.seen(h.x, h.z, 1.2)) this.show(kk, false);
+      }
+    }
+    for (const f of Object.values(this.feet)) if (!f.kicked && f.u > 0.6) { this.leaves.burst(f.to.x, f.to.z, 4, 0.15, 0.9); f.kicked = true; }
+    this.leaves.update(dt);
+    for (const kk of ORDER) {
+      const a = this.actors[kk];
+      if (!a.mesh.visible) continue;
+      const h = a.point('hips', [0, 0, 0]), [wx, wz] = this.toWorld(h.x, h.z);
+      a.box.x = wx; a.box.z = wz; a.box.update();
+    }
+  }
   // is a stage point (radius r) in the camera's view?
   seen(x, z, r) {
     const [wx, wz] = this.toWorld(x, z);
@@ -444,7 +508,7 @@ export class ForestScene {
     if (!on && a.boxIn) { this.world.removeDynamic(a.box); a.boxIn = false; }
   }
   reset(state) {
-    this.state = state; this.t = T0; this.ev = 0; this.feet = {}; this.runs = {};
+    this.state = state; this.t = T0; this.ev = 0; this.feet = {}; this.runs = {}; this.runYou = {};
     if (this.actors) for (const k of ORDER) this.show(k, false);
     this.leaves.clear();
     this.end = Infinity;
@@ -463,14 +527,16 @@ export class ForestScene {
     if (t < R.t0) return null;
     let P = this.runs[name];
     if (!P) {
+      // (whom it runs from: to the 10 cm the friend's game gets it with - follow() - so both plan the same path)
+      const you = this.runYou[name] ??= this.you.map(v => Math.round(v * 10) / 10);
       if (name === 'entry') {
         // from the dark on the far side of the clearing to where the first key picks it up, in 1.6 s
-        const k = TRACKS.creature[0], back = this.plan([k.p[0], k.p[2]], [1, 0.12], 6, this.you).reverse();
+        const k = TRACKS.creature[0], back = this.plan([k.p[0], k.p[2]], [1, 0.12], 6, you).reverse();
         P = { pts: back, speed: null };
       } else if (name === 'escape') {
         // away from you and from the men, between the trunks
         const k = TRACKS.creature.find(q => q.t >= R.t0 - 0.01) ?? TRACKS.creature[TRACKS.creature.length - 1];
-        const from = [k.p[0], k.p[2]], y = this.you, ax = from[0] - y[0], az = from[1] - y[1], al = Math.hypot(ax, az) || 1;
+        const from = [k.p[0], k.p[2]], y = you, ax = from[0] - y[0], az = from[1] - y[1], al = Math.hypot(ax, az) || 1;
         const d = [ax / al - 0.6, az / al], dl = Math.hypot(d[0], d[1]) || 1;
         P = { pts: this.plan(from, [d[0] / dl, d[1] / dl], R.len, y) };
       } else {

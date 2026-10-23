@@ -731,7 +731,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * culoarea iluminării bordului e verificată doar la BMW (portocaliu); la celelalte e albă-neutră;
     * butoanele mici, cusăturile și grafica ecranelor sunt pictate, nu modelate.
 
-## Multiplayer (alpha, V71): tu și un prieten în aceeași lume
+## Multiplayer (alpha, V71–V72): tu și un prieten în aceeași lume
 
 **Cum intrați:**
 1. Proprietarul artefactului (tu) îl invită pe prieten: în claude.ai, butonul **Share** al artefactului → invită-l prin
@@ -754,9 +754,23 @@ poate juca, dar singur, fără să se poată conecta. Nu trece nimic printr-un s
 - mașina condusă de el se mișcă și la tine. E aceeași mașină: nu poți urca la volanul ei. Dacă urcați amândoi deodată,
   ea rămâne unuia singur;
 - **J**: te duce lângă prieten, sau pe locul din dreapta în mașina lui, dacă el conduce (**F** cobori);
-- **Enter**: un mesaj scurt pentru prieten;
 - vremea și ora sunt comune: le stabilește cine le schimbă ultimul. Până atunci rămân ale celui care a intrat primul;
-- mașinile mutate (conduse sau împinse) rămân unde le-a lăsat cel care le-a mutat, și pentru cine intră mai târziu.
+- mașinile mutate (conduse sau împinse) rămân unde le-a lăsat cel care le-a mutat, și pentru cine intră mai târziu;
+- aceeași lume vie, în timp real (V72): fiecare animal pe care îl vezi îl vede și prietenul, în același loc și făcând
+  același lucru. Asta include vulpea, mistreții, lupii și ursul din pădure, ursul de pe dealul crucii în nopțile cu
+  furtună, șorecarii, ciorile, gaițele, pițigoii și trecătorul de pe stradă. Fulgerele cad în aceeași clipă la amândoi.
+  Scena din pădure de la 23:30 și clipul cu drumeții de la 16:11 se joacă în același moment pentru amândoi;
+- animalele se feresc de cel mai apropiat dintre voi: dacă prietenul se apropie de o vulpe, ea fuge de el și o vezi și
+  tu fugind. Ursul de pe deal îl poate doborî și pe prieten. Câinii din curte se uită la cine e mai aproape. Un câine
+  mângâiat de prieten dă din coadă și la tine;
+- lanterna prietenului (fasciculul ei în aer, noaptea), motorul și claxonul mașinii lui, mai încet cu distanța.
+
+**Lumea comună** (`src/share.js`). Lumea o ține un singur joc: al celui care a intrat primul în cameră. El mișcă
+animalele, păsările, ursul, trecătorul, fulgerele și scenele pentru amândoi. Animalele lui apar în jurul fiecăruia
+dintre voi, niciodată în fața vreunuia. Le trimite odată cu jucătorul lui, de ~15 ori pe secundă, iar jocul celuilalt
+le desenează unde sunt la el, cu aceleași 120 ms de interpolare ca la jucători. Dacă cel care ține lumea iese (sau îi
+adoarme fila, în fundal, 3 s), celălalt joc preia lumea exact cum era și o duce mai departe. Totul încape în limita de
+4 KiB a platformei: dacă ar fi prea mult, primele care nu se mai trimit sunt păsările cele mai depărtate de voi.
 
 **Cum funcționează** (`src/net.js`, `src/remote.js`). Fiecare joc își trimite starea jucătorului de ~15 ori pe
 secundă: pieton, șofer sau pasager, poziția, privirea, mașina (poziție, înclinare, volan, roți, faruri, frână). Starea
@@ -768,8 +782,10 @@ locală (`python3 -m http.server`), filele aceluiași browser se găsesc între 
 
 **Limite (alpha):**
 - personajele nu se ciocnesc între ele (nici cu mașinile);
-- nu se aude motorul mașinii prietenului și nu i se vede lanterna;
-- scenele (pădurea de la cruce, clipul de pe uliță), animalele, păsările și fulgerele sunt ale fiecărui joc.
+- lanterna prietenului se vede (fasciculul), dar nu luminează pământul la tine: încă o lumină în scenă ar refacea
+  shaderele tuturor materialelor;
+- picăturile de ploaie, fulgii, frunzele în vânt și praful de zăpadă de pe brazi sunt ale fiecărui joc (aceeași vreme,
+  alte picături).
 
 **Testat** cu două jocuri în același browser, prin canalul local, cadru cu cadru:
 - se văd unul pe altul, cu numele deasupra; **J** te duce la 2,00 m de prieten;
@@ -779,10 +795,23 @@ locală (`python3 -m http.server`), filele aceluiași browser se găsesc între 
 - **J** te urcă pe locul din dreapta în mașina în mers, iar camera stă pe scaunul pasagerului. **F** te coboară, iar
   mașina rămâne parcată în același loc la amândoi;
 - ploaia pusă de unul apare și la celălalt;
-- chat: primul mesaj și următoarele ajung. Cine intră mai târziu nu primește mesajele vechi;
 - cine iese dispare la celălalt; starea trimisă are ~230 de octeți din cei 4096 permiși; 0 erori în pagini;
 - `net.js` și cu o cameră claude.ai simulată (18/18 verificări): o intrare eșuată temporar se reîncearcă, o cameră
   pierdută se redeschide, „revoked” e definitiv, iar fără camere numite se folosește camera comună.
+
+**Lumea comună testată** (V72, tot două jocuri în același browser, cadru cu cadru):
+- cine intră primul ține lumea, iar celălalt o urmează;
+- animalele: același id, același număr și aceeași stare la amândoi. Poziția diferă cât merg ele în 120 ms: sub
+  0,6 m la lupi și vulpe, 1–1,8 m la ciori și șorecari, care zboară cu 11–14 m/s;
+- prietenul se apropie la 12 m de vulpe: la gazdă vulpea fuge de el, iar el o vede fugind la fel;
+- trecătorul de pe stradă: aceeași poziție, cu 13 cm de întârziere;
+- ursul de pe deal, noaptea, în furtună: același loc și aceeași stare la amândoi, din alertă până la atac. Când
+  ajunge la prieten, acesta e trântit 3,2 m în jocul lui și primește mesajul „Ursul te-a doborât!”;
+- fulgerele gazdei cad și la prieten, cu tunetul de la aceeași distanță;
+- scena din pădure, pornită de prieten, rulează la amândoi cu 0,1 s diferență. Drumeții de la 16:11, la fel;
+- lanterna prietenului: fasciculul se vede când o aprinde și dispare când o stinge;
+- gazda iese: celălalt preia aceleași animale (aceleași id-uri) și le duce mai departe;
+- starea gazdei, cu toată lumea în ea, are ~820 de octeți din 4096; 0 erori în pagini.
 
 Canalul real din claude.ai nu l-am putut încerca eu: e nevoie de două conturi conectate. Primul test cu el e al vostru.
 
@@ -917,7 +946,8 @@ src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + r
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare
 src/perf.js           contorul de performanță (G): FPS, timp CPU / GPU, desenări
 src/net.js            multiplayer: camera din claude.ai (sau filele unui browser), starea trimisă și interpolată
-src/remote.js         prietenul în lume: omul care merge, mașina condusă de el, numele, locul de pasager
+src/remote.js         prietenul în lume: omul care merge, mașina condusă de el, numele, locul de pasager, lanterna
+src/share.js          lumea comună: animalele, păsările, ursul, trecătorul, fulgerele, scenele - ținute de un joc pentru amândoi
 src/taa.js            anti-aliasing-ul temporal: deplasarea sub-pixel, reproiecția, istoria; ploaia și zăpada desenate după el
 src/rain.js           ploaia și zăpada: suprafețe ude / acoperite, fulgii, viscolul și harta lui văzută din vânt, stratul de zăpadă
 src/snowtrail.js      urmele de pași și de roți în zăpadă (harta lor, ștampilele, umplerea cât ninge)

@@ -22,6 +22,9 @@ import { damp } from './util.js';
 //  retreating that you catch up with breaks into a run.
 // Active by the hour as they are: boar, wolves and the bear mostly at dusk and by night (fewer by day), the fox at any
 // hour. Each comes back to the same spots: nothing is stored, a group just lives out its time near you.
+// With a friend (share.js): the game that runs the world keeps them around both of you (each of you gets their own,
+// none appears in front of either), and they mind whichever of you is nearest; the friend's game draws the same
+// animals where they are (follow()), and takes them over as they are if the other game leaves.
 
 const KIND = {
   fox: { h: 0.38, walk: 1.0, trot: 2.6, run: 11, notice: 45, flee: 30, car: 2.0, size: [1, 1], radius: 0.25, day: 0.9, night: 1, edge: true, winter: true, opts: {} },
@@ -31,6 +34,10 @@ const KIND = {
 };
 const R = Math.random;
 const ang = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+// what travels to the friend's game (share.js): a group's state, positions in dm, headings in centiradians
+const KEYS = Object.keys(KIND), STATES = ['roam', 'forage', 'pause', 'alert', 'bluff', 'retreat', 'flee', 'pose'];
+const dm = (v) => Math.round(v * 10), cr = (a) => Math.round(ang(a) * 100);
+const lerp = (a, b, k) => a + (b - a) * k, lerpA = (a, b, k) => a + ang(b - a) * k;
 
 class Animal {
   constructor(kind, beast, x, z, h) {
@@ -43,6 +50,7 @@ export class Wildlife {
   constructor(scene, world, { audio = null, quality = 'Înaltă' } = {}) {
     this.scene = scene; this.world = world; this.audio = audio;
     this.groups = []; this.timer = 1; this.t = 0;
+    this.byId = new Map(); this.idBase = 0; this.seq = 0; this.ear = { x: 0, z: 0 };
     this.cap = quality === 'Scăzută' ? 0.5 : 1;
     this.frustum = new THREE.Frustum(); this.m4 = new THREE.Matrix4(); this.sph = new THREE.Sphere(new THREE.Vector3(), 2);
     this.tmp = [];
@@ -65,13 +73,29 @@ export class Wildlife {
     return false;
   }
 
-  spawn(key, st) {
+  // the nearest of the people (you, a friend): [them, how far]
+  nearest(people, x, z) {
+    let P = people[0], d = Infinity;
+    for (const q of people) { const e = Math.hypot(q.x - x, q.z - z); if (e < d) { d = e; P = q; } }
+    return [P, d];
+  }
+  // nobody else is close to (x, z) or looking that way from within 200 m (P: the one it comes near)
+  unseen(people, P, x, z) {
+    for (const q of people) {
+      if (q === P) continue;
+      const dq = Math.hypot(x - q.x, z - q.z);
+      if (dq < 70) return false;
+      if (dq < 200 && (-Math.sin(q.yaw) * (x - q.x) - Math.cos(q.yaw) * (z - q.z)) / dq > 0.34) return false;
+    }
+    return true;
+  }
+  spawn(key, st, P = st.people[0]) {
     const k = KIND[key];
     for (let tries = 0; tries < 14; tries++) {
-      // behind you or to the side, 70-180 m off, in its habitat
-      const a = st.camYaw + Math.PI + (R() - 0.5) * 3.4, d = 70 + R() * 110;
-      const x = st.px - Math.sin(a) * d, z = st.pz - Math.cos(a) * d;
-      if (!this.habitat(k, x, z) || this.blocked(x, z, k.radius)) continue;
+      // behind them or to the side, 70-180 m off, in its habitat
+      const a = P.yaw + Math.PI + (R() - 0.5) * 3.4, d = 70 + R() * 110;
+      const x = P.x - Math.sin(a) * d, z = P.z - Math.cos(a) * d;
+      if (!this.habitat(k, x, z) || this.blocked(x, z, k.radius) || !this.unseen(st.people, P, x, z)) continue;
       const n = k.size[0] + Math.floor(R() * (k.size[1] - k.size[0] + 1));
       const h = R() * Math.PI * 2, members = [];
       for (let i = 0; i < n; i++) {
@@ -87,15 +111,16 @@ export class Wildlife {
         this.scene.add(b.group);
         members.push(an);
       }
-      const g = { key, k, members, state: 'roam', timer: 3 + R() * 6, target: null, trail: [], howlT: 20 + R() * 60, soundT: 2 + R() * 6, fleeFrom: null, life: 0 };
-      this.groups.push(g);
+      const g = { id: this.idBase + ++this.seq, key, k, members, state: 'roam', timer: 3 + R() * 6, target: null, trail: [], howlT: 20 + R() * 60, soundT: 2 + R() * 6, fleeFrom: null, life: 0 };
+      this.groups.push(g); this.byId.set(g.id, g);
       return g;
     }
     return null;
   }
   // tests: a group of `key` at (x, z) heading h, n animals, in `state`
   spawnAt(key, x, z, h = 0, n = null, state = 'pause') {
-    const k = KIND[key], g = { key, k, members: [], state, timer: 1e9, target: null, trail: [], howlT: 1e9, soundT: 1e9, life: 0 };
+    const k = KIND[key], g = { id: this.idBase + ++this.seq, key, k, members: [], state, timer: 1e9, target: null, trail: [], howlT: 1e9, soundT: 1e9, life: 0 };
+    this.byId.set(g.id, g);
     const cnt = n ?? k.size[0];
     for (let i = 0; i < cnt; i++) {
       const young = key === 'boar' && i >= 1, b = new Beast(key, { young });
@@ -107,7 +132,8 @@ export class Wildlife {
     this.groups.push(g);
     return g;
   }
-  despawn(g) { for (const a of g.members) { this.scene.remove(a.b.group); a.b.dispose(); } this.groups.splice(this.groups.indexOf(g), 1); }
+  despawn(g) { for (const a of g.members) { this.scene.remove(a.b.group); a.b.dispose(); } this.groups.splice(this.groups.indexOf(g), 1); this.byId.delete(g.id); }
+  clear() { for (const g of [...this.groups]) this.despawn(g); }
 
   pickTarget(g, from, far = 70) {
     for (let i = 0; i < 12; i++) {
@@ -117,26 +143,28 @@ export class Wildlife {
     return { x: from.x, z: from.z };
   }
 
-  // st: { px, pz, camX, camZ, camYaw, camera, inCar, running, night (0..1), winter, horror }
+  // st: { people: [{ x, z, yaw, car, run }, ...] (you first), px, pz (you: the sounds), camX, camZ, camera, night (0..1),
+  // winter, horror }
   update(dt, t, st) {
-    this.t += dt;
+    this.t += dt; this.ear.x = st.px; this.ear.z = st.pz;
     // who should be about: by the hour and the season
     if ((this.timer -= dt) <= 0) {
       this.timer = 1.5;
       for (const g of [...this.groups]) {
-        const L = g.members[0], d = Math.hypot(L.x - st.px, L.z - st.pz);
+        const L = g.members[0], d = this.nearest(st.people, L.x, L.z)[1];
         g.life += 1.5;
         if (d > 260 || (st.winter && !g.k.winter) || st.horror) this.despawn(g);
       }
       // the models are made one kind at a time, the first seconds after the start (a few hundred ms each)
       const todo = Object.keys(KIND).find(key => !this.built?.[key]);
       if (todo) { species(todo); (this.built ??= {})[todo] = true; return; }
-      if (!st.horror) for (const key of Object.keys(KIND)) {
+      // (around each of you: the ones within 260 m of them count)
+      if (!st.horror) for (const P of st.people) for (const key of KEYS) {
         const k = KIND[key];
         if (st.winter && !k.winter) continue;
         const want = (st.night * k.night + (1 - st.night) * k.day) * this.cap;
-        const have = this.groups.filter(g => g.key === key).length;
-        if (have < (want > 0.25 ? 1 : 0) + (key === 'fox' && st.night > 0.5 ? 1 : 0) && R() < want * 0.5) this.spawn(key, st);
+        const have = this.groups.filter(g => g.key === key && Math.hypot(g.members[0].x - P.x, g.members[0].z - P.z) < 260).length;
+        if (have < (want > 0.25 ? 1 : 0) + (key === 'fox' && st.night > 0.5 ? 1 : 0) && R() < want * 0.5) this.spawn(key, st, P);
       }
     }
     if (st.camera) { this.m4.multiplyMatrices(st.camera.projectionMatrix, st.camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.m4); }
@@ -144,48 +172,49 @@ export class Wildlife {
   }
 
   updateGroup(g, dt, t, st) {
-    const k = g.k, L = g.members[0];
-    const dP = Math.hypot(L.x - st.px, L.z - st.pz), car = st.inCar ? k.car : st.running ? 1.25 : 1;
-    const away = Math.atan2(L.x - st.px, L.z - st.pz);
+    // (they mind the nearest of you: P)
+    const k = g.k, L = g.members[0], [P, dP] = this.nearest(st.people, L.x, L.z);
+    const car = P.car ? k.car : P.run ? 1.25 : 1, inCar = P.car;
+    const away = Math.atan2(L.x - P.x, L.z - P.z);
     g.timer -= dt; g.soundT -= dt; g.howlT -= dt; g.wary = Math.max(0, (g.wary ?? 0) - dt); g.bluffT = Math.max(0, (g.bluffT ?? 0) - dt);
     const notice = k.notice * car * (g.wary > 0 ? 1.4 : 1);
     // ---- the group's mind
     switch (g.state) {
       case 'roam': case 'forage': case 'pause': {
         if (dP < notice) {
-          if (g.wary > 0 && !k.bluff) { g.state = 'flee'; g.timer = 10; g.wary = 120; this.sound(g, 'flee', dP); break; }
-          g.state = 'alert'; g.timer = 1.2 + R() * 1.6; g.wary = 120; this.sound(g, 'alert', dP); break;
+          if (g.wary > 0 && !k.bluff) { g.state = 'flee'; g.timer = 10; g.wary = 120; this.sound(g, 'flee'); break; }
+          g.state = 'alert'; g.timer = 1.2 + R() * 1.6; g.wary = 120; this.sound(g, 'alert'); break;
         }
         if (g.timer <= 0) {
           // roam: walk (wolves trot) to somewhere new; forage or pause on the way
           if (g.state === 'roam' && R() < (g.key === 'wolf' ? 0.2 : 0.6)) { g.state = g.key === 'boar' || g.key === 'bear' ? 'forage' : 'pause'; g.timer = 4 + R() * (g.key === 'boar' ? 14 : 6); }
           else { g.state = 'roam'; g.target = this.pickTarget(g, L, g.key === 'wolf' ? 140 : 70); g.timer = 25; }
         }
-        if (g.key === 'wolf' && st.night > 0.6 && g.state === 'pause' && g.howlT <= 0) { g.howlT = 70 + R() * 90; this.sound(g, 'howl', dP); g.howling = 4.5; }
-        if (g.soundT <= 0) { g.soundT = 4 + R() * 9; if (g.key === 'boar' || (g.key === 'fox' && st.night > 0.5 && R() < 0.3)) this.sound(g, 'idle', dP); }
+        if (g.key === 'wolf' && st.night > 0.6 && g.state === 'pause' && g.howlT <= 0) { g.howlT = 70 + R() * 90; this.sound(g, 'howl'); g.howling = 4.5; }
+        if (g.soundT <= 0) { g.soundT = 4 + R() * 9; if (g.key === 'boar' || (g.key === 'fox' && st.night > 0.5 && R() < 0.3)) this.sound(g, 'idle'); }
         break;
       }
       case 'alert':
         if (g.timer <= 0) {
           if (k.bluff) {
-            if (!st.inCar && dP < k.flee && g.bluffT <= 0) { g.state = 'bluff'; g.timer = 4; this.sound(g, 'huff', dP); }
+            if (!inCar && dP < k.flee && g.bluffT <= 0) { g.state = 'bluff'; g.timer = 4; this.sound(g, 'huff'); }
             else if (dP < k.flee * car) { g.state = 'flee'; g.timer = 8; }
             else if (dP < k.notice * car) { g.state = 'retreat'; g.timer = 10; }
             else { g.state = 'roam'; g.timer = 1; }
-          } else if (dP < k.flee * car || (g.key === 'boar' && dP < k.notice * car && R() < 0.5)) { g.state = 'flee'; g.timer = 9 + R() * 5; this.sound(g, 'flee', dP); }
+          } else if (dP < k.flee * car || (g.key === 'boar' && dP < k.notice * car && R() < 0.5)) { g.state = 'flee'; g.timer = 9 + R() * 5; this.sound(g, 'flee'); }
           else if (dP < k.notice * car) { g.state = 'retreat'; g.timer = 8; }
           else { g.state = 'roam'; g.timer = 1; }
         }
         break;
       case 'bluff':                                                        // the bear's charge: it stops short
         // then it turns and makes off, and does not charge again for a good while
-        if (dP < 4.5 || g.timer <= 0) { g.state = 'flee'; g.timer = 8; g.bluffT = 90; this.sound(g, 'huff', dP); }
+        if (dP < 4.5 || g.timer <= 0) { g.state = 'flee'; g.timer = 8; g.bluffT = 90; this.sound(g, 'huff'); }
         break;
       case 'retreat': case 'flee':
-        if (g.state === 'retreat' && !k.bluff && dP < k.flee * car) { g.state = 'flee'; g.timer = 8; this.sound(g, 'flee', dP); }
+        if (g.state === 'retreat' && !k.bluff && dP < k.flee * car) { g.state = 'flee'; g.timer = 8; this.sound(g, 'flee'); }
         // the bear: followed on foot, it turns and bluffs; a car right behind it, it runs
-        else if (g.state === 'retreat' && k.bluff && !st.inCar && dP < k.flee && g.bluffT <= 0) { g.state = 'bluff'; g.timer = 4; this.sound(g, 'huff', dP); }
-        else if (g.state === 'retreat' && k.bluff && dP < (st.inCar ? 20 : k.flee)) { g.state = 'flee'; g.timer = 8; }
+        else if (g.state === 'retreat' && k.bluff && !inCar && dP < k.flee && g.bluffT <= 0) { g.state = 'bluff'; g.timer = 4; this.sound(g, 'huff'); }
+        else if (g.state === 'retreat' && k.bluff && dP < (inCar ? 20 : k.flee)) { g.state = 'flee'; g.timer = 8; }
         if (g.timer <= 0 && dP > notice) {
           // gone far enough: on again, away from you
           g.state = 'roam'; g.timer = 2;
@@ -230,7 +259,7 @@ export class Wildlife {
       this.steer(a, d > 0.6 ? w : (g.state === 'forage' ? a.h + Math.sin(t * 0.5 + i) * 0.4 : L.h), d > 0.4 || g.state === 'flee' ? pace : 0, dt);
     }
     // ---- bodies on the ground, legs, heads
-    for (const a of g.members) this.animate(g, a, dt, t, st, dP);
+    for (const a of g.members) this.animate(g, a, dt, t, st, P);
   }
 
   steer(a, want, v, dt) {
@@ -253,7 +282,7 @@ export class Wildlife {
     a.x = nx; a.z = nz;
   }
 
-  animate(g, a, dt, t, st, dP) {
+  animate(g, a, dt, t, st, P) {
     const k = a.kind, b = a.b, s = a.scale ?? 1, w = this.world;
     const camD = Math.hypot(a.x - st.camX, a.z - st.camZ);
     const gy = w.groundHeight(a.x, a.z);
@@ -269,7 +298,7 @@ export class Wildlife {
     b.group.rotation.set(-a.slope, a.h, 0, 'YXZ');
     const p = gaitPose(a.gs, dt, a.speed / s, k.h, k.opts);
     // the head: alert towards you, down while rooting or sniffing, up to howl
-    const toP = ang(Math.atan2(st.px - a.x, st.pz - a.z) - a.h);
+    const toP = ang(Math.atan2(P.x - a.x, P.z - a.z) - a.h);
     let hy = 0, hp = 0;
     if (g.state === 'alert' || g.state === 'bluff') { hy = Math.max(-1, Math.min(1, toP)); hp = -0.12; }
     else if (g.state === 'forage') { hp = g.key === 'boar' ? 0.75 + 0.12 * Math.sin(t * 6 + a.tailT) : 0.5; hy = 0.3 * Math.sin(t * 0.8 + a.tailT); }
@@ -286,13 +315,72 @@ export class Wildlife {
     b.pose(p);
   }
   // st.night etc are passed by main.js; the sounds go to the board with the distance and side
-  sound(g, what, d) {
+  sound(g, what) {
     const A = this.audio; if (!A?.ctx) return;
-    const k = g.key;
+    const k = g.key, L = g.members[0], d = Math.hypot(L.x - this.ear.x, L.z - this.ear.z);
     if (what === 'howl' && k === 'wolf') A.howl?.(d, g.members.length);
     else if (k === 'fox' && (what === 'alert' || what === 'idle')) A.foxBark?.(d);
     else if (k === 'boar') A.boarGrunt?.(d, what === 'flee' || what === 'alert');
     else if (k === 'bear') A.bear?.(false, d);
+  }
+  // ---------------- with a friend (share.js)
+  // the groups for the friend's game: [id, kind, state (+16 howling), scales (negative: young), [x, z, h, speed] each]
+  encode() {
+    return this.groups.map(g => [g.id, KEYS.indexOf(g.key), Math.max(0, STATES.indexOf(g.state)) + (g.howling > 0 ? 16 : 0),
+      g.members.map(a => Math.round((a.scale ?? 1) * 100) * (a.young ? -1 : 1)), g.members.flatMap(a => [dm(a.x), dm(a.z), cr(a.h), Math.round(a.speed * 10)])]);
+  }
+  // the host's groups, here: snapshots A and B (encode()), k of the way from A to B
+  follow(A, B, k, dt, t, st) {
+    this.t += dt; this.ear.x = st.px; this.ear.z = st.pz;
+    if (st.camera) { this.m4.multiplyMatrices(st.camera.projectionMatrix, st.camera.matrixWorldInverse); this.frustum.setFromProjectionMatrix(this.m4); }
+    const prev = new Map(A.map(g => [g[0], g])), seen = new Set();
+    for (const gb of B) {
+      let g = this.byId.get(gb[0]);
+      if (g && g.members.length !== gb[3].length) { this.despawn(g); g = null; }
+      g ??= this.puppet(gb);
+      seen.add(g);
+      const state = STATES[gb[2] & 15] ?? 'roam', howl = (gb[2] & 16) !== 0;
+      if (state !== g.state) {
+        if (state === 'alert') this.sound(g, 'alert'); else if (state === 'flee') this.sound(g, g.state === 'bluff' ? 'huff' : 'flee'); else if (state === 'bluff') this.sound(g, 'huff');
+        g.state = state;
+      }
+      if (howl && !g.howlOn) { this.sound(g, 'howl'); g.howling = 4.5; }
+      g.howlOn = howl;
+      const ga = prev.get(gb[0]), ma = ga && ga[4].length === gb[4].length ? ga[4] : gb[4], mb = gb[4];
+      g.members.forEach((a, i) => {
+        const j = i * 4;
+        a.x = lerp(ma[j], mb[j], k) / 10; a.z = lerp(ma[j + 1], mb[j + 1], k) / 10;
+        a.h = lerpA(ma[j + 2] / 100, mb[j + 2] / 100, k); a.speed = lerp(ma[j + 3], mb[j + 3], k) / 10;
+      });
+      const L = g.members[0], [P] = this.nearest(st.people, L.x, L.z);
+      for (const a of g.members) this.animate(g, a, dt, t, st, P);
+      // (the sounds of their own: the sounder grunting as it roots)
+      if ((g.soundT -= dt) <= 0) { g.soundT = 4 + R() * 9; if (g.key === 'boar' && (state === 'forage' || state === 'roam')) this.sound(g, 'idle'); }
+    }
+    for (const g of [...this.groups]) if (!seen.has(g)) this.despawn(g);
+  }
+  // a group of the host's, made here as it is there
+  puppet(gb) {
+    const key = KEYS[gb[1]] ?? 'fox', k = KIND[key];
+    if (!this.built?.[key]) { species(key); (this.built ??= {})[key] = true; }
+    const g = { id: gb[0], key, k, members: [], state: STATES[gb[2] & 15] ?? 'roam', timer: 2, target: null, trail: [], howlT: 30 + R() * 60, soundT: 2 + R() * 6, fleeFrom: null, life: 0 };
+    gb[3].forEach((sc, i) => {
+      const young = sc < 0, s = Math.abs(sc) / 100, b = new Beast(key, { young }), m = gb[4];
+      b.group.scale.setScalar(s);
+      const an = new Animal(k, b, m[i * 4] / 10, m[i * 4 + 1] / 10, m[i * 4 + 2] / 100);
+      an.young = young; an.scale = s; an.speed = m[i * 4 + 3] / 10;
+      this.scene.add(b.group); g.members.push(an);
+    });
+    this.groups.push(g); this.byId.set(g.id, g);
+    return g;
+  }
+  // the host left: what was drawn here goes on by itself, from where and as it is
+  adopt() {
+    for (const g of this.groups) {
+      if (g.state === 'pose') g.state = 'roam';
+      g.timer = 1 + R() * 2; g.target = null; g.wary = 0; g.bluffT = 0;
+      g.trail = g.key === 'wolf' ? g.members.slice().reverse().map(a => [a.x, a.z]) : [];
+    }
   }
   // for tests: where everyone is
   info() { return this.groups.map(g => ({ key: g.key, n: g.members.length, state: g.state, x: +g.members[0].x.toFixed(1), z: +g.members[0].z.toFixed(1), v: +g.members[0].speed.toFixed(2) })); }

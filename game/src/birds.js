@@ -13,6 +13,8 @@ import { forestCode } from './geo/data.js';
 //  * a great spotted woodpecker heard drumming in the woods.
 // Each species' birds share five instanced meshes (body, two inner and two outer wing halves) posed every frame: one
 // draw call per part. None at night or in a downpour; buzzards and crows stay in the snow.
+// With a friend (share.js): the game that runs the world keeps flocks around both of you and they shy from whichever of
+// you comes near; the friend's game draws the same birds where they are (follow()), its own wingbeats.
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 // a bird: body along +z, wings along x; scale 1 = a crow (0.45 m long); colours per region
@@ -61,15 +63,23 @@ class Flock {
 
 const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qw = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3(), off = new THREE.Vector3();
 const R = Math.random;
+// what travels to the friend's game: positions in dm (the birds' from the flock's centre), headings in centiradians,
+// what each is doing (a buzzard: 3 while it flaps)
+const BKEYS = Object.keys(KINDS), MODES = ['fly', 'ground', 'perch'];
+const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const dm = (v) => Math.round(v * 10), cr = (a) => Math.round(wrap(a) * 100);
+const lerp = (a, b, k) => a + (b - a) * k, lerpA = (a, b, k) => a + wrap(b - a) * k;
 
 export class Birds {
-  constructor(scene, world, { audio = null } = {}) { this.scene = scene; this.world = world; this.audio = audio; this.flocks = []; this.timer = 0; this.drumT = 15; }
+  constructor(scene, world, { audio = null } = {}) { this.scene = scene; this.world = world; this.audio = audio; this.flocks = []; this.timer = 0; this.drumT = 15; this.byId = new Map(); this.idBase = 0; this.seq = 0; }
   ground(x, z) { return this.world.groundHeight(x, z); }
   forestNear(x, z) { return forestCode(x, z) > 0; }
-  // a place for the flock: buzzards over open ground by a wood, jays and tits in the wood (tits at its edge), crows on a meadow
-  site(key, st) {
+  // how far the nearest of the people (you, a friend) is
+  nearest(people, x, z) { let d = Infinity; for (const q of people) d = Math.min(d, Math.hypot(q.x - x, q.z - z)); return d; }
+  // a place for the flock near P: buzzards over open ground by a wood, jays and tits in the wood (tits at its edge), crows on a meadow
+  site(key, P) {
     for (let i = 0; i < 16; i++) {
-      const a = R() * Math.PI * 2, d = 40 + R() * 140, x = st.px + Math.sin(a) * d, z = st.pz + Math.cos(a) * d, f = this.forestNear(x, z);
+      const a = R() * Math.PI * 2, d = 40 + R() * 140, x = P.x + Math.sin(a) * d, z = P.z + Math.cos(a) * d, f = this.forestNear(x, z);
       if (key === 'jay' && !f) continue;
       if (key === 'tit' && !(f && (!this.forestNear(x + 20, z) || !this.forestNear(x - 20, z) || !this.forestNear(x, z + 20) || !this.forestNear(x, z - 20)))) continue;
       if (key === 'crow' && f) continue;
@@ -77,10 +87,11 @@ export class Birds {
     }
     return null;
   }
-  spawn(key, st) {
-    const k = KINDS[key], c = this.site(key, st);
+  spawn(key, P) {
+    const k = KINDS[key], c = this.site(key, P);
     if (!c) return;
     const n = k.n[0] + Math.floor(R() * (k.n[1] - k.n[0] + 1)), f = new Flock(this.scene, key, n);
+    f.id = this.idBase + ++this.seq;
     f.cx = c.x; f.cz = c.z; f.r = key === 'buzzard' ? 35 + R() * 30 : 8; f.alt = key === 'buzzard' ? 50 + R() * 60 : key === 'crow' ? 22 : key === 'jay' ? 14 : 9; f.dir = R() < 0.5 ? 1 : -1;
     f.callT = 5 + R() * 20; f.life = 0;
     for (const b of f.birds) {
@@ -89,30 +100,38 @@ export class Birds {
       if (key === 'crow' && R() < 0.7) { b.mode = 'ground'; b.y = this.ground(b.x, b.z); b.h = R() * 6.28; }
       if (key === 'jay' || key === 'tit') { b.mode = 'perch'; b.wait = R() * 5; b.y = this.ground(b.x, b.z) + 6 + R() * 10; }
     }
-    this.flocks.push(f);
+    this.flocks.push(f); this.byId.set(f.id, f);
   }
-  // st: { px, pz, camX, camZ, day (0..1), rain, snow }
+  remove(f) { f.dispose(); this.flocks.splice(this.flocks.indexOf(f), 1); this.byId.delete(f.id); }
+  clear() { for (const f of [...this.flocks]) this.remove(f); }
+  // st: { people: [{ x, z }, ...] (you first), px, pz (you: the sounds), camX, camZ, day (0..1), rain, snow }
   update(dt, t, st) {
     if ((this.timer -= dt) <= 0) {
       this.timer = 2;
-      for (const f of [...this.flocks]) { f.life += 2; if (Math.hypot(f.cx - st.px, f.cz - st.pz) > 320 || st.day < 0.3 || st.rain > 0.3) { f.dispose(); this.flocks.splice(this.flocks.indexOf(f), 1); } }
-      if (st.day > 0.4 && st.rain < 0.3) for (const key of Object.keys(KINDS)) {
-        const want = key === 'buzzard' ? 1 : key === 'crow' ? 1 : key === 'jay' ? (this.forestNear(st.px, st.pz) ? 1 : 0) : 1;
-        if (this.flocks.filter(f => f.key === key).length < want && R() < 0.5) this.spawn(key, st);
+      for (const f of [...this.flocks]) { f.life += 2; if (this.nearest(st.people, f.cx, f.cz) > 320 || st.day < 0.3 || st.rain > 0.3) this.remove(f); }
+      // (around each of you: the flocks within 320 m of them count)
+      if (st.day > 0.4 && st.rain < 0.3) for (const P of st.people) for (const key of BKEYS) {
+        const want = key === 'jay' ? (this.forestNear(P.x, P.z) ? 1 : 0) : 1;
+        if (this.flocks.filter(f => f.key === key && Math.hypot(f.cx - P.x, f.cz - P.z) < 320).length < want && R() < 0.5) this.spawn(key, P);
       }
-      // the woodpecker drums somewhere in the wood
-      if ((this.drumT -= 2) <= 0) { this.drumT = 25 + R() * 50; if (st.day > 0.4 && st.rain < 0.3 && this.forestNear(st.px + 40, st.pz) + this.forestNear(st.px - 40, st.pz) + this.forestNear(st.px, st.pz + 40) > 0) this.audio?.birdCall('woodpecker', 35 + R() * 60); }
     }
+    this.ambient(dt, st);
     for (const f of this.flocks) this.fly(f, dt, t, st);
+  }
+  // the woodpecker drums somewhere in the wood
+  ambient(dt, st) {
+    if ((this.drumT -= dt) <= 0) { this.drumT = 25 + R() * 50; if (st.day > 0.4 && st.rain < 0.3 && this.forestNear(st.px + 40, st.pz) + this.forestNear(st.px - 40, st.pz) + this.forestNear(st.px, st.pz + 40) > 0) this.audio?.birdCall('woodpecker', 35 + R() * 60); }
+  }
+  call(f, dt, st) {
+    if ((f.callT -= dt) <= 0) { f.callT = f.key === 'buzzard' ? 18 + R() * 30 : 8 + R() * 18; if (f.key !== 'tit') this.audio?.birdCall(f.key, Math.hypot(f.cx - st.px, f.cz - st.pz)); }
   }
 
   fly(f, dt, t, st) {
-    const k = f.k, key = f.key, sc = k.scale;
-    const dP = Math.hypot(f.cx - st.px, f.cz - st.pz);
-    if ((f.callT -= dt) <= 0) { f.callT = key === 'buzzard' ? 18 + R() * 30 : 8 + R() * 18; if (key !== 'tit') this.audio?.birdCall(key, dP); }
+    const key = f.key;
+    this.call(f, dt, st);
     f.birds.forEach((b, i) => {
       const gy = this.ground(b.x, b.z);
-      const near = Math.hypot(b.x - st.px, b.z - st.pz);
+      const near = this.nearest(st.people, b.x, b.z), hear = Math.hypot(b.x - st.px, b.z - st.pz);
       if (key === 'buzzard') {
         // soaring: a circle drifting with the wind, the wings still; a few flaps now and then
         b.ang += f.dir * dt * (14 / f.r);
@@ -120,16 +139,12 @@ export class Birds {
         const tx = f.cx + Math.cos(b.ang + i * 2.5) * f.r, tz = f.cz + Math.sin(b.ang + i * 2.5) * f.r;
         b.y += ((this.ground(tx, tz) + f.alt + i * 8) - b.y) * dt * 0.2;
         b.h = Math.atan2(tx - b.x, tz - b.z); b.x = tx; b.z = tz;
-        b.bank = -f.dir * 0.32; b.pitch = 0;
         b.flap = ((t + i * 7) % 14) < 1.6 ? 1 : 0;
-        b.phase += dt * 2.4 * Math.PI * 2;
-        b.wing = b.flap ? Math.sin(b.phase) * 0.6 : 0.12;
       } else if (key === 'crow') {
         if (b.mode === 'ground') {
-          b.y = gy; b.pitch = 0; b.bank = 0; b.wing = -1.35;                 // folded
+          b.y = gy;
           if ((b.wait -= dt) <= 0) { b.wait = 0.5 + R() * 2; b.h += (R() - 0.5) * 1.5; const st2 = R() < 0.6 ? 0.25 : 0; b.x += Math.sin(b.h) * st2; b.z += Math.cos(b.h) * st2; }
-          b.pitch = Math.sin(t * 5 + i) > 0.6 ? 0.5 : 0;                        // pecking
-          if (near < 28 || R() < dt * 0.01) { b.mode = 'fly'; b.vy = 4; b.tx = b.x + (R() - 0.5) * 160; b.tz = b.z + (R() - 0.5) * 160; this.audio?.birdCall('wings', near); }
+          if (near < 28 || R() < dt * 0.01) { b.mode = 'fly'; b.vy = 4; b.tx = b.x + (R() - 0.5) * 160; b.tz = b.z + (R() - 0.5) * 160; this.audio?.birdCall('wings', hear); }
         } else {
           const dx = b.tx - b.x, dz = b.tz - b.z, d = Math.hypot(dx, dz);
           const sp = 11;
@@ -137,18 +152,16 @@ export class Birds {
           b.x += Math.sin(b.h) * sp * dt; b.z += Math.cos(b.h) * sp * dt;
           const want = gy + (d > 25 ? f.alt : 0);
           b.y += Math.max(-4 * dt, Math.min(5 * dt, (want - b.y) * dt * 1.5));
-          b.phase += dt * 3.6 * Math.PI * 2; b.wing = Math.sin(b.phase) * 0.75; b.bank = 0; b.pitch = 0;
           if (d < 2 || b.y < gy + 0.2) { b.mode = 'ground'; b.y = gy; b.wait = 1; f.cx = b.x; f.cz = b.z; }
         }
       } else {
         // jays and tits: perched in a crown (still, now and then a turn), then a short bounding flight to the next one
         if (b.mode === 'perch') {
-          b.wing = -1.35; b.pitch = 0; b.bank = 0;
           if ((b.wait -= dt) <= 0 || near < (key === 'jay' ? 20 : 9)) {
             b.mode = 'fly';
             const a = R() * Math.PI * 2, d = key === 'jay' ? 15 + R() * 25 : 4 + R() * 9;
             b.tx = b.x + Math.sin(a) * d; b.tz = b.z + Math.cos(a) * d; b.ty = this.ground(b.tx, b.tz) + (key === 'jay' ? 8 + R() * 10 : 5 + R() * 9);
-            if (key === 'jay' && near < 25) this.audio?.birdCall('jay', near);
+            if (key === 'jay' && near < 25) this.audio?.birdCall('jay', hear);
           }
         } else {
           const dx = b.tx - b.x, dz = b.tz - b.z, d = Math.hypot(dx, dz), sp = key === 'jay' ? 9 : 7;
@@ -156,31 +169,84 @@ export class Birds {
           const st2 = Math.min(d, sp * dt);
           b.x += Math.sin(b.h) * st2; b.z += Math.cos(b.h) * st2;
           b.y += (b.ty - b.y) * Math.min(1, dt * 2) + Math.sin(t * 9 + i) * dt * 1.5;   // (bounding)
-          b.phase += dt * (key === 'tit' ? 14 : 6) * Math.PI * 2;
-          b.wing = (Math.sin(t * 2.2 + i) > -0.2 ? Math.sin(b.phase) * 0.8 : -1.2);    // bursts of beats, wings closed between
           if (d < 0.3) { b.mode = 'perch'; b.wait = 2 + R() * (key === 'tit' ? 4 : 10); }
         }
       }
-      // pose the five parts
-      e.set(b.pitch, b.h, b.bank, 'YXZ'); q.setFromEuler(e);
-      s.setScalar(sc);
-      const show = Math.hypot(b.x - st.camX, b.z - st.camZ) < 260;
-      m4.compose(p.set(b.x, b.y + (b.mode === 'ground' ? 0.06 * sc : 0), b.z), q, show ? s : s.setScalar(0));
-      f.meshes[0].setMatrixAt(i, m4);
-      const fold = b.wing < -1, wa = fold ? 0 : b.wing, wo = fold ? 0 : b.wing * 0.6 + (key === 'buzzard' ? 0.18 : 0);
-      for (const [mi, side, part] of [[1, 1, 0], [2, -1, 0], [3, 1, 1], [4, -1, 1]]) {
-        // the inner half from the shoulder; the outer from the inner's tip; folded: both along the body
-        qw.setFromEuler(e.set(0, fold ? side * 1.45 : 0, side * (part ? wa + wo : wa), 'YXZ'));
-        const qq = q.clone().multiply(qw);
-        off.set(side * 0.04, 0.02, 0.03);
-        if (part) { off.x += side * 0.24 * Math.cos(fold ? 0 : wa); off.y += 0.24 * Math.sin(fold ? 0 : wa) * 1; if (fold) { off.set(side * 0.05, 0.03, -0.2); } }
-        off.applyQuaternion(q).multiplyScalar(sc);
-        m4.compose(p.set(b.x + off.x, b.y + off.y + (b.mode === 'ground' ? 0.06 * sc : 0), b.z + off.z), qq, side < 0 ? s.set(-sc, sc, sc) : s.set(sc, sc, sc));
-        if (!show) m4.makeScale(0, 0, 0);
-        f.meshes[mi].setMatrixAt(i, m4);
-      }
+      this.look(f, b, i, dt, t);
+      this.draw(f, b, i, st);
     });
     for (const m of f.meshes) m.instanceMatrix.needsUpdate = true;
+  }
+  // the wings, the tilt: from what the bird is doing (the friend's game makes its own beats)
+  look(f, b, i, dt, t) {
+    const key = f.key;
+    if (key === 'buzzard') { b.bank = -f.dir * 0.32; b.pitch = 0; b.phase += dt * 2.4 * Math.PI * 2; b.wing = b.flap ? Math.sin(b.phase) * 0.6 : 0.12; }
+    else if (b.mode === 'ground') { b.wing = -1.35; b.bank = 0; b.pitch = Math.sin(t * 5 + i) > 0.6 ? 0.5 : 0; }   // folded, pecking
+    else if (b.mode === 'perch') { b.wing = -1.35; b.pitch = 0; b.bank = 0; }
+    else if (key === 'crow') { b.phase += dt * 3.6 * Math.PI * 2; b.wing = Math.sin(b.phase) * 0.75; b.bank = 0; b.pitch = 0; }
+    else { b.phase += dt * (key === 'tit' ? 14 : 6) * Math.PI * 2; b.wing = (Math.sin(t * 2.2 + i) > -0.2 ? Math.sin(b.phase) * 0.8 : -1.2); b.bank = 0; b.pitch = 0; }   // bursts of beats, wings closed between
+  }
+  // pose the five parts
+  draw(f, b, i, st) {
+    const key = f.key, sc = f.k.scale;
+    e.set(b.pitch, b.h, b.bank, 'YXZ'); q.setFromEuler(e);
+    s.setScalar(sc);
+    const show = Math.hypot(b.x - st.camX, b.z - st.camZ) < 260;
+    m4.compose(p.set(b.x, b.y + (b.mode === 'ground' ? 0.06 * sc : 0), b.z), q, show ? s : s.setScalar(0));
+    f.meshes[0].setMatrixAt(i, m4);
+    const fold = b.wing < -1, wa = fold ? 0 : b.wing, wo = fold ? 0 : b.wing * 0.6 + (key === 'buzzard' ? 0.18 : 0);
+    for (const [mi, side, part] of [[1, 1, 0], [2, -1, 0], [3, 1, 1], [4, -1, 1]]) {
+      // the inner half from the shoulder; the outer from the inner's tip; folded: both along the body
+      qw.setFromEuler(e.set(0, fold ? side * 1.45 : 0, side * (part ? wa + wo : wa), 'YXZ'));
+      const qq = q.clone().multiply(qw);
+      off.set(side * 0.04, 0.02, 0.03);
+      if (part) { off.x += side * 0.24 * Math.cos(fold ? 0 : wa); off.y += 0.24 * Math.sin(fold ? 0 : wa) * 1; if (fold) { off.set(side * 0.05, 0.03, -0.2); } }
+      off.applyQuaternion(q).multiplyScalar(sc);
+      m4.compose(p.set(b.x + off.x, b.y + off.y + (b.mode === 'ground' ? 0.06 * sc : 0), b.z + off.z), qq, side < 0 ? s.set(-sc, sc, sc) : s.set(sc, sc, sc));
+      if (!show) m4.makeScale(0, 0, 0);
+      f.meshes[mi].setMatrixAt(i, m4);
+    }
+  }
+  // ---------------- with a friend (share.js)
+  // the flocks for the friend's game: [id, kind, cx, cz, r, alt, dir, [x, y, z, h, mode] each]
+  encode() {
+    return this.flocks.map(f => [f.id, BKEYS.indexOf(f.key), dm(f.cx), dm(f.cz), dm(f.r), dm(f.alt), f.dir,
+      f.birds.flatMap(b => [dm(b.x - f.cx), dm(b.y), dm(b.z - f.cz), cr(b.h), f.key === 'buzzard' ? (b.flap ? 3 : 0) : Math.max(0, MODES.indexOf(b.mode))])]);
+  }
+  // the host's flocks, here: snapshots A and B (encode()), k of the way from A to B
+  follow(A, B, k, dt, t, st) {
+    const prev = new Map(A.map(f => [f[0], f])), seen = new Set();
+    for (const fb of B) {
+      const n = fb[7].length / 5;
+      let f = this.byId.get(fb[0]);
+      if (f && f.birds.length !== n) { this.remove(f); f = null; }
+      if (!f) { f = new Flock(this.scene, BKEYS[fb[1]] ?? 'crow', n); f.id = fb[0]; f.callT = 5 + R() * 20; f.life = 0; this.flocks.push(f); this.byId.set(f.id, f); }
+      seen.add(f);
+      const fa = prev.get(fb[0]), a = fa && fa[7].length === fb[7].length ? fa : fb, pa = a[7], pb = fb[7];
+      f.cx = lerp(a[2], fb[2], k) / 10; f.cz = lerp(a[3], fb[3], k) / 10; f.r = fb[4] / 10; f.alt = fb[5] / 10; f.dir = fb[6];
+      f.birds.forEach((b, i) => {
+        const j = i * 5;
+        b.x = lerp(a[2] + pa[j], fb[2] + pb[j], k) / 10; b.y = lerp(pa[j + 1], pb[j + 1], k) / 10; b.z = lerp(a[3] + pa[j + 2], fb[3] + pb[j + 2], k) / 10;
+        b.h = lerpA(pa[j + 3] / 100, pb[j + 3] / 100, k);
+        const m = pb[j + 4], mode = f.key === 'buzzard' ? 'fly' : MODES[m] ?? 'fly';
+        if (f.key === 'crow' && b.mode === 'ground' && mode === 'fly') this.audio?.birdCall('wings', Math.hypot(b.x - st.px, b.z - st.pz));
+        b.mode = mode; b.flap = m === 3 ? 1 : 0;
+        this.look(f, b, i, dt, t);
+        this.draw(f, b, i, st);
+      });
+      for (const m of f.meshes) m.instanceMatrix.needsUpdate = true;
+      this.call(f, dt, st);
+    }
+    for (const f of [...this.flocks]) if (!seen.has(f)) this.remove(f);
+    this.ambient(dt, st);
+  }
+  // the host left: the birds drawn here fly on by themselves
+  adopt() {
+    for (const f of this.flocks) f.birds.forEach((b, i) => {
+      if (f.key === 'buzzard') b.ang = Math.atan2(b.z - f.cz, b.x - f.cx) - i * 2.5;
+      else if (b.mode === 'fly') { const d = f.key === 'crow' ? 60 : 6; b.tx = b.x + Math.sin(b.h) * d; b.tz = b.z + Math.cos(b.h) * d; b.ty = b.y; }
+      else b.wait = 1 + R() * 3;
+    });
   }
   info() { return this.flocks.map(f => ({ key: f.key, n: f.birds.length, x: +f.cx.toFixed(0), z: +f.cz.toFixed(0) })); }
 }

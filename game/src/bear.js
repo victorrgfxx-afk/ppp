@@ -106,7 +106,11 @@ function buildModel() {
 }
 
 // Behaviour: roams the hill around the cross; notices you within ~30 m (more with a torch), stops, roars and charges.
-// On foot it knocks you down and backs off; it cannot reach you in a car, so it stands and growls at it.
+// On foot it knocks you down and backs off; it cannot reach you in a car, so it stands and growls at it. With a friend
+// (share.js) it goes for whichever of you is nearest; the friend's game draws it where it is (follow()), and a blow it
+// lands on the friend reaches them there.
+const STATES = ['wander', 'sniff', 'alert', 'charge', 'retreat'];
+const ang = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Bear {
   constructor(scene, world, home, cb = {}) {
     Object.assign(this, buildModel());
@@ -143,18 +147,26 @@ export class Bear {
     return { x: this.home.x + 30, z: this.home.z };
   }
 
-  // st: { active, px, pz, py, inCar, torch, camX, camZ }
+  setActive(on, spawn = true) {
+    if (on === this.active) return;
+    this.active = on;
+    if (on) { if (spawn) this.spawn(); this.world.addDynamic(this.box); } else this.world.removeDynamic(this.box);
+  }
+  // st: { active, people: [{ x, z, car, torch, me, peer }, ...], px, pz (you: what you hear), camX, camZ }
   update(dt, t, st) {
-    if (st.active !== this.active) {
-      this.active = st.active;
-      if (this.active) { this.spawn(); this.world.addDynamic(this.box); } else this.world.removeDynamic(this.box);
-    }
-    const camD = Math.hypot(st.camX - this.x, st.camZ - this.z);
-    this.grp.visible = this.active && camD < 320;
+    this.setActive(st.active);
+    this.grp.visible = this.active && Math.hypot(st.camX - this.x, st.camZ - this.z) < 320;
     if (!this.active) return;
-    const dx = st.px - this.x, dz = st.pz - this.z, d = Math.hypot(dx, dz), toP = Math.atan2(dx, dz);
+    this.think(dt, t, st);
+    this.pose(dt, t, st);
+  }
+  think(dt, t, st) {
+    // the nearest of you (P), and how far it is from you (dl: its roars and growls)
+    let P = st.people[0], d = Infinity;
+    for (const q of st.people) { const e = Math.hypot(q.x - this.x, q.z - this.z); if (e < d) { d = e; P = q; } }
+    const dx = P.x - this.x, dz = P.z - this.z, toP = Math.atan2(dx, dz), dl = Math.hypot(st.px - this.x, st.pz - this.z);
     this.calm = Math.max(0, (this.calm ?? 0) - dt);
-    const sees = this.calm <= 0 && d < (st.torch ? 44 : 30);             // (after a blow it leaves you alone for a while)
+    const sees = this.calm <= 0 && d < (P.torch ? 44 : 30);             // (after a blow it leaves you alone for a while)
     let want = this.h, v = 0;
     this.timer -= dt; this.growlT -= dt;
     switch (this.state) {
@@ -163,24 +175,28 @@ export class Bear {
           this.state = 'sniff'; this.timer = 2 + Math.random() * 4; this.target = this.pickTarget(); break;
         }
         want = Math.atan2(this.target.x - this.x, this.target.z - this.z); v = 1.25;
-        if (sees) { this.state = 'alert'; this.timer = 1.6; this.cb.roar?.(d); }
+        if (sees) { this.state = 'alert'; this.timer = 1.6; this.cb.roar?.(dl); }
         break;
       }
       case 'sniff':
         if (this.timer <= 0) this.state = 'wander';
-        if (sees) { this.state = 'alert'; this.timer = 1.6; this.cb.roar?.(d); }
+        if (sees) { this.state = 'alert'; this.timer = 1.6; this.cb.roar?.(dl); }
         break;
       case 'alert':
         want = toP;
         if (this.timer <= 0) {
-          if (st.inCar) { this.timer = 2.5; if (this.growlT <= 0) { this.cb.growl?.(d); this.growlT = 3.5; } if (d > 45) this.state = 'wander'; }
+          if (P.car) { this.timer = 2.5; if (this.growlT <= 0) { this.cb.growl?.(dl); this.growlT = 3.5; } if (d > 45) this.state = 'wander'; }
           else this.state = 'charge';
         }
         break;
       case 'charge':
         want = toP; v = 9;                                                      // ~32 km/h; a bear can reach 50
-        if (st.inCar && d < 6) { this.state = 'alert'; this.timer = 2; }
-        else if (d < 1.9) { this.cb.attack?.(dx / (d || 1), dz / (d || 1)); this.state = 'retreat'; this.timer = 7; this.calm = 25; }
+        if (P.car && d < 6) { this.state = 'alert'; this.timer = 2; }
+        else if (d < 1.9) {
+          // you: knocked down here; the friend: in their game (the blow travels with the bear: share.js)
+          if (P.me) this.cb.attack?.(dx / (d || 1), dz / (d || 1)); else this.blow = [(this.blow?.[0] ?? 0) + 1, P.peer];
+          this.state = 'retreat'; this.timer = 7; this.calm = 25;
+        }
         else if (d > 70) this.state = 'wander';
         break;
       case 'retreat':
@@ -198,6 +214,10 @@ export class Bear {
     const nx = this.x + Math.sin(this.h) * this.speed * dt, nz = this.z + Math.cos(this.h) * this.speed * dt;
     if (this.speed > 0.05 && this.blocked(nx + Math.sin(this.h) * 0.8, nz + Math.cos(this.h) * 0.8)) { this.h += (this.state === 'charge' ? 1.6 : 0.9) * dt * 3; if (this.state === 'wander') this.target = this.pickTarget(); }
     else { this.x = nx; this.z = nz; }
+  }
+  // the body where it is, doing what it does (here or in the friend's game)
+  pose(dt, t, st) {
+    const dl = Math.hypot(st.px - this.x, st.pz - this.z);
     // stance on the slope
     const w = this.world, gy = w.groundHeight(this.x, this.z);
     const fx = Math.sin(this.h) * 0.85, fz = Math.cos(this.h) * 0.85;
@@ -222,6 +242,30 @@ export class Bear {
     this.jaw.rotation.x = this.jawOpen;
     const br = Math.sin(t * (this.state === 'charge' ? 9 : 2.2));
     this.torso.scale.set(1 + br * 0.01, 1 + br * 0.015, 1);
-    if (this.state === 'wander' && this.growlT <= 0 && d < 60) { this.cb.growl?.(d); this.growlT = 6 + Math.random() * 8; }
+    this.growlT -= this.puppet ? dt : 0;
+    if (this.state === 'wander' && this.growlT <= 0 && dl < 60) { this.cb.growl?.(dl); this.growlT = 6 + Math.random() * 8; }
   }
+  // ---------------- with a friend (share.js)
+  // [out, x, z (dm), heading (centirad), speed (dm/s), state, blows, whom the last one hit]
+  encode() {
+    return [this.active ? 1 : 0, Math.round(this.x * 10), Math.round(this.z * 10), Math.round(ang(this.h) * 100), Math.round(this.speed * 10), Math.max(0, STATES.indexOf(this.state)), this.blow?.[0] ?? 0, this.blow?.[1] ?? ''];
+  }
+  // the host's bear, here: snapshots A and B (encode()), k of the way; me: this game's peer (a blow for it lands here)
+  follow(A, B, k, dt, t, st, me) {
+    this.setActive(B[0] === 1, false);
+    if (A[0] !== 1) A = B;
+    this.x = (A[1] + (B[1] - A[1]) * k) / 10; this.z = (A[2] + (B[2] - A[2]) * k) / 10;
+    this.h = A[3] / 100 + ang(B[3] / 100 - A[3] / 100) * k; this.speed = (A[4] + (B[4] - A[4]) * k) / 10;
+    const dl = Math.hypot(st.px - this.x, st.pz - this.z);
+    const state = STATES[B[5]] ?? 'wander';
+    if (state !== this.state) { if (state === 'alert' && this.active) this.cb.roar?.(dl); this.state = state; }
+    if (B[6] !== this.blowSeen) {
+      if (this.blowSeen !== undefined && B[7] === me && this.active) this.cb.attack?.((st.px - this.x) / (dl || 1), (st.pz - this.z) / (dl || 1));
+      this.blowSeen = B[6];
+    }
+    this.grp.visible = this.active && Math.hypot(st.camX - this.x, st.camZ - this.z) < 320;
+    if (this.active) this.pose(dt, t, st);
+  }
+  // the host left: it goes on from here, as it is
+  adopt() { this.target = null; this.timer = 2; }
 }

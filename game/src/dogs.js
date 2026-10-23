@@ -401,10 +401,14 @@ export function buildDogs(scene, world) {
       return best;
     },
     pet(d) { d.pet = 3.5; },
-    update(dt, t, eye) {
+    // eye: the camera; others: the friends' heads (multiplayer) - each dog minds whoever is nearest
+    update(dt, t, eye0, others = []) {
       for (const d of dogs) {
+        const cam = Math.hypot(eye0.x - d.x, eye0.z - d.z);
+        let eye = eye0;
+        for (const o of others) if (Math.hypot(o.x - d.x, o.z - d.z) < Math.hypot(eye.x - d.x, eye.z - d.z)) eye = o;
         const dx = eye.x - d.x, dz = eye.z - d.z, dist = Math.hypot(dx, dz);
-        d.grp.visible = dist < 90;                   // the yard is hidden beyond that anyway
+        d.grp.visible = cam < 90;                    // the yard is hidden beyond that anyway
         if (!d.grp.visible) continue;
         // head follows a person within 7 m, otherwise idles
         let wantYaw, wantPitch;

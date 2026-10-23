@@ -65,14 +65,16 @@ export class Hikers {
   }
   // the clip's moment, now (its view in the photo list)
   atClip() { this.state = 'run'; this.t = T_CLIP; this.clip = true; }
-  // ctx: ok (16:11, clear), px pz (you, world), camera
+  // ctx: ok (16:11, clear), px pz (you, world), people (you and a friend: it goes on while either is near), camera
   update(dt, ctx) {
     this.tn += dt;
     if (!ctx.ok) { if (this.state !== 'off') this.hide(); this.state = 'off'; return; }
     this.prepare(ctx.camera);
     if (!this.ready) return;
     const px = ctx.px - this.origin.x, pz = ctx.pz - this.origin.z;
-    const mid = this.local(1040, 0), far = Math.hypot(px - mid.x, pz - mid.z);
+    const mid = this.local(1040, 0);
+    let far = Math.hypot(px - mid.x, pz - mid.z);
+    for (const q of ctx.people ?? []) far = Math.min(far, Math.hypot(q.x - this.origin.x - mid.x, q.z - this.origin.z - mid.z));
     ctx.camera.updateMatrixWorld();
     this._m.multiplyMatrices(ctx.camera.projectionMatrix, ctx.camera.matrixWorldInverse); this._f.setFromProjectionMatrix(this._m);
     if (this.state === 'off') {
@@ -81,9 +83,23 @@ export class Hikers {
       if (this.clip || far > 140 || !this.seen(start.x, start.z, 18)) { this.state = 'run'; if (!this.clip) this.t = T_START; }
       else return;
     }
-    if (far > 250 && !this.clip) { this.t = T_START; this.hide(); return; }      // away: it starts again when you come back
+    if (far > 250 && !this.clip) { this.t = T_START; this.hide(); this.away = true; return; }      // away: it starts again when you come back
+    this.away = false;
     if (far < 220) this.t = Math.min(this.t + dt, this.end + 600);
     this.clip = false;
+    for (const a of this.actors) this.pose(a, this.t, px, pz);
+  }
+  // with a friend (share.js): [0 off / 1 on / 2 away, t (ds)]; the host's walkers here at its clock (A, B, k of the way)
+  encode() { return [this.state === 'off' ? 0 : this.away ? 2 : 1, Math.round(this.t * 10)]; }
+  follow(A, B, k, dt, ctx) {
+    this.tn += dt;
+    if (!ctx.ok || B[0] === 0) { if (this.state !== 'off') this.hide(); this.state = 'off'; return; }
+    this.prepare(ctx.camera);
+    if (!this.ready) return;
+    if (B[0] === 2) { this.hide(); this.state = 'run'; return; }
+    this.state = 'run';
+    this.t = (A[0] === B[0] ? A[1] + (B[1] - A[1]) * k : B[1]) / 10;
+    const px = ctx.px - this.origin.x, pz = ctx.pz - this.origin.z;
     for (const a of this.actors) this.pose(a, this.t, px, pz);
   }
   seen(x, z, r) {

@@ -43,6 +43,7 @@ export class Walker {
     this.box.npc = this;
   }
   hit(vehicle, push) {
+    if (this.puppet) { this.onHit?.(vehicle, push); return; }          // (with a friend's game running the world: told to it)
     const v = Math.hypot(vehicle.vx, vehicle.vz);
     if (this.down > 0) return;
     if (v > 3) {
@@ -54,15 +55,23 @@ export class Walker {
     }
   }
   update(dt) {
-    if (this.down > 0) {
-      this.down -= dt;
-      this.fall = damp(this.fall, this.down > 1.2 ? 1 : 0, this.down > 1.2 ? 9 : 3, dt);
-    } else {
+    if (this.down > 0) this.down -= dt;
+    else {
       this.z += this.dir * this.speed * dt;
       if (this.z > this.z1) this.dir = -1;
       if (this.z < this.z0) this.dir = 1;
       this.phase += dt * this.speed * 2.9;
     }
+    this.pose(dt);
+  }
+  // where the friend's game has them (share.js): the stride from the ground covered
+  follow(x, z, dir, down, dt) {
+    if (down <= 0) this.phase += Math.hypot(x - this.x, z - this.z) * 2.9;
+    this.x = x; this.z = z; this.dir = dir; this.down = down;
+    this.pose(dt);
+  }
+  pose(dt) {
+    if (this.down > 0) this.fall = damp(this.fall, this.down > 1.2 ? 1 : 0, this.down > 1.2 ? 9 : 3, dt);
     const targetH = this.dir > 0 ? 0 : Math.PI;       // model faces +Z: south when dir > 0
     this.h = damp(this.h, targetH, 3, dt);
     const s = Math.sin(this.phase), walking = this.down > 0 ? 0 : 1;

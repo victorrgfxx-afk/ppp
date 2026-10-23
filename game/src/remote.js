@@ -62,6 +62,32 @@ class Avatar {
   dispose() { this.root.removeFromParent(); this.root.traverse(o => o.geometry?.dispose()); for (const m of this.mats) m.dispose(); }
 }
 
+// a friend's torch (multiplayer: their state's o): the lamp in the right hand, a glow, and the beam in the night air -
+// a soft cone, brighter at the lamp and along its axis, added to what is behind it (it lights nothing: the scene's lights
+// are fixed in number, and another one would make every material's shaders again)
+function torchBeam() {
+  const g = new THREE.Group();
+  const geo = new THREE.ConeGeometry(4.6, 12, 28, 1, true);
+  geo.translate(0, -6, 0); geo.rotateX(-Math.PI / 2);                                   // apex at the lamp, opening to +z
+  const beam = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false,
+    uniforms: { uI: { value: 0.05 } },
+    vertexShader: 'varying float vZ; varying vec3 vN; varying vec3 vV; void main() { vZ = position.z / 12.0; vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position, 1.0); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }',
+    fragmentShader: 'uniform float uI; varying float vZ; varying vec3 vN; varying vec3 vV; void main() { float e = abs(dot(vN, vV)); float a = uI * pow(1.0 - clamp(vZ, 0.0, 1.0), 1.8) * e * e; gl_FragColor = vec4(vec3(1.0, 0.94, 0.85) * a, 1.0); }',
+  }));
+  beam.renderOrder = 5; beam.frustumCulled = false; beam.userData.noAO = true; beam.userData.ueSkip = 'mp';
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,248,230,1)'); gr.addColorStop(0.25, 'rgba(255,236,200,0.55)'); gr.addColorStop(1, 'rgba(255,230,190,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+  glow.scale.setScalar(0.35);
+  g.add(beam, glow);
+  g.userData.dispose = () => { geo.dispose(); beam.material.dispose(); tex.dispose(); glow.material.dispose(); };
+  return g;
+}
+
 // the name over a player: drawn after the anti-aliasing (taa.js), over everything, the same size at any distance
 function nameTag() {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
@@ -108,7 +134,7 @@ export class RemotePlayers {
     v.x = c[0]; v.z = c[1]; v.h = c[2]; v.pitch = c[3]; v.roll = c[4]; v.steer = c[5]; v.spin = c[6];
     v.vx = -Math.sin(v.h) * c[7]; v.vz = -Math.cos(v.h) * c[7];
     if (!!c[8] !== v.lightsOn) v.setLights(!!c[8]);
-    v.brake = c[9] ? 1 : 0;
+    v.brake = c[9] ? 1 : 0; v.rpm = c[10] ?? v.rpm; v.throttle = c[11] ?? 0; v.horn = !!c[12];
     v.car.lights.tailMat.emissiveIntensity = v.brake ? 3.0 : (v.lightsOn ? 0.9 : 0.12 * DAYLIGHT.k);
     if (v.car.rider) v.car.rider.visible = true;
     v.place(dt);
@@ -146,6 +172,17 @@ export class RemotePlayers {
       p.avatar.root.visible = onFoot;
       if (onFoot) p.avatar.pose(dt, st.p[0], st.p[1], st.p[2], st.a[0], st.a[1]);
       else p.avatar.last = null;
+      // their torch, from the right hand where they look
+      const torch = onFoot && (st.o & 1);
+      if (torch && !p.torch) { p.torch = torchBeam(); this.scene.add(p.torch); }
+      if (p.torch) {
+        p.torch.visible = !!torch;
+        if (torch) {
+          const yaw = st.a[0], sy = Math.sin(yaw), cy = Math.cos(yaw);
+          p.torch.position.set(st.p[0] - sy * 0.25 + cy * 0.24, st.p[1] + 1.38, st.p[2] - cy * 0.25 - sy * 0.24);
+          p.torch.rotation.set(-st.a[1], yaw + Math.PI, 0, 'YXZ');
+        }
+      }
       const top = onFoot ? [st.p[0], st.p[1] + 2.05, st.p[2]] : car ? [car.car.group.position.x, car.car.group.position.y + 2.1, car.car.group.position.z] : [st.p[0], st.p[1] + 2, st.p[2]];
       p.tag.position.set(top[0], top[1], top[2]);
       // the same size on screen at any field of view: the label ~3 % of the screen's height (30 px at 1080p)
@@ -163,6 +200,7 @@ export class RemotePlayers {
     for (const [peer, p] of this.players) if (!seen.has(peer)) {
       if (p.car && p.car.remote === peer) this.release(p.car);
       p.avatar.dispose(); p.tag.removeFromParent(); p.tag.userData.dispose();
+      if (p.torch) { p.torch.removeFromParent(); p.torch.userData.dispose(); }
       this.players.delete(peer);
     }
     return clash;
@@ -183,6 +221,29 @@ export class RemotePlayers {
     const away = (v) => Math.hypot(v.x - v.mpSpawn.x, v.z - v.mpSpawn.z) > 0.3 || Math.abs(v.h - v.mpSpawn.h) > 0.05;
     return this.vehicles.filter(v => v.mpMine && v !== active && away(v)).sort((a, b) => b.mpSt - a.mpSt).slice(0, 20)
       .map(v => [v.mpKey, Math.round(v.x * 100) / 100, Math.round(v.z * 100) / 100, Math.round(v.h * 1000) / 1000, v.mpSt]);
+  }
+  // their prints in the snow (snowtrail.js): a step at each footfall of the figure, the tyres of the car they drive
+  prints(trail, depth) {
+    for (const p of this.players.values()) {
+      const a = p.avatar;
+      if (p.car) trail.car(p.car, depth);
+      else if (a.root.visible && a.speed > 0.3) {
+        const k = Math.floor(a.phase / Math.PI);
+        if (p.stepK !== undefined && k !== p.stepK) trail.step(a.root.position, a.root.rotation.y - Math.PI, k & 1 ? 1 : -1, a.speed > 3.2, depth, p.feet ??= {});
+        p.stepK = k;
+      }
+    }
+  }
+  // the nearest car a friend drives, for its sound (audio.js): { rpm, throttle, horn, d } from `from`, or null
+  engine(from) {
+    let best = null;
+    for (const p of this.players.values()) {
+      const v = p.car;
+      if (!v) continue;
+      const d = Math.hypot(v.x - from.x, v.z - from.z);
+      if (d < 250 && (!best || d < best.d)) best = { rpm: v.rpm ?? 900, throttle: v.throttle ?? 0, horn: v.horn, d };
+    }
+    return best;
   }
   // the friends, for the minimap and the menu
   list(net, from) {
