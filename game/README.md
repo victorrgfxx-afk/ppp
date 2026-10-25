@@ -754,6 +754,12 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * Brațele ajung la ele de la umeri, cu coatele în jos și în afară (cinematică inversă pe două segmente, la fiecare cadru).
     * Piciorul drept e pe accelerație, stângul lângă pedale.
     * Privind în jos îți vezi brațele, genunchii și picioarele. Din spatele mașinii (V) se vede șoferul întreg, cu cap, prin geamuri.
+* **Mâinile pe volan, sculptate anatomic (V75)** (`src/handgeo.js`, `src/hand.js`, `src/driver.js`):
+  * **O mână reală, nu forme lipite.** Mâna e sculptată ca personajele din pădure: oase, încheieturi și carne ca distanțe îmbinate lin, transformate într-o suprafață netedă (~20 000 de vârfuri pe mână). Are dimensiunile mâinii unui bărbat adult (lungime ~19 cm, lățime ~8,8 cm) și falange în proporțiile obișnuite (~1 : 0,6 : 0,4). Are încheieturile degetelor care ies peste articulațiile îndoite, perne sub vârfuri, unghii cu marginea liberă albă, mușchiul de la baza degetului mare, pielea dintre degetul mare și arătător și tendoanele de pe dosul palmei.
+  * **Prinderea e calculată, nu desenată.** Palma stă pe partea din afară a volanului, iar volanul trece în diagonală prin palmă, de la baza arătătorului la podul palmei, ca un mâner. Fiecare os al fiecărui deget se îndoaie exact cât îl lasă volanul, până se sprijină pe el (carnea apăsată 1,5 mm). Degetele învelesc volanul prin față, iar vârfurile lor ies pe partea dinăuntru. Degetul mare stă de-a lungul volanului, pe spate, spre vârf, cum se învață la școala de șoferi.
+  * **Încheietura e naturală.** Mâna e orientată după direcția reală a antebrațului, măsurată în toate mașinile. Încheietura e îndoită ~20° pe spate și ~15° spre degetul mic, ca la orice mână care strânge un mâner. Antebrațul intră drept în mânecă, iar mâneca se termină la încheietură.
+  * **Pielea.** Culoarea pielii e ușor neuniformă, mai roșiatică pe încheieturi și mai închisă în pliuri, acolo unde carnea se strânge. Unghiile sunt mai deschise și lucioase. Pielea are un luciu cald, moale, în lumina razantă.
+  * **Fără sacadări.** Mâna se sculptează o singură dată, într-un fir de lucru separat (worker), cât timp mergi spre mașină (~1 s). Apoi se așază pe volanul fiecărei mașini în ~1 ms; stânga e oglinda dreptei.
 
 ## Multiplayer (alpha, V71–V72): tu și un prieten în aceeași lume
 
@@ -967,6 +973,9 @@ src/maybach.js        Mercedes-Maybach GLS 600   src/doblo.js  Fiat Doblò Cargo
 src/interior.js       interioarele mașinilor: bord, ceasuri cu ace, volan, scaune, uși, căptușeală, parbrizul văzut din scaun
 src/mirror.js         oglinzile: retrovizoarea și oglinzile laterale arată ce e în spate (randate din ochiul oglindit)
 src/driver.js         tu la volan: mâinile pe volan, brațele, picioarele pe pedale
+src/handgeo.js        mâinile sculptate: oase, încheieturi, carne, unghii, prinderea pe volan (fără three.js)
+src/hand.js           mâinile ca obiecte 3D: sculptate în fundal, așezate pe volanul fiecărei mașini, pielea
+src/handworker.js     sculptează mâna într-un fir de lucru separat
 src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare

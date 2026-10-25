@@ -504,3 +504,5 @@ export function* buildBody(kind) {
   return { kind, J, nv: m.nv, pos: m.pos, nrm: m.nrm, idx: m.idx, col, mat, si, sw };
 }
 export function buildBodyNow(kind) { const it = buildBody(kind); let r; while (!(r = it.next()).done); return r.value; }
+// (the distances and the mesher, for other sculptures made in one go: hand.js)
+export { mesh as sdfMesh, sdEll, sdCap, smin, smax };
