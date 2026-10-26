@@ -1,11 +1,13 @@
 import { buildGrip } from './handgeo.js';
+import { buildArm } from './armgeo.js';
 
-// Sculpts the driver's hand off the main thread (hand.js prepareHands): a rim's thickness in, the right hand round a
-// straight bar as typed arrays out (moved, not copied).
+// Sculpts the driver's hand and arm off the main thread (hand.js): { kind: 'hand', tube } (a rim's thickness: the right
+// hand round a straight bar) or { kind: 'arm' } (the right arm) in, its typed arrays out (moved, not copied).
 self.onmessage = (e) => {
-  const it = buildGrip(e.data);
+  const it = e.data.kind === 'arm' ? buildArm() : buildGrip(e.data.tube);
   let r;
   while (!(r = it.next()).done);
   const b = r.value;
-  self.postMessage(b, [b.pos.buffer, b.nrm.buffer, b.idx.buffer, b.col.buffer, b.gloss.buffer]);
+  b.kind = e.data.kind;
+  self.postMessage(b, Object.values(b).filter(v => ArrayBuffer.isView(v)).map(v => v.buffer));
 };

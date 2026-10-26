@@ -760,6 +760,16 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Încheietura e naturală.** Mâna e orientată după direcția reală a antebrațului, măsurată în toate mașinile. Încheietura e îndoită ~20° pe spate și ~15° spre degetul mic, ca la orice mână care strânge un mâner. Antebrațul intră drept în mânecă, iar mâneca se termină la încheietură.
   * **Pielea.** Culoarea pielii e ușor neuniformă, mai roșiatică pe încheieturi și mai închisă în pliuri, acolo unde carnea se strânge. Unghiile sunt mai deschise și lucioase. Pielea are un luciu cald, moale, în lumina razantă.
   * **Fără sacadări.** Mâna se sculptează o singură dată, într-un fir de lucru separat (worker), cât timp mergi spre mașină (~1 s). Apoi se așază pe volanul fiecărei mașini în ~1 ms; stânga e oglinda dreptei.
+* **Brațe musculoase, într-un tricou (V76)** (`src/armgeo.js`, `src/driver.js`, `src/hand.js`):
+  * **Brațele unui bărbat antrenat**, sculptate ca mâinile. Brațul are ~0,31 m de la umăr la cot și ~39 cm circumferință pe biceps. Antebrațul are ~0,29 m și ~32 cm în partea cea mai groasă.
+    * **Brațul de sus:** deltoidul pe umăr, coborând în V pe exterior, bicepsul în față, peste brahial, cu tendonul în plica cotului. În spate e tricepsul: capul lung și cel lateral (potcoava), care se aplatizează în tendon deasupra cotului.
+    * **Cotul:** olecranul în spate și cele două epicondile.
+    * **Antebrațul:** brahioradialul și extensorii lungi umflați pe partea degetului mare, flexorii în față, extensorii în spate, creasta ulnei. De la jumătate în jos rămân doar tendoanele, până la ovalul încheieturii, care continuă în mână.
+    * **Vene:** câteva vene ies ~1 mm din piele pe antebraț și pe biceps.
+  * **Tricoul.** Șoferul poartă acum un tricou închis la culoare, cu mânecă scurtă până la jumătatea brațului și tiv, în loc de geacă.
+  * **Brațele se mișcă, nu se rup.** Fiecare braț e legat de cinci oase: brațul de sus și de patru ori antebrațul. Fiecare os al antebrațului e răsucit cu o treime mai mult spre încheietură, cum se rotește radiusul în jurul ulnei. Așa cotul se îndoaie cum cere cinematica (119–173° când virezi, ~135° drept înainte) și antebrațul se răsucește până la mâna de pe volan fără să se strângă ca un ambalaj de bomboană.
+  * **Pielea** are aceeași culoare ca mâinile, mai deschisă pe interiorul brațului, mai roșiatică pe cot și mai închisă în pliurile dintre mușchi. Venele sunt cu o nuanță mai albăstrui.
+  * **Fără sacadări.** Brațul se sculptează o singură dată, în fundal, la încărcarea jocului (~1,1 s), apoi se oglindește pentru brațul stâng.
 
 ## Multiplayer (alpha, V71–V72): tu și un prieten în aceeași lume
 
@@ -975,7 +985,8 @@ src/mirror.js         oglinzile: retrovizoarea și oglinzile laterale arată ce 
 src/driver.js         tu la volan: mâinile pe volan, brațele, picioarele pe pedale
 src/handgeo.js        mâinile sculptate: oase, încheieturi, carne, unghii, prinderea pe volan (fără three.js)
 src/hand.js           mâinile ca obiecte 3D: sculptate în fundal, așezate pe volanul fiecărei mașini, pielea
-src/handworker.js     sculptează mâna într-un fir de lucru separat
+src/armgeo.js         brațele sculptate: mușchii, venele, mâneca tricoului, legate de oasele brațului
+src/handworker.js     sculptează mâna și brațul într-un fir de lucru separat
 src/npc.js            trecătorul (animație de mers, poate fi lovit și se ridică)
 src/player.js         mersul la persoana I     src/collision.js coliziuni 2D + relief
 src/textures.js       texturi foto + procedurale   src/post.js  post‑procesare

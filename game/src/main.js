@@ -35,7 +35,7 @@ import { Net, clean } from './net.js';
 import { RemotePlayers, seatPos } from './remote.js';
 import { Mirrors } from './mirror.js';
 import { Driver } from './driver.js';
-import { prepareHands } from './hand.js';
+import { prepareHands, prepareArms } from './hand.js';
 import { Share } from './share.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
@@ -429,7 +429,8 @@ async function main() {
   const mirrors = Q.ssr ? new Mirrors(renderer, scene, farScene) : null;   // (the mirrors' images: Medium and up)
   if (mirrors) mirrors.off = store.get('mirrors', 'real') !== 'real';
   const driver = new Driver();
-  for (const v of vehicles) if (v.car.cabin?.pkg) prepareHands(v.car.cabin.pkg.tube);       // (the hands, made while you walk: hand.js)
+  for (const v of vehicles) if (v.car.cabin?.pkg) prepareHands(v.car.cabin.pkg.tube);       // (the hands and arms, made while you walk: hand.js)
+  prepareArms();
   const taaMover = { obj: null, min: new THREE.Vector3(), max: new THREE.Vector3() };
   vision = post.vision;
   gradeU = post.grade.uniforms;

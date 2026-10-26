@@ -119,12 +119,12 @@ function handFrame(r) {
 }
 // a point of the bar's frame on the rim (the wheel's frame)
 const toWheel = (R, x, y, z) => { const a = GRIP + y / R, c = Math.cos(a), s = Math.sin(a); return [(R + x) * c, (R + x) * s, z, c, s]; };
-// where the right forearm meets the hand (inside the sleeve), and the forearm's direction there (elbow to wrist) the hand
-// was made for, in the wheel's frame
+// where the right forearm meets the hand (inside the sleeve), the forearm's direction there (elbow to wrist) the hand
+// was made for, and the back of the wrist (its oval's flat side), in the wheel's frame
 export function gripWrist(R, tube) {
-  const { J } = handFrame(tube), w = add(J, FORE, -0.035), q = add(w, FORE, 0.01);
-  const a = toWheel(R, ...w), b = toWheel(R, ...q);
-  return { at: a.slice(0, 3), dir: norm(sub(b.slice(0, 3), a.slice(0, 3))) };
+  const { J, Df } = handFrame(tube), w = add(J, FORE, -0.035), q = add(w, FORE, 0.01);
+  const a = toWheel(R, ...w), b = toWheel(R, ...q), c = a[3], s = a[4];
+  return { at: a.slice(0, 3), dir: norm(sub(b.slice(0, 3), a.slice(0, 3))), back: [Df[0] * c - Df[1] * s, Df[0] * s + Df[1] * c, Df[2]] };
 }
 
 // the right hand round the bar
@@ -259,3 +259,5 @@ export function bendGrip(b, R) {
   }
   return { pos, nrm };
 }
+// (the shapes and their algebra, for the arms: armgeo.js)
+export { add, sub, scl, dot, cross, norm, lerp, smin, cap, ell, oval, chain, far, lin };

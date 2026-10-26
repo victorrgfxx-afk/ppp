@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { surfTex } from './interior.js';
-import { prepareHands, gripHands, handWrists, skinMaterial } from './hand.js';
+import { prepareHands, gripHands, handWrists, skinMaterial, prepareArms, gripArms } from './hand.js';
+import { REST } from './armgeo.js';
 
 // You at the wheel (V74): the body of whoever drives the car you are in, built on its package (interior.js: the eyes,
 // the seat's H-point, the wheel, the pedals) with an adult's lengths (shoulder to elbow 0.31 m, elbow to wrist
@@ -8,12 +9,18 @@ import { prepareHands, gripHands, handWrists, skinMaterial } from './hand.js';
 //  * The hands hold the rim a little above the spokes (the "9 and 3" grip, raised clear of the spokes' roots: sculpted
 //    round it, hand.js) and turn with it up to ~60 degrees each way; past that they slide on the rim, as hands on a
 //    wheel do (push-pull).
-//  * The arms reach them from the shoulders, the elbows bending down and out (two-bone inverse kinematics), every frame.
+//  * The arms reach them from the shoulders, the elbows bending down and out (two-bone inverse kinematics), every frame:
+//    a muscular man's arms in a T-shirt (armgeo.js), skinned to five bones each - the upper arm, and the forearm four
+//    times, turned a third more each toward the wrist, so the forearm turns from the elbow (as it is sculpted, palm up)
+//    to the hand's wrist (the radius rolling round the ulna) without wringing.
 //  * The legs from the hips to the feet: the right on the accelerator, the left beside the pedals, the knees by the
 //    same kinematics; the torso between the shoulders and the hips.
 //  * The head and neck only where the camera is not in them (the view from behind the car).
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V3(0, 1, 0), _a = V3(), _b = V3(), _c = V3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
+const _x = V3(), _f = V3(), _y = V3(), _z = V3(), _y2 = V3(), _bk = V3(), _ty = V3(), _tz = V3(), _tq = new THREE.Quaternion();
+// the arm's bones as sculpted (armgeo.js), inverted: what each bone's frame now is applied to
+const INV = [REST.upper, REST.fore, REST.fore, REST.fore, REST.fore].map(r => new THREE.Matrix4().makeBasis(V3(...r.x), V3(...r.y), V3(...r.z)).setPosition(...r.o).invert());
 const ARM = [0.31, 0.29], LEG = [0.46, 0.45], SLIDE = 1.05;
 
 // the middle joint of a two-bone limb from root to tip, bent toward pole (the tip pulled in if out of reach)
@@ -47,18 +54,19 @@ export class Driver {
     this.v = null; this.g = null;
     const mk = (o) => { const m = new THREE.MeshStandardMaterial(o); m.userData.noWet = true; m.envMapIntensity = 0.55; return m; };
     this.M = {
-      jacket: mk({ color: 0x2b3038, roughness: 0.9, map: surfTex('fabric'), side: THREE.DoubleSide }),      // (the inside of the cuffs)
+      shirt: mk({ color: 0x2c3038, roughness: 0.92, map: surfTex('fabric') }),
       jeans: mk({ color: 0x3a4a68, roughness: 0.92, map: surfTex('fabric') }),
       skin: mk({ color: 0xc8957c, roughness: 0.55 }),
       shoes: mk({ color: 0x1b1b1c, roughness: 0.5, map: surfTex('leather') }),
       hair: mk({ color: 0x2a2018, roughness: 0.85 }),
       hand: skinMaterial(),
+      arm: skinMaterial(true),
     };
   }
   // the car you drive (null: none)
   attach(v) {
     if (v === this.v) return;
-    if (this.g) { this.g.parent?.remove(this.g); this.g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); }
+    if (this.g) { this.g.parent?.remove(this.g); this.g.traverse(o => { if (o.isMesh && !o.geometry.userData.shared) o.geometry.dispose(); }); }
     this.g = null; this.v = v;
     const pk = v?.car.cabin?.pkg;
     if (!pk) return;
@@ -70,7 +78,7 @@ export class Driver {
     // the torso: a rounded trunk from the chest to the pelvis
     // (its top stays under the shoulders and behind the eyes: in view only looking down)
     const chest = V3(sx, E.y - 0.3, E.z + 0.14), pelvis = V3(sx, pk.hip.y + 0.1, pk.hip.z + 0.03);
-    const trunk = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, chest.distanceTo(pelvis), 6, 18), M.jacket);
+    const trunk = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, chest.distanceTo(pelvis), 6, 18), M.shirt);
     trunk.applyMatrix4(new THREE.Matrix4().compose(chest.clone().lerp(pelvis, 0.5), new THREE.Quaternion().setFromUnitVectors(UP, chest.clone().sub(pelvis).normalize()), V3(1.32, 1, 0.82)));
     g.add(trunk);
     // the legs: the right foot on the accelerator, the left beside the pedals, knees by the kinematics
@@ -97,11 +105,13 @@ export class Driver {
     const hair = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), M.hair); hair.scale.set(0.081, 0.11, 0.101); hair.position.copy(hc).add(V3(0, 0.01, 0.006));
     const neck = tube(0.052, 0.05, M.skin); place(neck, V3(sx, E.y - 0.2, E.z + 0.1), V3(sx, E.y - 0.04, E.z + 0.085));
     head.add(skull, hair, neck); g.add(head); this.head = head;
-    // the arms (placed every frame)
-    this.arms = [0, 1].map(() => ({ up: tube(0.05, 0.044, M.jacket), fore: tube(0.043, 0.037, M.jacket), sb: ball(0.055, M.jacket), eb: ball(0.045, M.jacket) }));
+    // the arms (placed every frame; plain tubes until the sculpted ones are made: hand.js, off the main thread)
+    this.arms = [0, 1].map(() => ({ up: tube(0.05, 0.044, M.shirt), fore: tube(0.043, 0.037, M.shirt), sb: ball(0.055, M.shirt), eb: ball(0.045, M.shirt) }));
     for (const a of this.arms) g.add(a.up, a.fore, a.sb, a.eb);
-    // the hands (hand.js: made once per rim, off the main thread; the arms end in their sleeves until they are), each in
-    // the wheel's frame, placed by its turn; the forearms reach where the hands' wrists go into the sleeves
+    this.limbs = null;
+    prepareArms();
+    // the hands (hand.js: made once per rim, off the main thread), each in the wheel's frame, placed by its turn; the
+    // forearms reach where the hands' wrists go into them
     this.wrists = handWrists(pk.R, pk.tube).reverse();
     this.hands = null;
     prepareHands(pk.tube);
@@ -123,6 +133,20 @@ export class Driver {
         return m;
       });
     }
+    if (!this.limbs) {
+      const ag = gripArms();
+      if (ag) {
+        this.limbs = [ag.left, ag.right].map(geo => {
+          const bones = INV.map(() => new THREE.Bone()), m = new THREE.SkinnedMesh(geo, this.M.arm);
+          // (the bones' frames set here in the driver's frame, the mesh's own, every frame: detached from the scene)
+          m.bindMode = THREE.DetachedBindMode; m.bind(new THREE.Skeleton(bones, INV.map(x => x.clone())), new THREE.Matrix4());
+          m.matrixAutoUpdate = false; m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true;
+          this.g.add(m);
+          return bones;
+        });
+        for (const a of this.arms) a.up.visible = a.fore.visible = a.sb.visible = a.eb.visible = false;
+      }
+    }
     const wrist = V3(), elbow = V3(), tip = V3(), end = V3();
     for (let i = 0; i < 2; i++) {
       if (this.hands) { this.hands[i].matrix.copy(_m); this.hands[i].matrixWorldNeedsUpdate = true; }
@@ -133,6 +157,27 @@ export class Driver {
       end.subVectors(tip, elbow).setLength(0.012).add(tip);
       place(a.up, S, elbow); place(a.fore, elbow, end);
       at(a.sb, S); at(a.eb, elbow);
+      if (this.limbs) this.pose(this.limbs[i], S, elbow, tip, this.wrists[i].back);
+    }
+  }
+  // an arm's bones: the upper arm from the shoulder (its front: the way the elbow bends), the forearm from the elbow,
+  // turned toward the back of the hand's wrist a third more at each of its bones
+  pose(B, S, E, W, back) {
+    _x.subVectors(E, S).normalize(); _f.subVectors(W, E).normalize();
+    _y.copy(_f).addScaledVector(_x, -_f.dot(_x));
+    if (_y.lengthSq() < 1e-8) _y.set(0, -1, 0).addScaledVector(_x, _x.y);
+    _y.normalize(); _z.crossVectors(_x, _y);
+    B[0].matrixWorld.makeBasis(_x, _y, _z).setPosition(S);
+    _y2.crossVectors(_z, _f);
+    // (the wrist's back as sculpted: the forearm's back, -y; as the hand has it: back, on the wheel)
+    _bk.copy(back).transformDirection(_m);
+    _bk.addScaledVector(_f, -_bk.dot(_f)).normalize();
+    _ty.copy(_y2).negate();
+    const tau = Math.atan2(_c.crossVectors(_ty, _bk).dot(_f), _ty.dot(_bk));
+    for (let k = 0; k < 4; k++) {
+      _tq.setFromAxisAngle(_f, tau * k / 3);
+      _ty.copy(_y2).applyQuaternion(_tq); _tz.copy(_z).applyQuaternion(_tq);
+      B[1 + k].matrixWorld.makeBasis(_f, _ty, _tz).setPosition(E);
     }
   }
 }
