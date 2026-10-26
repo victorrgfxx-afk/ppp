@@ -44,7 +44,7 @@ import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
 import { AIR_GLSL, AIR_H0, HAZE_H, hazeFor, visibilityOf } from './air.js';
 import { SEASON, FOLIAGE, dormant } from './season.js';
-import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR } from './geo/index.js';
+import { loadGeoAll, buildGeoWorld, geoGround, GEO, footprintIndex, roadNameAt, sunDirection, moonDirection, profileAt, bridgeHeight, FAR, landHorizon, apparentEl } from './geo/index.js';
 
 // The air between the eye and every point (air.js): molecules and haze, each with its own fall-off with height, per
 // colour channel, integrated along the line of sight. scene.fog is a THREE.Fog used as the carrier of the haze's two
@@ -54,6 +54,8 @@ THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n\tvarying float vFogDepth;\
 THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n\tvFogDepth = - mvPosition.z;\n\tvFogW = transpose( mat3( viewMatrix ) ) * ( mvPosition.xyz - viewMatrix[ 3 ].xyz );\n#endif';
 THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
 	uniform vec3 fogColor;
+	uniform vec4 airSun;
+	uniform vec3 airCool;
 	varying float vFogDepth;
 	varying vec3 vFogW;
 	#ifdef FOG_EXP2
@@ -72,13 +74,21 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 			float airB = fogNear, airH = fogFar;
 		#endif
 		vec3 airT, airL; float airTau;
-		airPath( cameraPosition, vFogW, airB, airH, fogColor, airT, airL, airTau );
+		vec3 airV = vFogW - cameraPosition;
+		float airMie = pow( max( dot( airV, airSun.xyz ) * inversesqrt( max( dot( airV, airV ), 1e-12 ) ), 0.0 ), 6.0 );
+		airPath( cameraPosition, vFogW, airB, airH, fogColor * ( 1.0 - airCool * ( 1.0 - airToward( airV, airSun.xyz ) ) ) * ( 1.0 + airSun.w * airMie ), airT, airL, airTau );
 		gl_FragColor.rgb = gl_FragColor.rgb * airT + airL;
 		#ifdef OPAQUE
 			gl_FragColor.a = 2.0 - exp( - airTau );
 		#endif
 	}
 #endif`;
+// The haze's light, as on the far relief (geo/terrain.js): brighter towards the sun (the aerosols scatter forward), and at
+// a low sun golden only on the sun's side, the rest the day's paler blue (airCool: 1 - that colour / fogColor, per channel;
+// applyWeather). One shared value in every built-in material's uniforms: three clones its own vector types, not plain
+// objects, and every material's uniforms are uploaded at least once a frame.
+const AIR_SUN = { x: 0, y: 1, z: 0, w: 0 }, AIR_COOL = { x: 0, y: 0, z: 0 };
+for (const k in THREE.ShaderLib) { const u = THREE.ShaderLib[k].uniforms; if (u.fogColor) { u.airSun = { value: AIR_SUN }; u.airCool = { value: AIR_COOL }; } }
 // one sun, several shadow maps (fine near, coarse far): patched into the light loop before any shader compiles
 installCascadedShadows();
 // Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina. The hour can be
@@ -160,7 +170,26 @@ async function main() {
   const sky = createSky();
   farScene.add(sky);
   const sunDir = sky.material.uniforms.uSunDir.value;
-  let hour = HOURS.includes(store.get('hour', 11.5)) ? store.get('hour', 11.5) : 11.5;
+  // The golden hours (V78): the sun ~1 degree over the land's own horizon as the street sees it - the hills hide it well
+  // before the level horizon would (to the west ~7 degrees high: on 26 September the street goes into the hill's shade at
+  // ~18:22, the sun setting at 19:04) - so its light comes through ~7-9 air masses: amber, the shadows long, the shade
+  // blue from the sky. The moment worked out for the day in play (the autumn's, or the snow's 1 February).
+  const GOLD = { gam: 'Golden hour, dimineața', gpm: 'Golden hour, seara' }, goldMemo = {};
+  const goldenTime = (k, winter) => {
+    const key = k + (winter ? 'w' : '');
+    if (goldMemo[key] !== undefined) return goldMemo[key];
+    const eye = heightAt0() + 1.7, above = (h) => { const s = sunDirection(sunTime(h, winter)); return apparentEl(s.el) - landHorizon(0, eye, 0, s.dir); };
+    // (from the night toward noon, in 5-minute steps, then to the minute)
+    const am = k === 'gam', from = am ? 4 : 21, step = am ? 5 / 60 : -5 / 60;
+    let h = from;
+    while (Math.abs(h - 12.5) > 0.1 && above(h) < 1) h += step;
+    for (let i = 0; i < 5 && above(h - step / 5) >= 1; i++) h -= step / 5;
+    return (goldMemo[key] = Math.round(h * 60) / 60);
+  };
+  const heightAt0 = () => geoGround(0, 0);
+  const isGold = (v) => v === 'gam' || v === 'gpm';
+  let golden = isGold(store.get('hour')) ? store.get('hour') : null;
+  let hour = golden ? goldenTime(golden, WEATHER[store.get('weather', 'senin')]?.winter) : HOURS.includes(store.get('hour', 11.5)) ? store.get('hour', 11.5) : 11.5;
   let sunInfo = sunDirection(sunTime(hour, WEATHER[store.get('weather', 'senin')]?.winter));
   sunDir.copy(sunInfo.dir);
   const { sun } = createLights(scene, sunDir);
@@ -174,6 +203,10 @@ async function main() {
   let weatherKey = WEATHER[store.get('weather', 'senin')] ? store.get('weather', 'senin') : 'senin';
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
+  // (the sun's - by night the moon's - light as the hour gives it, and how much of the disk the land lets through where
+  // you are: the main loop)
+  let sunBase = 0, sunOcc = 1, occTarget = 1, occStale = true;
+  const occAt = new THREE.Vector3();
   let snowFall = 0, snowCover = 0, winter = false, setWinter = null;          // (setWinter: once the map is built)
   // the leaves: autumn colours (mid-October, as in the user's drone photos) or the summer's green (season.js; menu)
   let foliage = FOLIAGE[store.get('foliage', 'toamna')] !== undefined ? store.get('foliage', 'toamna') : 'toamna';
@@ -257,8 +290,15 @@ async function main() {
     const moonDir = moonKey * (overcast ? 0.06 : 1), skyAmb = moonKey * (overcast ? 0.3 : 0.22) * Math.max(moonSin, 0.3) + 0.004;
     const dayGround = 0.35 + 0.65 * d, nightGround = 0.2 * (moonDir * moonSin + skyAmb) / Math.PI / 0.32;
     const gk = THREE.MathUtils.lerp(dayGround, nightGround, night);
+    // Golden hour (V78): at a low sun under a clear sky only the horizon on the sun's side glows (the light the haze
+    // scatters forward, the colour of the sunlight that crosses ~10 air masses); away from it the sky stays pale blue, a
+    // little warmed (a whole horizon warmed alike read as dusk all round). With the sun higher (day 1) both are the day's;
+    // the glow fades out with the twilight, the sun 6 degrees down.
+    const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2], low = overcast ? 0 : 1 - d;
+    const horizonSun = mixA(mul(w.horizon, warm), L.color.map(c => c * 1.6 * lum(w.horizon) / lum(L.color)), 0.85 * low * THREE.MathUtils.smoothstep(sunInfo.el, -6, 1));   // (~1.6 times brighter than the rest: forward scattering)
+    const horizonAway = mixA(mul(w.horizon, warm), w.horizon, 0.8 * (overcast ? 0 : 1));
     setSkyWeather(sky, { ...w, envGround: (w.envGround ?? [0.33, 0.33, 0.31]).map(v => v * gk), sunColor: mul(w.sunColor, L.color).map(v => v * sunVis),
-      zenith: mixA(w.zenith, N.zenith, night), horizon: mixA(mul(w.horizon, warm), N.horizon, night),
+      zenith: mixA(w.zenith, N.zenith, night), horizon: mixA(horizonAway, N.horizon, night), horizonSun: mixA(horizonSun, N.horizon, night), sunLow: low * sunVis * (1 - night),
       cloudLit: mixA(mul(w.cloudLit, warm), N.cloudLit, night), cloudDark: mixA(w.cloudDark, N.cloudDark, night),
       bright: THREE.MathUtils.lerp(w.bright * (0.3 + 0.7 * d), 1, night) });
     const su = sky.material.uniforms;
@@ -266,10 +306,16 @@ async function main() {
     su.uHole.value = night * (overcast ? 1 : 0);                              // the moon looks through a gap above the hill
     if (night > 0.5) { sun.color.setRGB(1, 0.94, 0.86); sun.intensity = moonDir; }   // (sunlight off the moon, a little redder, ~4100 K: the blue of a moonlit night is the eye's - vision.js)
     else { sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; }
+    sunBase = sun.intensity; sun.intensity *= sunOcc; occStale = true;
     sun.shadow.intensity = w.shadow;
     hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night));
     hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), skyAmb * 0.55 / 0.2, night);   // (the image-based light gives the rest)
     fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
+    // the haze away from the sun as the sky's horizon there (fog chunk above, geo/terrain.js), its glow towards the sun
+    const fogAway = mixA(mixA(mul(w.fog, warm), w.fog, 0.8 * (overcast ? 0 : 1)).map(v => v * (0.45 + 0.55 * d)), N.fog, night);
+    [AIR_COOL.x, AIR_COOL.y, AIR_COOL.z] = fogAway.map((v, i) => 1 - v / Math.max(fogColor.toArray()[i], 1e-4));
+    FAR.uAirCool.value.set(AIR_COOL.x, AIR_COOL.y, AIR_COOL.z);
+    AIR_SUN.x = sunDir.x; AIR_SUN.y = sunDir.y; AIR_SUN.z = sunDir.z; AIR_SUN.w = FAR.uSunHaze.value;
     scene.fog.near = baseFog = hazeFor(w.vis) * (horror ? 1.3 : 1);
     scene.fog.far = w.hazeH ?? HAZE_H;
     stormTarget = w.storm ?? 0;
@@ -690,14 +736,28 @@ async function main() {
     if (night > 0.5 && !flashlight.on && mode === 'foot') { flashlight.set(true); hud.toast('E noapte: lanterna e aprinsă (L o stinge)', 3); }
     if (night < 0.5 && flashlight.on) flashlight.set(false);
   };
-  const setWeather = (key) => { applyWeather(key); store.set('weather', key); $('weather').value = key; $('weather2').value = key; torchForNight(); mp.worldChanged(weatherKey, hour); };
-  const setHour = (h) => { applyWeather(weatherKey, h); store.set('hour', h); $('hour').value = h; $('hour2').value = h; torchForNight(); mp.worldChanged(weatherKey, hour); };
+  // the hours offered, in their order through the day: the golden ones at their time on the day in play
+  const hourOptions = () => [...HOURS.map(h => [h, h, hourLabel(h)]), ...Object.entries(GOLD).map(([k, label]) => { const h = goldenTime(k, !!WEATHER[weatherKey].winter); return [k, h, `${label} (${hourLabel(h)})`]; })]
+    .sort((a, b) => a[1] - b[1]);
+  const showHours = () => { for (const id of ['hour', 'hour2']) { $(id).innerHTML = hourOptions().map(([v, , l]) => `<option value="${v}">${l}</option>`).join(''); $(id).value = golden ?? hour; } };
+  const setWeather = (key) => {
+    const season = !!WEATHER[key].winter !== !!WEATHER[weatherKey].winter;
+    applyWeather(key, golden ? goldenTime(golden, !!WEATHER[key].winter) : hour); store.set('weather', key); $('weather').value = key; $('weather2').value = key;
+    if (season) showHours();
+    torchForNight(); mp.worldChanged(weatherKey, hour);
+  };
+  const setHour = (h) => {
+    golden = isGold(h) ? h : null;
+    applyWeather(weatherKey, golden ? goldenTime(golden, !!WEATHER[weatherKey].winter) : h); store.set('hour', golden ?? hour);
+    for (const id of ['hour', 'hour2']) $(id).value = golden ?? hour;
+    torchForNight(); mp.worldChanged(weatherKey, hour);
+  };
   // (the friend's, when they set it later than you: net.js)
   mp.world.k = weatherKey; mp.world.h = hour;
   mp.onWorld = (k, h) => {
     const was = weatherKey + hour;
     if (WEATHER[k] && k !== weatherKey) setWeather(k);
-    if (typeof h === 'number' && h >= 0 && h < 24 && h !== hour) setHour(h);
+    if (typeof h === 'number' && h >= 0 && h < 24 && h !== hour) setHour(Object.keys(GOLD).find(k => goldenTime(k, !!WEATHER[weatherKey].winter) === h) ?? h);
     if (weatherKey + hour !== was) hud.toast('Vremea și ora comune cu prietenul: ' + WEATHER[weatherKey].label + ', ' + hourLabel(hour), 3);
   };
   torchForNight();                                              // (a game started at night)
@@ -706,11 +766,8 @@ async function main() {
     $(id).value = weatherKey;
     $(id).addEventListener('change', (e) => setWeather(e.target.value));
   }
-  for (const id of ['hour', 'hour2']) {
-    $(id).innerHTML = HOURS.map(h => `<option value="${h}">${hourLabel(h)}</option>`).join('');
-    $(id).value = hour;
-    $(id).addEventListener('change', (e) => setHour(parseFloat(e.target.value)));
-  }
+  showHours();
+  for (const id of ['hour', 'hour2']) $(id).addEventListener('change', (e) => setHour(isGold(e.target.value) ? e.target.value : parseFloat(e.target.value)));
 
   // ---------- UI wiring ----------
   const begin = () => {
@@ -1175,7 +1232,20 @@ async function main() {
     WIND.time.value = t;
     geoWorld.tick(t, camera.position);                     // the landmarks' moving parts (the oil wells' pumping units)
     // the far relief (terrain.js FAR) in the map's light and haze
-    FAR.uSunDir.value.copy(sunDir); FAR.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity);
+    // the sun (by night the moon) behind the land's own horizon where you are (geo/index.js landHorizon: the hills, the
+    // far relief, the Earth's curve): its direct light gone, the sky's left - in the valley the street goes into the
+    // western hill's shade while the sun still lights the hills to the east (the far relief keeps its light); worked
+    // out again every 20 m, the disk (0.53 deg) going behind the ridge over half a degree
+    if (occStale || camera.position.distanceToSquared(occAt) > 400) {
+      occAt.copy(camera.position);
+      const el = apparentEl(night > 0.5 ? moonInfo.el : sunInfo.el), hz = landHorizon(occAt.x, occAt.y, occAt.z, sunDir);
+      occTarget = THREE.MathUtils.smoothstep(el - hz, -0.27, 0.27);
+      if (occStale) sunOcc = occTarget;
+      occStale = false;
+    }
+    sunOcc += (occTarget - sunOcc) * Math.min(1, dt * 2);
+    sun.intensity = sunBase * sunOcc;
+    FAR.uSunDir.value.copy(sunDir); FAR.uSunCol.value.copy(sun.color).multiplyScalar(sunBase);
     FAR.uSky.value.copy(hemi.color).multiplyScalar(hemi.intensity); FAR.uGround.value.copy(hemi.groundColor).multiplyScalar(hemi.intensity);
     FAR.uFogCol.value.copy(scene.fog.color); FAR.uFogDensity.value = scene.fog.near; FAR.uFogH.value = scene.fog.far; FAR.uSnow.value = SNOW.uSnow.value;
     // the wind: a breeze, or in a blizzard the crivăț from the north-east, ~15 m/s gusting between ~8 and ~22 m/s (to
@@ -1207,8 +1277,9 @@ async function main() {
       if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
       if (input.hit('KeyO')) {
-        setHour(HOURS[(HOURS.indexOf(hour) + 1) % HOURS.length]);
-        hud.toast(night > 0.5 ? `Ora ${hourLabel(hour)} · noapte, lună plină la ${Math.round(moonInfo.el)}°${horror ? ' · furtună: ursul a ieșit pe dealul crucii' : ''}` : `Ora ${hourLabel(hour)} · soarele la ${Math.round(sunInfo.el)}° deasupra orizontului`, 3.5);
+        const opts = hourOptions(), i = opts.findIndex(([v]) => v === (golden ?? hour));
+        setHour(opts[(i + 1) % opts.length][0]);
+        hud.toast(night > 0.5 ? `Ora ${hourLabel(hour)} · noapte, lună plină la ${Math.round(moonInfo.el)}°${horror ? ' · furtună: ursul a ieșit pe dealul crucii' : ''}` : `Ora ${hourLabel(hour)}${golden ? ' · ' + GOLD[golden] : ''} · soarele la ${Math.round(sunInfo.el)}° deasupra orizontului${sunOcc < 0.5 ? ', după deal' : ''}`, 3.5);
       }
       // J: to the friend (multiplayer)
       if (input.hit('KeyJ')) joinFriend();
@@ -1600,7 +1671,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

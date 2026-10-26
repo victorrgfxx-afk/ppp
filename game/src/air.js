@@ -34,6 +34,11 @@ float airColumn(float ha, float hb, float d, float H) {
   float x = (hb - ha) / H;
   return d * exp(-ha / H) * (abs(x) > 1e-3 ? (1.0 - exp(-x)) / x : 1.0 - 0.5 * x);
 }
+// how far a line of sight v looks to the sun's (s) side of the sky, by azimuth: 1 straight at it, 0 straight away (at a
+// low sun only the air on its side is lit golden: main.js)
+float airToward(vec3 v, vec3 s) {
+  return pow(max(0.5 + 0.5 * dot(v.xz, s.xz) * inversesqrt(max(dot(v.xz, v.xz) * dot(s.xz, s.xz), 1e-12)), 0.0), 2.5);
+}
 void airPath(vec3 e, vec3 p, float bM, float hM, vec3 hazeM, out vec3 T, out vec3 L, out float tauM) {
   float d = length(p - e), he = max(e.y, -250.0), hp = max(p.y, -250.0);
   vec3 tR = vec3(${RAYLEIGH.map(v => v.toExponential(2)).join(', ')}) * airColumn(he + ${AIR_H0.toFixed(2)}, hp + ${AIR_H0.toFixed(2)}, d, ${RAYLEIGH_H.toFixed(1)});

@@ -1,6 +1,6 @@
 import { moonAltAz } from '../astro.js';
 import * as THREE from 'three';
-import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns } from './data.js';
+import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns, farAt } from './data.js';
 import { genGeoTextures } from './geotex.js';
 import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, FAR } from './terrain.js';
 import { buildWater, paintGravelBed } from './water.js';
@@ -178,6 +178,35 @@ export function moonDirection(date) {
   const e = Math.sin(az) * Math.cos(el), nn = Math.cos(az) * Math.cos(el), up = Math.sin(el), th = bearing * rad;
   return { dir: new THREE.Vector3(-e * Math.cos(th) + nn * Math.sin(th), up, e * Math.sin(th) + nn * Math.cos(th)).normalize(), el: m.el, az: m.az, illum: m.illum };
 }
+
+// The land's own horizon from (x, y, z) toward a direction (its level part), in degrees: the highest the terrain stands
+// against the sky that way - the map's (heightAt), the far relief's to 20 km, the horizon ring's to 100 km - seen over
+// the Earth's curve, which the air bends the light round a little (k = 0.13). From the street the hill to the west
+// stands ~7 degrees high 1.5 km away: the sun goes behind it ~40 minutes before it sets.
+const RE_K = 6371000 / (1 - 0.13);
+function landAt(x, z) {
+  if (Math.abs(x) < GEO.worldExt && Math.abs(z) < GEO.worldExt) return heightAt(x, z);
+  if (Math.abs(x) < GEO.farExt * 0.995 && Math.abs(z) < GEO.farExt * 0.995) return farAt(x, z);
+  const R = GEO.Hz;
+  if (!R || Math.abs(x) > R.ext * 0.99 || Math.abs(z) > R.ext * 0.99) return null;
+  const fx = (x + R.ext) / R.step, fz = (z + R.ext) / R.step, i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, n = R.n, H = R.H;
+  return (H[j * n + i] * (1 - u) + H[j * n + i + 1] * u) * (1 - v) + (H[(j + 1) * n + i] * (1 - u) + H[(j + 1) * n + i + 1] * u) * v;
+}
+export function landHorizon(x, y, z, dir) {
+  const h = Math.hypot(dir.x, dir.z);
+  if (h < 1e-6) return -90;
+  const dx = dir.x / h, dz = dir.z / h;
+  let best = -Math.PI / 2;
+  for (let r = 20; r < 99000; r *= 1.035) {
+    const t = landAt(x + dx * r, z + dz * r);
+    if (t === null) break;
+    best = Math.max(best, Math.atan2(t - y - r * r / (2 * RE_K), r));
+  }
+  return best * 180 / Math.PI;
+}
+// how high a body at true elevation el (degrees) looks, the air bending its light (Saemundsson: ~0.57 deg at the
+// horizon, 0.13 at 7 degrees)
+export const apparentEl = (el) => el + (el > -1.5 ? 1.02 / Math.tan((el + 10.3 / (el + 5.11)) * Math.PI / 180) / 60 : 0);
 
 // Sun position (NOAA approximation) for a date/time at the map origin, as a game-frame direction.
 export function sunDirection(date) {

@@ -228,6 +228,7 @@ export const FAR = {
   uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) },
   uSky: { value: new THREE.Color(0.5, 0.55, 0.6) }, uGround: { value: new THREE.Color(0.3, 0.28, 0.25) }, uAmb: { value: new THREE.Color(0.3, 0.33, 0.38) },
   uFogCol: { value: new THREE.Color(0.6, 0.66, 0.74) }, uFogDensity: { value: 1e-4 }, uFogH: { value: 1200 }, uSunHaze: { value: 0.8 },
+  uAirCool: { value: new THREE.Vector3() },
   uSnow: { value: 0 }, uWinter: { value: 0 }, uH0: { value: 0 }, uREff: { value: 6371000 / 0.87 },
 };
 const FAR_VERT = /* glsl */`
@@ -246,7 +247,7 @@ void main() {
 }`;
 const FAR_FRAG = /* glsl */`
 uniform sampler2D uMap;
-uniform vec3 uSunDir, uSunCol, uSky, uGround, uAmb, uFogCol;
+uniform vec3 uSunDir, uSunCol, uSky, uGround, uAmb, uFogCol, uAirCool;
 uniform float uFogDensity, uFogH, uSunHaze, uSnow, uWinter, uH0;
 ${AIR_GLSL}
 varying vec3 vW;
@@ -265,11 +266,11 @@ void main() {
   float ndl = max(dot(n, uSunDir), 0.0);
   vec3 col = alb * (uSunCol * ndl + mix(uGround, uSky, 0.5 + 0.5 * n.y) + uAmb) * 0.3183;
   // the air between (air.js): its own height along the ray (vAlt: the point's, before the curvature's drop), the
-  // haze brighter towards the sun (the aerosols scatter forward)
+  // haze brighter towards the sun (the aerosols scatter forward), at a low sun golden on its side only (main.js)
   vec3 v = vW - cameraPosition;
   float mie = pow(max(dot(normalize(v), uSunDir), 0.0), 6.0);
   vec3 airT, airL; float airTau;
-  airPath(cameraPosition, vec3(vW.x, vAlt, vW.z), uFogDensity, uFogH, uFogCol * (1.0 + uSunHaze * mie), airT, airL, airTau);
+  airPath(cameraPosition, vec3(vW.x, vAlt, vW.z), uFogDensity, uFogH, uFogCol * (1.0 - uAirCool * (1.0 - airToward(v, uSunDir))) * (1.0 + uSunHaze * mie), airT, airL, airTau);
   col = col * airT + airL;
   gl_FragColor = vec4(col, 2.0 - exp(-airTau));                       // (the haze's share for the distance blur: post.js)
 }`;

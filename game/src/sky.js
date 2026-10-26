@@ -19,6 +19,8 @@ uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform vec3 uZenith;
 uniform vec3 uHorizon;
+uniform vec3 uHorizonSun;   // the horizon on the sun's side (golden at a low sun; uHorizon: the rest)
+uniform float uSunLow;      // how low the sun is under a clear sky (0 high or overcast, 1 at the horizon)
 uniform vec3 uCloudLit;
 uniform vec3 uCloudDark;
 uniform float uTime;
@@ -48,7 +50,18 @@ void main() {
   // (405 m), ~1.1 deg from 1300 m (an aircraft's view); beneath it the ground (the env map: none)
   float y = d.y + uDip * (1.0 - uEnvPass);
   float mu = max(dot(d, uSunDir), 0.0);
-  vec3 sky = mix(uHorizon, uZenith, pow(clamp(y, 0.0, 1.0), mix(0.55, 0.42, uCumulus)));
+  // the horizon's colour by azimuth, the sun's side and the rest (as the haze: air.js airToward); the sun's side golden
+  // in a band along the horizon ~5-10 deg deep (the longest path through the haze), above it the sky's pale blue
+  float toward = pow(max(0.5 + 0.5 * dot(d.xz, uSunDir.xz) * inversesqrt(max(dot(d.xz, d.xz) * dot(uSunDir.xz, uSunDir.xz), 1e-12)), 0.0), 2.5);
+  vec3 hor = mix(uHorizon, uHorizonSun, toward * exp(-max(y, 0.0) * 9.0));
+  vec3 sky = mix(hor, uZenith, pow(clamp(y, 0.0, 1.0), mix(0.55, 0.42, uCumulus)));
+  // at a low sun the air around it scatters its reddened light: the sky's colour there times the sunlight's hue (to a
+  // power growing towards the sun), brightness kept - blue through neutral to gold (orange added to the blue, or blended
+  // with it, reads as mauve)
+  vec3 lw = vec3(0.2126, 0.7152, 0.0722), hue = max(uSunColor / max(max(uSunColor.r, uSunColor.g), max(uSunColor.b, 1e-4)), vec3(1e-3));
+  float k = uSunLow * pow(mu, 3.0), l0 = dot(sky, lw);
+  sky *= pow(hue, vec3(k));
+  sky *= l0 / max(dot(sky, lw), 1e-5) * (1.0 + 0.3 * k);
   // the bright aureole around the sun (forward scattering), the disk itself only in the visible sky
   sky += uSunColor * (mix(0.8 * pow(mu, 32.0), 0.22 * pow(mu, 5.0) + 0.6 * pow(mu, 90.0), uCumulus));
   sky += uSunColor * smoothstep(0.999955, 0.99999, mu) * 60.0 * uDisk * uCumulus;
@@ -92,7 +105,7 @@ void main() {
   cloud += vec3(0.75, 0.8, 1.0) * uFlash * (0.5 + thick);
   float fade = smoothstep(-0.02, 0.2, y);
   vec3 col = mix(sky, cloud, dens * fade);
-  col = mix(col, uHorizon * 1.02, (1.0 - smoothstep(0.0, 0.16, y)) * 0.65);
+  col = mix(col, hor * 1.02, (1.0 - smoothstep(0.0, 0.16, y)) * 0.65);
   // for the image-based light: in sun the shade is also lit by the sunlit ground, walls and leaves around it, which
   // the bare sky lacks, so its blue is partly neutralised there
   col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), uEnvDesat * uEnvPass);
@@ -108,13 +121,13 @@ export function createSky() {
     uniforms: {
       uNoise: { value: TEX.noise },
       uSunDir: { value: new THREE.Vector3(-0.45, 0.62, 0.64).normalize() },
-      uSunColor: v3(), uZenith: v3(), uHorizon: v3(), uCloudLit: v3(), uCloudDark: v3(),
+      uSunColor: v3(), uZenith: v3(), uHorizon: v3(), uHorizonSun: v3(), uCloudLit: v3(), uCloudDark: v3(),
       uTime: { value: 0 },
       uCover: { value: 0.72 },
       uCumulus: { value: 0 },
       uBright: { value: 1.12 },
       uDisk: { value: 1 },
-      uEnvPass: { value: 0 }, uDip: { value: 0 },
+      uEnvPass: { value: 0 }, uDip: { value: 0 }, uSunLow: { value: 0 },
       uEnvDesat: { value: 0 },
       uGround: { value: new THREE.Vector3(0.33, 0.33, 0.31) },
       uNight: { value: 0 }, uHole: { value: 0 }, uFlash: { value: 0 },
@@ -133,10 +146,10 @@ export function createSky() {
 // Sky uniforms of a weather preset (see lighting.js WEATHER).
 export function setSkyWeather(sky, w) {
   const u = sky.material.uniforms;
-  u.uSunColor.value.fromArray(w.sunColor); u.uZenith.value.fromArray(w.zenith); u.uHorizon.value.fromArray(w.horizon);
+  u.uSunColor.value.fromArray(w.sunColor); u.uZenith.value.fromArray(w.zenith); u.uHorizon.value.fromArray(w.horizon); u.uHorizonSun.value.fromArray(w.horizonSun ?? w.horizon);
   u.uCloudLit.value.fromArray(w.cloudLit); u.uCloudDark.value.fromArray(w.cloudDark);
   u.uCover.value = w.cover; u.uCumulus.value = w.cumulus; u.uBright.value = w.bright;
-  u.uEnvDesat.value = w.envDesat ?? 0; u.uGround.value.fromArray(w.envGround ?? [0.33, 0.33, 0.31]);
+  u.uEnvDesat.value = w.envDesat ?? 0; u.uSunLow.value = w.sunLow ?? 0; u.uGround.value.fromArray(w.envGround ?? [0.33, 0.33, 0.31]);
 }
 
 export function createLights(scene, sunDir) {
