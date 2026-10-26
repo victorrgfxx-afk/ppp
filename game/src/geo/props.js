@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GEO, heightAt, holeFlag } from './data.js';
-import { offRoad, onRoad } from './roadbed.js';
+import { postSpot, onRoad } from './roadbed.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
 
@@ -148,12 +148,14 @@ function towerGeo(B, mats, x, z, ang) {
 export function buildPower(B, world, mats, scene) {
   const wires = [];
   let nPoles = 0, nTowers = 0;
-  // village poles along the streets (every ~38 m), 3 conductors + lamps
+  // village poles along the streets (every ~38 m), 3 conductors + lamps; a pole the mapped road's width reaches is moved
+  // to its edge, one with no place there (on a junction, in a divided road's median) left out: the wires span on to the
+  // next (roadbed.js)
+  for (const run of GEO.poles) run.p = run.p.map(([x, z]) => postSpot(x, z, 0.4)).filter(Boolean);
   for (const { s: side, p: run } of GEO.poles) {
     let prev = null;
     for (let i = 0; i < run.length; i++) {
-      // (a pole the mapped road's width reaches is moved off it, to its edge: roadbed.js)
-      const [x, z] = run[i] = offRoad(run[i][0], run[i][1], 0.4);
+      const [x, z] = run[i];
       if (holeFlag(x, z, 'noFences')) { prev = null; continue; }     // rebuilt by hand there (grigorescu.js)
       const nb = run[Math.min(run.length - 1, i + 1)], pb = run[Math.max(0, i - 1)];
       const dir = [nb[0] - pb[0], nb[1] - pb[1]];
@@ -174,7 +176,10 @@ export function buildPower(B, world, mats, scene) {
     for (let i = 0; i < pts.length; i++) {
       const [x0, z0, isSupport] = pts[i];
       if (!isSupport || Math.max(Math.abs(x0), Math.abs(z0)) > GEO.worldExt - 5) { prev = null; continue; }
-      const [x, z] = offRoad(x0, z0, ln.k === 'line' ? 3 : 0.4);
+      // (as the village poles: off the road, or left out with the wires spanning on)
+      const spot = postSpot(x0, z0, ln.k === 'line' ? 3 : 0.4);
+      if (!spot) { pts[i] = [x0, z0, 0]; continue; }
+      const [x, z] = spot;
       pts[i] = [x, z, isSupport];
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const ang = -Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2;

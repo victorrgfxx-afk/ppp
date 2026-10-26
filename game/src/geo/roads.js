@@ -204,7 +204,16 @@ function planRibbon(r, P0, bridges, fit) {
   const major = MAJOR.includes(r.c);
   const sw = surf === 'asphalt' && !r.br && !r.noShoulder && SHOULDERED.includes(r.c) ? (major ? 0.9 : 0.45) : 0;
   const shL = r.outerShoulder ? 0 : sw, shR = sw;          // outerShoulder: a median on the left
-  if (typeof fit === 'function' && !flat) ({ P, N } = fit(P, N, w / 2 + shL, w / 2 + shR, r));
+  if (typeof fit === 'function' && !flat && !r.tuned) {
+    // (a landmark's road as it set it; where it moved one in places, those places as it moved them, eased over 12-20 m)
+    const F = fit(P, N, w / 2 + shL, w / 2 + shR, r);
+    if (r.handPts && F.P !== P) {
+      const keep = P.map(([x, z]) => { let d = Infinity; for (const [hx, hz] of r.handPts) d = Math.min(d, Math.hypot(x - hx, z - hz)); const t = Math.max(0, Math.min(1, (d - 12) / 8)); return t * t * (3 - 2 * t); });
+      F.P = F.P.map((p, k) => [P[k][0] + (p[0] - P[k][0]) * keep[k], P[k][1] + (p[1] - P[k][1]) * keep[k]]);
+      F.N = F.N.map((v, k) => [N[k][0] + (v[0] - N[k][0]) * keep[k], N[k][1] + (v[1] - N[k][1]) * keep[k]]);
+    }
+    ({ P, N } = F);
+  }
   let yc;
   if (custom) {
     // the Prahova bridge (bridge.js): its own deck profile, barriers, railings and piers
@@ -220,7 +229,10 @@ function planRibbon(r, P0, bridges, fit) {
   const Yc = new Float32Array(P.length);
   for (let k = 0; k < P.length; k++) Yc[k] = yc(k);
   const sm = SMOOTH[r.c];
-  if (sm && !flat && !r.dy && !r.step && !r.hand) smoothProfile(P, Yc, sm[0], sm[1], fit.near, fit.junction);
+  if (sm && !flat && !r.tuned && !r.hand && !r.step) {
+    const hp = r.handPts, keep = hp ? (x, z) => fit.junction(x, z) || hp.some(([hx, hz]) => Math.abs(hx - x) < 3 && Math.abs(hz - z) < 3) : fit.junction;
+    smoothProfile(P, Yc, sm[0], sm[1], fit.near, keep);
+  }
   if (r.br && !custom) bridges.push({ P, w: w / 2 + 0.5, y: [...Yc] });
   // across, the asphalt follows the ground where it comes up to 30 cm over the axis's level at that side's edge (a 5 m
   // terrain cell reaching into the road no longer covers its edge; that ground is what the wheels roll on anyway); where

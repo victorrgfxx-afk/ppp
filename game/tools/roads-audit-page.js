@@ -224,7 +224,7 @@ export async function audit(opt = {}) {
     if (holeFlag(x, z, 'noFences')) continue;
     const a = objAt(x, z, 0.15); if (a >= 0 && out[a]) { out[a].objects.poles++; out[a].objects.poleAt ??= [+x.toFixed(1), +z.toFixed(1)]; nP++; }
   }
-  for (const ln of GEO.power) for (const p of ln.p) { const a = objAt(p[0], p[1], 0.3); if (a >= 0 && out[a]) { out[a].objects.power++; out[a].objects.powerAt ??= [+p[0].toFixed(1), +p[1].toFixed(1)]; nW++; } }
+  for (const ln of GEO.power) for (const p of ln.p) { if (!p[2]) continue; const a = objAt(p[0], p[1], 0.3); if (a >= 0 && out[a]) { out[a].objects.power++; out[a].objects.powerAt ??= [+p[0].toFixed(1), +p[1].toFixed(1)]; nW++; } }
   for (const f of GEO.fences) {
     if (holeFlag(f[1], f[2], 'noFences')) continue;
     const hit = new Map();

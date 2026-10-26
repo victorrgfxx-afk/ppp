@@ -19,13 +19,30 @@ const pairs = (flat) => { const o = []; for (let i = 0; i < flat.length; i += 2)
 const vkey = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
 
 // ---------------- the data put right (after the landmarks' own steps, before the plan) ----------------
-export function prepareRoadbed() {
+// asMapped: each road's line and width before the landmarks' own steps. A road whose cross-section a landmark set by
+// hand (its width, kerbs, medians, islands, poles) is theirs: r.tuned, left as they made it. One a landmark only moved in
+// places (onto the aerial by a bridge, its end following a moved joint) keeps those places: r.handPts, its vertices set
+// by hand (the rest of it is as OSM maps it, and put right like any other road)
+export function prepareRoadbed(asMapped = null) {
+  const pk = (x, z) => Math.round(x * 1000) + ',' + Math.round(z * 1000);
+  let tuned = 0, partly = 0;
+  for (const r of GEO.roads) {
+    if (!asMapped) break;
+    const m = asMapped.get(r);
+    if (!m || m.w !== r.w || r.own || r.dy || r.traced || r.noShoulder || r.outerShoulder) { r.tuned = true; tuned++; continue; }
+    const was = new Set();
+    for (let i = 0; i < m.p.length; i += 2) was.add(pk(m.p[i], m.p[i + 1]));
+    const hand = [];
+    for (let i = 0; i < r.p.length; i += 2) if (!was.has(pk(r.p[i], r.p[i + 1]))) hand.push([r.p[i], r.p[i + 1]]);
+    if (hand.length) { r.handPts = hand; partly++; }
+  }
   for (const r of GEO.roads) {
     // lane counts mistyped in OSM (a gravel residential street with 21 lanes: 55 m wide)
     if (r.w > 19 && r.c !== 'trunk' && r.c !== 'primary') r.w = r.c === 'secondary' || r.c === 'tertiary' ? 7.5 : 5.6;
     // DN1's one-way carriageways tagged with 4 lanes: 2 each way, as on the photos at Etu and Păstrăvăria (etu.js)
     if (r.c === 'trunk' && r.ow === 'yes' && Number(r.lanes) >= 4 && r.w > 8) r.w = 7.6;
   }
+  GEO.roadbedLog = { ...(GEO.roadbedLog || {}), tuned, partly };
   separateCarriageways();
   clipToWorld();
 }
@@ -34,7 +51,7 @@ export function prepareRoadbed() {
 // moves away from the other by half of what is missing. The ends where they meet other ways stay put (the shift fades
 // in over 25 m); a vertex shared with a slip road moves with it.
 function separateCarriageways(median = 0.6) {
-  const C = GEO.roads.filter(r => r.ow === 'yes' && (r.c === 'trunk' || r.c === 'primary') && !r.own && !r.tu && !r.br && r.p.length >= 4);
+  const C = GEO.roads.filter(r => r.ow === 'yes' && (r.c === 'trunk' || r.c === 'primary') && !r.tuned && !r.handPts && !r.own && !r.tu && !r.br && r.p.length >= 4);
   const use = new Map();
   for (const r of GEO.roads) for (let i = 0; i < r.p.length; i += 2) { const k = vkey(r.p[i], r.p[i + 1]); use.set(k, (use.get(k) || 0) + 1); }
   const CELL = 25, grid = new Map(), gk = (i, j) => i * 100003 + j;
@@ -87,6 +104,7 @@ function separateCarriageways(median = 0.6) {
   if (!shift.size) return;
   let moved = 0;
   for (const r of GEO.roads) {
+    if (r.tuned || r.handPts) continue;
     let hit = false;
     const p = r.p.slice();
     for (let i = 0; i < p.length; i += 2) {
@@ -286,6 +304,21 @@ export function onRoad(x, z, pad = 0) {
   let hit = false;
   roadsAt(x, z, () => (hit = true), true, pad);
   return hit;
+}
+// where a generated post may stand: moved off the road (offRoad), or null - no place for it: still on a road (a junction
+// all round it) or in the narrow median between a divided road's carriageways (one-way roads within 1.6 m on opposite
+// sides of it)
+export function postSpot(x, z, clear = 0.4) {
+  const [px, pz] = offRoad(x, z, clear);
+  if (onRoad(px, pz, 0.05)) return null;
+  const dirs = [];
+  roadsAt(px, pz, (pl, k, t) => {
+    if (pl.r.ow !== 'yes') return;
+    const A = pl.P[k], B = pl.P[k + 1], ax = A[0] + (B[0] - A[0]) * t, az = A[1] + (B[1] - A[1]) * t, d = Math.hypot(px - ax, pz - az) || 1;
+    dirs.push([(px - ax) / d, (pz - az) / d]);
+  }, true, 1.6);
+  for (let i = 0; i < dirs.length; i++) for (let j = i + 1; j < dirs.length; j++) if (dirs[i][0] * dirs[j][0] + dirs[i][1] * dirs[j][1] < -0.5) return null;
+  return [px, pz];
 }
 // may a tree or a bush grow at (x, z)? Not on a road, nor half a metre round a paved one (a forest track's own trees
 // stand right at its edge)

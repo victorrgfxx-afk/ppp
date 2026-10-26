@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, gridHeight, addHole, addHolePoly, addFineZone, inPoly, polyDist } from './data.js';
 import { Acc } from './bridge.js';
+import { roadsAt } from './roadbed.js';
 import { M } from '../materials.js';
 import { heightToNormalCanvas } from '../textures.js';
 
@@ -692,6 +693,9 @@ export function buildGrigorescu(B, world) {
           const px = ax + ux * d, pz = az + uz * d;
           const side = inPoly(PARK, px - uz * 1.6, pz + ux * 1.6) ? 1 : -1;
           const lx = px - uz * 1.4 * side, lz = pz + ux * 1.4 * side, y = heightAt(lx, lz);
+          let across = false;                                                         // (none on a road or path the promenade crosses)
+          roadsAt(lx, lz, (q) => { if (q.r.id !== path.id) return (across = true); }, true, 0.2);
+          if (across) continue;
           cyl(G.parkLamp, lx, y, lz, 3.4, 0.07, 0.05, 8);
           const gl = new THREE.SphereGeometry(0.22, 12, 8); gl.translate(lx, y + 3.62, lz); G.globe.push(gl);
           box(lx, lz, 0.12, 0.12, 0, y - 1, y + 3.5, 'pole');

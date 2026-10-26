@@ -63,6 +63,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   // 750 m chunks around the street, 2 km beyond; the merged meshes are hidden only beyond what the haze lets one see
   // (update: the visibility), the whole map on a clear day
   const B = new GeoBuilder(750, 2000, GEO.ext, 24000);
+  const asMapped = new Map(GEO.roads.map(r => [r, { p: r.p.slice(), w: r.w }]));   // (roadbed.js: what the landmarks below set by hand)
   prepareGrigorescu();                                  // levels the sports ground's courts before the terrain is meshed
   prepareCornu();                                       // DN1 at the Cornu roundabout: carriageways to the measured cross-section
   prepareEtu();                                         // DN1 at the Etu station: 2 lanes per carriageway, canopy instead of a house
@@ -88,7 +89,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   // the roads (roadbed.js, V79): their data put right, every ribbon planned and kept clear of the buildings, the lesser
   // road meeting the greater at a junction, then the terrain made to lie under them, at every level of detail
   const tr = performance.now();
-  prepareRoadbed();
+  prepareRoadbed(asMapped);
   const fit = fitBuildings();
   const plans = GEO.roadPlan = planRoads(fit);
   indexPlans(plans);
