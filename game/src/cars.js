@@ -167,6 +167,7 @@ export function profileAt(m, s) {
   return { belt, roof, yb, hw, cab: Math.min(1, (roof - belt) / 0.25) };
 }
 
+const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 export function section(m, s) {
   const { belt, roof, yb, hw, cab } = profileAt(m, s);
   const hwr = Math.min(m.hwrAt ? interp(m.hwrAt, s) : m.hwr, hw * 0.9);      // (a van: the glass leans in, the box does not)
@@ -178,8 +179,13 @@ export function section(m, s) {
   const lerp = (a, b, t) => a + (b - a) * t;
   const wb = hw * 0.9;
   R.push([lerp(hw * 0.8, wb, cab), belt + lerp(0.018, 0.035, cab)]);
-  R.push([lerp(hw * 0.52, hwr * 1.02, cab), lerp(belt + 0.034, roof - 0.07, cab)]);
-  R.push([lerp(hw * 0.25, hwr * 0.84, cab), lerp(belt + 0.042, roof - 0.005, cab)]);
+  // (along the windscreen the A pillar is a real one's ~7 cm between the glasses, not the roof edge's 13: the windscreen
+  // reaching 95 % of the way out (not 84 %) and the door's glass coming up to 4.5 cm under its edge (not 7) - from the
+  // seat ~6-8 degrees, as real ones are (ECE R125 allows 6 for both eyes); the top corners rounding into the roof's edge
+  // over the last 14 cm)
+  const aw = s > m.wind[0] && s < m.wind[1] + 0.01 ? 1 - smooth(m.wind[1] - 0.14, m.wind[1] + 0.01, s) : 0;
+  R.push([lerp(hw * 0.52, hwr * 1.02, cab), lerp(belt + 0.034, roof - 0.07 + 0.025 * aw, cab)]);
+  R.push([lerp(hw * 0.25, hwr * (0.84 + 0.11 * aw), cab), lerp(belt + 0.042, roof - 0.005, cab)]);
   R.push([0, lerp(belt + 0.046, roof + 0.012, cab)]);
   return R;
 }
@@ -215,9 +221,9 @@ export function wiperGlass(m) {
   let s0 = m.wind[0];
   while (s0 < m.wind[1] - 0.2 && profileAt(m, s0).cab < 0.3) s0 += 0.01;
   const s1 = m.wind[1] - 0.03, p0 = profileAt(m, s0), p1 = profileAt(m, s1);
-  const hwOf = (p) => { const hwr = Math.min(m.hwr, p.hw * 0.9); return p.hw * 0.25 + (hwr * 0.84 - p.hw * 0.25) * Math.min(1, p.cab); };
+  const hwOf = (s) => section(m, s)[8][0];                           // (the glass's half width: its side edge)
   const B = new THREE.Vector3(0, p0.roof + 0.008, s0 - m.L / 2), T = new THREE.Vector3(0, p1.roof + 0.008, s1 - m.L / 2);
-  const Lv = B.distanceTo(T), hwB = hwOf(p0), hwT = hwOf(p1), Wg = 2 * hwT;
+  const Lv = B.distanceTo(T), hwB = hwOf(s0), hwT = hwOf(s1), Wg = 2 * hwT;
   const W = [[-0.3 * Wg, -0.04, 0.18 * Wg, Math.min(0.66 * Wg, 1.02 * Lv)], [0.06 * Wg, -0.04, 0.12 * Wg, Math.min(0.48 * Wg, 0.82 * Lv)]];
   w = { s0, s1, B, T, Lv, hwB, hwT, Wg, W };
   WIPER_GLASS.set(m, w);

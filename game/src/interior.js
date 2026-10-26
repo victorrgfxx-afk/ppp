@@ -619,9 +619,18 @@ function shellGeo(m, body, caps, C) {
   const cLiner = new THREE.Color(C.liner), cDoor = new THREE.Color(C.door), cTop = new THREE.Color(C.top), cTrim = new THREE.Color(C.trim);
   // (2.2 cm in at the sides and pillars, ~6 cm under the roof: the headliner hangs below the roof's skin and its
   // bows; the window seals between stay narrow)
+  // (but the A pillars' 1.6 cm: their skin facing up as the roof's would hang the panel 4-5 cm into the cabin and
+  // double the pillar's width as the driver sees it; their edges, R[7] and R[8] of the loft's sections (cars.js: 18 a
+  // station), along the windscreen, going over into the headliner's over the header)
   const offAt = (ny) => 0.022 + 0.04 * Math.max(0, ny);
-  const vert = (x, y, z, nx, ny, nz, trim) => {
-    const off = offAt(ny), px = x - nx * off, py = y - ny * off, pz = z - nz * off, s = pz + m.L / 2;
+  const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const offOf = (i, z, ny) => {
+    const r = i % 18, s = z + m.L / 2, o = offAt(ny);
+    if (r !== 7 && r !== 8 && r !== 10 && r !== 11 || s < m.wind[0] - 0.02 || s > m.wind[1] + 0.06) return o;
+    return o + (0.016 - o) * (1 - sm(m.wind[1] - 0.1, m.wind[1] + 0.05, s));
+  };
+  const vert = (x, y, z, nx, ny, nz, trim, off = offAt(ny)) => {
+    const px = x - nx * off, py = y - ny * off, pz = z - nz * off, s = pz + m.L / 2;
     pos.push(px, py, pz); nor.push(nx, ny, nz); uv.push(s * 3, (Math.abs(px) + py) * 3);
     const b = profileAt(m, s).belt;
     // (the black of the trim panel outside the sail by the mirror is black inside too; a blacked-out B pillar is not:
@@ -632,7 +641,7 @@ function shellGeo(m, body, caps, C) {
   const P = body.attributes.position, N = body.attributes.normal, I = body.index.array;
   for (const gr of body.groups) {
     if (gr.materialIndex === 1 || gr.materialIndex === 3) continue;
-    for (let k = gr.start; k < gr.start + gr.count; k++) { const i = I[k]; vert(P.getX(i), P.getY(i), P.getZ(i), N.getX(i), N.getY(i), N.getZ(i), gr.materialIndex === 2); }
+    for (let k = gr.start; k < gr.start + gr.count; k++) { const i = I[k]; vert(P.getX(i), P.getY(i), P.getZ(i), N.getX(i), N.getY(i), N.getZ(i), gr.materialIndex === 2, offOf(i, P.getZ(i), N.getY(i))); }
   }
   // the window frames: round every edge between glass and paint, a strip from the outside surface to the inside skin
   // (the seals, black), so no gap shows the world past the glass's edge
@@ -647,7 +656,7 @@ function shellGeo(m, body, caps, C) {
   }
   for (const { a, b, glass, paint } of edges.values()) {
     if (!glass || !paint) continue;
-    const q = [a, b].map(i => { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), off = offAt(ny);
+    const q = [a, b].map(i => { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), nx = N.getX(i), ny = N.getY(i), nz = N.getZ(i), off = offOf(i, z, ny);
       return { o: [x, y, z], i: [x - nx * off, y - ny * off, z - nz * off], n: [nx, ny, nz] }; });
     const quad = [q[0].o, q[1].o, q[1].i, q[0].o, q[1].i, q[0].i];
     for (const tri of [quad, [...quad].reverse()]) for (const p of tri) { pos.push(...p); nor.push(...q[0].n); uv.push(0, 0); col.push(cSeal.r, cSeal.g, cSeal.b); }
@@ -802,7 +811,7 @@ void main() {
 }`;
 function windscreenMats(spec, dash) {
   const u = {
-    uFrit: { value: new THREE.Vector4(...(spec.frit ?? [0.065, 0.032, 0.08, 0.035])) },
+    uFrit: { value: new THREE.Vector4(...(spec.frit ?? [0.05, 0.012, 0.08, 0.022])) },
     uPatch: { value: new THREE.Vector3(0.085, 0.055, spec.patch ?? 0.1) },
   };
   const mul = new THREE.ShaderMaterial({ vertexShader: WS_VERT, fragmentShader: WS_MUL, uniforms: { ...u, uTint: { value: new THREE.Color(0.91, 0.97, 0.945) } },
@@ -1209,8 +1218,8 @@ function makeCabin(m, spec, body, caps) {
     put(rbox(0.03, 0.02, s1 - s0 - 0.04, 0.008), mats.trim, pose(xi(sm, yS2) - sg * 0.012, yS2, zA(sm)));
   }
 
-  // ---- the A pillars' trims: a moulded panel over each, from the windscreen's edge to the door glass's, swelling 2 cm
-  // into the cabin in its middle (the body gives only its skin), from the dash up into the headliner
+  // ---- the A pillars' trims: a moulded panel over each, from the windscreen's edge to the door glass's, 1.2 cm off the
+  // pillar's skin at its edges and 2.6 in its middle (the body gives only its skin), from the dash up into the headliner
   {
     const NS = 18, NA = 8, sA = m.wind[0] + 0.04, sB = m.wind[1] + 0.03;
     for (const sg of [-1, 1]) {
@@ -1223,7 +1232,7 @@ function makeCabin(m, spec, body, caps) {
         const nx = -ey2 / l, ny = ex2 / l;                              // (across the strip, inward when flipped below)
         const inX = nx > 0 ? -nx : nx, inY = nx > 0 ? -ny : ny;        // (toward the cabin: -x on this side's half)
         for (let j = 0; j <= NA; j++) {
-          const t = j / NA, bulge = 0.024 + 0.022 * Math.sin(Math.PI * t);
+          const t = j / NA, bulge = 0.012 + 0.014 * Math.sin(Math.PI * t);
           const x = lerp(A[0], B[0], t) + inX * bulge, y = lerp(A[1], B[1], t) + inY * bulge;
           pos.push(sg * x, y, zA(s));
         }

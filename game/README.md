@@ -770,6 +770,24 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
   * **Brațele se mișcă, nu se rup.** Fiecare braț e legat de cinci oase: brațul de sus și de patru ori antebrațul. Fiecare os al antebrațului e răsucit cu o treime mai mult spre încheietură, cum se rotește radiusul în jurul ulnei. Așa cotul se îndoaie cum cere cinematica (119–173° când virezi, ~135° drept înainte) și antebrațul se răsucește până la mâna de pe volan fără să se strângă ca un ambalaj de bomboană.
   * **Pielea** are aceeași culoare ca mâinile, mai deschisă pe interiorul brațului, mai roșiatică pe cot și mai închisă în pliurile dintre mușchi. Venele sunt cu o nuanță mai albăstrui.
   * **Fără sacadări.** Brațul se sculptează o singură dată, în fundal, la încărcarea jocului (~1,1 s), apoi se oglindește pentru brațul stâng.
+* **Ramele parbrizului nu mai blochează drumul (V77)** (`src/cars.js`, `src/interior.js`):
+  * **Problema, măsurată.** Am tras raze din ochiul șoferului prin cadrul parbrizului: stâlpul A din stânga acoperea 12–20° din câmpul vizual (Corsa 13,5°, BMW 20,5°, Maybach 14,8°), iar cel din dreapta 7–10°. La mașinile reale stâlpul A acoperă ~6–8° din scaunul șoferului, iar regulamentul ECE R125 permite cel mult 6° pentru ambii ochi. Ai noștri erau de două ori prea lați.
+  * **Trei cauze, toate corectate:**
+    * **Stâlpul din caroserie era prea lat** (~13 cm între sticle). Acum parbrizul ajunge la 95 % din lățimea acoperișului, nu la 84 %, iar geamul ușii urcă până la 4,5 cm sub marginea parbrizului, nu 7. Stâlpul are acum ~7 cm, cât unul real. Colțurile de sus se rotunjesc în marginea acoperișului.
+    * **Tapițeria stâlpului ieșea în cabină** până la 4,6 cm, iar pielea interioară a stâlpului era trasă 4–5 cm înăuntru (regula plafonului, care atârnă sub acoperiș). Acum tapițeria are 1,2–2,6 cm, iar pielea interioară 1,6 cm.
+    * **Banda neagră de pe marginile parbrizului era de ~2 ori prea lată.** Pe laterale are acum 1,2 cm plină plus 2,2 cm de puncte, sus 5 cm.
+  * **Rezultatul, măsurat la nivelul ochilor:**
+
+    | Model | Stâlpul stâng, înainte → acum |
+    | --- | --- |
+    | Corsa | 13,5° → 5,8° |
+    | Maybach | 14,8° → 6,3° |
+    | Kangoo | 12° → 5° |
+    | Transporter | 14° → 6° |
+    | Peugeot 508 | 16,8° → 8,5° |
+    | BMW | 20,5° → 10° (parbriz foarte înclinat, scaun jos) |
+
+    Stâlpul din dreapta a scăzut la 3–5°. Ștergătoarele, ploaia de pe parbriz și parasolarele urmează noua margine a sticlei.
 
 ## Multiplayer (alpha, V71–V72): tu și un prieten în aceeași lume
 
