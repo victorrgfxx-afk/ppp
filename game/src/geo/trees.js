@@ -6,6 +6,7 @@ import { TEX } from '../textures.js';
 import { rng } from '../util.js';
 import { spruceDetail } from './firs.js';
 import { broadTree } from './broadgen.js';
+import { treeOnRoad } from './roadbed.js';
 import { SEASON, autumnize } from '../season.js';
 import { DITHER, DITHER_GLSL } from '../taa.js';
 
@@ -283,6 +284,7 @@ export function buildTrees(scene, world, renderer, quality) {
   let count = 0;
   for (let i = 0; i < n; i++) {
     if (density < 1 && !T.keep?.[i] && r() > density) continue;             // (keep: trees a place needs at every quality)
+    if (T.s[i] > 0 && !T.keep?.[i] && treeOnRoad(T.x[i], T.z[i])) T.s[i] = 0;         // (none on a road: roadbed.js; a place's own kept)
     if (T.s[i] <= 0 || inHole(T.x[i], T.z[i])) { r(); r(); r(); continue; }      // (scale 0: a tree a place has removed)
     const k = count++;
     X[k] = T.x[i]; Z[k] = T.z[i]; Y[k] = heightAt(X[k], Z[k]) - 0.05;
@@ -462,8 +464,10 @@ export function keepClear(x, z, r) { CLEARINGS.push([x, z, r * r]); }
 // where the understory and the stand's edge bushes would otherwise grow on the road)
 const CLEAR_AREAS = [];
 export function keepClearArea(x0, z0, x1, z1, test) { CLEAR_AREAS.push([x0, z0, x1, z1, test]); }
+// and the roads (roadbed.js: a trunk or a bush on the asphalt)
 export const cleared = (x, z) => (CLEARINGS.length > 0 && CLEARINGS.some(([cx, cz, r2]) => (x - cx) * (x - cx) + (z - cz) * (z - cz) < r2)) ||
-  (CLEAR_AREAS.length > 0 && CLEAR_AREAS.some(([x0, z0, x1, z1, test]) => x >= x0 && x <= x1 && z >= z0 && z <= z1 && test(x, z)));
+  (CLEAR_AREAS.length > 0 && CLEAR_AREAS.some(([x0, z0, x1, z1, test]) => x >= x0 && x <= x1 && z >= z0 && z <= z1 && test(x, z))) ||
+  treeOnRoad(x, z);
 // every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
 function eachForestTree(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / SP); j <= Math.floor(z1 / SP); j++) for (let i = Math.floor(x0 / SP); i <= Math.floor(x1 / SP); i++) {

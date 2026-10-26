@@ -104,16 +104,24 @@ uniform vec4 uMeadowBox;`)
   return m;
 }
 
-export function buildTerrain(scene, gt, quality) {
+// the chunks' levels of detail: [stride, from distance] (the near grid 120 cells = 600 m a chunk, the world grid 100 cells
+// = 1 km); roadbed.js keeps the roads over the ground at each of them
+export function terrainLevels(quality) {
   const low = quality.label === 'Scăzută';
+  return {
+    near: low ? [[2, 0], [5, 600], [10, 1300], [20, 2600]] : [[1, 0], [2, 480], [5, 1150], [10, 2300]],
+    world: low ? [[2, 0], [4, 1500], [10, 3500]] : [[1, 0], [2, 1300], [4, 2800], [10, 5000]],
+  };
+}
+
+export function buildTerrain(scene, gt, quality) {
+  const L = terrainLevels(quality);
   // near grid: 120 cells = 600 m per chunk
-  const near = gridTerrain(scene, GEO, terrainMaterial(gt.ortho, gt.splat, GEO.ext), 120,
-    low ? [[2, 0], [5, 600], [10, 1300], [20, 2600]] : [[1, 0], [2, 480], [5, 1150], [10, 2300]]);
+  const near = gridTerrain(scene, GEO, terrainMaterial(gt.ortho, gt.splat, GEO.ext), 120, L.near);
   if (!GEO.W) return near;
   // world grid around it: 100 cells = 1 km per chunk, the chunks under the near grid are left out
   const e = GEO.ext;
-  const world = gridTerrain(scene, GEO.W, terrainMaterial(gt.orthoW, gt.splatW, GEO.W.ext), 100,
-    low ? [[2, 0], [4, 1500], [10, 3500]] : [[1, 0], [2, 1300], [4, 2800], [10, 5000]],
+  const world = gridTerrain(scene, GEO.W, terrainMaterial(gt.orthoW, gt.splatW, GEO.W.ext), 100, L.world,
     (x0, z0, x1, z1) => x0 >= -e - 1 && x1 <= e + 1 && z0 >= -e - 1 && z1 <= e + 1);
   return { lods: near.lods.concat(world.lods), material: near.material, worldMaterial: world.material };
 }
@@ -167,9 +175,11 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
     for (const [s, dist] of levels) {
       const m = CH / s + 1;
       const pos = [], nor = [], idx = [];
+      // a farther level's nodes as roadbed.js left them (lowered under the roads), else the grid's
+      const C = s > 1 ? GEO.lodAdj?.get(G)?.get(s) : null, mc = (n - 1) / s + 1;
       for (let b = 0; b < m; b++) for (let a = 0; a < m; a++) {
         const i = ci * CH + a * s, j = cj * CH + b * s;
-        pos.push(-ext + i * step - cx, H[j * n + i], -ext + j * step - cz);
+        pos.push(-ext + i * step - cx, C ? C[(j / s) * mc + i / s] : H[j * n + i], -ext + j * step - cz);
         normalAt(i, j, nrm, G); nor.push(nrm.x, nrm.y, nrm.z);
       }
       // underpass boxes and fine zones: at full resolution their cells are cut out and rebuilt at 1 m (vertical abutments,

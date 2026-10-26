@@ -2,10 +2,11 @@ import { moonAltAz } from '../astro.js';
 import * as THREE from 'three';
 import { GEO, loadGeo, heightAt, GeoBuilder, profileAt, paintLawns, farAt } from './data.js';
 import { genGeoTextures } from './geotex.js';
-import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, FAR } from './terrain.js';
+import { loadGeoTextures, buildTerrain, buildFarTerrain, buildHorizon, FAR, terrainLevels } from './terrain.js';
 import { buildWater, paintGravelBed } from './water.js';
 import { makeBuildingMaterials, buildBuildings, footprintIndex } from './buildings.js';
-import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight } from './roads.js';
+import { makeRoadMaterials, buildRoads, buildRail, bridgeHeight, planRoads } from './roads.js';
+import { prepareRoadbed, fitBuildings, indexPlans, snapJunctions, conformTerrain, roadSurfaceAt, buildBanks } from './roadbed.js';
 import { makePropMaterials, buildFences, buildPower, addWires } from './props.js';
 import { buildTrees } from './trees.js';
 import { buildLandmarks } from './landmarks.js';
@@ -45,10 +46,13 @@ export async function loadGeoAll(base) {
   return loadGeoTextures(base);
 }
 
-// ground under (x, z) outside the hand-built street: bridge decks, else the terrain mesh
-// ref: the height of whoever asks (feet, car): below a deck (driving under a bridge) the terrain counts
+// ground under (x, z) outside the hand-built street: bridge decks, else the roads' asphalt, else the terrain mesh
+// ref: the height of whoever asks (feet, car): below a deck (driving under a bridge) the terrain or road under it counts
 export function geoGround(x, z, ref) {
-  const t = heightAt(x, z);
+  let t = heightAt(x, z);
+  // on a road its asphalt (roadbed.js keeps the ground a little under it)
+  const r = roadSurfaceAt(x, z, ref);
+  if (r !== null && r > t) t = r;
   const b = bridgeHeight(x, z);
   if (b === null || b <= t - 0.5 || (ref !== undefined && ref < b - 2.5)) return t;
   return Math.max(b, t);
@@ -81,6 +85,18 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareBiserica();                                    // the painted church, its precinct and the cemetery: no forest there, the school's colours
   prepareUrcus();                                       // the lane up to the cross (the user's clip): its real width, the trees by its first bend
   prepareSonda();                                       // the oil wells in the wood (photos 84-86): the pad levelled, no forest on it
+  // the roads (roadbed.js, V79): their data put right, every ribbon planned and kept clear of the buildings, the lesser
+  // road meeting the greater at a junction, then the terrain made to lie under them, at every level of detail
+  const tr = performance.now();
+  prepareRoadbed();
+  const fit = fitBuildings();
+  const plans = GEO.roadPlan = planRoads(fit);
+  indexPlans(plans);
+  snapJunctions(plans);
+  const tp = performance.now(), L = terrainLevels(quality);
+  const rb = conformTerrain(plans, { near: L.near.map(l => l[0]), world: L.world.map(l => l[0]) });
+  snapJunctions(plans, GEO.roadsLifted);               // (again where the ground made a road come up: its junctions follow)
+  log('drumuri: plan ' + plans.length + ' (' + Math.round(tp - tr) + ' ms), teren ' + rb.ms + ' ms, ' + JSON.stringify({ ...GEO.roadbedLog, ...fit.stats(), terrain: undefined }), performance.now() - t0);
   const terrain = buildTerrain(scene, gt, quality);
   // the far relief (to 20 km, then the horizon to 100 km): drawn in a pass of its own (post.js FarPass)
   const far = [buildFarTerrain(gt), buildHorizon(gt), buildHorizon(gt, true)].filter(Boolean);
@@ -98,6 +114,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   if (GEO.W && gt.splatW) paintLawns(gt.splatW, GEO.W.ext);        // the lots in the world grid too (Strada Mihai Viteazul)
   const rm = makeRoadMaterials();
   buildRoads(B, world, rm);
+  buildBanks(B, GEO.roadPlan, terrain);                 // the ground's own surface down from a road's edge where it still falls away
   // walkable surfaces of the landmarks (courts, raised sidewalks) take part in the ground height like bridge decks
   for (const l of landmarks) if (l && l.surface && l.bbox) GEO.bridges.push({ fn: l.surface, ...l.bbox, P: [], y: [], w: 0 });
   const lines = [];

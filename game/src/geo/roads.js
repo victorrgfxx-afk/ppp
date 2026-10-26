@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, heightAt, railHeightAt } from './data.js';
+import { GEO, heightAt, railHeightAt, fineAt } from './data.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
 import { prahovaBridge } from './bridge.js';
@@ -111,7 +111,147 @@ export function makeRoadMaterials() {
 }
 const TILE = { asphalt: 1.3, concrete: 2.2, paving: 1.0, cobble: 0.8, gravel: 1.2, dirt: 1.6 };
 
-export function buildRoads(B, world, mats) {
+// ---------------- plan ----------------
+// Every ribbon is planned before the terrain is meshed (geo/index.js): its path, its cross-section and its heights. The
+// terrain is then made to lie under it (roadbed.js: no grass through the asphalt, no edge in the air), the vehicles
+// drive on it (roadSurfaceAt), and buildRoads emits it.
+// The roads' rank at a junction: the lesser road's asphalt meets the greater one's at its level (no step, no strip)
+const RANK = { trunk: 9, trunk_link: 8, primary: 8, primary_link: 7, secondary: 7, secondary_link: 6, tertiary: 6, tertiary_link: 5, unclassified: 5, residential: 5, living_street: 4, service: 3, pedestrian: 3, track: 2 };
+const MAJOR = ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary'];
+const SHOULDERED = ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential'];
+
+// The long profile graded: the elevation model's 25 m cells (and the 10 m grid beyond 3 km) leave steps of half a metre a
+// few metres apart on a hillside - 40 % for a few metres on a county road - and the ribbon followed them. A road is
+// graded: its axis heights are averaged over R metres (a Gaussian), kept within cap of the ground (roadbed.js moves the
+// ground to it), as mapped at its ends and junctions (other roads meet it there) and where the ground is hand-built
+// (underpasses, fine zones; the change fades in over 10 m). The footpaths and steps follow the ground. [R, cap] by class:
+const SMOOTH = { trunk: [25, 1.2], trunk_link: [25, 1.2], primary: [25, 1.2], primary_link: [20, 1.0], secondary: [20, 1.0], secondary_link: [20, 1.0],
+  tertiary: [20, 1.0], tertiary_link: [15, 0.8], unclassified: [12, 0.6], residential: [12, 0.6], living_street: [8, 0.4], service: [8, 0.4], pedestrian: [8, 0.4], track: [8, 0.3] };
+function smoothProfile(P, Y, R, cap, nearBuilding, junction) {
+  const n = P.length;
+  if (n < 3) return;
+  const S = new Float64Array(n);
+  for (let k = 1; k < n; k++) S[k] = S[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]);
+  const L = S[n - 1], Y0 = Float32Array.from(Y);
+  // the fade: from the ends, the junctions and the hand-built ground
+  const f = new Float32Array(n);
+  let lastKeep = -Infinity;
+  for (let k = 0; k < n; k++) {
+    const [x, z] = P[k];
+    if (nearUnderpass(x, z) || (GEO.fine && fineAt(x, z)) || (junction && junction(x, z))) lastKeep = S[k];
+    f[k] = Math.min(1, S[k] / 8, (L - S[k]) / 8, (S[k] - lastKeep) / 10);
+  }
+  lastKeep = Infinity;
+  for (let k = n - 1; k >= 0; k--) {
+    const [x, z] = P[k];
+    if (nearUnderpass(x, z) || (GEO.fine && fineAt(x, z)) || (junction && junction(x, z))) lastKeep = S[k];
+    f[k] = Math.max(0, Math.min(f[k], (lastKeep - S[k]) / 10));
+  }
+  // up at most cap, down half of it (a cut is the ground's to give way, a fill is the road's own bank); by the houses
+  // (15 m) a street keeps to their level: 25 cm up, 10 cm down
+  const hi = new Float32Array(n), lo = new Float32Array(n);
+  for (let k = 0; k < n; k++) { const b = nearBuilding && nearBuilding(P[k][0], P[k][1], 15); hi[k] = b ? Math.min(cap, 0.25) : cap; lo[k] = b ? Math.min(cap / 2, 0.1) : cap / 2; }
+  const Ys = new Float32Array(n);
+  for (let it = 0; it < 2; it++) {
+    let j0 = 0;
+    for (let k = 0; k < n; k++) {
+      while (S[j0] < S[k] - R) j0++;
+      let sw = 0, sy = 0;
+      for (let j = j0; j < n && S[j] <= S[k] + R; j++) {
+        const ds = (S[Math.min(n - 1, j + 1)] - S[Math.max(0, j - 1)]) / 2 || 1e-3, u = (S[j] - S[k]) / (R / 2), wg = ds * Math.exp(-u * u);
+        sw += wg; sy += wg * Y[j];
+      }
+      Ys[k] = sy / sw;
+    }
+    for (let k = 0; k < n; k++) Y[k] = Math.max(Y0[k] - lo[k], Math.min(Y0[k] + hi[k], Y0[k] + (Ys[k] - Y0[k]) * f[k]));
+  }
+}
+
+// fit(P, N, hl, hr): the ribbon kept clear of the buildings (roadbed.js), { P, N } moved / narrowed
+export function planRoads(fit = null) {
+  const plans = [], bridges = [];
+  // the junctions (vertices shared by ways): a graded profile keeps to the ground there (both roads meet at it)
+  const use = new Map(), vk = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
+  for (const r of GEO.roads) for (let i = 0; i < r.p.length; i += 2) { const k = vk(r.p[i], r.p[i + 1]); use.set(k, (use.get(k) || 0) + 1); }
+  fit = fit || {};
+  fit.junction = (x, z) => (use.get(vk(x, z)) || 0) > 1;
+  for (const r of GEO.roads) {
+    if (r.tu || r.own) continue;                       // tunnels; stretches rebuilt by a landmark
+    const P = pairs(r.p);
+    if (r.hand) {
+      // the photographed stretch of Strada Gării is modelled by hand; keep only the ends
+      const lo = P.filter(p => p[1] < r.hand[0]), hi = P.filter(p => p[1] > r.hand[1]);
+      const parts = [lo.length ? [...lo, [0, r.hand[0] + 0.5]] : [], hi.length ? [[0, r.hand[1] - 0.5], ...hi] : []];
+      for (const part of parts) if (part.length > 1) plans.push(planRibbon({ ...r, hand: null }, part, bridges, fit));
+      continue;
+    }
+    plans.push(planRibbon(r, P, bridges, fit));
+  }
+  GEO.bridges = bridges;
+  const out = plans.filter(Boolean);
+  out.forEach((pl, i) => { pl.i = i; });
+  return out;
+}
+
+function planRibbon(r, P0, bridges, fit) {
+  const w = r.w, surf = r.s;
+  const custom = r.br && r.id === prahovaBridge()?.r.id ? prahovaBridge() : null;
+  const dy = r.dy ?? (() => 0.035);                       // r.dy(x, z): a ribbon kept under a neighbour's asphalt (breaza.js)
+  let P = ribbonPath(P0, r.br ? 5 : r.step ?? 3.5, r.br ? null : (x, z) => heightAt(x, z) + dy(x, z));   // (r.step: a finer ribbon)
+  if (P.length < 2) return null;
+  let N = normals(P);
+  const flat = !!(custom || r.br);
+  const major = MAJOR.includes(r.c);
+  const sw = surf === 'asphalt' && !r.br && !r.noShoulder && SHOULDERED.includes(r.c) ? (major ? 0.9 : 0.45) : 0;
+  const shL = r.outerShoulder ? 0 : sw, shR = sw;          // outerShoulder: a median on the left
+  if (typeof fit === 'function' && !flat) ({ P, N } = fit(P, N, w / 2 + shL, w / 2 + shR, r));
+  let yc;
+  if (custom) {
+    // the Prahova bridge (bridge.js): its own deck profile, barriers, railings and piers
+    yc = (k) => custom.yAt(custom.local(P[k][0], P[k][1])[0]);
+    bridges.push({ P, w: 0, y: [], fn: custom.surface, x0: custom.x0, x1: custom.x1, z0: custom.z0, z1: custom.z1 });
+  } else if (r.br) {
+    // bridge deck: straight line between the abutments with a slight camber
+    const y0 = heightAt(P[0][0], P[0][1]) + 0.05, y1 = heightAt(P[P.length - 1][0], P[P.length - 1][1]) + 0.05;
+    const L = []; let acc = 0; L.push(0);
+    for (let i = 1; i < P.length; i++) { acc += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); L.push(acc); }
+    yc = (k) => { const t = L[k] / (acc || 1); return y0 + (y1 - y0) * t + Math.sin(Math.PI * t) * Math.min(0.8, acc * 0.004); };
+  } else yc = (k) => heightAt(P[k][0], P[k][1]) + dy(P[k][0], P[k][1]);
+  const Yc = new Float32Array(P.length);
+  for (let k = 0; k < P.length; k++) Yc[k] = yc(k);
+  const sm = SMOOTH[r.c];
+  if (sm && !flat && !r.dy && !r.step && !r.hand) smoothProfile(P, Yc, sm[0], sm[1], fit.near, fit.junction);
+  if (r.br && !custom) bridges.push({ P, w: w / 2 + 0.5, y: [...Yc] });
+  // across, the asphalt follows the ground where it comes up to 30 cm over the axis's level at that side's edge (a 5 m
+  // terrain cell reaching into the road no longer covers its edge; that ground is what the wheels roll on anyway); where
+  // the edge meets a higher bank that side stays flat (and roadbed.js cuts the bank back from it)
+  const over = (k, off) => { const [x, z] = P[k], [nx, nz] = N[k], xo = x + nx * off, zo = z + nz * off; return heightAt(xo, zo) + dy(xo, zo) - Yc[k]; };
+  const sideOk = flat ? null : P.map((p, k) => nearUnderpass(p[0], p[1]) ? [false, false] : [over(k, -w / 2) <= 0.3, over(k, w / 2) <= 0.3]);
+  const sf = flat ? (k) => Yc[k] : (k, off) => sideOk[k][off < 0 ? 0 : 1] ? Yc[k] + Math.min(0.3, Math.max(0, over(k, off))) : Yc[k];
+  // the heights at the strips' edges (O) and at the shoulders' outer edges (S: left, right)
+  const n = flat ? 1 : Math.max(2, Math.min(4, Math.ceil(w / 2)));
+  const O = []; for (let j = 0; j <= n; j++) O.push(-w / 2 + w * j / n);
+  const Y = new Float32Array(P.length * (n + 1)), S = new Float32Array(P.length * 2).fill(NaN);
+  for (let k = 0; k < P.length; k++) {
+    for (let j = 0; j <= n; j++) Y[k * (n + 1) + j] = sf(k, O[j]);
+    if (shL) S[2 * k] = sf(k, -w / 2 - shL) - 0.02;
+    if (shR) S[2 * k + 1] = sf(k, w / 2 + shR) - 0.02;
+  }
+  return { r, P, N, w, n, O, Y, S, Yc, shL, shR, surf, flat, custom, bridge: !!r.br, major, rank: (RANK[r.c] ?? 1) + Math.min(0.9, w / 40) };
+}
+
+// a plan's surface height at vertex k, off metres across (the strips' edges interpolated); its shoulders'
+export function planY(pl, k, off) {
+  const { O, Y, n } = pl, b = k * (n + 1);
+  if (off <= O[0]) return Y[b];
+  if (off >= O[n]) return Y[b + n];
+  const f = (off - O[0]) / (O[n] - O[0]) * n, j = Math.min(n - 1, Math.floor(f)), u = f - j;
+  return Y[b + j] * (1 - u) + Y[b + j + 1] * u;
+}
+export const planShoulderY = (pl, k, off) => Math.abs(off) <= pl.w / 2 + 1e-6 ? planY(pl, k, off) - 0.02 : pl.S[2 * k + (off < 0 ? 0 : 1)];
+
+// ---------------- emit ----------------
+export function buildRoads(B, world, mats, plans = GEO.roadPlan ?? planRoads()) {
   // junction points = vertices shared by several ways (two ways joined end to end are one road, not a junction)
   const count = new Map(), inner = new Set();
   const key = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
@@ -122,65 +262,22 @@ export function buildRoads(B, world, mats) {
   const junctions = [];
   for (const [k, c] of count) if (c > 2 || (c === 2 && inner.has(k))) { const [x, z] = k.split(',').map(Number); junctions.push([x / 10, z / 10]); }
   const nearJunction = (x, z, d) => junctions.some(j => Math.abs(j[0] - x) < d && Math.abs(j[1] - z) < d && Math.hypot(j[0] - x, j[1] - z) < d);
-  const bridges = [];
+  for (const pl of plans) emitRibbon(B, mats, pl, nearJunction);
+  // the street names (the HUD), the tunnels' left out
   const names = [];
-  for (const r of GEO.roads) {
-    if (r.tu || r.own) { if (r.own && r.n) names.push({ n: r.n, P: pairs(r.p) }); continue; }   // tunnels; stretches rebuilt by a landmark (their names kept)
-    let P = pairs(r.p);
-    if (r.hand) {
-      // the photographed stretch of Strada Gării is modelled by hand; keep only the ends
-      const parts = [P.filter(p => p[1] <= r.hand[0] + 1), P.filter(p => p[1] >= r.hand[1] - 1)];
-      const lo = P.filter(p => p[1] < r.hand[0]); const hi = P.filter(p => p[1] > r.hand[1]);
-      parts[0] = lo.length ? [...lo, [0, r.hand[0] + 0.5]] : [];
-      parts[1] = hi.length ? [[0, r.hand[1] - 0.5], ...hi] : [];
-      for (const part of parts) if (part.length > 1) roadRibbon(B, mats, { ...r, hand: null }, part, bridges, nearJunction, names);
-      names.push({ n: r.n, P });
-      continue;
-    }
-    roadRibbon(B, mats, r, P, bridges, nearJunction, names);
-  }
-  GEO.bridges = bridges;
+  for (const r of GEO.roads) if (!r.tu && r.n) names.push({ n: r.n, P: pairs(r.p) });
   GEO.roadNames = names;
   void world;
 }
 
-function roadRibbon(B, mats, r, P0, bridges, nearJunction, names) {
-  const w = r.w, surf = r.s;
-  const custom = r.br && r.id === prahovaBridge()?.r.id ? prahovaBridge() : null;
-  const dy = r.dy ?? (() => 0.035);                       // r.dy(x, z): a ribbon kept under a neighbour's asphalt (breaza.js)
-  const P = ribbonPath(P0, r.br ? 5 : r.step ?? 3.5, r.br ? null : (x, z) => heightAt(x, z) + dy(x, z));   // (r.step: a finer ribbon)
-  const N = normals(P);
-  const mat = mats[surf] ?? mats.asphalt;
-  let yfn;
-  if (custom) {
-    // the Prahova bridge (bridge.js): its own deck profile, barriers, railings and piers
-    yfn = (k) => custom.yAt(custom.local(P[k][0], P[k][1])[0]);
-    bridges.push({ P, w: 0, y: [], fn: custom.surface, x0: custom.x0, x1: custom.x1, z0: custom.z0, z1: custom.z1 });
-  } else if (r.br) {
-    // bridge deck: straight line between the abutments with a slight camber
-    const y0 = heightAt(P[0][0], P[0][1]) + 0.05, y1 = heightAt(P[P.length - 1][0], P[P.length - 1][1]) + 0.05;
-    const L = []; let acc = 0; L.push(0);
-    for (let i = 1; i < P.length; i++) { acc += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); L.push(acc); }
-    yfn = (k) => { const t = L[k] / (acc || 1); return y0 + (y1 - y0) * t + Math.sin(Math.PI * t) * Math.min(0.8, acc * 0.004); };
-    bridgeStructure(B, mats, P, N, w, yfn);
-    bridges.push({ P, w: w / 2 + 0.5, y: P.map((_, k) => yfn(k)) });
-  } else yfn = (k) => heightAt(P[k][0], P[k][1]) + dy(P[k][0], P[k][1]);
-  // across, the asphalt follows the ground where it comes up to 30 cm over the axis's level at that side's edge (a 5 m
-  // terrain cell reaching into the road no longer covers its edge; that ground is what the wheels roll on anyway); where
-  // the edge meets a higher bank that side stays flat and the bank keeps covering it, as before
-  const flat = custom || r.br;
-  const over = (k, off) => { const [x, z] = P[k], [nx, nz] = N[k], xo = x + nx * off, zo = z + nz * off; return heightAt(xo, zo) + dy(xo, zo) - yfn(k); };
-  const sideOk = flat ? null : P.map((p, k) => nearUnderpass(p[0], p[1]) ? [false, false] : [over(k, -w / 2) <= 0.3, over(k, w / 2) <= 0.3]);
-  const sf = flat ? yfn : (k, off) => sideOk[k][off < 0 ? 0 : 1] ? yfn(k) + Math.min(0.3, Math.max(0, over(k, off))) : yfn(k);
-  ribbon(B, mat, P, N, -w / 2, w / 2, sf, TILE[surf] ?? 1.3, { strips: flat ? 1 : Math.max(2, Math.min(4, Math.ceil(w / 2))) });
-  const major = ['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary'].includes(r.c);
-  if (surf === 'asphalt' && !r.br && !r.noShoulder && ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential'].includes(r.c)) {
-    const sw = major ? 0.9 : 0.45;
-    ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + sw, (k, o) => sf(k, o) - 0.02, 1.2);
-    if (!r.outerShoulder) ribbon(B, mats.shoulder, P, N, -w / 2 - sw, -w / 2, (k, o) => sf(k, o) - 0.02, 1.2);   // outerShoulder: a median on the left
-  }
-  if (major && surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, sf, r, nearJunction, custom ? { solid: true, edges: false } : {});
-  if (r.n) names.push({ n: r.n, P: P0 });
+export function emitRibbon(B, mats, pl, nearJunction) {
+  const { r, P, N, w } = pl;
+  const sf = (k, off) => planY(pl, k, off), sh = (k, off) => planShoulderY(pl, k, off);
+  if (pl.bridge && !pl.custom) bridgeStructure(B, mats, P, N, w, (k) => pl.Yc[k]);
+  ribbon(B, mats[pl.surf] ?? mats.asphalt, P, N, -w / 2, w / 2, sf, TILE[pl.surf] ?? 1.3, { strips: pl.n });
+  if (pl.shR) ribbon(B, mats.shoulder, P, N, w / 2, w / 2 + pl.shR, sh, 1.2);
+  if (pl.shL) ribbon(B, mats.shoulder, P, N, -w / 2 - pl.shL, -w / 2, sh, 1.2);
+  if (pl.major && pl.surf === 'asphalt' && w >= 5) markings(B, mats, P, N, w, sf, r, nearJunction, pl.custom ? { solid: true, edges: false } : {});
 }
 
 function markings(B, mats, P, N, w, yfn, r, nearJunction, opt = {}) {

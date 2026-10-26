@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GEO, heightAt, holeFlag } from './data.js';
+import { offRoad, onRoad } from './roadbed.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
 
@@ -52,6 +53,7 @@ export function buildFences(B, world, mats) {
       const k = Math.max(1, Math.ceil(L / 4));
       for (let s = 0; s < k; s++) {
         const x0 = ax + (bx - ax) * s / k, z0 = az + (bz - az) * s / k, x1 = ax + (bx - ax) * (s + 1) / k, z1 = az + (bz - az) * (s + 1) / k;
+        if (onRoad((x0 + x1) / 2, (z0 + z1) / 2, -0.6)) { acc += L / k; continue; }   // (no fence across a carriageway)
         const y0 = heightAt(x0, z0), y1 = heightAt(x1, z1);
         const l = L / k;
         let b0 = 0;
@@ -150,7 +152,8 @@ export function buildPower(B, world, mats, scene) {
   for (const { s: side, p: run } of GEO.poles) {
     let prev = null;
     for (let i = 0; i < run.length; i++) {
-      const [x, z] = run[i];
+      // (a pole the mapped road's width reaches is moved off it, to its edge: roadbed.js)
+      const [x, z] = run[i] = offRoad(run[i][0], run[i][1], 0.4);
       if (holeFlag(x, z, 'noFences')) { prev = null; continue; }     // rebuilt by hand there (grigorescu.js)
       const nb = run[Math.min(run.length - 1, i + 1)], pb = run[Math.max(0, i - 1)];
       const dir = [nb[0] - pb[0], nb[1] - pb[1]];
@@ -169,8 +172,10 @@ export function buildPower(B, world, mats, scene) {
     const pts = ln.p;
     let prev = null;
     for (let i = 0; i < pts.length; i++) {
-      const [x, z, isSupport] = pts[i];
-      if (!isSupport || Math.max(Math.abs(x), Math.abs(z)) > GEO.worldExt - 5) { prev = null; continue; }
+      const [x0, z0, isSupport] = pts[i];
+      if (!isSupport || Math.max(Math.abs(x0), Math.abs(z0)) > GEO.worldExt - 5) { prev = null; continue; }
+      const [x, z] = offRoad(x0, z0, ln.k === 'line' ? 3 : 0.4);
+      pts[i] = [x, z, isSupport];
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const ang = -Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2;
       let tips;
