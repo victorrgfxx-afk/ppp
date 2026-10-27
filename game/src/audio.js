@@ -83,6 +83,11 @@ export class Audio {
     const sf = ctx.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 2400; sf.Q.value = 6;
     this.squeal = ctx.createGain(); this.squeal.gain.value = 0;
     sq.connect(sf).connect(this.squeal).connect(this.master); sq.start();
+    // the campfire (campfire.js): the soft roar of its flames under the crackle (update: the pops)
+    const fn = ctx.createBufferSource(); fn.buffer = this.noise; fn.loop = true; fn.playbackRate.value = 0.6;
+    const ff = ctx.createBiquadFilter(); ff.type = 'bandpass'; ff.frequency.value = 520; ff.Q.value = 0.5;
+    this.fireGain = ctx.createGain(); this.fireGain.gain.value = 0;
+    fn.connect(ff).connect(this.fireGain).connect(this.master); fn.start();
     // horn (yours, a friend's)
     this.horn = this.hornVoice(ctx);
     this.horn2 = this.hornVoice(ctx);
@@ -326,6 +331,11 @@ export class Audio {
     this.brookF.frequency.setTargetAtTime(Math.max(350, this.gurgle), now, 0.02);
     this.brookGain.gain.setTargetAtTime(0.16 * (st.brook ?? 0) * (0.7 + 0.3 * Math.random()), now, 0.08);
     this.pourGain.gain.setTargetAtTime(0.09 * (st.pour ?? 0), now, 0.3);
+    // the campfire: its roar, and the wood crackling - sharp ticks, now and then a louder pop of a knot or sap
+    const fire = st.fire ?? 0;
+    this.fireGain.gain.setTargetAtTime(0.07 * fire * (0.8 + 0.2 * Math.sin(this.t * 3.1) * Math.sin(this.t * 1.7)), now, 0.15);
+    if (fire > 0.01 && Math.random() < dt * 11 * fire) this.burst({ f: 1600 + Math.random() * 4200, q: 2 + Math.random() * 5, dur: 0.012 + Math.random() * 0.035, gain: 0.22 * fire * (0.3 + Math.random()) });
+    if (fire > 0.01 && Math.random() < dt * 0.5 * fire) this.burst({ f: 700 + Math.random() * 900, q: 1.2, dur: 0.05 + Math.random() * 0.05, gain: 0.35 * fire });
     this.riverGain.gain.setTargetAtTime(0.11 * (st.river ?? 0) * (0.85 + 0.15 * Math.sin(this.t * 0.7) * Math.sin(this.t * 0.23)), now, 0.4);
     this.riverF.frequency.setTargetAtTime(950 + 250 * Math.sin(this.t * 0.31), now, 0.5);
     this.nextBird -= dt;

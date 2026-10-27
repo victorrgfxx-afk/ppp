@@ -37,6 +37,7 @@ import { Mirrors } from './mirror.js';
 import { Driver } from './driver.js';
 import { prepareHands, prepareArms } from './hand.js';
 import { Share } from './share.js';
+import { Campfire } from './campfire.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { boxBox } from './collision.js';
@@ -423,6 +424,9 @@ async function main() {
   // photo 85: the red Fiat Doblò Cargo on the oil wells' pad (doblo.js)
   const soLm = geoWorld.landmarks?.find(l => l.type === 'sonda');
   if (soLm) for (const c of soLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.2, rough: 0.33, dusty: c.dusty ?? 0.35 }), 'plateB', c.x, c.z, c.h, c.model === 'doblo' ? { ...DOBLO_OPTS } : {});
+  // the campfire by the red Doblò (campfire.js): E lights it and puts it out (its light is in the scene from the start,
+  // dark: the shaders are compiled with it once)
+  const campfire = soLm?.fire ? new Campfire(scene, world, soLm.fire, (x, z) => geoGround(x, z)) : null;
   // the cars along Str. Uzinei, in the works' parking area and the lot behind the fence, the red Kangoo (photos 78-83)
   const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
   if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
@@ -598,7 +602,7 @@ async function main() {
   const wildlife = new Wildlife(scene, world, { audio, quality: Q.label });
   const birds = new Birds(scene, world, { audio });
   // multiplayer: one game runs all of these for both of you, the other draws them as they are there (share.js)
-  const share = new Share({ wildlife, birds, bear, walkers, lightning, forest, hikers, dogs });
+  const share = new Share({ wildlife, birds, bear, walkers, lightning, forest, hikers, dogs, campfire });
   walkers.forEach((w, i) => { w.onHit = (car, push) => share.knocked(mp, i, car, push); });
   applyWeather(weatherKey);
 
@@ -1231,6 +1235,7 @@ async function main() {
     t += dt;
     WIND.time.value = t;
     geoWorld.tick(t, camera.position);                     // the landmarks' moving parts (the oil wells' pumping units)
+    campfire?.update(dt, camera.position, { night, rain: RAIN.uRain.value, wind: STORM.uWind.value });
     // the far relief (terrain.js FAR) in the map's light and haze
     // the sun (by night the moon) behind the land's own horizon where you are (geo/index.js landHorizon: the hills, the
     // far relief, the Earth's curve): its direct light gone, the sky's left - in the valley the street goes into the
@@ -1304,9 +1309,16 @@ async function main() {
         // a dog right next to you wins over a car parked beyond the fence (nothing to use while flying)
         const dog = player.noclip ? null : dogs.nearest(player.pos.x, player.pos.z);
         const near = dog || player.noclip ? null : nearestCar();
+        const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
         if (dog) {
           prompt = 'E — mângâie câinele';
           if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); share.petted(mp, dogs.dogs.indexOf(dog)); hud.toast('Câinele dă fericit din coadă'); }
+        } else if (fire) {
+          prompt = campfire.lit ? 'E — stinge focul' : 'E — aprinde focul';
+          if (input.hit('KeyE') || input.hit('KeyF')) {
+            campfire.set(!campfire.lit); share.lit(mp, campfire.lit);
+            hud.toast(campfire.lit ? (RAIN.uRain.value > 0.3 ? 'Focul se aprinde greu în ploaie, dar prinde' : 'Focul prinde: întâi surcelele, apoi lemnele') : 'Ai stins focul: jarul mai mocnește o vreme');
+          }
         } else if (near) {
           prompt = 'F — urcă în ' + near.name;
           if (input.hit('KeyF') || input.hit('KeyE')) enterCar(near);
@@ -1481,7 +1493,7 @@ async function main() {
       riverT = 0.5; riverK = geoWorld.water?.sound(camera.position) ?? 0;
       geoWorld.water?.setSun(Math.min(1, sun.intensity / 3.8) * sun.shadow.intensity * (1 - night));   // (the caustics: only in sunshine)
     }
-    audio.update(dt, { river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position) });
+    audio.update(dt, { river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -1671,7 +1683,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

@@ -67,6 +67,9 @@ const CAM = {
 };
 const PUDDLE = { s: -0.4, t: 18.0, a: 2.7, b: 1.8 };
 const VAN = { s: 8.8, t: 15.7, az: 200 };
+// the campfire (src/campfire.js) on the gravel ~6 m west of the van, clear of its doors, the puddle and the fences; the
+// log to sit on beyond it, the split logs piled by the van
+const FIRE = { s: 10.5, t: 21.5, seat: [10.5, 23.25], wood: [12.7, 20.3] };
 
 // the road's polyline: OSM, then on along the track the aerial shows from its end down to the pad
 function roadPts() {
@@ -870,6 +873,7 @@ export function buildSonda(B, world) {
   for (let i = 0; i < 420; i++) {
     const s = -18 + R() * 37, t = 4 + R() * 22 * R() ** 0.6;
     if (inVan(s, t) || Math.hypot((s - PUDDLE.s) / PUDDLE.a, (t - PUDDLE.t) / PUDDLE.b) < 1.15) continue;
+    if (Math.hypot(s - FIRE.s, t - FIRE.t) < 1.3 || (Math.abs(t - FIRE.seat[1]) < 0.45 && Math.abs(s - FIRE.seat[0]) < 1.1)) continue;
     const [x, z] = site(s, t); tuft(A.grass, x, Y(x, z), z, 0.2 + R() * 0.3, 0.1 + R() * 0.22, R() * 3);
   }
 
@@ -936,7 +940,10 @@ export function buildSonda(B, world) {
     views.push({ n: 86, from, to: [from[0] + dx * 30, from[1] + dz * 30], pitch: 0.03, fov: 33, eye: 1.25, label: 'Poza 86 — drumul de pietriș prin pădure spre sonde' });
   }
   const kd = site(VAN.s, VAN.t), kdir = dirOf(VAN.az);
+  const [fx, fz] = site(FIRE.s, FIRE.t), seat = site(...FIRE.seat), wood = site(...FIRE.wood);
+  const fire = { x: fx, z: fz, y: heightAt(fx, fz) + 0.03, seat: [...seat, Math.atan2(LD[1], LD[0])], wood: [...wood, Math.atan2(LT[1], LT[0])] };
   return {
+    fire,
     type: 'sonda', name: 'Sondele din pădure', bbox: bb, units, views,
     cars: [{ x: kd[0], z: kd[1], h: Math.atan2(-kdir[0], -kdir[1]), model: 'doblo', paint: 0xa8161c, dusty: 0.6 }],
     groups: [...units.map(u => u.group), puddle, fringe],

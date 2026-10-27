@@ -1,6 +1,6 @@
 // The world you and a friend share (multiplayer): the animals of the woods (wildlife.js), the birds (birds.js), the bear
 // of the hill (bear.js), the villager on the street (npc.js), the lightning (night.js), the forest scene (forest.js) and
-// the walkers' clip (hikers.js), and the dogs in the yard (dogs.js). One game runs them for both - the host: whoever
+// the walkers' clip (hikers.js), the dogs in the yard (dogs.js) and the campfire by the oil wells (campfire.js). One game runs them for both - the host: whoever
 // was in the room first (net.js elects it) - and they mind whichever of you is nearest; it sends them with its player
 // ~15 times a second, and the other game draws them where the host has them, 120 ms in the past like the players
 // (follow()), so you both see the same fox in the same place doing the same thing. If the host leaves, or its tab
@@ -8,13 +8,14 @@
 const lerp = (a, b, k) => a + (b - a) * k;
 
 export class Share {
-  // parts: { wildlife, birds, bear, walkers, lightning, forest, hikers, dogs }
+  // parts: { wildlife, birds, bear, walkers, lightning, forest, hikers, dogs, campfire }
   constructor(parts) {
     Object.assign(this, parts);
     this.role = 'solo'; this.ppl = [];
     for (const o of [this.wildlife, this.birds]) o.idBase = 100000;
     this.knock = 0; this.knocks = new Map();             // the villager knocked down by a friend's car: told to the host
     this.pet = 0; this.pets = new Map();                 // a dog petted
+    this.fire = 0; this.fires = new Map(); this.fireSeen = null;   // the campfire lit or put out
   }
   // everyone the world minds: you (me) first, then the friends in the room now (net.js live), as the animals see them
   people(me, net) {
@@ -47,6 +48,7 @@ export class Share {
     const z = { a: this.wildlife.encode(), f: this.birds.encode(), w: this.walkers.map(w => [Math.round(w.x * 10), Math.round(w.z * 10), w.dir, Math.round(Math.max(0, w.down) * 10)]),
       l: this.lightning.bolt ?? 0, s: this.forest.encode(), h: this.hikers.encode() };
     if (this.bear) z.b = this.bear.encode();
+    if (this.campfire) z.fl = this.campfire.lit ? 1 : 0;
     budget -= 24;                                        // (the snapshot's time, added by net.js)
     if (JSON.stringify(z).length > budget) {
       const far = (x, zz) => Math.min(...this.ppl.map(p => Math.hypot(p.x - x, p.z - zz)));
@@ -69,6 +71,8 @@ export class Share {
       if (w) w.follow(lerp(wa[0], wb[0], k) / 10, lerp(wa[1], wb[1], k) / 10, wb[2], wb[3] / 10, dt);
     });
     this.lightning.follow(B.l);
+    // the campfire as the host has it (a friend joining finds it as it is; taken only when it changes there)
+    if (this.campfire && (B.fl === 0 || B.fl === 1) && B.fl !== this.fireSeen) { this.fireSeen = B.fl; this.campfire.set(B.fl === 1); }
     return true;
   }
   // the two scenes at the host's clock
@@ -85,12 +89,15 @@ export class Share {
   }
   // a dog petted here: the friend's dog wags too (net.js g)
   petted(net, i) { net.publish({ g: [++this.pet, i] }); }
+  // the campfire lit (or put out) here: it is in the friend's game too (presence fl; c is the parked cars)
+  lit(net, on) { net.publish({ fl: [++this.fire, on ? 1 : 0] }); }
   // what the friends did here (each frame): their knocks, if we run the world; their petting, always
   events(net) {
     for (const r of net.live) {
-      const k = r.pres?.k, g = r.pres?.g, ks = Array.isArray(k) ? k[0] : 0, gs = Array.isArray(g) ? g[0] : 0;
+      const k = r.pres?.k, g = r.pres?.g, c = r.pres?.fl, ks = Array.isArray(k) ? k[0] : 0, gs = Array.isArray(g) ? g[0] : 0, cs = Array.isArray(c) ? c[0] : 0;
       // (what they did before we saw them is not done again)
-      if (!this.knocks.has(r.peer)) { this.knocks.set(r.peer, ks); this.pets.set(r.peer, gs); continue; }
+      if (!this.knocks.has(r.peer)) { this.knocks.set(r.peer, ks); this.pets.set(r.peer, gs); this.fires.set(r.peer, cs); continue; }
+      if (cs !== this.fires.get(r.peer)) { this.fires.set(r.peer, cs); this.campfire?.set(c[1] === 1); }
       if (ks !== this.knocks.get(r.peer)) {
         this.knocks.set(r.peer, ks);
         if (this.role === 'host') this.walkers[k[1]]?.hit({ vx: k[2] / 10, vz: k[3] / 10 }, { x: k[4] / 100, z: k[5] / 100 });
