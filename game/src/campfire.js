@@ -27,16 +27,23 @@ void main() {
   float h = vUv.y / max(uSize, 0.01);                       // height in the flame's own scale (0 base, 1 tip)
   if (h > 1.0) discard;
   float x = (vUv.x - 0.5) * 2.0 - uLean * h * h;            // (bent by the wind)
-  float n = fbm(vec2(x * 2.3 + uSeed, h * 3.1 - uTime * 2.7));
-  float n2 = fbm(vec2(x * 4.6 - uSeed * 1.7, h * 5.4 - uTime * 4.3));
-  x += (n - 0.5) * 0.55 * h;                                // tongues licking up
-  float w = (1.0 - h) * (0.75 + 0.25 * n) + 0.04;           // the half width: full at the base, to a point at the top
-  float body = smoothstep(w, w * 0.3, abs(x)) * smoothstep(0.0, 0.07, h);
-  float f = clamp(body * (0.5 + 0.95 * n2) - h * 0.45, 0.0, 1.0);
-  vec3 c = mix(vec3(0.9, 0.16, 0.02), vec3(1.0, 0.5, 0.08), smoothstep(0.08, 0.45, f));
-  c = mix(c, vec3(1.0, 0.86, 0.55), smoothstep(0.5, 0.95, f));
-  float a = smoothstep(0.04, 0.3, f);
-  gl_FragColor = vec4(c * uBright * a, a);
+  float t = uTime;
+  float n1 = fbm(vec2(x * 1.8 + uSeed, h * 2.2 - t * 2.2));
+  float n2 = fbm(vec2(x * 3.6 - uSeed, h * 4.5 - t * 3.8));
+  x += (n1 - 0.5) * 0.9 * h;                                // the flow sways more higher up
+  // a teardrop narrowing upwards, eaten into tongues by the noise, fading with height
+  float w = 0.82 * pow(max(0.0, 1.0 - h), 0.75);
+  float shape = 1.0 - smoothstep(w * 0.45, w, abs(x));
+  float licks = 0.55 + 0.65 * smoothstep(0.32, 0.68, fbm(vec2(x * 4.2 + uSeed * 3.0, h * 1.6 - t * 3.1)));
+  float f = clamp(shape * smoothstep(0.0, 0.08, h) * (n2 * 1.5 - h * 0.95 + 0.12) * licks * 1.7, 0.0, 1.0);
+  // dark red at the ragged edges and the tips, orange, yellow, nearly white in the hot heart at the base
+  vec3 c = mix(vec3(0.5, 0.05, 0.0), vec3(1.0, 0.3, 0.02), smoothstep(0.0, 0.4, f));
+  c = mix(c, vec3(1.0, 0.6, 0.11), smoothstep(0.4, 0.75, f));
+  c = mix(c, vec3(1.0, 0.8, 0.42), smoothstep(0.85, 1.0, f) * (1.0 - h));
+  float a = smoothstep(0.02, 0.25, f);
+  gl_FragColor = vec4(c * uBright * a, a * 0.6);           // (premultiplied: its light added, the view behind it partly hidden)
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }`;
 
 // a soft round puff (smoke) and a burnt patch fading out at its edge
@@ -97,6 +104,9 @@ export class Campfire {
     this.lit = false; this.level = 0; this.glow = 0; this.smolder = 0; this.t = 0;
     const g = this.group = new THREE.Group();
     scene.add(g);
+    // the flames, sparks and smoke move too fast for the temporal smoothing (taa.js): drawn after it (main.js setFX)
+    const fx = this.fx = new THREE.Group();
+    scene.add(fx);
     // ---- the burnt patch, the ash and its embers
     const { map, emissiveMap } = scorchTextures(R);
     this.ashMat = new THREE.MeshStandardMaterial({ map, emissiveMap, emissive: 0xffffff, emissiveIntensity: 0, roughness: 1, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -155,15 +165,16 @@ export class Campfire {
     world.addStatic(new world.Box(x, z, 0.5, 0.5, 0, y - 1, y + 0.9, 'campfire'));
     // ---- the flames: an outer body and a brighter core, turned to you about the vertical
     const flameGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
-    this.flames = [[0.85, 1.05, 2.2, 1.3], [0.5, 0.78, 3.4, 7.1]].map(([w, h, bright, seed]) => {
+    this.flames = [[0.9, 1.1, 0.75, 1.3], [0.55, 0.8, 0.5, 7.1]].map(([w, h, bright, seed]) => {
       const m = new THREE.ShaderMaterial({
         uniforms: { uTime: { value: 0 }, uSeed: { value: seed }, uSize: { value: 0 }, uBright: { value: bright }, uLean: { value: 0 } },
-        vertexShader: FLAME_VS, fragmentShader: FLAME_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        vertexShader: FLAME_VS, fragmentShader: FLAME_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
       });
       const mesh = new THREE.Mesh(flameGeo, m);
       mesh.scale.set(w, h, 1); mesh.position.set(x, y + 0.04, z); mesh.renderOrder = 3; mesh.visible = false;
       mesh.userData.noAO = true; mesh.userData.bright = bright;
-      g.add(mesh);
+      fx.add(mesh);
       return mesh;
     });
     // ---- the sparks: points rising from the fire, cooling from yellow to dull red as they go
@@ -174,13 +185,13 @@ export class Campfire {
     sg.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(NS * 3), 3));
     this.sparks = new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.03, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.sparks.frustumCulled = false; this.sparks.visible = false; this.sparks.userData.noAO = true;
-    g.add(this.sparks);
+    fx.add(this.sparks);
     // ---- the smoke: soft puffs that rise, widen and thin out
     const puff = puffTexture();
     this.smoke = Array.from({ length: 12 }, () => {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: puff, color: 0x8a8884, transparent: true, depthWrite: false, opacity: 0 }));
       s.visible = false; s.userData = { age: 1, life: 1, vx: 0, vz: 0, s0: 0.4, s1: 2, a: 0.3, rot: 0, g: 0.55 };
-      g.add(s);
+      fx.add(s);
       return s;
     });
     this.nextPuff = 0;
@@ -270,10 +281,10 @@ export class Campfire {
       const sc = u.s0 + (u.s1 - u.s0) * Math.sqrt(k);
       s.scale.set(sc, sc, 1);
       s.material.rotation += u.rot * dt;
-      // (darker at night, lit warm from below by the fire)
-      const dim = 0.35 + 0.65 * (1 - night * 0.8), glowC = night * L * (1 - k) * 0.6;
-      s.material.color.setRGB((u.g + glowC * 0.5) * dim, (u.g + glowC * 0.2) * dim, u.g * dim);
-      s.material.opacity = u.a * Math.min(1, k * 6) * (1 - k);
+      // (by night dark against the sky, only its first metre lit warm from below by the fire)
+      const dim = 0.18 + 0.82 * (1 - night), glowC = night * L * (1 - k) ** 3 * 0.5;
+      s.material.color.setRGB(u.g * dim + glowC, u.g * dim + glowC * 0.45, u.g * dim + glowC * 0.15);
+      s.material.opacity = u.a * Math.min(1, k * 6) * (1 - k) * (1 - 0.35 * night);
     }
   }
 }

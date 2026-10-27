@@ -680,7 +680,7 @@ async function main() {
   }
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
-  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder, others.tags]);
+  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
