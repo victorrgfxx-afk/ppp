@@ -32,7 +32,7 @@ const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0x
   peachDusty: 0xd8bfb0, mustard: 0xcfad62, stampedDark: 0x8a8d8f };
 const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d, roofMetalDark: 0x45484d, roofMetalTeal: 0x5c9a92, tileRed: 0xffffff,
   // (photos 17, 21, 22) chocolate pressed-steel tile; old sheet, its paint faded and rusting in patches
-  metalTileChoc: 0x45322c, roofRustOld: 0x7d5a46 };
+  metalTileChoc: 0x44352f, roofRustOld: 0x7d5a46 };
 // facade texture per wall material
 const FKEY = { house: 'facadeHouse', houseB: 'facadeHouseB', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle', stamped: 'facadeStamped' };
 // the eaves on the photos (1, 2, 17-23): a fascia board along the eaves and up the verges, the overhang boarded
