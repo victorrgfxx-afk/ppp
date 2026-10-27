@@ -118,7 +118,7 @@ export class Campfire {
       sg.rotateY(R() * 6.283).rotateX((R() - 0.5) * 0.5);
       const sx = x + Math.cos(a) * rr, sz = z + Math.sin(a) * rr;
       sg.translate(sx, ground(sx, sz) + s[1] * 0.45, sz);
-      const tone = 0.36 + R() * 0.16, warm = R() * 0.05, cols = [];
+      const tone = 0.13 + R() * 0.09, warm = R() * 0.02, cols = [];          // (linear: grey river stones, ~0.4-0.5 on the screen)
       for (let k = 0; k < p.count; k++) {
         const vx = p.getX(k) - x, vz = p.getZ(k) - z, inner = Math.max(0, 1 - (Math.hypot(vx, vz) - 0.38) / 0.16);
         const top = Math.max(0, (p.getY(k) - y) / 0.12), soot = Math.min(1, inner * 0.85 + top * 0.25 * inner);
@@ -141,7 +141,7 @@ export class Campfire {
       const a = i / 4 * Math.PI * 2 + 0.2 + R() * 0.4, c = Math.cos(a), s = Math.sin(a);
       logs.push(logGeo(V(x + c * 0.32, y + 0.03, z + s * 0.32), V(x + c * 0.04, y + 0.42 + R() * 0.06, z + s * 0.04), 0.04 + R() * 0.015, bark, 0.25, 0.95, R));
     }
-    const [sx, sz, sy] = at.seat, sc = Math.cos(sy), ss = Math.sin(sy), sh = ground(sx, sz) + 0.16;
+    const [sx, sz, sy] = at.seat, sc = Math.cos(sy), ss = Math.sin(sy), sh = ground(sx, sz) + 0.13;   // (settled a little into the gravel)
     logs.push(logGeo(V(sx - sc * 0.85, sh, sz - ss * 0.85), V(sx + sc * 0.85, sh + 0.02, sz + ss * 0.85), 0.17, [0.3, 0.22, 0.15], 0, 0, R));
     const [wx, wz, wy] = at.wood, wc = Math.cos(wy), ws = Math.sin(wy), wh = ground(wx, wz);
     for (let row = 0; row < 2; row++) for (let k = 0; k < 3 - row; k++) {
