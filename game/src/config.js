@@ -31,15 +31,17 @@ export function baseHeight(z) {
   return h;
 }
 
+// bldDetail: the radius (m) round the street within which the buildings get their eaves' boards, gutters and
+// downpipes and the chimneys' caps (src/geo/buildings.js)
 // cascades: the far sun shadow maps after the near one (half size and depth in m; bias in shadow depth units over
 // depth + 300 m, i.e. -0.0002 ~ 16 cm; `every`: re-rendered every n frames)
 export const QUALITY = {
-  low:    { label: 'Scăzută',  pixelRatio: 1.0,  shadowMap: 1024, shadowBox: 28, ao: false, bloom: false, grass: 0.35, shadowRadius: 1.5, smaa: true, cascades: [] },
-  medium: { label: 'Medie',    pixelRatio: 1.0,  shadowMap: 2048, shadowBox: 40, ao: false, bloom: true,  grass: 0.6,  shadowRadius: 2.5, smaa: true, ssr: true,
+  low:    { label: 'Scăzută',  pixelRatio: 1.0,  bldDetail: 600,  shadowMap: 1024, shadowBox: 28, ao: false, bloom: false, grass: 0.35, shadowRadius: 1.5, smaa: true, cascades: [] },
+  medium: { label: 'Medie',    pixelRatio: 1.0,  bldDetail: 1200, shadowMap: 2048, shadowBox: 40, ao: false, bloom: true,  grass: 0.6,  shadowRadius: 2.5, smaa: true, ssr: true,
     cascades: [{ half: 200, map: 2048, depth: 500, bias: -0.0002, normalBias: 0.25, radius: 1, every: 4 }] },
-  high:   { label: 'Înaltă',   pixelRatio: 1.25, shadowMap: 4096, shadowBox: 45, ao: true,  bloom: true,  grass: 1.0,  shadowRadius: 2.5, smaa: true, ssr: true, shafts: true,
+  high:   { label: 'Înaltă',   pixelRatio: 1.25, bldDetail: 2000, shadowMap: 4096, shadowBox: 45, ao: true,  bloom: true,  grass: 1.0,  shadowRadius: 2.5, smaa: true, ssr: true, shafts: true,
     cascades: [{ half: 260, map: 4096, depth: 500, bias: -0.0002, normalBias: 0.18, radius: 1.5, every: 3 }] },
-  ultra:  { label: 'Ultra',    pixelRatio: 2.0,  shadowMap: 4096, shadowBox: 55, ao: true,  bloom: true,  grass: 1.4,  shadowRadius: 3.0, smaa: true, ssr: true, shafts: true,
+  ultra:  { label: 'Ultra',    pixelRatio: 2.0,  bldDetail: 3000, shadowMap: 4096, shadowBox: 55, ao: true,  bloom: true,  grass: 1.4,  shadowRadius: 3.0, smaa: true, ssr: true, shafts: true,
     cascades: [{ half: 150, map: 4096, depth: 400, bias: -0.00015, normalBias: 0.1, radius: 2, every: 2 },
                { half: 600, map: 4096, depth: 700, bias: -0.0002, normalBias: 0.35, radius: 1, every: 4 }] },
 };

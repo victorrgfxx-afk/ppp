@@ -17,7 +17,7 @@ function tex(c, { srgb = true, repeat = true } = {}) {
 function toData(c) { return c.getContext('2d').getImageData(0, 0, c.width, c.height); }
 
 // A wall bay (one window per bay and floor). Alpha = 1 where the wall may be tinted by the building colour.
-function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, wall = 'stucco', band = false, shutter = true, windows = true, seed = 1 }) {
+function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, wall = 'stucco', band = false, shutter = true, windows = true, frame = [238, 238, 234], seed = 1 }) {
   const w = Math.round(W * ppm), h = Math.round(Hf * ppm);
   const c = canvas(w, h), ctx = c.getContext('2d');
   const img = ctx.createImageData(w, h);
@@ -61,14 +61,14 @@ function facade(key, { W = 3.2, Hf = 2.8, win = [1.25, 1.35, 0.55], ppm = 150, w
     }
     if (band && y > h - 0.18 * ppm) { col = [150, 150, 146]; a = 0; hgt = 0.62; rough = 0.9; }
     const inX = windows && x >= x0 - 3 && x <= x1 + 3, inY = y >= yt - 3 && y <= yb + 3;
-    if (windows && shutter && x >= x0 - 2 && x <= x1 + 2 && y >= yt - 0.2 * ppm && y < yt - 2) { col = [232, 232, 228]; a = 0; hgt = 0.7; rough = 0.45; }
+    if (windows && shutter && x >= x0 - 2 && x <= x1 + 2 && y >= yt - 0.2 * ppm && y < yt - 2) { col = frame.map(v => v * 0.97); a = 0; hgt = 0.7; rough = 0.45; }
     if (inX && y > yb + 3 && y < yb + 0.06 * ppm) { col = [205, 205, 200]; a = 0; hgt = 0.8; rough = 0.5; }     // sill
     if (inX && inY) {
       const inner = x > x0 + fr && x < x1 - fr && y > yt + fr && y < yb - fr;
       const mull = Math.abs(x - (x0 + x1) / 2) < fr * 0.45;
       const reveal = x < x0 + 1 || x > x1 - 1 || y < yt + 1 || y > yb - 1;
       if (reveal) { col = [120, 118, 112]; hgt = 0.2; }
-      else if (!inner || mull) { col = [238, 238, 234]; hgt = 0.35; rough = 0.35; }
+      else if (!inner || mull) { col = frame; hgt = 0.35; rough = 0.35; }
       else {
         // glass: dim interior + sky reflection gradient + net curtain on the lower 2/3
         const t = (y - yt) / (yb - yt);
@@ -178,6 +178,10 @@ export function genGeoTextures() {
   facade('facadeShingle', { wall: 'shingle', shutter: false, seed: 9 });
   facade('facadeStamped', { wall: 'stamped', shutter: false, seed: 4 });
   facade('facadeShingleP', { wall: 'shingle', windows: false, seed: 9 });
+  // brown wood-look frames and roller-shutter boxes (photos 2, 3-6, 17: about a third of the houses on the photos)
+  facade('facadeHouseB', { frame: [104, 70, 48], seed: 6 });
+  // planed boards: the eaves' fascia and soffit, the boarded gables (photos 2, 18-23)
+  facade('facadeWoodP', { wall: 'wood', windows: false, seed: 8 });
   industrial();
   track();
   fenceBars('fencePicket', { boardW: 0.1, gap: 0.035, color: [96, 36, 32], pointed: false });

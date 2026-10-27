@@ -104,7 +104,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
   const anexe = addOutbuildings();                      // the lots' sheds and summer kitchens behind the houses (the drone photos)
-  const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials());
+  const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials(), quality.bldDetail);
   const landmarks = buildLandmarks(B, world);
   // the landmarks' moving parts (the pumping units' beams and cranks): their own meshes, animated by tick()
   const moving = landmarks.filter(l => l && l.animate);

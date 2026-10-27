@@ -558,17 +558,33 @@ SKIP_TREES = (-40.0, 40.0, -62.0, 48.0)
 
 # photographed neighbours: appearance from the photos, footprint from OSM
 OVERRIDES = {
-    '264516818': dict(wall='stuccoWhite', roof='roofMetalGray', roofType='hip', plinth='stoneCladding', frame='woodDark', note='casa albă (poza 1-2)'),
-    '264516920': dict(wall='shingle', roof='roofMetalLight', roofType='gable', levels=2, ridge='x', pitch=20, note='casa înaltă cu șindrilă închisă și fereastră arcuită (pozele 1, 19, 20)'),
+    # V81, from every photo again: the eaves (trim: the fascia and soffit boards, gutter), the window frames, the overhang
+    # (ov, m), the chimney where it stands (chimney: [along the ridge, across it] as fractions of the main rectangle's
+    # half sides), the gables' boarding (gable='wood', gableTrim) and the pitch as measured on the photos
+    '264516818': dict(wall='stuccoWhite', roof='roofMetalGray', roofType='hip', pitch=22, ov=0.6, plinth='stoneCladding', frame='woodDark',
+                      trim='woodDark', gutter='zinc', gas=True, note='casa albă (pozele 1-2): streașină cu lambriu maro, rame maro, burlan zincat, țeava galbenă de gaz pe fațadă'),
+    '264516935': dict(wall='stuccoWhite', roof='roofMetalLight', roofType='hip', pitch=24, ov=0.55, trim='roof', gutter='white', frame='white',
+                      note='casa albă cu acoperiș mare în patru ape din tablă deschisă, burlan alb (poza 1, dreapta)'),
+    '264516920': dict(wall='shingle', roof='roofMetalLight', roofType='gable', levels=2, ridge='x', pitch=15, ov=0.9, trim='woodDark', gutter='zinc',
+                      gable='wood', note='casa înaltă cu șindrilă închisă și fereastră arcuită (pozele 1, 19, 20): pantă mică, streașină adâncă cu lambriu maro'),
     '264516921': dict(wall='gray', roof='roofMetalLight', note='anexa joasă cu tablă zincată din fața casei cu șindrilă (poza 20)'),
-    '264515491': dict(wall='stuccoWhite', roof='roofMetalLight', roofType='gable', levels=2, chimney=True, ridge='x', dx=-3.0, note='casa albă cu coș de cărămidă, fronton spre stradă (pozele 1, 18, 20)'),
-    '264515456': dict(wall='gray', roof='roofMetalLight', roofType='gable', ridge='x', ridgeAll=True, pitch=17, note='clădirea joasă cu tablă zincată din spatele gardului mentă (poza 18)'),
-    '264515508': dict(wall='ochre', roof='metalTileBrown', roofMat='metalTile', roofType='gable', ridge='z', note='casa ocru cu țiglă metalică maro de după zidul gri, poarta nr. 10 (pozele 8, 21)'),
-    '264515510': dict(wall='stampedGray', roof='roofMetalRust', roofType='hip', levels=1, pitch=24, dx=-2.9, note='casa nr. 111 (poza 22): tencuială gri decorativă, acoperiș în patru ape din tablă veche ruginie'),
-    '264516642': dict(wall='sand', roof='metalTileBrown', roofMat='metalTile', note='casa nr. 122 de după gardul cu stâlpi de piatră (poza 23)'),
+    '264515491': dict(wall='stuccoWhite', roof='roofMetalLight', roofType='gable', levels=2, chimney=[-0.35, 0.3], ridge='x', dx=-3.0, pitch=38, ov=0.8,
+                      trim='white', gutter='brown', note='casa albă cu coș de cărămidă, fronton spre stradă (pozele 1, 18, 20): streașină adâncă cu lambriu alb, coșul pe panta de sud, spre spate'),
+    '264515456': dict(wall='gray', roof='roofMetalLight', roofType='hip', pitch=14, eave=2.7, trim='roof', gutter='brown',
+                      note='clădirea joasă cu tablă zincată din spatele gardului mentă (pozele 18-20): streașina la 2,7 m, pantă mică, jgheab maro; '
+                           'conturul OSM (17 x 20 m) e mare: în două ape ar face un fronton de 20 m spre stradă, pe care pozele nu-l arată'),
+    '264515508': dict(wall='mustard', roof='metalTileChoc', roofMat='metalTile', roofType='gable', ridge='z', pitch=35, eave=2.7, ov=0.8, trim='woodDark', gutter='brown',
+                      gable='wood', frame='woodDark', note='casa ocru cu țiglă metalică maro de după zidul gri, poarta nr. 10 (pozele 8, 21): frontoane cu scânduri maro'),
+    '264515510': dict(wall='stampedDark', roof='roofRustOld', roofType='hip', levels=1, pitch=24, dx=-2.9, ov=0.6, trim='woodDark', gutter='none',
+                      note='casa nr. 111 (poza 22): tencuială gri decorativă, acoperiș în patru ape din tablă veche ruginie, fără jgheab'),
+    '264516642': dict(wall='sand', roof='metalTileBrown', roofMat='metalTile', roofType='gable', ridge='x', pitch=35, ov=0.7, trim='pine', gutter='brown',
+                      gable='wood', gableTrim='pine', note='casa nr. 122 de după gardul cu stâlpi de piatră (pozele 6, 23): fronton spre stradă cu lambriu de brad lăcuit'),
+    '264515712': dict(wall='stuccoCream', roof='roofMetalDark', roofMat='metalTile', roofType='gable', ridge='x', pitch=33, ov=0.6, trim='woodDark', gutter='brown',
+                      gable='wood', note='casa crem cu țiglă metalică antracit, fronton spre stradă (poza 23, dreapta)'),
     '304010713': dict(dx=-0.8, note='șopronul de lemn din spatele gardului maro (poza 17)'),
     '202270178': dict(shape='hip', roof='tileRed', roofMat='tiles', note='Bloc 19 de lângă pasaj: acoperiș în patru ape cu țiglă roșie (pozele 26, 27)'),
-    '222896491': dict(wall='stuccoPeach', roof='metalTileBrown', roofMat='metalTile', roofType='gable', levels=2, ridge='x', note='casa piersicie cu 2 etaje și țiglă metalică maro, la capătul străzii (poza 17)'),
+    '222896491': dict(wall='peachDusty', roof='metalTileChoc', roofMat='metalTile', roofType='gable', levels=2, ridge='x', pitch=42, ov=0.6, frame='woodDark',
+                      trim='woodDark', gutter='brown', note='casa piersicie cu 2 etaje și țiglă metalică maro, la capătul străzii (poza 17): pantă abruptă, rame și burlane maro'),
 }
 # landmarks from the user's photos: position from the coordinates they sent, orientation and size from the photo
 LANDMARKS = [
