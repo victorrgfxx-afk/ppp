@@ -214,7 +214,7 @@ function logGeo(a, b, r, col, charA, charB, R, glow = 0, tile = 0.16) {
     // the bark (or the light split wood at the ends), blackened where the fire had it
     const base = cap ? (glow ? [0.62, 0.46, 0.3] : [1.6, 1.3, 0.95]) : col;      // (the sawn ends pale under the bark map's grey)
     cols.push(...base.map(c => c * k * (1 - 0.9 * ch) + 0.015 * ch));
-    gl.push(glow * Math.max(0, ch - 0.3) / 0.7);
+    gl.push(glow * Math.max(0, ch - 0.3) / 0.7 * (1 - 0.6 * v));                    // (hottest low down, by the coals)
     // (the char's cells ~4 cm, the bark's furrows: the texture repeated round the log and along it)
     uv.setXY(i, uv.getX(i) * Math.max(1, Math.round(r * 6.283 / tile)), uv.getY(i) * L / (tile * 2));
   }
