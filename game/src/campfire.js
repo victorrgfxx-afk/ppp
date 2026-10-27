@@ -15,8 +15,8 @@ import { rng, damp } from './util.js';
 //    cracks of their alligatored char, pulsing. Sparks rise and drift with the wind, in bursts when the wood pops (with
 //    the pop's crack). Smoke curls off in wisps, grey by day, dark against the night sky, lit warm from below. The air
 //    above it shimmers (HeatShader, a pass after the temporal smoothing). A warm light flickers with the flames on the
-//    gravel, the van and the trees, ~1900 K; at the High and Ultra settings it casts the stones', the van's and your
-//    shadows, flickering with it.
+//    gravel, the van and the trees, ~1900 K; at the High and Ultra settings it casts the stones', the seat's, the
+//    pile's and the van's shadows, flickering with it.
 //  * Put out, it hisses, the flames die down, the coals glow on for about a minute and a thicker, whiter smoke rises.
 //  * Rain keeps it small. By day its light hardly shows against the sun. Beyond ~250 m only the stones and wood remain.
 

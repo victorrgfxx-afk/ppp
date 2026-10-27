@@ -46,6 +46,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | Space | săritură | frână de mână (drift) |
 | C / Ctrl | ghemuit | – |
 | F / E | urcă în mașina de lângă tine | coboară |
+| E | lângă focul de tabără de la sonde (lângă Fiatul roșu): îl aprinzi / îl stingi | – |
 | V | – | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
@@ -705,6 +706,30 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * modelele sunt făcute după poze, nu după planurile fabricantului;
     * cerul e cel din joc;
     * în joc, ochiul e la 1,6 m (în poza 86 era la ~1,25 m, din mașină).
+* **Focul de tabără de lângă Fiatul roșu, la sonde (V82)** (`src/campfire.js`, `src/geo/sonda.js` FIRE, `src/main.js`, `src/share.js`, `src/audio.js`, `src/post.js`):
+  * **Unde:** pe pietrișul platformei, la ~6 m vest de Doblò, departe de ușile lui, de baltă și de gardurile sondelor. Lângă foc e o buturugă de stat, iar lângă dubiță câțiva bușteni despicați, stivuiți.
+  * **Tasta E** (la mai puțin de 2 m de foc) îl aprinde și îl stinge. Mesajul de pe ecran arată ce se întâmplă. Nu poți intra în foc (are coliziune). Peste buturugă și peste stivă poți păși.
+  * **Stins:**
+    * un cerc de 12 pietre de râu, afumate pe partea dinspre foc;
+    * pietrișul ars în jur, cu marginea zdrențuită;
+    * cenușă și jar;
+    * patru lemne sprijinite în cort peste două puse de-a curmezișul, carbonizate unde le-a prins focul.
+  * **Aprins:**
+    * **Cum prinde:** întâi surcelele, apoi lemnele, în câteva secunde.
+    * **Flăcările:** șapte limbi pe lemne, desenate dintr-o singură comandă (cu fața mereu spre tine). Fiecare e calculată din zgomot în shader: o lacrimă care se îngustează în sus, ruptă în limbi, cu fâșii care se desprind la vârf. Sunt roșu închis pe margini, portocalii, apoi galbene, aproape albe în miezul de jos. Rămân portocalii și în plină zi, iar noaptea strălucesc.
+    * **Jarul și lemnele:** crăpăturile cărbunelui de pe lemne (crapă în solzi, ca lemnul ars) și jarul de dedesubt ard roșu, pulsând.
+    * **Scânteile:** urcă și sunt purtate de vânt. Când pocnește lemnul (un nod, un buzunar de rășină) țâșnesc în rafală, odată cu pocnetul.
+    * **Fumul:** fâșii de fum care se rotesc și se răresc. Ziua e gri, noaptea întunecat, luminat cald doar jos, de la flăcări.
+    * **Aerul tremură** deasupra focului: o trecere scurtă după netezirea temporală, pornită doar când focul e aproape și în cadru.
+    * **Lumina:** caldă (~1900 K), pâlpâie odată cu flăcările pe pietriș, pe dubiță și pe copaci. La calitatea Înaltă și Ultra aruncă și umbre: ale pietrelor, ale buturugii, ale stivei și ale dubiței.
+    * **Sunetul:** vuietul moale al flăcărilor și trosnetele lemnului.
+  * **Stingerea:** focul sfârâie, flăcările scad, jarul mai arde cam un minut și iese un fum mai gros și mai alb, ca dintr-un foc abia stins.
+  * **Ploaia** îl ține mic. Ziua lumina lui abia se vede în soare, ca în realitate.
+  * **Cu un prieten (multiplayer):** dacă aprinde sau stinge unul focul, se aprinde sau se stinge și la celălalt. Cine intră mai târziu îl găsește cum e.
+  * **Cât costă:**
+    * Flăcările, scânteile și fumul sunt câteva desenări, doar când focul e aprins și ești la mai puțin de 250 m.
+    * Lumina e în scenă de la început, stinsă, ca shaderele să nu se recompileze când o aprinzi.
+    * Umbrele ei se reface la fiecare al doilea cadru (Ultra) sau al treilea (Înaltă), doar noaptea și doar la mai puțin de 60 m.
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **ATV-ul de pe dealul crucii (V59)** (`src/atv.js`): un ATV 4×4 de 500 cm³, roșu, parcat pe un loc aproape plan la 8–17 m de cruce (în lista de locuri: „ATV — ATV-ul de pe dealul crucii”; **F** urcă, **V** schimbă între camera din spate și privirea pilotului, pilotul se vede doar din spate).
   * **Modelul**: cadru din țeavă, motor cu aripioare de răcire, carcasa variatorului CVT, scut sub motor, toba de eșapament, suspensie independentă cu brațe duble și amortizoare cu arc, aripi cu căptușeală neagră, podele cu striații, far și stopuri, portbagaje față și spate, bara de protecție cu troliu, cârma cu mânere, apărători de mâini și manete (se rotește cu roțile), anvelope de teren cu crampoane (22 × 2 rânduri), jante; pilotul are geacă, pantaloni, cizme, mănuși și cască cu vizor.
