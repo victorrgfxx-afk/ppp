@@ -443,7 +443,7 @@ export class Campfire {
       // (by night dark against the sky, only its first metre lit warm from below by the fire)
       const dim = 0.07 + 0.93 * (1 - night), glowC = night * L * (1 - k) ** 3 * 0.35;     // (the night's exposure is ~2.6x)
       s.material.color.setRGB(u.g * dim + glowC, u.g * dim + glowC * 0.45, u.g * dim + glowC * 0.15);
-      s.material.opacity = u.a * Math.min(1, k * 6) * (1 - k) * (1 - 0.35 * night);
+      s.material.opacity = u.a * Math.min(1, k * 6) * (1 - k) * (1 - 0.5 * night);
     }
     // the air shimmering over it: the column from the flames' tips up ~2 m, on the screen (off far off or out of view)
     const heat = env.heat, camera = env.camera;
