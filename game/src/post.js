@@ -12,6 +12,7 @@ import { CinePass } from './cinepass.js';
 import { ShaftsPass } from './shafts.js';
 import { VisionPass } from './vision.js';
 import { TAAPass, TAAJitter } from './taa.js';
+import { HeatShader } from './campfire.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 // (hooks: passes further on that need the scene as the scene pass leaves it - its depth, its sky - take it here, before
@@ -328,6 +329,10 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   }));
   // the anti-aliasing: after the reflections and the AO (smoothed with the rest), before the haze's blur and the bloom
   if (taa) composer.addPass(taa);
+  // the air shimmering over the campfire (campfire.js turns it on near a lit fire in view)
+  const heat = new ShaderPass(HeatShader);
+  heat.enabled = false;
+  composer.addPass(heat);
   // the softness of distant things in the haze (after the passes that read the scene's depth through this buffer)
   const aerial = new AerialBlurPass(camera);
   composer.addPass(aerial);
@@ -360,5 +365,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   };
   // the anti-aliasing on or off (the menu): SMAA while TAA is off
   const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, setTAA, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, heat, setTAA, setSize };
 }

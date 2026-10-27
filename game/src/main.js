@@ -426,7 +426,8 @@ async function main() {
   if (soLm) for (const c of soLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.2, rough: 0.33, dusty: c.dusty ?? 0.35 }), 'plateB', c.x, c.z, c.h, c.model === 'doblo' ? { ...DOBLO_OPTS } : {});
   // the campfire by the red Doblò (campfire.js): E lights it and puts it out (its light is in the scene from the start,
   // dark: the shaders are compiled with it once)
-  const campfire = soLm?.fire ? new Campfire(scene, world, soLm.fire, (x, z) => geoGround(x, z)) : null;
+  const campfire = soLm?.fire ? new Campfire(scene, world, soLm.fire, (x, z) => geoGround(x, z), { shadows: qKey === 'ultra' ? 2 : qKey === 'high' ? 3 : 0 }) : null;
+  let firePops = 0;
   // the cars along Str. Uzinei, in the works' parking area and the lot behind the fence, the red Kangoo (photos 78-83)
   const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
   if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
@@ -1235,7 +1236,10 @@ async function main() {
     t += dt;
     WIND.time.value = t;
     geoWorld.tick(t, camera.position);                     // the landmarks' moving parts (the oil wells' pumping units)
-    campfire?.update(dt, camera.position, { night, rain: RAIN.uRain.value, wind: STORM.uWind.value });
+    if (campfire) {
+      campfire.update(dt, camera.position, { night, rain: RAIN.uRain.value, wind: STORM.uWind.value, heat: post.heat, camera });
+      if (campfire.pops !== firePops) { firePops = campfire.pops; audio.firePop(campfire.audible(camera.position)); }    // (the wood popping, with its sparks)
+    }
     // the far relief (terrain.js FAR) in the map's light and haze
     // the sun (by night the moon) behind the land's own horizon where you are (geo/index.js landHorizon: the hills, the
     // far relief, the Earth's curve): its direct light gone, the sky's left - in the valley the street goes into the
@@ -1316,6 +1320,7 @@ async function main() {
         } else if (fire) {
           prompt = campfire.lit ? 'E — stinge focul' : 'E — aprinde focul';
           if (input.hit('KeyE') || input.hit('KeyF')) {
+            if (campfire.lit) audio.fireOut(campfire.audible(camera.position));
             campfire.set(!campfire.lit); share.lit(mp, campfire.lit);
             hud.toast(campfire.lit ? (RAIN.uRain.value > 0.3 ? 'Focul se aprinde greu în ploaie, dar prinde' : 'Focul prinde: întâi surcelele, apoi lemnele') : 'Ai stins focul: jarul mai mocnește o vreme');
           }

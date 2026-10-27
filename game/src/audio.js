@@ -136,6 +136,9 @@ export class Audio {
     s.connect(f1).connect(g).connect(this.master);
     s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
   }
+  // the campfire: a knot or a pocket of sap popping (campfire.js throws its sparks with it); put out, its hiss
+  firePop(k) { if (k < 0.01) return; this.burst({ f: 700 + Math.random() * 700, q: 1.1, dur: 0.06 + Math.random() * 0.05, gain: 0.45 * k }); this.burst({ f: 3000 + Math.random() * 2500, q: 2, dur: 0.03, gain: 0.25 * k, delay: 0.008 }); }
+  fireOut(k) { if (k < 0.01) return; this.burst({ f: 3500, q: 0.4, dur: 1.6, gain: 0.2 * k, type: 'highpass', rate: 1.3 }); this.burst({ f: 260, q: 0.6, dur: 0.5, gain: 0.25 * k, type: 'lowpass' }); }
   step(surface, intensity = 0.5) {
     const k = 0.5 + intensity * 0.6;
     if ((this.snowCover ?? 0) > 0.45 && surface !== 'tiles') surface = 'snow';     // (the porch tiles stay under the roof)
@@ -335,7 +338,6 @@ export class Audio {
     const fire = st.fire ?? 0;
     this.fireGain.gain.setTargetAtTime(0.07 * fire * (0.8 + 0.2 * Math.sin(this.t * 3.1) * Math.sin(this.t * 1.7)), now, 0.15);
     if (fire > 0.01 && Math.random() < dt * 11 * fire) this.burst({ f: 1600 + Math.random() * 4200, q: 2 + Math.random() * 5, dur: 0.012 + Math.random() * 0.035, gain: 0.22 * fire * (0.3 + Math.random()) });
-    if (fire > 0.01 && Math.random() < dt * 0.5 * fire) this.burst({ f: 700 + Math.random() * 900, q: 1.2, dur: 0.05 + Math.random() * 0.05, gain: 0.35 * fire });
     this.riverGain.gain.setTargetAtTime(0.11 * (st.river ?? 0) * (0.85 + 0.15 * Math.sin(this.t * 0.7) * Math.sin(this.t * 0.23)), now, 0.4);
     this.riverF.frequency.setTargetAtTime(950 + 250 * Math.sin(this.t * 0.31), now, 0.5);
     this.nextBird -= dt;
