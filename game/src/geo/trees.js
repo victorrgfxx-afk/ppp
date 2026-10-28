@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GEO, heightAt, forestCode, inHole, speciesAt, speciesCompanion } from './data.js';
-import { M, addWind } from '../materials.js';
+import { M, addWind, mossy } from '../materials.js';
 import { TEX } from '../textures.js';
 import { rng } from '../util.js';
 import { spruceDetail } from './firs.js';
@@ -264,6 +264,7 @@ export function buildTrees(scene, world, renderer, quality) {
     barkHazel: M.barkHornbeam.clone(),
   };
   mats.barkHazel.color = new THREE.Color(0x8f8170);              // the understory's hazel: smooth grey-brown stems
+  mossy(mats.barkHazel, 0.6);                                     // (a clone keeps no shader hooks: its moss again)
   for (const k of ['bark', 'barkBeech', 'barkHornbeam', 'barkOak', 'barkRobinia', 'barkBirch', 'barkHazel', 'barkSpruce', 'barkPine']) if (mats[k]) mats[k].userData.bark = true;
   mats.crown.userData.core = mats.pineCore.userData.core = true;
   // every skeleton type (broadgen.js) in NVAR variants; the billboards far away are baked from the first
@@ -397,7 +398,7 @@ export function buildTrees(scene, world, renderer, quality) {
       const snow = new THREE.MeshStandardMaterial({ roughness: 0.85, color: new THREE.Color().setRGB(0.87, 0.9, 0.94) });
       winterImp = models.map(({ t, parts, imp }, ty) => {
         if (!imp || t.pine) return null;
-        if (t.conifer) { const d = spruceDetail(FIR_SPEC[ty]); return bakeImpostor(renderer, [[d.wood, M.bark], [d.needle, needle], [d.snow, snow], ...parts.filter(([, m]) => m.userData.core)], t); }
+        if (t.conifer) { const d = spruceDetail(FIR_SPEC[ty]); return bakeImpostor(renderer, [[d.wood, M.barkSpruce], [d.needle, needle], [d.snow, snow], ...parts.filter(([, m]) => m.userData.core)], t); }
         return bakeImpostor(renderer, parts.filter(([, m]) => !m.userData.core).map(([g, m]) => [g, m.userData.bark ? m : twig]), t);
       });
     }

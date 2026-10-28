@@ -149,31 +149,38 @@ function flowerTexture() {
   }
   const t = tex(c); t.premultiplyAlpha = false; return t;
 }
+// a patch of last year's leaves (2.6-5 m across: forestfloor.js, the hill's wood): ~9000 leaves at their real size -
+// beech 5-9 cm (ovate, dried copper), hornbeam (smaller, darker), sessile oak 8-12 cm (lobed, brown), some grey with
+// decay - each with its midrib, over a packed dark core; twigs and beech-nut husks
 export function litterTexture() {
-  const W = 256, c = canvas(W, W), g = c.getContext('2d'), R = rng(13);
+  const W = 512, c = canvas(W, W), g = c.getContext('2d'), R = rng(13);
   g.clearRect(0, 0, W, W);
-  const cols = ['#5a4230', '#664a34', '#72563c', '#4e3a2a', '#7a5e40', '#46342a', '#624e3a', '#3e3024', '#6e5842', '#564a3a'];
-  const rim = (a) => 100 + 18 * Math.sin(a * 5 + 1.3) + 7 * Math.sin(a * 11);
+  const cols = ['#7a5432', '#6c4a2e', '#5e4430', '#84603c', '#8c6038', '#4e3a2a', '#5a4a3c', '#665644', '#6e5438', '#3e3024', '#76644e', '#52402e'];
+  const rim = (a) => 200 + 36 * Math.sin(a * 5 + 1.3) + 14 * Math.sin(a * 11);
   g.fillStyle = '#46362a'; g.beginPath();                                         // the packed core stays opaque far off
-  for (let k = 0; k <= 48; k++) { const a = k / 48 * Math.PI * 2, r = rim(a) - 22; g.lineTo(W / 2 + Math.cos(a) * r, W / 2 + Math.sin(a) * r); }
+  for (let k = 0; k <= 64; k++) { const a = k / 64 * Math.PI * 2, r = rim(a) - 44; g.lineTo(W / 2 + Math.cos(a) * r, W / 2 + Math.sin(a) * r); }
   g.fill();
-  for (let i = 0; i < 1500; i++) {
-    const a = R() * Math.PI * 2, r = Math.sqrt(R()) * 124;
+  for (let i = 0; i < 9000; i++) {
+    const a = R() * Math.PI * 2, r = Math.sqrt(R()) * 248;
     if (r > rim(a)) continue;
-    const x = W / 2 + Math.cos(a) * r, y = W / 2 + Math.sin(a) * r, L = 11 + R() * 13, oak = R() < 0.3;
+    const x = W / 2 + Math.cos(a) * r, y = W / 2 + Math.sin(a) * r, kind = R(), oak = kind < 0.28;
+    const L = oak ? 12 + R() * 6 : kind < 0.75 ? 8 + R() * 6 : 7 + R() * 4;           // (px: ~0.66 cm each)
     g.save(); g.translate(x, y); g.rotate(R() * Math.PI * 2);
-    g.fillStyle = cols[Math.floor(R() * cols.length)];
+    const col = cols[Math.floor(R() * cols.length)];
+    g.fillStyle = col;
     g.beginPath();
     if (oak) { for (let k = 0; k < 5; k++) g.ellipse(-L / 2 + (k + 0.5) * L / 5, (k % 2 ? 1 : -1) * L * 0.08, L * 0.13, L * 0.2, 0, 0, Math.PI * 2); }
     else g.ellipse(0, 0, L / 2, L * 0.3, 0, 0, Math.PI * 2);
     g.fill();
-    g.strokeStyle = 'rgba(45,28,14,0.55)'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(-L / 2, 0); g.lineTo(L / 2, 0); g.stroke();
+    // (a curled leaf: one half in shadow)
+    if (R() < 0.35) { g.fillStyle = 'rgba(30,20,12,0.35)'; g.beginPath(); g.ellipse(0, L * 0.08, L / 2, L * 0.16, 0, 0, Math.PI); g.fill(); }
+    g.strokeStyle = 'rgba(45,28,14,0.5)'; g.lineWidth = 0.7; g.beginPath(); g.moveTo(-L / 2, 0); g.lineTo(L / 2 + 1.5, 0); g.stroke();
     g.restore();
   }
-  for (let i = 0; i < 16; i++) {                                                     // twigs and beech-nut husks
-    const x = 40 + R() * 176, y = 40 + R() * 176, a = R() * Math.PI;
-    g.strokeStyle = '#3e2e20'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * 30, y + Math.sin(a) * 30); g.stroke();
-    g.fillStyle = '#4a3422'; g.beginPath(); g.arc(x + 20 * R(), y + 20 * R(), 2.5, 0, Math.PI * 2); g.fill();
+  for (let i = 0; i < 40; i++) {                                                     // twigs and beech-nut husks
+    const x = 80 + R() * 352, y = 80 + R() * 352, a = R() * Math.PI, l = 20 + R() * 50;
+    g.strokeStyle = '#3e2e20'; g.lineWidth = 1.2 + R(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+    g.fillStyle = '#4a3422'; g.beginPath(); g.arc(x + 30 * R(), y + 30 * R(), 2.5, 0, Math.PI * 2); g.fill();
   }
   const t = tex(c); t.premultiplyAlpha = false; return t;
 }

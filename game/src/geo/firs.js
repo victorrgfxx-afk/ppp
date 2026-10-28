@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { M } from '../materials.js';
+import { M, mossy } from '../materials.js';
 import { TEX } from '../textures.js';
 import { WIND, rng } from '../util.js';
 import { SNOW, STORM } from '../rain.js';
@@ -237,7 +237,7 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
     };
     const bark = M.barkSpruce.clone(); bark.color = new THREE.Color(0xe8e2dc);   // (barktex.js: the spruce's scales; the twigs a little lighter)
     this.mats = {
-      wood: inject(bark, false, 'firWood'),
+      wood: mossy(inject(bark, false, 'firWood'), 0.55),          // (the clone lost its moss and its shade: again, over the sway)
       needle: inject(new THREE.MeshStandardMaterial({ map: TEX.spruceAtlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.74, color: 0xe2f0d6 }), false, 'firNeedle'),
       snow: inject(new THREE.MeshStandardMaterial({ roughness: 0.85, map: TEX.snowLump, normalMap: TEX.snowLumpN, normalScale: new THREE.Vector2(0.9, 0.9), color: new THREE.Color().setRGB(0.95, 0.96, 0.99) }), true, 'firSnow'),
     };

@@ -51,6 +51,7 @@ float mossNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.
   };
   m.customProgramCacheKey = () => key0 + '|moss' + k;
   m.needsUpdate = true;
+  return m;
 }
 
 function std(name, o) {
