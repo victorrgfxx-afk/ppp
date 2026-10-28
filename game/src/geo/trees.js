@@ -36,9 +36,9 @@ const TYPES = [
   { name: 'young pine', H: 8.5, crown: 2.3, conifer: true, low: 1.9 },
   // the wood of the user's clip IMG_0725 in mid-October (geo/urcus.js): broadleaves gone yellow, a birch
   { name: 'autumn broadleaf', H: 16, crown: 4.6, trunkR: 0.3, cards: 150, leaf: 'leavesAutumn', tint: 0xffffff, bole: 0.28 },
-  { name: 'autumn birch', H: 15, crown: 3.1, trunkR: 0.19, cards: 115, leaf: 'leavesAutumn', tint: 0xfff4dc, bole: 0.36, bark: 'barkLight' },
+  { name: 'autumn birch', H: 15, crown: 3.1, trunkR: 0.19, cards: 115, leaf: 'leavesAutumn', tint: 0xfff4dc, bole: 0.36, bark: 'barkBirch' },
   // and the wood there (forest-grown, as the stands' beech and hornbeam): beech turning orange and yellow, hornbeam yellow
-  { name: 'autumn beech (forest)', H: 22, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leavesAutumn', tint: 0xffe2c0, bole: 0.48, bark: 'barkLight' },
+  { name: 'autumn beech (forest)', H: 22, crown: 4.3, trunkR: 0.3, cards: 125, leaf: 'leavesAutumn', tint: 0xffe2c0, bole: 0.48, bark: 'barkBeech' },
   { name: 'autumn hornbeam (forest)', H: 16, crown: 3.5, trunkR: 0.22, cards: 105, leaf: 'leavesAutumn', tint: 0xf4f6d6, bole: 0.4 },
   // black locust (Robinia, planted on the eroded slopes and by the villages): airy crown of pinnate light leaves, dark
   // bark; at the stand edges (as along DN1 at Cornu, KartaView July 2016) leafy down to a few metres
@@ -75,9 +75,11 @@ const GENUS_CONIFER = [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1];
 // hazel, hawthorn and dogwood
 const GENUS_SHRUB = [1, 0.45, 1, 0.65, 0.5, 0.5, 0.6, 0.9, 1, 0.9, 0.7, 0.8, 0.5];
 
+// (the bark texture keeps its scale, as on the broadleaves' stems (broadgen.js): a tile 0.55 m round, 1.2 m up)
 function cyl(p0, p1, r0, r1, seg) {
   const d = new THREE.Vector3().subVectors(p1, p0), L = d.length();
-  const g = new THREE.CylinderGeometry(r1, r0, L, seg, 1, true);
+  const g = new THREE.CylinderGeometry(r1, r0, L, seg, 1, true), uv = g.attributes.uv, rep = Math.max(1, Math.round(2 * Math.PI * r0 / 0.55));
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * rep, uv.getY(i) * L / 1.2);
   g.translate(0, L / 2, 0);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
   g.translate(p0.x, p0.y, p0.z);
@@ -154,8 +156,8 @@ function spruceModel(t, seed) {
       cards.push(clean(g));
     }
   }
-  const trunk = cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.9, 0), 0.3, 0.05, 6);
-  return [[clean(trunk), 'bark'], [clean(core.toNonIndexed()), 'core'], [mergeGeometries(cards), 'fir']];
+  const trunk = cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.9, 0), 0.3, 0.05, 9);
+  return [[clean(trunk), 'barkSpruce'], [clean(core.toNonIndexed()), 'core'], [mergeGeometries(cards), 'fir']];
 }
 
 // Black pine (Pinus nigra), planted on the eroded hills around Câmpina (photos 17, 23): long straight
@@ -164,7 +166,7 @@ function pineModel(t, seed) {
   const r = rng(seed);
   const wood = [], cards = [];
   const base = t.H * 0.6;
-  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.96, 0), 0.27, 0.07, 6));
+  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.96, 0), 0.27, 0.07, 9));
   const clumps = [];
   for (let i = 0; i < 16; i++) {
     const a = i * 2.4 + r() * 0.8, k = r();
@@ -192,7 +194,7 @@ function pineModel(t, seed) {
   for (let k = 0; k < cp.count; k++) cp.setXYZ(k, cp.getX(k) * t.crown * 0.62, cp.getY(k) * (t.H - base) * 0.3 + base + (t.H - base) * 0.55, cp.getZ(k) * t.crown * 0.62);
   // (the dark inner volume fills the crown of the far impostors only: near, a solid ball in the needle clumps would show,
   // and under snow it would read as a white-capped lollipop)
-  return [[mergeGeometries(wood.map(clean)), 'bark'], [clean(core), 'pineCore'], [mergeGeometries(cards), 'pine']];
+  return [[mergeGeometries(wood.map(clean)), 'barkPine'], [clean(core), 'pineCore'], [mergeGeometries(cards), 'pine']];
 }
 
 // ---- distance switch in the vertex shader (per instance) ----
@@ -257,13 +259,12 @@ export function buildTrees(scene, world, renderer, quality) {
   const mats = {
     bark: M.bark, core: M.firCore, fir: M.fir, pine: M.pine, pineCore: M.firCore.clone(),
     crown: new THREE.MeshStandardMaterial({ color: 0x3a4b2c, roughness: 1 }),
-    barkLight: M.bark.clone(),
     barkBeech: M.barkBeech, barkHornbeam: M.barkHornbeam, barkOak: M.barkOak, barkRobinia: M.barkRobinia, barkBirch: M.barkBirch,
+    barkSpruce: M.barkSpruce, barkPine: M.barkPine,
     barkHazel: M.barkHornbeam.clone(),
   };
-  mats.barkLight.color = new THREE.Color(0xc9c4ba);             // smooth grey beech bark
   mats.barkHazel.color = new THREE.Color(0x8f8170);              // the understory's hazel: smooth grey-brown stems
-  for (const k of ['bark', 'barkLight', 'barkBeech', 'barkHornbeam', 'barkOak', 'barkRobinia', 'barkBirch', 'barkHazel']) if (mats[k]) mats[k].userData.bark = true;
+  for (const k of ['bark', 'barkBeech', 'barkHornbeam', 'barkOak', 'barkRobinia', 'barkBirch', 'barkHazel', 'barkSpruce', 'barkPine']) if (mats[k]) mats[k].userData.bark = true;
   mats.crown.userData.core = mats.pineCore.userData.core = true;
   // every skeleton type (broadgen.js) in NVAR variants; the billboards far away are baked from the first
   const partsOf = (t, i, v, lite) => {

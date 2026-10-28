@@ -152,7 +152,7 @@ async function main() {
   perf.set(store.get('perf', false));
 
   const progress = (p, label) => { $('bar').style.width = Math.round(p * 80) + '%'; $('loadText').textContent = label; };
-  await loadTextures('assets/textures/', progress, renderer.capabilities.getMaxAnisotropy());
+  await loadTextures('assets/textures/', progress, renderer.capabilities.getMaxAnisotropy(), { barkHalf: qKey === 'low' });
   buildMaterials();
   progress(0.8, 'Încarc harta reală: OSM, relief EU-DEM/Copernicus, Sentinel-2…');
   const gt = await loadGeoAll('assets/geo/');

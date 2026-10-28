@@ -235,7 +235,7 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
       m.customProgramCacheKey = () => key;
       return m;
     };
-    const bark = M.bark.clone(); bark.color = new THREE.Color(0xa89482);   // (spruce bark: grey-brown, the twigs lighter)
+    const bark = M.barkSpruce.clone(); bark.color = new THREE.Color(0xe8e2dc);   // (barktex.js: the spruce's scales; the twigs a little lighter)
     this.mats = {
       wood: inject(bark, false, 'firWood'),
       needle: inject(new THREE.MeshStandardMaterial({ map: TEX.spruceAtlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.74, color: 0xe2f0d6 }), false, 'firNeedle'),

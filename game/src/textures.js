@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { fbm, valueNoise, rng, clamp } from './util.js';
+import { genBarkTextures } from './barktex.js';
 
 // Real photo-derived textures (see tools/extract_textures.py) + procedural ones.
 export const TEX = {};
@@ -682,95 +683,6 @@ function genSpruceAtlas() {
   TEX.spruceAtlas = t;
 }
 
-function genBark() {
-  const w = 256, h = 512;
-  const H = heightField(w, h, (x, y) => {
-    const v = fbm(x / 6, y / 40, 5, w / 6, 61);
-    return Math.pow(v, 1.5);
-  });
-  const map = paint(w, h, (x, y, p) => {
-    const v = 0.35 + 0.65 * H[y * w + x];
-    p[0] = 128 * v; p[1] = 112 * v; p[2] = 98 * v;            // (albedo ~0.06: a grey-brown bark, not a charred one)
-  });
-  TEX.bark = tex(map);
-  TEX.barkN = tex(heightToNormalCanvas(H, w, h, 5), { srgb: false });
-}
-
-// Bark of the forest species, each as it looks at breast height (tiles both ways: noise periods matched to the size)
-//  * beech (Fagus sylvatica): smooth, light silvery grey, mottled with whitish and green-grey lichen, fine horizontal
-//    wrinkles and the dark chevrons ("eyes") left by shed branches;
-//  * hornbeam (Carpinus betulus): smooth darker grey, the trunk fluted like flexed muscle, a net of paler streaks;
-//  * sessile oak (Quercus petraea): thick grey-brown bark in deep vertical fissures, the ridges broken across;
-//  * black locust (Robinia pseudoacacia): a deep net of interlacing ridges, orange-brown in the furrows;
-//  * birch: white with black horizontal lenticels and dark rough diamonds.
-function genBarks() {
-  const w = 256, h = 512;
-  const sm = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-  const mix3 = (p, a, b, k) => { p[0] += (a[0] * b - p[0]) * k; p[1] += (a[1] * b - p[1]) * k; p[2] += (a[2] * b - p[2]) * k; };
-  const N = (x, y, P, oct, seed) => fbm(x / (w / P), y / (h / P), oct, P, seed);            // tiles with period P
-  const done = (key, c, strength) => { TEX[key] = tex(c); TEX[key + 'N'] = tex(normalFromCanvas(c, strength, 512), { srgb: false }); };
-  const strokes = (c, n, seed, fn) => { const g = c.getContext('2d'), r = rng(seed); for (let i = 0; i < n; i++) for (const dx of [-w, 0, w]) for (const dy of [-h, 0, h]) { g.save(); g.translate(dx, dy); fn(g, r, i); g.restore(); } };
-  // -- beech
-  {
-    const c = paint(w, h, (x, y, p) => {
-      const m1 = N(x, y, 16, 4, 301), m2 = N(x, y, 64, 3, 302), lA = sm(0.6, 0.7, N(x, y, 8, 4, 303)), lB = sm(0.62, 0.7, N(x, y, 16, 4, 304));
-      const v = 0.84 + 0.2 * m1 + 0.07 * m2;
-      p[0] = 124 * v; p[1] = 126 * v; p[2] = 121 * v;
-      mix3(p, [168, 170, 162], 1, lA * 0.6); mix3(p, [132, 142, 112], 0.95 + 0.1 * m2, lB * 0.45);
-    });
-    strokes(c, 260, 305, (g, r) => { const x = r() * w, y = r() * h, l = 4 + r() * 18; g.strokeStyle = `rgba(70,70,64,${0.18 + r() * 0.25})`; g.lineWidth = 1 + r(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (r() - 0.5) * 2); g.stroke(); });
-    strokes(c, 2, 306, (g, r) => {                                         // the chevrons of shed branches
-      const x = 30 + r() * (w - 60), y = 40 + r() * (h - 80), s = 14 + r() * 16;
-      g.strokeStyle = 'rgba(64,62,57,0.4)'; g.lineWidth = 2 + r() * 2; g.beginPath(); g.moveTo(x - s, y + s * 0.65); g.quadraticCurveTo(x, y - s * 0.1, x + s, y + s * 0.65); g.stroke();
-    });
-    done('barkBeech', c, 0.7);
-  }
-  // -- hornbeam
-  {
-    const c = paint(w, h, (x, y, p) => {
-      const warp = 2.2 * N(x, y, 8, 3, 311), fl = 0.5 + 0.5 * Math.sin(2 * Math.PI * (x / w * 5 + warp * 0.5));
-      const net = sm(0.9, 0.985, Math.abs(Math.sin(Math.PI * (x / w * 13 + warp)))), m = N(x, y, 32, 4, 312), lA = sm(0.64, 0.72, N(x, y, 16, 4, 313));
-      const v = (0.8 + 0.22 * fl + 0.12 * m) * (1 + 0.16 * net);
-      p[0] = 132 * v; p[1] = 133 * v; p[2] = 126 * v;
-      mix3(p, [178, 180, 170], 1, lA * 0.4);
-    });
-    done('barkHornbeam', c, 1.6);
-  }
-  // -- sessile oak
-  {
-    const c = paint(w, h, (x, y, p) => {
-      const warp = 1.6 * N(x, y, 4, 4, 321) + 0.35 * N(x, y, 16, 3, 325), f = x / w * 10 + warp;
-      let ridge = Math.pow(Math.abs(Math.sin(Math.PI * f)), 0.5);
-      const crack = sm(0.7, 0.76, N(x, y, 16, 3, 322)); ridge *= 1 - 0.7 * crack;
-      const m = N(x, y, 64, 3, 323), lich = sm(0.62, 0.7, N(x, y, 16, 4, 324)) * ridge;
-      const v = 0.85 + 0.25 * m;
-      p[0] = (44 + 92 * ridge) * v; p[1] = (41 + 90 * ridge) * v; p[2] = (38 + 82 * ridge) * v;
-      mix3(p, [128, 136, 110], 1, lich * 0.5);
-    });
-    done('barkOak', c, 4.5);
-  }
-  // -- black locust
-  {
-    const c = paint(w, h, (x, y, p) => {
-      const wa = 1.6 * N(x, y, 8, 3, 331), wb = 1.6 * N(x, y, 8, 3, 332);
-      const n1 = Math.abs(Math.sin(Math.PI * (x / w * 7 + y / h * 3 + wa))), n2 = Math.abs(Math.sin(Math.PI * (x / w * 7 - y / h * 3 + wb)));
-      const ridge = Math.pow(Math.min(n1, n2), 0.45), m = N(x, y, 64, 3, 333), v = 0.85 + 0.25 * m;
-      p[0] = (78 + 50 * ridge) * v; p[1] = (54 + 56 * ridge) * v; p[2] = (36 + 56 * ridge) * v;
-    });
-    done('barkRobinia', c, 4);
-  }
-  // -- birch
-  {
-    const c = paint(w, h, (x, y, p) => {
-      const m = N(x, y, 32, 4, 341), d = sm(0.66, 0.72, N(x, y, 8, 4, 342)), v = 0.88 + 0.14 * m;
-      p[0] = 222 * v; p[1] = 219 * v; p[2] = 210 * v;
-      mix3(p, [58, 54, 50], 1, d * 0.85);
-    });
-    strokes(c, 190, 343, (g, r) => { const x = r() * w, y = r() * h, l = 6 + r() * 34; g.strokeStyle = `rgba(30,28,26,${0.45 + r() * 0.4})`; g.lineWidth = 1.5 + r() * 2.5; g.beginPath(); g.moveTo(x, y); g.lineTo(x + l, y + (r() - 0.5) * 3); g.stroke(); });
-    done('barkBirch', c, 1.2);
-  }
-}
-
 // Leaf sprays of the forest broadleaves (alpha cards, ~1 m across): leafy shoots from the card's middle, the leaves
 // alternate in two ranks along each shoot as on the real twig, every leaf drawn with its own outline and veins
 //  * beech: ovate, entire wavy margin, 7-9 straight parallel vein pairs, glossy fresh green;
@@ -1106,8 +1018,10 @@ function genBlackMetal() {
   TEX.hammerN = tex(heightToNormalCanvas(H, n, n, 0.8), { srgb: false });
 }
 
-export async function loadTextures(base, onProgress, maxAniso = 8) {
-  ANISO = maxAniso;
+// opts.barkHalf: the bark at half resolution (the lowest setting: barktex.js)
+let OPTS = {};
+export async function loadTextures(base, onProgress, maxAniso = 8, opts = {}) {
+  ANISO = maxAniso; OPTS = opts;
   const names = Object.keys(PHOTOS);
   const steps = names.length + 18;
   let done = 0;
@@ -1132,7 +1046,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8) {
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
     ['placaj cărămidă', genBrickCladding], ['tablă', () => { genRoofMetal(); genRoofCorr(); }], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
-    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); genLeafSprays(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', () => { genBark(); genBarks(); }],
+    ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); genLeafSprays(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', () => genBarkTextures(TEX, tex, heightToNormalCanvas, OPTS.barkHalf)],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],
   ];

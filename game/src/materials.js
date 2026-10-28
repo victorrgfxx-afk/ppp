@@ -5,6 +5,48 @@ import { autumnize } from './season.js';
 
 export const M = {};
 
+// Moss and green algae on bark (Pleurococcus on the smooth barks, the mosses at the stem's foot): on the north side -
+// the shaded, damper one (compass north in the game's frame) - up to ~1-3 m, all round the foot, in the bark's hollows
+// first. The height is the vertex's own (an instanced tree's frame: its foot at 0). k: how much the species carries
+// (beech and hornbeam the most green, the oak's fissures mossy, black locust and birch little).
+const NORTH = '0.6693, 0.7429';
+export function mossy(m, k) {
+  const prev = m.onBeforeCompile, key0 = m.customProgramCacheKey ? m.customProgramCacheKey() : '';
+  m.onBeforeCompile = function (sh, r) {
+    if (prev) prev.call(this, sh, r);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vMossN;\nvarying float vMossH;')
+      .replace('#include <defaultnormal_vertex>', `#include <defaultnormal_vertex>
+  { vec3 mn = objectNormal;
+  #ifdef USE_INSTANCING
+    mn = mat3(instanceMatrix) * mn;
+  #endif
+    vMossN = normalize(mat3(modelMatrix) * mn); vMossH = position.y; }`);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+varying vec3 vMossN;
+varying float vMossH;
+float mossHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float mossNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mossHash(i), mossHash(i + vec2(1.0, 0.0)), f.x), mix(mossHash(i + vec2(0.0, 1.0)), mossHash(i + vec2(1.0, 1.0)), f.x), f.y); }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+  float mossK = 0.0;
+  {
+    float lum = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
+    vec2 hn = vMossN.xz; float north = dot(hn, vec2(${NORTH})) / max(length(hn), 1e-3);
+    float side = smoothstep(-0.25, 0.9, north) * smoothstep(-0.7, 0.1, vMossN.y);
+    float foot = 1.0 - smoothstep(0.1, 0.7 + 1.6 * side, vMossH);
+    float amt = (foot * (0.4 + 0.6 * side) + side * 0.4 * (1.0 - smoothstep(1.5, 5.0, vMossH))) * ${k.toFixed(2)};
+    float n = 0.6 * mossNoise(vMapUv * vec2(7.0, 3.0)) + 0.4 * mossNoise(vMapUv * vec2(23.0, 11.0));
+    mossK = clamp(amt * 1.6 - 0.25, 0.0, 1.0) * smoothstep(0.3, 0.7, n + (0.45 - lum) * 0.9);
+    // (green algae light and yellowish, moss darker and deeper green)
+    vec3 moss = mix(vec3(0.16, 0.2, 0.06), vec3(0.06, 0.1, 0.03), smoothstep(0.4, 0.8, foot));
+    diffuseColor.rgb = mix(diffuseColor.rgb, moss * (0.85 + 0.3 * n), mossK * 0.9);
+  }`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 1.0, mossK);');
+  };
+  m.customProgramCacheKey = () => key0 + '|moss' + k;
+  m.needsUpdate = true;
+}
+
 function std(name, o) {
   const m = new THREE.MeshStandardMaterial(o);
   m.name = name;
@@ -108,8 +150,9 @@ export function buildMaterials() {
   std('woodLight', { map: TEX.wood, normalMap: TEX.woodN, roughness: 0.6, color: 0xb87a45 });  // oak window frames
   std('picket', { map: TEX.picket, normalMap: TEX.picketN, roughness: 0.75 });
   std('bark', { map: TEX.bark, normalMap: TEX.barkN, roughness: 0.95 });
-  // the forest species' own bark (textures.js genBarks)
-  for (const k of ['Beech', 'Hornbeam', 'Oak', 'Robinia', 'Birch']) std('bark' + k, { map: TEX['bark' + k], normalMap: TEX['bark' + k + 'N'], roughness: k === 'Beech' || k === 'Birch' ? 0.82 : 0.95 });
+  // the forest species' own bark (barktex.js), the moss and green algae on it by species (mossy)
+  for (const k of ['Beech', 'Hornbeam', 'Oak', 'Robinia', 'Birch', 'Spruce', 'Pine']) std('bark' + k, { map: TEX['bark' + k], normalMap: TEX['bark' + k + 'N'], roughness: k === 'Beech' || k === 'Birch' ? 0.82 : 0.95 });
+  for (const [k, a] of [['bark', 0.6], ['barkBeech', 1], ['barkHornbeam', 0.9], ['barkOak', 0.8], ['barkRobinia', 0.45], ['barkBirch', 0.35], ['barkSpruce', 0.55], ['barkPine', 0.4]]) mossy(M[k], a);
 
   // --- roofs & metal ---
   std('roofPhoto', { map: TEX.roof_panels, normalMap: TEX.roof_panelsN, roughness: 0.42, metalness: 0.55, color: 0xe4e8ec });
