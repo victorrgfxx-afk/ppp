@@ -309,14 +309,14 @@ export class Campfire {
     // ---- the seat and the pile (bark, ends sawn)
     const cold = [];
     const [sx, sz, sy] = at.seat, sc = Math.cos(sy), ss = Math.sin(sy), sh = ground(sx, sz) + 0.13;   // (settled a little into the gravel)
-    // (the bark map is itself a dark grey-brown: the tint lightens it to a weathered oak's)
-    cold.push(logGeo(V(sx - sc * 0.85, sh, sz - ss * 0.85), V(sx + sc * 0.85, sh + 0.02, sz + ss * 0.85), 0.17, [1.0, 0.85, 0.68], 0, 0, R, 0, 0.55));
+    // (the sessile oak's bark, barktex.js: grey-brown plates and furrows; the tint only a touch warmer, weathered)
+    cold.push(logGeo(V(sx - sc * 0.85, sh, sz - ss * 0.85), V(sx + sc * 0.85, sh + 0.02, sz + ss * 0.85), 0.17, [0.96, 0.92, 0.86], 0, 0, R, 0, 0.55));
     const [wx, wz, wy] = at.wood, wc = Math.cos(wy), ws = Math.sin(wy), wh = ground(wx, wz);
     for (let row = 0; row < 2; row++) for (let k = 0; k < 3 - row; k++) {
       const o = (k - (2 - row) / 2) * 0.13, px = wx - ws * o, pz = wz + wc * o, py = wh + 0.055 + row * 0.1;
-      cold.push(logGeo(V(px - wc * 0.3, py, pz - ws * 0.3), V(px + wc * 0.3, py, pz + ws * 0.3), 0.05 + R() * 0.012, [0.95, 0.78, 0.6], 0, 0, R, 0, 0.3));
+      cold.push(logGeo(V(px - wc * 0.3, py, pz - ws * 0.3), V(px + wc * 0.3, py, pz + ws * 0.3), 0.05 + R() * 0.012, [0.94, 0.88, 0.8], 0, 0, R, 0, 0.3));
     }
-    const coldMesh = new THREE.Mesh(mergeGeometries(cold.map(l => { l.deleteAttribute('glow'); return l.toNonIndexed(); })), new THREE.MeshStandardMaterial({ map: TEX.bark, normalMap: TEX.barkN, roughness: 0.95, vertexColors: true }));
+    const coldMesh = new THREE.Mesh(mergeGeometries(cold.map(l => { l.deleteAttribute('glow'); return l.toNonIndexed(); })), new THREE.MeshStandardMaterial({ map: TEX.barkOak, normalMap: TEX.barkOakN, roughness: 0.95, vertexColors: true }));
     coldMesh.castShadow = coldMesh.receiveShadow = true;
     g.add(coldMesh);
     // you don't walk into the fire (the seat and the pile are low enough to step over)

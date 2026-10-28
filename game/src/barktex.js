@@ -43,20 +43,27 @@ function fbm2(seed, oct = 4) {
   const ns = Array.from({ length: oct }, (_, i) => noise2(seed + i * 101));
   return (u, v, px, py) => { let s = 0, a = 0.5, n = 0; for (let i = 0; i < oct; i++) { s += a * ns[i](u, v, px << i, py << i); n += a; a *= 0.5; } return s / n; };
 }
-// periodic Voronoi on a jittered cx x cy grid: f1, f2 (metres, the tile 0.55 x 1.2 m) and the nearest cell's index
-function voronoi(seed, cx, cy, jit = 0.9) {
+// periodic Voronoi on a jittered cx x cy grid: f1, f2 (metres, the tile 0.55 x 1.2 m), the nearest cell's index and the
+// distance to the nearest border (m) and how upright that border is. ay < 1 squeezes the distances along the stem: the cells come out 1/ay times longer
+// than wide where the grid alone would make them round (the border's distance is still measured in true metres)
+function voronoi(seed, cx, cy, jit = 0.9, ay = 1) {
   const R = rng(seed), J = new Float32Array(cx * cy * 2);
   for (let i = 0; i < J.length; i++) J[i] = 0.5 + (R() - 0.5) * jit;
-  const sx = 0.55 / cx, sy = 1.2 / cy, out = [0, 0, 0];
+  const sx = 0.55 / cx, sy = 1.2 / cy * ay, out = [0, 0, 0, 0, 0];
+  // (cells longer one way than the other: the nearest two points can lie several cells off along the short side)
+  const ri = sy > sx ? Math.ceil(sy / sx) + 1 : 1, rj = sx > sy ? Math.ceil(sx / sy) + 1 : 1;
   return (u, v) => {
     const gx = u * cx, gy = v * cy, ix = Math.floor(gx), iy = Math.floor(gy);
-    let f1 = 1e9, f2 = 1e9, id = 0;
-    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    let f1 = 1e9, f2 = 1e9, id = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    for (let j = -rj; j <= rj; j++) for (let i = -ri; i <= ri; i++) {
       const ci = (((ix + i) % cx) + cx) % cx, cj = (((iy + j) % cy) + cy) % cy, k = cj * cx + ci;
       const dx = (ix + i + J[k * 2] - gx) * sx, dy = (iy + j + J[k * 2 + 1] - gy) * sy, d = Math.sqrt(dx * dx + dy * dy);
-      if (d < f1) { f2 = f1; f1 = d; id = k; } else if (d < f2) f2 = d;
+      if (d < f1) { f2 = f1; x2 = x1; y2 = y1; f1 = d; x1 = dx; y1 = dy; id = k; } else if (d < f2) { f2 = d; x2 = dx; y2 = dy; }
     }
-    out[0] = f1; out[1] = f2; out[2] = id;
+    // (f2 - f1 grows ~2 per metre across a border in the squeezed space: back to true metres along its normal)
+    // (and how much the border runs along the stem: 1 upright, 0 across)
+    const nx = x2 - x1, ny = y2 - y1, ln = Math.hypot(nx, ny) || 1, tx = nx / ln, ty = ay * ny / ln, gl = Math.hypot(tx, ty);
+    out[0] = f1; out[1] = f2; out[2] = id; out[3] = (f2 - f1) / (2 * gl); out[4] = Math.abs(tx) / gl;
     return out;
   };
 }
@@ -121,25 +128,27 @@ export function genBarkTextures(TEX, tex, heightToNormal, half = false) {
       o[0] = 0.55 + 0.08 * n + 0.06 * Math.min(1, net);
     }, 0.004, 0.3));
   }
-  // ---- sessile oak: long narrow plates that split and join (two sets of fissures at a slant, crossing), parted by
-  // deep brown fissures, broken across here and there by thin cracks, lichen on their tops
+  // ---- sessile oak: long irregular plates (cells stretched along the stem), parted by deep brown furrows, broken
+  // across here and there by thin cracks, lichen on their tops
   {
     const wa = fbm2(32, 4), wb = fbm2(36, 4), fine = fbm2(33, 4), lA = fbm2(34, 4), cr = noise2(35), cm = noise2(38), fib = noise2(37);
+    const cells = voronoi(31, 9, 6, 0.75, 1 / 3);                          // (plates ~6 cm across, ~20 cm long)
     put('barkOak', make((u, v, o) => {
-      const a = 1.2 * wa(u, v, 5, 2), b = 1.2 * wb(u, v, 5, 2);
-      const n1 = Math.abs(Math.sin(Math.PI * (u * 9 + v + a))), n2 = Math.abs(Math.sin(Math.PI * (u * 9 - v + b)));
-      const s = Math.min(n1, n2) * 0.75 + n1 * n2 * 0.25;
-      const fiss = sm(0.04, 0.34, s), plate = Math.sqrt(sm(0.14, 0.6, s));
+      // (the furrows: the plates' borders, wavy, the upright ones ~2-2.5 cm across and dark all over, a V in the relief;
+      // the breaks across the plates narrower; the plates rough, mottled grey-brown, each a shade of its own)
+      const c = cells(u + 0.03 * (wa(u, v, 5, 2) - 0.5), v + 0.02 * (wb(u, v, 3, 4) - 0.5)), e = c[3];
+      const wd = (0.008 + 0.005 * fine(u, v, 6, 3)) * (0.35 + 0.65 * c[4]), fiss = sm(0.0, wd * 1.4, e), plate = Math.sqrt(sm(wd, wd * 1.8, e));
+      const dark = 1 - sm(wd * 0.7, wd * 1.15, e);
       // thin cracks across the plates
       const cl = Math.abs(Math.sin(Math.PI * (v * 9 + 0.7 * cr(u, v, 9, 3)))), across = sm(0.07, 0.0, cl) * sm(0.55, 0.7, cm(u, v, 18, 6)) * plate;
       const n = fine(u, v, 48, 60), fb = fib(u, v, 120, 10);
-      const h = 0.04 + 0.8 * fiss * (1 - 0.7 * across) + 0.08 * n * plate + 0.04 * (fb - 0.5) * plate;
-      o[1] = 0.36 + 0.15 * plate + 0.07 * n; o[2] = o[1] - 0.01; o[3] = o[1] - 0.035;
-      mix(o, 0.17, 0.13, 0.1, (1 - fiss) * 0.75);                               // (the fissures' bottoms: brown)
+      const h = 0.04 + 0.78 * fiss * (1 - 0.7 * across) + 0.14 * n * plate + 0.05 * (fb - 0.5) * plate;
+      o[1] = 0.3 + 0.12 * plate + 0.12 * (n - 0.5) + 0.06 * (fine(u, v, 14, 12) - 0.5) + 0.05 * (hash(c[2], 5) - 0.5); o[2] = o[1] - 0.015; o[3] = o[1] - 0.045;
+      mix(o, 0.13, 0.095, 0.07, Math.max(dark * 0.92, (1 - fiss) * 0.5));        // (the furrows: dark brown)
       mix(o, 0.15, 0.11, 0.08, across * 0.6);
       const l = sm(0.6, 0.68, lA(u, v, 10, 10)) * plate; mix(o, 0.5, 0.54, 0.43, l * 0.45);
       o[0] = Math.min(1, Math.max(0, h));
-    }, 0.022, 0.45));
+    }, 0.022, 0.55));
   }
   // ---- black locust: a deep net of interlacing corky ridges, grey-brown on top, orange-brown in the furrows
   {
