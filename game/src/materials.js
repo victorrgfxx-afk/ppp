@@ -5,7 +5,7 @@ import { autumnize } from './season.js';
 
 export const M = {};
 
-// Moss and green algae on bark (Pleurococcus on the smooth barks, the mosses at the stem's foot): on the north side -
+// The bark's shading: moss and green algae (Pleurococcus on the smooth barks, the mosses at the stem's foot) on the north side -
 // the shaded, damper one (compass north in the game's frame) - up to ~1-3 m, all round the foot, in the bark's hollows
 // first. The height is the vertex's own (an instanced tree's frame: its foot at 0). k: how much the species carries
 // (beech and hornbeam the most green, the oak's fissures mossy, black locust and birch little).
@@ -41,7 +41,13 @@ float mossNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.
     vec3 moss = mix(vec3(0.16, 0.2, 0.06), vec3(0.06, 0.1, 0.03), smoothstep(0.4, 0.8, foot));
     diffuseColor.rgb = mix(diffuseColor.rgb, moss * (0.85 + 0.3 * n), mossK * 0.9);
   }`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 1.0, mossK);');
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 1.0, mossK);')
+      // under the crown: the stem sees little of the sky (its own crown and the neighbours' over it), least at its foot -
+      // its light from the sky and the surroundings ~40 % there, ~90 % at 15 m (the sun's own light comes through the
+      // shadow maps)
+      .replace('#include <aomap_fragment>', `#include <aomap_fragment>
+  { float skyK = mix(0.4, 0.9, smoothstep(0.0, 15.0, vMossH));
+    reflectedLight.indirectDiffuse *= skyK; reflectedLight.indirectSpecular *= skyK; }`);
   };
   m.customProgramCacheKey = () => key0 + '|moss' + k;
   m.needsUpdate = true;
