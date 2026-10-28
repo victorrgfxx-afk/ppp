@@ -129,17 +129,17 @@ export function genBarkTextures(TEX, tex, heightToNormal, half = false) {
       const a = 1.2 * wa(u, v, 5, 2), b = 1.2 * wb(u, v, 5, 2);
       const n1 = Math.abs(Math.sin(Math.PI * (u * 9 + v + a))), n2 = Math.abs(Math.sin(Math.PI * (u * 9 - v + b)));
       const s = Math.min(n1, n2) * 0.75 + n1 * n2 * 0.25;
-      const fiss = sm(0.08, 0.5, s), plate = Math.sqrt(sm(0.2, 0.7, s));
+      const fiss = sm(0.04, 0.34, s), plate = Math.sqrt(sm(0.14, 0.6, s));
       // thin cracks across the plates
       const cl = Math.abs(Math.sin(Math.PI * (v * 9 + 0.7 * cr(u, v, 9, 3)))), across = sm(0.07, 0.0, cl) * sm(0.55, 0.7, cm(u, v, 18, 6)) * plate;
       const n = fine(u, v, 48, 60), fb = fib(u, v, 120, 10);
       const h = 0.04 + 0.8 * fiss * (1 - 0.7 * across) + 0.08 * n * plate + 0.04 * (fb - 0.5) * plate;
       o[1] = 0.36 + 0.15 * plate + 0.07 * n; o[2] = o[1] - 0.01; o[3] = o[1] - 0.035;
-      mix(o, 0.11, 0.075, 0.05, (1 - fiss) * 0.9);                              // (the fissures' bottoms: brown)
+      mix(o, 0.17, 0.13, 0.1, (1 - fiss) * 0.75);                               // (the fissures' bottoms: brown)
       mix(o, 0.15, 0.11, 0.08, across * 0.6);
       const l = sm(0.6, 0.68, lA(u, v, 10, 10)) * plate; mix(o, 0.5, 0.54, 0.43, l * 0.45);
       o[0] = Math.min(1, Math.max(0, h));
-    }, 0.022, 0.7));
+    }, 0.022, 0.45));
   }
   // ---- black locust: a deep net of interlacing corky ridges, grey-brown on top, orange-brown in the furrows
   {

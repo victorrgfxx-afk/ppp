@@ -42,11 +42,11 @@ float mossNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.
     diffuseColor.rgb = mix(diffuseColor.rgb, moss * (0.85 + 0.3 * n), mossK * 0.9);
   }`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 1.0, mossK);')
-      // under the crown: the stem sees little of the sky (its own crown and the neighbours' over it), least at its foot -
-      // its light from the sky and the surroundings ~40 % there, ~90 % at 15 m (the sun's own light comes through the
-      // shadow maps)
+      // under the crown: the stem sees less of the sky (its own crown and the neighbours' over it), least at its foot -
+      // its light from the sky and the surroundings ~75 % there, ~95 % at 15 m (the sun's own light comes through the
+      // shadow maps; the floor round it keeps all of its own: lower, the stems came out darker than the litter)
       .replace('#include <aomap_fragment>', `#include <aomap_fragment>
-  { float skyK = mix(0.4, 0.9, smoothstep(0.0, 15.0, vMossH));
+  { float skyK = mix(0.75, 0.95, smoothstep(0.0, 15.0, vMossH));
     reflectedLight.indirectDiffuse *= skyK; reflectedLight.indirectSpecular *= skyK; }`);
   };
   m.customProgramCacheKey = () => key0 + '|moss' + k;
