@@ -20,11 +20,12 @@ const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const UP = V3(0, 1, 0), _a = V3(), _b = V3(), _c = V3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const _x = V3(), _f = V3(), _y = V3(), _z = V3(), _y2 = V3(), _bk = V3(), _ty = V3(), _tz = V3(), _tq = new THREE.Quaternion();
 // the arm's bones as sculpted (armgeo.js), inverted: what each bone's frame now is applied to
-const INV = [REST.upper, REST.fore, REST.fore, REST.fore, REST.fore].map(r => new THREE.Matrix4().makeBasis(V3(...r.x), V3(...r.y), V3(...r.z)).setPosition(...r.o).invert());
-const ARM = [0.31, 0.29], LEG = [0.46, 0.45], SLIDE = 1.05;
+export const INV = [REST.upper, REST.fore, REST.fore, REST.fore, REST.fore].map(r => new THREE.Matrix4().makeBasis(V3(...r.x), V3(...r.y), V3(...r.z)).setPosition(...r.o).invert());
+export const ARM = [0.31, 0.29];
+const LEG = [0.46, 0.45], SLIDE = 1.05;
 
 // the middle joint of a two-bone limb from root to tip, bent toward pole (the tip pulled in if out of reach)
-function ik(root, tip, [a, b], pole, outMid, outTip) {
+export function ik(root, tip, [a, b], pole, outMid, outTip) {
   const d0 = _a.subVectors(tip, root).length(), dir = _a.divideScalar(d0 || 1);
   const d = Math.min(d0, a + b - 1e-3), ca = THREE.MathUtils.clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
   const perp = _b.copy(pole).addScaledVector(dir, -pole.dot(dir)).normalize();
@@ -160,24 +161,28 @@ export class Driver {
       if (this.limbs) this.pose(this.limbs[i], S, elbow, tip, this.wrists[i].back);
     }
   }
-  // an arm's bones: the upper arm from the shoulder (its front: the way the elbow bends), the forearm from the elbow,
-  // turned toward the back of the hand's wrist a third more at each of its bones
-  pose(B, S, E, W, back) {
-    _x.subVectors(E, S).normalize(); _f.subVectors(W, E).normalize();
-    _y.copy(_f).addScaledVector(_x, -_f.dot(_x));
-    if (_y.lengthSq() < 1e-8) _y.set(0, -1, 0).addScaledVector(_x, _x.y);
-    _y.normalize(); _z.crossVectors(_x, _y);
-    B[0].matrixWorld.makeBasis(_x, _y, _z).setPosition(S);
-    _y2.crossVectors(_z, _f);
-    // (the wrist's back as sculpted: the forearm's back, -y; as the hand has it: back, on the wheel)
-    _bk.copy(back).transformDirection(_m);
-    _bk.addScaledVector(_f, -_bk.dot(_f)).normalize();
-    _ty.copy(_y2).negate();
-    const tau = Math.atan2(_c.crossVectors(_ty, _bk).dot(_f), _ty.dot(_bk));
-    for (let k = 0; k < 4; k++) {
-      _tq.setFromAxisAngle(_f, tau * k / 3);
-      _ty.copy(_y2).applyQuaternion(_tq); _tz.copy(_z).applyQuaternion(_tq);
-      B[1 + k].matrixWorld.makeBasis(_f, _ty, _tz).setPosition(E);
-    }
+  // (the back of the hand's wrist as sculpted, from the wheel's frame)
+  pose(B, S, E, W, back) { poseArm(B, S, E, W, _bw.copy(back).transformDirection(_m)); }
+}
+const _bw = V3();
+// an arm's bones (in the frame of S, E, W): the upper arm from the shoulder (its front: the way the elbow bends), the
+// forearm from the elbow, turned toward the back of the hand's wrist (bk, the same frame) a third more at each of its
+// bones (the pistol's arms too: weapon.js)
+export function poseArm(B, S, E, W, bk) {
+  _x.subVectors(E, S).normalize(); _f.subVectors(W, E).normalize();
+  _y.copy(_f).addScaledVector(_x, -_f.dot(_x));
+  if (_y.lengthSq() < 1e-8) _y.set(0, -1, 0).addScaledVector(_x, _x.y);
+  _y.normalize(); _z.crossVectors(_x, _y);
+  B[0].matrixWorld.makeBasis(_x, _y, _z).setPosition(S);
+  _y2.crossVectors(_z, _f);
+  // (the wrist's back as sculpted: the forearm's back, -y; as the hand has it)
+  _bk.copy(bk);
+  _bk.addScaledVector(_f, -_bk.dot(_f)).normalize();
+  _ty.copy(_y2).negate();
+  const tau = Math.atan2(_c.crossVectors(_ty, _bk).dot(_f), _ty.dot(_bk));
+  for (let k = 0; k < 4; k++) {
+    _tq.setFromAxisAngle(_f, tau * k / 3);
+    _ty.copy(_y2).applyQuaternion(_tq); _tz.copy(_z).applyQuaternion(_tq);
+    B[1 + k].matrixWorld.makeBasis(_f, _ty, _tz).setPosition(E);
   }
 }

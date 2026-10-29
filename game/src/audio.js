@@ -142,6 +142,38 @@ export class Audio {
     s.connect(f1).connect(g).connect(this.master);
     s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05);
   }
+  // the Glock 18 (weapon.js): the suppressed shot - the can's cough, the low thump, the action's two clacks (the slide
+  // back and home) - and the hands' work on it; a little different every time
+  gunShot() {
+    if (!this.ctx) return;
+    const j = () => 0.9 + Math.random() * 0.2;
+    this.burst({ f: 1100 * j(), q: 0.7, dur: 0.09, gain: 0.5 });
+    this.burst({ f: 380 * j(), q: 0.8, dur: 0.08, gain: 0.45, type: 'lowpass' });
+    this.burst({ f: 3200 * j(), q: 3, dur: 0.02, gain: 0.22, delay: 0.004 });
+    this.burst({ f: 2400 * j(), q: 4, dur: 0.02, gain: 0.16, delay: 0.034 });
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain(), t = this.ctx.currentTime;
+    o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.06);
+    g.gain.setValueAtTime(0.22, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + 0.08);
+  }
+  gunDry() { this.burst({ f: 2800, q: 6, dur: 0.02, gain: 0.25 }); }
+  gunSelect() { this.burst({ f: 3000, q: 6, dur: 0.015, gain: 0.2 }); this.burst({ f: 2200, q: 5, dur: 0.015, gain: 0.16, delay: 0.05 }); }
+  gunCloth() { this.burst({ f: 900, q: 0.5, dur: 0.25, gain: 0.07 }); this.burst({ f: 2600, q: 4, dur: 0.02, gain: 0.08, delay: 0.12 }); }
+  magOut() { this.burst({ f: 2600, q: 5, dur: 0.02, gain: 0.22 }); this.burst({ f: 1200, q: 1, dur: 0.08, gain: 0.08, delay: 0.02 }); }
+  magIn() { this.burst({ f: 1800, q: 4, dur: 0.03, gain: 0.32 }); this.burst({ f: 3200, q: 6, dur: 0.015, gain: 0.22, delay: 0.012 }); }
+  slideBack() { this.burst({ f: 1500, q: 1.5, dur: 0.07, gain: 0.15 }); }
+  slideRelease() { this.burst({ f: 2200, q: 3, dur: 0.03, gain: 0.35 }); this.burst({ f: 700, q: 1, dur: 0.06, gain: 0.2 }); }
+  caseTink(d) { const k = this.att(d, 3, 0); if (k < 0.02) return; this.burst({ f: 6000, q: 8, dur: 0.05, gain: 0.12 * k }); this.burst({ f: 4200, q: 10, dur: 0.08, gain: 0.08 * k, delay: 0.06 }); }
+  magDrop(d) { const k = this.att(d, 3, 0); if (k < 0.02) return; this.burst({ f: 600, q: 1, dur: 0.06, gain: 0.25 * k }); this.burst({ f: 2400, q: 4, dur: 0.03, gain: 0.1 * k, delay: 0.01 }); }
+  // a round arriving: a thud in the earth, a knock in wood, a crack on stone or plaster, a ring on steel (heard after
+  // its flight and the sound's way back)
+  bulletHit(kind, d, delay) {
+    const k = this.att(d, 15, 0); if (k < 0.01) return;
+    if (kind === 'metal') { this.burst({ f: 3500, q: 12, dur: 0.25, gain: 0.3 * k, delay }); this.burst({ f: 5200, q: 14, dur: 0.18, gain: 0.15 * k, delay }); }
+    else if (kind === 'wood') this.burst({ f: 900, q: 1.5, dur: 0.06, gain: 0.35 * k, delay });
+    else if (kind === 'hard') { this.burst({ f: 1600, q: 1, dur: 0.05, gain: 0.35 * k, delay }); this.burst({ f: 4000, q: 2, dur: 0.02, gain: 0.15 * k, delay }); }
+    else this.burst({ f: 300, q: 0.8, dur: 0.07, gain: 0.4 * k, delay, type: 'lowpass' });
+  }
   // the campfire: a knot or a pocket of sap popping (campfire.js throws its sparks with it); put out, its hiss
   firePop(k) { if (k < 0.01) return; this.burst({ f: 700 + Math.random() * 700, q: 1.1, dur: 0.06 + Math.random() * 0.05, gain: 0.45 * k }); this.burst({ f: 3000 + Math.random() * 2500, q: 2, dur: 0.03, gain: 0.25 * k, delay: 0.008 }); }
   fireOut(k) { if (k < 0.01) return; this.burst({ f: 3500, q: 0.4, dur: 1.6, gain: 0.2 * k, type: 'highpass', rate: 1.3 }); this.burst({ f: 260, q: 0.6, dur: 0.5, gain: 0.25 * k, type: 'lowpass' }); }

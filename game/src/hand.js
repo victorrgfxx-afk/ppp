@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildGrip, bendGrip, gripWrist } from './handgeo.js';
+import { buildGrip, bendGrip, gripWrist, gripWristBar } from './handgeo.js';
 import { buildArm } from './armgeo.js';
 
 // The driver's hands and arms as meshes (driver.js): the right hand sculpted round a straight bar by handgeo.js, the
@@ -93,6 +93,35 @@ export function gripHands(R, tube) {
   const h = { right: geo(pos, nrm, b.idx), left: geo(pl, nl, il) };
   rims.set(key, h);
   return h;
+}
+
+// the hands round a straight bar (a pistol's grip, glock.js), { right, left: BufferGeometry } in the bar's frame (the
+// left the right mirrored across x), if they are made (else null: prepareHands)
+const straight = new Map();
+export function barHands(tube) {
+  const k = tk(tube);
+  if (straight.has(k)) return straight.get(k);
+  const b = bars.get(k);
+  if (!b) return null;
+  const n = b.pos.length / 3, pl = new Float32Array(b.pos), nl = new Float32Array(b.nrm), il = b.idx.slice();
+  for (let v = 0; v < n; v++) { pl[3 * v] = -pl[3 * v]; nl[3 * v] = -nl[3 * v]; }
+  for (let t = 0; t < il.length; t += 3) { const s = il[t + 1]; il[t + 1] = il[t + 2]; il[t + 2] = s; }
+  const geo = (p, q, ix) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('normal', new THREE.BufferAttribute(q, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(b.col, 3)); g.setAttribute('aGloss', new THREE.BufferAttribute(b.gloss, 1));
+    g.setIndex(new THREE.BufferAttribute(ix, 1)); g.computeBoundingSphere();
+    return g;
+  };
+  const h = { right: geo(new Float32Array(b.pos), new Float32Array(b.nrm), b.idx), left: geo(pl, nl, il) };
+  straight.set(k, h);
+  return h;
+}
+// where each forearm meets its hand on a straight bar, its direction there and the back of the wrist (the bar's frame):
+// [right, left]
+export function barWrists(tube) {
+  const { at, dir, back } = gripWristBar(tube), v = (a, i) => new THREE.Vector3(i ? -a[0] : a[0], a[1], a[2]);
+  return [0, 1].map(i => ({ at: v(at, i), dir: v(dir, i), back: v(back, i) }));
 }
 
 // the skin: a little sheen at grazing light (the light the skin scatters back out near its edges), the nails glossy; the

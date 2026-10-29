@@ -22,19 +22,24 @@ export class Input {
 
     document.addEventListener('pointerlockchange', () => {
       this.mouse.locked = document.pointerLockElement === canvas;
+      if (!this.mouse.locked) { this.keys.delete('Mouse0'); this.keys.delete('Mouse2'); }
     });
     addEventListener('mousemove', (e) => {
       if (!this.enabled) return;
       if (this.mouse.locked || this.mouse.dragging) { this.mouse.dx += e.movementX; this.mouse.dy += e.movementY; }
     });
+    // (the buttons, while the pointer is locked, as keys: Mouse0 the left, Mouse2 the right - the pistol: weapon.js)
     canvas.addEventListener('mousedown', (e) => {
-      if (!this.enabled || e.button !== 0) return;
+      if (!this.enabled) return;
+      if (this.mouse.locked) { const c = 'Mouse' + e.button; if (!this.keys.has(c)) this.pressed.add(c); this.keys.add(c); return; }
+      if (e.button !== 0) return;
       if (!this.mouse.locked) {
         this.requestLock();
         this.mouse.dragging = true;
       }
     });
-    addEventListener('mouseup', () => { this.mouse.dragging = false; });
+    addEventListener('mouseup', (e) => { this.mouse.dragging = false; this.keys.delete('Mouse' + e.button); });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // touch
     const stickEl = document.getElementById('stick');

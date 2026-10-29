@@ -127,6 +127,13 @@ export function gripWrist(R, tube) {
   return { at: a.slice(0, 3), dir: norm(sub(b.slice(0, 3), a.slice(0, 3))), back: [Df[0] * c - Df[1] * s, Df[0] * s + Df[1] * c, Df[2]] };
 }
 
+// the same on a straight bar (its own frame: the bar along +y, x out of the back of the hand's side, z toward the
+// thumb's): a pistol's grip (glock.js)
+export function gripWristBar(tube) {
+  const { J, Df } = handFrame(tube);
+  return { at: add(J, FORE, -0.035), dir: FORE, back: Df };
+}
+
 // the right hand round the bar
 function sculpt(r) {
   const COMP = 0.0015;                                                // (the flesh pressed in)

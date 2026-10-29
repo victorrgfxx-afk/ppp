@@ -41,6 +41,7 @@ import { Campfire } from './campfire.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { TWIND } from './treewind.js';
+import { Glock } from './weapon.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
@@ -497,6 +498,8 @@ async function main() {
   // night: the moon's shaft on the hill of the cross, the torch, the storm's lightning and the bear of the hill
   const crossAt = geoWorld.landmarks?.find(l => l.type === 'cross');
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
+  // the Glock 18 on the cross's slab (weapon.js): E takes it
+  const glock = crossAt ? new Glock(scene, world, audio, crossAt) : null;
   // no GPS signal on the hill of the cross: the hill (its meadows and wood, geo/drapel.js) and the whole lane over it
   // (urcus.js: the walkers' clip, the Maybach), wherever it is more than 150 m from a house (the last houses of Strada
   // Măgurii stand ~280 m below the cross); a 10 m raster. Driving in, the navigation - the car's, your phone's, the
@@ -1337,7 +1340,10 @@ async function main() {
         const dog = player.noclip ? null : dogs.nearest(player.pos.x, player.pos.z);
         const near = dog || player.noclip ? null : nearestCar();
         const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
-        if (dog) {
+        const gunP = player.noclip ? null : glock?.pickup(camera, input);
+        if (gunP === '') hud.toast('Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte', 6);
+        else if (gunP) prompt = gunP;
+        else if (dog) {
           prompt = 'E — mângâie câinele';
           if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); share.petted(mp, dogs.dogs.indexOf(dog)); hud.toast('Câinele dă fericit din coadă'); }
         } else if (fire) {
@@ -1367,6 +1373,8 @@ async function main() {
         active?.car.cabin?.update(active, true, active.lightsOn || night > 0.5 ? 1 : 0, noSignal);
         if (active && active.impact > 2.5) { audio.crash(active.impact); shake = Math.min(0.35, active.impact * 0.03); }
       }
+      // the pistol in your hands (on foot only: put away in a car, while riding or flying)
+      glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value });
       // parked cars (and cars pushed by collisions) settle
       for (const v of vehicles) if (v !== active && !v.remote) v.update(dt, null);   // (a friend's car moves as they drive it: remote.js)
     }
@@ -1412,7 +1420,7 @@ async function main() {
       }
     } else {
       if (photoFov && Math.hypot(player.pos.x - photoFov.x, player.pos.z - photoFov.z) > 0.25) photoFov = null;
-      fov = photoFov ? photoFov.fov + player.fovKick : fov0 * (1 + player.fovKick / 70);
+      fov = photoFov ? photoFov.fov + player.fovKick : fov0 * (1 + player.fovKick / 70) * (glock?.fovMul ?? 1);
     }
     if (shake > 0) {
       camera.position.x += (Math.random() - 0.5) * shake * 0.2;
@@ -1689,12 +1697,17 @@ async function main() {
     }
     // the sun's shafts: by the share of its light that comes straight (the weather's), above the horizon, by day
     if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.85, sun.color); }
-    // (the car you drive moves with the camera: the anti-aliasing follows it by its own motion)
+    // the pistol in your hands, last: where the camera has ended up this frame
+    glock?.draw(camera, player);
+    // (the car you drive moves with the camera: the anti-aliasing follows it by its own motion; so does the pistol)
     if (post.taa) {
       const mv = mode === 'car' && active ? active : riding;
       if (mv) {
         const hw = mv.car.half.w + 0.3, hl = mv.car.half.l + 0.3;
         taaMover.obj = mv.car.group; taaMover.min.set(-hw, -0.4, -hl); taaMover.max.set(hw, 2.6, hl);
+        post.taa.mover = taaMover;
+      } else if (glock?.vm.visible) {
+        taaMover.obj = glock.vm; taaMover.min.set(-0.6, -0.75, -0.8); taaMover.max.set(0.6, 0.35, 0.35);
         post.taa.mover = taaMover;
       } else post.taa.mover = null;
     }
@@ -1718,7 +1731,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {
