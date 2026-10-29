@@ -353,6 +353,10 @@ export class Campfire {
       l.shadow.camera.near = 0.12; l.shadow.camera.far = 12;
       l.shadow.bias = -0.003; l.shadow.normalBias = 0.03; l.shadow.radius = 4;
       l.shadow.autoUpdate = false;
+      // a map from the first frame (as the sun's cascades and the spot lights have: lighting.js): with none yet, three r186
+      // binds an empty colour cube to the shadow cube sampler, every lit material's draw fails (a sampler type mismatch)
+      // and the map is not drawn at all - at Înaltă and Ultra, by day, until the fire was lit at night (V82-V84)
+      l.shadow.needsUpdate = true;
     }
     g.add(l);
     this._v = new THREE.Vector3(); this._w = new THREE.Vector3();

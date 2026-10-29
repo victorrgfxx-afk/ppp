@@ -32,11 +32,36 @@ export async function loadGeoTextures(base) {
 // where the drawn grass ends there is no edge
 export const MEADOW = { uMeadow: { value: null }, uMeadowBox: { value: new THREE.Vector4(0, 0, 1, 1) }, uMeadowOn: { value: 0 } };
 
+// the ground's three detail textures (grass, soil, gravel: textures.js, 512 px each) as the layers of one array texture:
+// one texture unit for the three. The ground's material is the one with the most textures (the photo, the land cover, the
+// details, the meadow, the rain's four, the sky's light and three.js's own) and every shadow-casting light adds its map to
+// it: most graphics cards give WebGL 16 units, and past them the shader does not link - the ground is not drawn at all
+// (V85: it was 17 at Înaltă). (Each layer as the canvas was drawn, flipped as the 2D textures are; mipmaps and the
+// anisotropic filtering as theirs.)
+let DETAIL = null;
+export function detailArray() {
+  if (DETAIL) return DETAIL;
+  const src = [TEX.grass, TEX.soil, TEX.gravel].map(t => t.image), n = src[0].width;
+  const data = new Uint8Array(n * n * 4 * src.length);
+  src.forEach((c, k) => {
+    let px;
+    if (c.getContext) px = c.getContext('2d').getImageData(0, 0, n, n).data;
+    else { const cv = document.createElement('canvas'); cv.width = cv.height = n; const g = cv.getContext('2d'); g.drawImage(c, 0, 0, n, n); px = g.getImageData(0, 0, n, n).data; }
+    for (let y = 0; y < n; y++) data.set(px.subarray((n - 1 - y) * n * 4, (n - y) * n * 4), (k * n + y) * n * 4);
+  });
+  const t = new THREE.DataArrayTexture(data, n, n, src.length);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true;
+  t.anisotropy = TEX.grass.anisotropy;
+  t.needsUpdate = true;
+  return (DETAIL = t);
+}
+
 function terrainMaterial(ortho, splat, ext) {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.97, metalness: 0, color: 0xffffff });
   const uni = {
-    uOrtho: { value: ortho }, uSplat: { value: splat },
-    uGrass: { value: TEX.grass }, uSoil: { value: TEX.soil }, uGravel: { value: TEX.gravel },
+    uOrtho: { value: ortho }, uSplat: { value: splat }, uDetail: { value: detailArray() },
     uGrassN: { value: TEX.grassN },
     uAvgG: { value: avgColor(TEX.grass) }, uAvgS: { value: avgColor(TEX.soil) }, uAvgR: { value: avgColor(TEX.gravel) },
     uExt: { value: ext }, uAutumn: SEASON.uAutumn, uDormant: SEASON.uDormant, ...MEADOW,
@@ -49,7 +74,8 @@ function terrainMaterial(ortho, splat, ext) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vGeoW;
-uniform sampler2D uOrtho, uSplat, uGrass, uSoil, uGravel;
+uniform sampler2D uOrtho, uSplat;
+uniform highp sampler2DArray uDetail;                   // (layers: 0 the grass, 1 the soil, 2 the gravel)
 uniform vec3 uAvgG, uAvgS, uAvgR;
 uniform float uExt, uAutumn, uDormant, uMeadowOn;
 uniform sampler2D uMeadow;
@@ -59,12 +85,12 @@ uniform vec4 uMeadowBox;`)
   vec3 sp = texture2D(uSplat, guv).rgb;                 // forest floor, farmland, gravel
   vec3 orth = texture2D(uOrtho, guv).rgb;               // Sentinel-2 colour of the real ground
   vec2 duv = vGeoW.xz / 2.6;
-  vec3 cg = texture2D(uGrass, duv).rgb;
-  vec3 cs = texture2D(uSoil, duv * 0.8).rgb;
+  vec3 cg = texture(uDetail, vec3(duv, 0.0)).rgb;
+  vec3 cs = texture(uDetail, vec3(duv * 0.8, 1.0)).rgb;
   // (the gravel: river cobbles and bars are a mid grey, darker in the damp hollows: a broad patchiness over the grit)
-  vec3 cr = texture2D(uGravel, duv * 1.3).rgb * vec3(0.74, 0.73, 0.7) * (0.8 + 0.45 * (texture2D(uSoil, vGeoW.xz / 23.0 + 0.17).r - 0.5));
+  vec3 cr = texture(uDetail, vec3(duv * 1.3, 2.0)).rgb * vec3(0.74, 0.73, 0.7) * (0.8 + 0.45 * (texture(uDetail, vec3(vGeoW.xz / 23.0 + 0.17, 1.0)).r - 0.5));
   // forest floor: last year's beech/oak leaves over dark soil, a little moss
-  float lit = texture2D(uSoil, duv * 0.37 + 0.31).r;
+  float lit = texture(uDetail, vec3(duv * 0.37 + 0.31, 1.0)).r;
   vec3 cf = mix(cs * vec3(1.08, 0.8, 0.54), cs * vec3(0.74, 0.56, 0.4), smoothstep(0.35, 0.65, lit));   // (the brown of dry beech leaves)
   cf = mix(cf, cg * vec3(0.55, 0.65, 0.45), 0.1);
   float wf = sp.r, wa = sp.g, wr = sp.b;

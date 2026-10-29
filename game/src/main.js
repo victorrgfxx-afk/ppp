@@ -739,6 +739,26 @@ async function main() {
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
+  // the texture units (V85): a lit material gets every shadow-casting light's map besides its own textures, and past the
+  // graphics card's limit (most give WebGL 16 in a fragment shader) its shader does not link and nothing of it is drawn -
+  // at Înaltă the ground's material went past it and the whole map vanished on real cards (the software renderer of the
+  // tests gives 32). The heaviest have 10 or 11 of their own (the ground: terrain.js; the houses'), so the shadows are
+  // fitted to the card, the least needed given up first: the campfire's, the moon beam's, then the sun's far cascades.
+  // A shader the card still will not link (seen once in a while in the frame loop) gives up one more. (Before the
+  // shaders are first compiled, just below: not compiled twice)
+  const shadowCuts = [() => campfire?.light, () => moonBeam?.light, () => cascades.list.length > 1 ? 'far' : null];
+  let shadowCut = 0, gpuCheck = 0;
+  const shadowMaps = () => { let n = 0; scene.traverse(o => { if (o.isLight && o.castShadow) n++; }); return n; };
+  const cutShadow = (why) => {
+    while (shadowCut < shadowCuts.length) {
+      const l = shadowCuts[shadowCut++]();
+      if (l === 'far') { cascades.setEnabled(false); console.warn('[gpu] ' + why + ': the sun\'s far shadow cascades off'); return true; }
+      if (l?.castShadow) { l.castShadow = false; if (l === campfire?.light) campfire.shadowEvery = 0; console.warn('[gpu] ' + why + ': the ' + (l === campfire?.light ? 'campfire\'s' : 'moon beam\'s') + ' shadow off'); return true; }
+    }
+    return false;
+  };
+  const OWN_TEX = 11, maxTex = renderer.capabilities.maxTextures;
+  while (shadowMaps() + OWN_TEX > maxTex && cutShadow(maxTex + ' texture units')) { /* (one at a time) */ }
   shareInstancedDepth(scene);
   renderer.compile(scene, camera);
   post.composer.render(0);
@@ -1243,6 +1263,10 @@ async function main() {
   const tmpV = new THREE.Vector3();
   renderer.setAnimationLoop(() => {
     perf.begin();
+    if (++gpuCheck % 150 === 75) {
+      const bad = renderer.info.programs.find(p => p.diagnostics && !p.diagnostics.runnable && !p.gaveUp);
+      if (bad) { bad.gaveUp = true; cutShadow('a shader the card would not link (' + (bad.name || 'unnamed') + ')'); }
+    }
     clock.update();
     const dt = Math.min(0.05, clock.getDelta());
     t += dt;
