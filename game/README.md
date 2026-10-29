@@ -773,6 +773,25 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Mâinile refăcute, în mănuși tactice ca în clipul tău (V87)** (`src/handgeo.js`, `src/hand.js`, `src/weapon.js`):
+  * **Umflătura de la încheietură, scoasă la cauză:**
+    * capătul rotunjit al antebrațului ieșea prin dosul palmei, ca o bilă. Antebrațul, pus de cinematica brațului de la umăr, intra în mână cu 44° (stânga) și 62° (dreapta) abatere față de încheietura sculptată, iar la ochire, la alergare și la reîncărcare cu până la 107°;
+    * acum antebrațul e întors spre axa manșetei mănușii, până la cel mult ~13° abatere: încheietura se îndoaie în manșetă. Cotul și umărul se mută după el, în afara ecranului;
+    * mâna stângă e rotită pe încărcător (−107°) și pe închizător (+26°), ca încheietura ei să stea în linie cu brațul;
+    * măsurat în toate pozițiile (stând, ochind, alergând, lângă zid, pe toată reîncărcarea): îndoirea maximă e ~13°.
+  * **Mănușa e sculptată peste mână, nu doar vopsită:**
+    * material sintetic negru, căptușit (~1,7 mm peste mână), fără unghii;
+    * pernuțe de cauciuc mulat pe dosul primelor două falange ale fiecărui deget, perforate, ca în clip;
+    * o bandă de cauciuc moletat peste cele patru încheieturi ale degetelor;
+    * manșeta: un tub căptușit în jurul încheieturii, lung de ~5 cm, cu capătul drept (nu rotund: antebrațul iese din el) și tiv la margine. Are o clapă cu arici lată de 2,9 cm, mai groasă cu 2,6 mm, cu cusătură de jur împrejur;
+    * un inel metalic (D-ring), cusut pe manșeta mănușii drepte, pe partea degetului mic, ca în clip;
+    * tricot cu dungi pe degetul mare și pe lateralele degetelor, un panou de plasă pe dosul palmei spre degetul mic, cusături pe dosul palmei, în jurul pernuțelor, al benzii și la manșetă.
+  * **Materialele:**
+    * țesătura: gri foarte închis, cu fibre fine, câteva puncte care prind lumina și un luciu moale la margini;
+    * cauciucul pernuțelor: gri închis, mai neted, cu găurile mai închise;
+    * tricotul are dungi de 1,5 mm, iar ariciul e mat și scămoșat;
+    * modelele sunt reliefuri de câteva zecimi de milimetru. Acolo unde ar fi mai fine decât pixelii, se estompează, ca să nu facă moar.
+  * **Antebrațele** rămân goale (tricou), ca în clip, și ies din manșete. Mâinile de la volan au rămas cum erau, fără mănuși.
 * **Glock-ul ca în clipul tău (V86)** (`src/weapon.js`, `src/hand.js`): clipul tău a fost măsurat cadru cu cadru (60 de cadre pe secundă), iar arma îl urmează.
   * **Cum e ținută:** în mijlocul ecranului, puțin sub linia privirii, cu ambele mâini, înclinată câteva grade spre dreapta, ca în Call of Duty-urile moderne. Spatele închizătorului stă unde e și în clip (~54 % din lățime, ~61 % din înălțime). Când alergi, arma rămâne vizibilă jos, înclinată (înainte ieșea din ecran).
   * **Reîncărcarea (R), după clip:**
@@ -787,7 +806,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * atinge vârful la ~32 ms și dispare în ~90 ms, ca în clip; mișcarea e aceeași la orice FPS;
     * ochind, reculul e de ~2,5 ori mai mic;
     * în rafală, fiecare cartuș o ridică mai puțin (mâinile o țin apăsat), dar arma tremură vizibil, iar privirea urcă.
-  * **Mănuși tactice negre:**
+  * **Mănuși tactice negre** (refăcute în V87, vezi mai sus):
     * material textil mat, cu țesătură fină;
     * pernuțe peste încheieturile degetelor, cute mai închise și vârfurile degetelor acoperite;
     * manșeta peste încheietura mâinii, din același material;

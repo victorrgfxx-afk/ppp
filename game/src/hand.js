@@ -113,6 +113,7 @@ export function barHands(tube, pose) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('normal', new THREE.BufferAttribute(q, 3));
     g.setAttribute('color', new THREE.BufferAttribute(b.col, 3)); g.setAttribute('aGloss', new THREE.BufferAttribute(b.gloss, 1));
+    if (b.glove) { g.setAttribute('aGlove', new THREE.BufferAttribute(b.glove, 4)); g.setAttribute('aGlove2', new THREE.BufferAttribute(b.glove2, 4)); }   // (a glove's: handgeo.js gloveParts)
     g.setIndex(new THREE.BufferAttribute(ix, 1)); g.computeBoundingSphere();
     return g;
   };
@@ -162,28 +163,68 @@ export function skinMaterial(cloth = false, cuff = false) {
   return m;
 }
 
-// a tactical glove over the hand (the pistol's hands: weapon.js): black synthetic fabric, matt, with a fine knit; thin
-// rubber pads over the knuckles (where the hand's own colours mark them, handgeo.js: redder and darker there), its
-// creases darker; the fingertips covered (no nails); the cuff over the wrist (the hand's forearm stub)
+// a tactical glove (the pistol's hands, weapon.js; sculpted by handgeo.js, its parts' weights on its vertices), as the
+// user's clip shows them: black synthetic suede with a fine fibrous speckle, a little sheen at grazing light; moulded
+// rubber pads on the fingers' backs, perforated, and a rubber band over the knuckles with a knurled pattern, darker grey
+// and smoother; knit on the thumb and the fingers' sides, ribbed; a mesh panel on the back's little-finger side; the
+// cuff's strap of hook-and-loop, matt, stitched round; the seams sunk and dark, the folds darker. The patterns are
+// bumps (the normal turned by the derivatives of a height), a few tenths of a millimetre deep, faded where they would be
+// finer than the pixels (no moire)
 export function gloveMaterial() {
-  const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.84, metalness: 0, sheen: 0.5, sheenRoughness: 0.55,
-    sheenColor: new THREE.Color(0.16, 0.16, 0.18), specularIntensity: 0.4 });
+  const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.84, metalness: 0, sheen: 0.6, sheenRoughness: 0.5,
+    sheenColor: new THREE.Color(0.26, 0.26, 0.28), specularIntensity: 0.45 });
   m.userData.noWet = true; m.envMapIntensity = 0.5;
   m.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vGlP;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlP = position;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGlP;' + GLN)
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aGlove, aGlove2; attribute float aGloss; varying vec3 vGlP; varying vec4 vGlove, vGlove2; varying float vStitch;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlP = position; vGlove = aGlove; vGlove2 = aGlove2; vStitch = aGloss;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vGlP; varying vec4 vGlove, vGlove2; varying float vStitch;' + GLN + `
+// (the normal turned by a height's screen-space slope: a bump without a map)
+vec3 glBump(vec3 n, float h) {
+  vec3 p = -vViewPosition, dpx = dFdx(p), dpy = dFdy(p);
+  float dhx = dFdx(h), dhy = dFdy(h);
+  vec3 r1 = cross(dpy, n), r2 = cross(n, dpx);
+  float det = dot(dpx, r1);
+  return normalize(abs(det) * n - sign(det) * (dhx * r1 + dhy * r2));
+}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-  // (the hand's colours: the knuckles redder and darker than the skin, the folds darker still)
-  float gL = dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722)), gR = vColor.g / max(vColor.r, 1e-3);
-  // (the knuckles: g/r 0.42-0.46 at the skin's brightness; the folds: darker, or redder still)
-  float gPad = (1.0 - smoothstep(0.44, 0.47, gR)) * smoothstep(0.39, 0.42, gR) * smoothstep(0.24, 0.27, gL);
-  float gCrease = max(1.0 - smoothstep(0.18, 0.26, gL), 1.0 - smoothstep(0.36, 0.42, gR));
-  float gKnit = glN(vGlP * 600.0) * 0.6 + glN(vGlP * 1500.0) * 0.4;
-  diffuseColor.rgb = mix(vec3(0.021, 0.022, 0.024) * (0.85 + 0.3 * gKnit), vec3(0.05, 0.05, 0.052), gPad) * (1.0 - 0.45 * gCrease);`)
+  float wPad = vColor.r, wKnit = vColor.g, wStrap = vColor.b, gOcc = vGlove.x, gSeam = vGlove.y, wBand = vGlove.w, wMesh = vGlove2.x;
+  float wRub = clamp(wPad + wBand, 0.0, 1.0);
+  // (how many metres a pixel spans here: patterns finer than ~2 pixels fade out)
+  float gPx = length(fwidth(vGlP));
+  // the suede: fibres (0.3 mm), a few specks catching the light, a blotchiness of wear
+  float gFib = glN(vGlP * 3300.0), gSpk = smoothstep(0.9, 0.99, glN(vGlP * 5200.0 + 7.3)), gWear = glN(vGlP * 180.0);
+  vec3 cFab = vec3(0.04, 0.04, 0.043) * (0.8 + 0.4 * gFib) * (0.85 + 0.3 * gWear) + vec3(0.035) * gSpk;
+  // the mesh panel: a fine diamond weave (1.1 mm), its holes darker
+  float gMa = 1.0 - smoothstep(0.25, 0.6, gPx / 0.0011);
+  float gMw = (0.5 + 0.5 * sin(vGlove2.y * 6.2832 / 0.0011)) * (0.5 + 0.5 * sin(vGlove2.z * 6.2832 / 0.0011));
+  cFab = mix(cFab, vec3(0.036, 0.036, 0.039) * (1.0 - 0.6 * gMa * (1.0 - gMw)), wMesh);
+  // the pads' perforations (a lattice of holes 2.3 mm apart, ~0.9 mm across), the band's knurling
+  vec3 gC = fract(vGlP / 0.0023) - 0.5;
+  float gHole = 1.0 - smoothstep(0.17, 0.24, length(gC));
+  float gKnurl = sin(vGlP.x * 2600.0) * sin(vGlP.y * 2600.0) * sin(vGlP.z * 2600.0);
+  float gHa = 1.0 - smoothstep(0.3, 0.7, gPx / 0.0023);
+  gHole *= gHa; gKnurl *= 1.0 - smoothstep(0.3, 0.7, gPx / 0.0024);
+  vec3 cRub = vec3(0.06, 0.06, 0.063) * mix(1.0, 0.4, gHole * wPad / max(wRub, 1e-3)) * (0.85 + 0.15 * gKnurl * wBand / max(wRub, 1e-3));
+  // the knit's ribs (1.5 mm), darker in their grooves; the strap's hook-and-loop fuzz and its stitches
+  float gRa = 1.0 - smoothstep(0.3, 0.7, fwidth(vGlove.z) / 0.0015);
+  float gRib = 0.5 + 0.5 * sin(vGlove.z * 6.2832 / 0.0015) * gRa;
+  vec3 cKnit = vec3(0.034, 0.034, 0.037) * (0.65 + 0.5 * gRib) * (0.85 + 0.3 * gFib);
+  float gFuzz = glN(vGlP * 4200.0), gDash = step(0.45, fract(vGlove.z / 0.003)) * vStitch;
+  vec3 cStrap = vec3(0.045, 0.045, 0.048) * (0.8 + 0.4 * gFuzz) * (1.0 - 0.5 * gDash);
+  vec3 gBase = cFab;
+  gBase = mix(gBase, cKnit, wKnit); gBase = mix(gBase, cRub, wRub); gBase = mix(gBase, cStrap, wStrap);
+  diffuseColor.rgb = gBase * (1.0 - 0.6 * gSeam) * (0.45 + 0.55 * gOcc);
+  // (the heights, metres: the seams sunk, the holes, the knurls, the ribs, the fibres, the fuzz, the stitches proud)
+  float gH = -0.0004 * gSeam - 0.0004 * gHole * wPad + 0.00012 * gKnurl * wBand + 0.0003 * (gRib - 0.5) * wKnit
+    + 0.00004 * gFib * (1.0 - wRub) + 0.0001 * gFuzz * wStrap + 0.00025 * gDash + 0.00015 * gMa * gMw * wMesh;`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-  roughnessFactor = mix(0.88 - 0.1 * gKnit, 0.5, gPad);`);
+  roughnessFactor = mix(mix(mix(0.84 - 0.08 * gFib, 0.9, wKnit + wMesh * 0.5), 0.62 + 0.2 * gHole, wRub), 0.95, wStrap);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+  normal = glBump(normal, gH);`)
+      // (the sheen of the suede only: none on the rubber)
+      .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
+  material.sheenColor *= (1.0 - wRub) * (0.6 + 0.4 * gOcc);`);
   };
-  m.customProgramCacheKey = () => 'glove';
+  m.customProgramCacheKey = () => 'glove2';
   return m;
 }

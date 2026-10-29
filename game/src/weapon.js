@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { glockModel, magazineModel, BORE, RAKE, GRIP_C, GRIP_AXIS, MAG_AXIS, MUZZLE, EJECT } from './glock.js';
 import { prepareHands, barHands, barWrists, skinMaterial, gloveMaterial, prepareArms, gripArms } from './hand.js';
 import { ik, poseArm, INV, ARM } from './driver.js';
+import { gloveCuff } from './handgeo.js';
 
 // The Glock 18 on the concrete slab of the cross on the hill (V85): picked up with E (or F), then yours. Two-handed in
 // front of you (your hands and arms: hand.js, the driver's, sculpted in a pistol's grip: HOLD), it fires as the G18
@@ -17,7 +18,9 @@ import { ik, poseArm, INV, ARM } from './driver.js';
 
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const CAP = 33, RESERVE = 99, RPM = 1200, V0 = 295, G = 9.81, VM_FOV = 55, SLIDE = 0.027;   // (SLIDE: the slide's travel, m)
-const L_FREE = 0.019;                                      // (the left hand's shape off the grip: round the slide, a magazine)
+const L_FREE = 0.019, FREE = { glove: true };             // (the left hand's shape off the grip: round the slide, a magazine)
+// (how far the wrist may bend inside the glove's cuff: the forearm is turned toward the cuff's axis until this far off)
+const WRIST = 0.22;
 const LIVING = new Set(['actor', 'npc', 'dog', 'bear']);
 const pose = (x, y, z, rx, ry, rz) => ({ p: V3(x, y, z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')) });
 // the gun's poses in the camera's frame: held in front, in the middle, a little below the eyes' line and canted a few
@@ -50,15 +53,19 @@ function holdOf(h) {
   const p = GRIP_C.clone().addScaledVector(GRIP_AXIS, h.raise).add(V3(h.side, h.dy, -h.fwd));
   const q = Q_GRIP.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), h.phi)), qi = q.clone().invert();
   const own = (v, point) => { const w = V3(...v); if (point) w.sub(p); w.applyQuaternion(qi); if (h.mirror) w.x = -w.x; return [w.x, w.y, w.z].map(x => +x.toFixed(5)); };
-  const t = h.thumb, pose = { gam: h.gam };
+  const t = h.thumb, pose = { gam: h.gam, glove: true };
+  if (h.fore) pose.fore = h.fore;
   if (h.index) pose.index = h.index;
   if (t) pose.thumb = { mcp: own(t.mcp, true), dir: own(t.dir), in: own(t.in), bend: t.bend };
   return { p, q, tube: h.tube, pose };
 }
 // the left hand racking the slide over the top: the bar along the slide, the back of the hand up
-const LH_RACK = { p: V3(0, BORE + 0.006, -0.016), q: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V3(0, -1, 0), V3(0, 0, 1), V3(-1, 0, 0))) };   // (the wrist to the left, the fingers over to the right side)
+// (each turned round the bar it holds - the slide, the magazine: the hand's y - until its wrist faces the left arm as
+// it comes from the shoulder through the reloads, so the wrist need not bend much in the glove's cuff: measured, the
+// best turn is the same within ~3 degrees all through each hold)
+const LH_RACK = { p: V3(0, BORE + 0.006, -0.016), q: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V3(0, -1, 0), V3(0, 0, 1), V3(-1, 0, 0)).multiply(new THREE.Matrix4().makeRotationY(0.46))) };   // (the wrist to the left, the fingers over to the right side)
 // the left hand holding a magazine (the magazine's frame: its mouth at the origin, its length down -y), low on it
-const LH_MAG = { p: V3(0, -0.135, 0.0), q: new THREE.Quaternion() };
+const LH_MAG = { p: V3(0, -0.135, 0.0), q: new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), -1.86) };
 // down at the belt, out of sight (the camera's frame)
 const BELT = pose(-0.12, -0.46, -0.12, -0.6, 0.4, 0.6);
 
@@ -117,10 +124,10 @@ export class Glock {
     this.newMag = magazineModel(m.M); this.newMag.matrixAutoUpdate = false; this.newMag.visible = false; vm.add(this.newMag);
     this.oldMag = magazineModel(m.M); this.oldMag.matrixAutoUpdate = false; this.oldMag.visible = false; vm.add(this.oldMag);
     for (const g of [this.newMag, this.oldMag]) g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
-    this.skin = { hand: gloveMaterial(), arm: skinMaterial(true, true) };  // (black tactical gloves, their cuffs over the wrists)
+    this.skin = { hand: gloveMaterial(), arm: skinMaterial(true) };  // (black tactical gloves, sculpted with their cuffs: handgeo.js)
     this.hands = null; this.arms = null;
     this.rh = holdOf(HOLD.right); this.lh = holdOf(HOLD.left);
-    prepareHands(this.rh.tube, this.rh.pose); prepareHands(this.lh.tube, this.lh.pose); prepareHands(L_FREE); prepareArms();
+    prepareHands(this.rh.tube, this.rh.pose); prepareHands(this.lh.tube, this.lh.pose); prepareHands(L_FREE, FREE); prepareArms();
     scene.add(vm);
     // ---- the world's: on the slab, and the things it leaves (cases, dropped magazines, marks, puffs)
     this.fx = new Effects(scene, m.M);
@@ -445,11 +452,17 @@ export class Glock {
   // the hands on the gun and the arms to them
   limbs(r) {
     if (!this.hands) {
-      const h0 = barHands(this.rh.tube, this.rh.pose), h1 = barHands(this.lh.tube, this.lh.pose), h2 = barHands(L_FREE);
+      const h0 = barHands(this.rh.tube, this.rh.pose), h1 = barHands(this.lh.tube, this.lh.pose), h2 = barHands(L_FREE, FREE);
       if (h0 && h1 && h2) {
         // (the left: on the grip, or open round the slide or a magazine)
         this.hands = [h1.left, h0.right, h2.left].map(g => { const ms = new THREE.Mesh(g, this.skin.hand); ms.matrixAutoUpdate = false; ms.frustumCulled = false; this.vm.add(ms); return ms; });
-        this.wr = [barWrists(this.lh.tube, this.lh.pose)[1], barWrists(this.rh.tube, this.rh.pose)[0], barWrists(L_FREE)[1]];
+        this.wr = [barWrists(this.lh.tube, this.lh.pose)[1], barWrists(this.rh.tube, this.rh.pose)[0], barWrists(L_FREE, FREE)[1]];
+        // (a steel D-ring on the right glove's cuff, sewn on its little finger's side, as the clip's)
+        const c = gloveCuff(this.rh.tube, this.rh.pose), A = (v) => V3(...v), ring = new THREE.Mesh(new THREE.TorusGeometry(0.0062, 0.0011, 8, 24), new THREE.MeshStandardMaterial({ color: 0x8e8e8e, metalness: 1, roughness: 0.35 }));
+        const side = A(c.little), fore = A(c.fore), back = A(c.back);
+        ring.position.copy(A(c.J)).addScaledVector(fore, -0.016).addScaledVector(side, 0.0335 + 0.0062);
+        ring.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, fore, back).multiply(new THREE.Matrix4().makeRotationX(0.35)));   // (side x fore = back: a turn)
+        ring.frustumCulled = false; this.hands[1].add(ring);
       }
     }
     if (!this.arms) {
@@ -472,11 +485,23 @@ export class Glock {
     this.hands[0].visible = onGrip; this.hands[2].visible = !onGrip;
     if (!this.arms) return;
     for (let i = 0; i < 2; i++) {
-      const w = this.wr[i === 0 && !onGrip ? 2 : i], S = SH[i];
+      const w = this.wr[i === 0 && !onGrip ? 2 : i];
       _w.copy(w.at).applyMatrix4(H[i]); _bk.copy(w.back).transformDirection(H[i]);
-      ik(S, _w, ARM, POLE[i], _el, _tip);
-      poseArm(this.arms[i], S, _el, _tip, _bk);
+      this.forearm(i, _w, _hd.copy(w.dir).transformDirection(H[i]));
+      poseArm(this.arms[i], _sh, _el, _w, _bk);
     }
+  }
+  // an arm to a hand's wrist (w; the hand's own forearm direction, the glove's cuff's axis: hd): the forearm as the arm
+  // would come from the shoulder (two-bone kinematics), turned toward the cuff's axis until at most WRIST off it (the
+  // wrist bent inside the cuff: no forearm's end standing out of the hand); the elbow along it, the shoulder where the
+  // upper arm then reaches (out of sight) -> _el, _sh
+  forearm(i, w, hd) {
+    ik(SH[i], w, ARM, POLE[i], _el, _tip);
+    _fa.subVectors(w, _el).normalize();
+    const th = Math.acos(THREE.MathUtils.clamp(_fa.dot(hd), -1, 1));
+    if (th > WRIST) { const s = Math.sin(Math.min(th, 3.1)); _fa.multiplyScalar(Math.sin(WRIST) / s).addScaledVector(hd, Math.sin(th - WRIST) / s).normalize(); }
+    _el.copy(w).addScaledVector(_fa, -ARM[1]);
+    _sh.subVectors(SH[i], _el).normalize().multiplyScalar(ARM[0]).add(_el);
   }
   leftPose(r) {
     const onGrip = _HL.multiplyMatrices(this.gun.matrix, _n4.compose(this.lh.p, this.lh.q, ONE));
@@ -518,6 +543,7 @@ export class Glock {
 
 // ---- the world's side: cases, dropped magazines, bullet marks, dust and sparks
 const _d = V3(), _u = V3(), _r = V3(), _v = V3(), _a = V3(), _b = V3(), _c = V3(), _w = V3(), _bk = V3(), _el = V3(), _tip = V3(), _s = V3();
+const _hd = V3(), _fa = V3(), _sh = V3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler(), _m4 = new THREE.Matrix4(), _m4b = new THREE.Matrix4(), _n4 = new THREE.Matrix4();
 const _sc = new THREE.Matrix4(), _HR = new THREE.Matrix4(), _HL = new THREE.Matrix4(), _LA = new THREE.Matrix4(), _LB = new THREE.Matrix4(), _o = [0, 0, 0, 0, 0, 0];
 const _P = { p: V3(), q: new THREE.Quaternion() }, ONE = V3(1, 1, 1);

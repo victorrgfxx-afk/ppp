@@ -55,6 +55,20 @@ function oval(a, b, ra, rb, n, k) {
   return { f: (x, y, z) => { const t = (k - 1) * ((x - a[0]) * n[0] + (y - a[1]) * n[1] + (z - a[2]) * n[2]);
     return sdCap(x + n[0] * t, y + n[1] * t, z + n[2] * t, a, b, ra, rb) / k; }, c: lerp(a, b, 0.5), R: len(sub(b, a)) / 2 + Math.max(ra, rb) };
 }
+// a tube with flat ends and rounded edges (rr), its radius ra at a to rb at b, its section squashed k times across n (the
+// glove's cuff: not a capsule, whose round end would stand out as a ball)
+function tube(a, b, ra, rb, n, k, rr) {
+  const L = len(sub(b, a)), ax = norm(sub(b, a)), c = lerp(a, b, 0.5);
+  return { f: (x, y, z) => {
+    const px = x - c[0], py = y - c[1], pz = z - c[2], t = px * ax[0] + py * ax[1] + pz * ax[2];
+    let qx = px - ax[0] * t, qy = py - ax[1] * t, qz = pz - ax[2] * t;
+    const s = (k - 1) * (qx * n[0] + qy * n[1] + qz * n[2]);
+    qx += n[0] * s; qy += n[1] * s; qz += n[2] * s;
+    const r = ra + (rb - ra) * Math.max(0, Math.min(1, t / L + 0.5));
+    const dr = (Math.sqrt(qx * qx + qy * qy + qz * qz) - r) / k + rr, da = Math.abs(t) - L / 2 + rr;
+    return Math.min(Math.max(dr, da), 0) + Math.hypot(Math.max(dr, 0), Math.max(da, 0)) - rr;
+  }, c, R: L / 2 + Math.max(ra, rb), ax, L };
+}
 // shapes blended in turn (k: each one's blend); the ones too far to change anything are skipped
 function chain(list) {
   const n = list.length, F = list.map(p => p[0].f), K = new Float64Array(list.map(p => p[1])), Rr = new Float64Array(list.map(p => p[0].R));
@@ -133,6 +147,12 @@ export function gripWrist(R, tube) {
   return { at: a.slice(0, 3), dir: norm(sub(b.slice(0, 3), a.slice(0, 3))), back: [Df[0] * c - Df[1] * s, Df[0] * s + Df[1] * c, Df[2]] };
 }
 
+// a glove's cuff (sculpt's) on a straight bar: the wrist's joint, the forearm's direction, the cuff's back and the
+// little finger's side across it (weapon.js hangs the D-ring on it)
+export function gloveCuff(tube, pose) {
+  const { J, fore, Df } = handFrame(tube, pose);
+  return { J, fore, back: Df, little: norm(cross(fore, Df)) };
+}
 // the same on a straight bar (its own frame: the bar along +y, x out of the back of the hand's side, z toward the
 // thumb's): a pistol's grip (glock.js)
 export function gripWristBar(tube, pose) {
@@ -199,9 +219,10 @@ export function handSkeleton(r, pose) {
     pads: s.fingers.map(f => { const b3 = f.bones[2], L = len(sub(b3.b, b3.a)); return add(add(b3.a, b3.d, 0.55 * L), b3.dors, -b3.ra); }) };
 }
 
-// the right hand round the bar
+// the right hand round the bar; in a glove if the pose says (the pistol's hands, weapon.js)
+const GT = 0.0017;                                                    // (the glove's suede over the flesh, lined)
 function sculpt(r, pose) {
-  const sk = skeleton(r, pose), { D, U, W, P, J, Df, fore } = sk, A3 = [U, W, D];
+  const sk = skeleton(r, pose), { D, U, W, P, J, Df, fore } = sk, A3 = [U, W, D], glove = !!pose?.glove;
   const ball = (c, rr) => ({ f: (x, y, z) => { const dx = x - c[0], dy = y - c[1], dz = z - c[2]; return Math.sqrt(dx * dx + dy * dy + dz * dz) - rr; }, c, R: rr });
   const knuckles = [], nails = [], fingers = [];
   // the palm: its flesh, the four metacarpals fanned from the wrist, the heel (hypothenar), the pad under the knuckles
@@ -224,7 +245,7 @@ function sculpt(r, pose) {
     const f1 = chain([[cap(b1.a, b1.b, b1.ra, b1.rb), 0], [ball(kn[0], kn[1]), 0.004]]);
     const pad = ell(add(add(b3.a, b3.d, 0.55 * f.seg[2][0]), b3.dors, -0.3 * b3.ra), [b3.d, ax, b3.dors], [0.0095, b3.ra * 0.95, b3.ra * 0.78]);
     const f23 = chain([[cap(b2.a, b2.b, b2.ra, b2.rb), 0], [cap(b3.a, b3.b, b3.ra, b3.rb), 0.0025], [ball(pip[0], pip[1]), 0.003], [pad, 0.003]]);
-    nails.push(nail(b3, ax, 0.0058, 0.0047));
+    if (!glove) nails.push(nail(b3, ax, 0.0058, 0.0047));
     fingers.push({ f1, f23, all: chain([[f1, 0], [f23, 0]]) });
   });
   // the thumb (skeleton)
@@ -237,9 +258,35 @@ function sculpt(r, pose) {
   const tMeta = chain([[cap(CMC, tMCP, 0.0135, 0.0108), 0], [thenar, 0.01], [web, 0.008], [ball(tk[0], tk[1]), 0.004]]);
   const tpad = ell(add(add(tb[1].a, tb[1].d, 0.012), tb[1].dors, -0.3 * tb[1].ra), [tb[1].d, tax, tb[1].dors], [0.011, 0.0098, 0.0076]);
   const tRest = chain([[cap(tb[0].a, tb[0].b, tb[0].ra, tb[0].rb), 0], [cap(tb[1].a, tb[1].b, tb[1].ra, tb[1].rb), 0.003], [tpad, 0.003]]);
-  nails.push(nail(tb[1], tax, 0.0064, 0.0056));
-  // the whole: each finger blended into the palm (its web), the fingers only touching each other; the nails over
-  const sdf = (x, y, z) => {
+  if (!glove) nails.push(nail(tb[1], tax, 0.0064, 0.0056));
+  // the glove, as the tactical gloves of the user's clip: black synthetic suede over the whole hand; moulded rubber pads
+  // on the backs of the fingers' first and second bones, a rubber band over the four knuckles; a padded cuff round the
+  // wrist, a tube along the forearm with a flat end (the forearm comes out of it), a little wider toward its end, with
+  // a hook-and-loop strap round its back
+  let gl = null;
+  if (glove) {
+    const pads = [];
+    for (const f of sk.fingers) for (const k of [0, 1]) {
+      const b = f.bones[k], L = len(sub(b.b, b.a)), rm = (b.ra + b.rb) / 2;
+      pads.push(ell(add(lerp(b.a, b.b, 0.52), b.dors, rm - 0.0008), [b.d, f.ax, b.dors], [0.38 * L + 0.002, 0.8 * rm, 0.0052]));
+    }
+    const kc = [0, 1, 2, 3].map(i => add(knuckles[2 * i][0], D, 0.0024));
+    const band = chain([0, 1, 2].map(i => [cap(kc[i], kc[i + 1], 0.0092, 0.0092), 0.004]));
+    // (the cuff: from the hand's heel to ~5 cm past the wrist's joint, as the clip's)
+    const c0 = add(J, fore, 0.009), c1 = add(J, fore, -0.05);
+    const cuff = tube(c0, c1, 0.0335, 0.0358, Df, 1.3, 0.0035);
+    // (the strap: a flap 2.6 mm prouder than the cuff, 2.9 cm wide round its back and sides, ~3 cm from the wrist's joint)
+    const sc = add(J, fore, -0.03), big = tube(c0, c1, 0.0361, 0.0384, Df, 1.3, 0.0012);
+    const strap = { f: (x, y, z) => {
+      const px = x - sc[0], py = y - sc[1], pz = z - sc[2], t = -(px * fore[0] + py * fore[1] + pz * fore[2]);
+      const back = px * Df[0] + py * Df[1] + pz * Df[2];                     // (Df is across fore: the axis has none of it)
+      return Math.max(big.f(x, y, z), Math.abs(t) - 0.0145, -back - 0.012);
+    }, c: sc, R: 0.045 };
+    gl = { pads, band, cuff, strap, sc };
+  }
+  // the whole: each finger blended into the palm (its web), the fingers only touching each other; the nails over (in a
+  // glove: the suede over it all, then its pads, band and cuff)
+  const hand = (x, y, z) => {
     const p0 = palmS.f(x, y, z);
     let d = p0;
     if (far(tMeta, x, y, z) < p0 + 0.012) d = smin(d, tMeta.f(x, y, z), 0.012);
@@ -251,7 +298,15 @@ function sculpt(r, pose) {
     for (const n of nails) if (far(n, x, y, z) < d + 0.0008) d = smin(d, n.f(x, y, z), 0.0008);
     return d;
   };
-  return { sdf, nails, knuckles };
+  const sdf = !gl ? hand : (x, y, z) => {
+    let g = hand(x, y, z) - GT;
+    for (const p of gl.pads) if (far(p, x, y, z) < g + 0.0011) g = smin(g, p.f(x, y, z), 0.0011);
+    if (far(gl.band, x, y, z) < g + 0.002) g = smin(g, gl.band.f(x, y, z), 0.002);
+    if (far(gl.cuff, x, y, z) < g + 0.007) g = smin(g, gl.cuff.f(x, y, z), 0.007);
+    if (far(gl.strap, x, y, z) < g) g = Math.min(g, gl.strap.f(x, y, z));
+    return g;
+  };
+  return { sdf, hand, nails, knuckles, gl, sk };
 }
 
 // sRGB hex -> linear, as three.js's Color.set(hex) does it
@@ -268,7 +323,9 @@ export function* buildGrip(tube, pose) {
     const k = handSkeleton(tube, pose);
     for (const p of [...k.fingers.flat(), ...k.thumb]) for (let i = 0; i < 3; i++) { box[i] = Math.min(box[i], p[i] - 0.016); box[i + 3] = Math.max(box[i + 3], p[i] + 0.016); }
   }
+  if (s.gl) { const { c, R } = s.gl.cuff; for (let i = 0; i < 3; i++) { box[i] = Math.min(box[i], c[i] - R - 0.004); box[i + 3] = Math.max(box[i + 3], c[i] + R + 0.004); } }
   const m = yield* sdfMesh(sdf, box, 0.0019);
+  if (s.gl) return yield* gloveParts(s, m, tube);
   // colour: the skin, redder over the knuckles, darker and redder in folds, the nails paler, their free edges whiter
   const SKIN = lin(0xc99680), KN = lin(0xb47665), FOLD = lin(0x8a4c40), NAIL = lin(0xd8a493), EDGE = lin(0xeadcd0);
   const n = m.nv, col = new Float32Array(n * 3), gloss = new Float32Array(n);
@@ -296,6 +353,71 @@ export function* buildGrip(tube, pose) {
   }
   return { tube, pos: m.pos, nrm: m.nrm, idx: m.idx, col, gloss };
 }
+// a glove's vertices (gloveMaterial, hand.js, shades them): col, the weights of its parts - the rubber pads, the knit
+// (the thumb, the fingers' sides), the strap; glove: the fold (how open the surface is), a seam (where a pad, the band
+// or the cuff is sewn on, the cuff's hem, the back's panels, the thumb's knit), the knit's rib coordinate (or round the
+// strap, for its stitches' dashes), the knuckle band's weight; glove2: the side's mesh panel's weight and two
+// coordinates across the hand's back for its weave; gloss: the strap's stitching line
+function* gloveParts(s, m, tube) {
+  const { gl, sk, sdf, hand } = s, n = m.nv, col = new Float32Array(n * 3), glv = new Float32Array(n * 4), gloss = new Float32Array(n), glv2 = new Float32Array(n * 4);
+  const { U, W, D, P } = sk, dA = norm(add(U, W)), dB = norm(sub(U, W));
+  // (the back's seam: from between the index's and the middle finger's knuckles down to the wrist's middle, across the
+  // back (u toward the knuckles, w toward the thumb); the mesh panel: the back's little-finger side, from below its
+  // knuckle to the cuff)
+  const o = P(0, 0, 0), seam2 = (u, w) => { const ax0 = 0.006, aw0 = 0.014, bu = -0.062 - ax0, bw = 0.004 - aw0, t = Math.max(0, Math.min(1, ((u - ax0) * bu + (w - aw0) * bw) / (bu * bu + bw * bw))); return Math.hypot(u - ax0 - bu * t, w - aw0 - bw * t); };
+  const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const seg = (p, a, b) => { const ab = sub(b, a), t = Math.max(0, Math.min(1, dot(sub(p, a), ab) / dot(ab, ab))); return len(sub(p, add(a, ab, t))); };
+  const { fore } = sk, ax = scl(fore, -1), cm = gl.cuff.c, L = gl.cuff.L, Df = norm(cross(cross(fore, sk.D), fore));
+  for (let v = 0; v < n; v++) {
+    if (v % 2000 === 0) yield;
+    const p = [m.pos[3 * v], m.pos[3 * v + 1], m.pos[3 * v + 2]], nn = [m.nrm[3 * v], m.nrm[3 * v + 1], m.nrm[3 * v + 2]];
+    const [x, y, z] = p, shell = hand(x, y, z) - GT;
+    let dp = 1;
+    for (const q of gl.pads) if (far(q, x, y, z) < 0.004) dp = Math.min(dp, q.f(x, y, z));
+    const db = far(gl.band, x, y, z) < 0.005 ? gl.band.f(x, y, z) : 1, dc = gl.cuff.f(x, y, z), ds = gl.strap.f(x, y, z);
+    // (each part where its own surface is the glove's, to a fraction of a millimetre)
+    const wStrap = 1 - ss(0.0002, 0.0007, ds);
+    const wCuff = (1 - ss(0.0006, 0.0018, dc)) * (1 - wStrap);
+    const wPad = (1 - ss(0.0004, 0.0012, dp)) * (1 - wCuff) * (1 - wStrap);
+    const wBand = (1 - ss(0.0005, 0.0014, db)) * (1 - wPad) * (1 - wCuff) * (1 - wStrap);
+    // (the knit: round the thumb's two bones, and the fingers' sides; its ribs across the bone)
+    let wKnit = 0, rib = 0;
+    let thumbEdge = 1;
+    for (const b of sk.tb) {
+      const e = seg(p, b.a, b.b) - (Math.max(b.ra, b.rb) + GT + 0.004);
+      thumbEdge = Math.min(thumbEdge, Math.abs(e));
+      if (e < 0) { wKnit = 1; rib = dot(p, sk.tb[0].d); }
+    }
+    for (const f of sk.fingers) for (const b of f.bones) {
+      if (seg(p, b.a, b.b) > Math.max(b.ra, b.rb) + GT + 0.003) continue;
+      const side = ss(0.6, 0.8, Math.abs(dot(nn, f.ax)));
+      if (side > wKnit) { wKnit = side; rib = dot(p, b.d); }
+    }
+    wKnit *= (1 - wPad) * (1 - wBand) * (1 - wCuff) * (1 - wStrap);
+    // (seams: where the pads, the band and the cuff meet the suede; the cuff's hem, its last 4 mm)
+    const q = sub(p, cm), t = dot(q, ax);
+    let seam = 0;
+    if (dp < 0.004) seam = Math.max(seam, 1 - ss(0.0003, 0.0011, Math.abs(dp - shell)));
+    if (db < 0.004) seam = Math.max(seam, 1 - ss(0.0003, 0.0011, Math.abs(db - shell)));
+    if (dc < 0.006) seam = Math.max(seam, (1 - ss(0.0004, 0.0016, Math.abs(dc - shell))) * (1 - wStrap), 1 - ss(0.0025, 0.0045, L / 2 - t));
+    const back = dot(nn, D), pu = dot(sub(p, o), U), pw = dot(sub(p, o), W);
+    if (back > 0.3 && wCuff + wPad + wBand < 0.5) seam = Math.max(seam, 1 - ss(0.0003, 0.0009, seam2(pu, pw)));
+    seam = Math.max(seam, (1 - ss(0.0003, 0.0009, thumbEdge)) * (1 - wCuff));
+    // (the mesh panel, its weave across the back in two diagonals)
+    const wMesh = back > 0.1 && wCuff + wPad + wBand + wStrap < 0.3 ? ss(-0.014, -0.02, pw) * ss(-0.075, -0.06, pu) * (1 - ss(-0.006, 0.004, pu)) : 0;
+    if (wMesh > 0.02) seam = Math.max(seam, 1 - ss(0.0005, 0.0012, Math.abs(pw + 0.017)) * 1);
+    glv2[4 * v] = wMesh; glv2[4 * v + 1] = dot(p, dA); glv2[4 * v + 2] = dot(p, dB);
+    // (the strap's stitching, 2 mm in from its edges; the coordinate round it for the stitches)
+    const ts = dot(sub(p, gl.sc), ax);
+    if (wStrap > 0.5) { gloss[v] = 1 - ss(0.0003, 0.0007, Math.abs(Math.abs(ts) - 0.0125)); rib = Math.atan2(dot(q, cross(ax, Df)), dot(q, Df)) * 0.037; }
+    // (the fold: how much of the glove is close in front of the surface)
+    const e = 0.004, occ = Math.max(0, Math.min(1, sdf(x + nn[0] * e, y + nn[1] * e, z + nn[2] * e) / e));
+    col[3 * v] = wPad; col[3 * v + 1] = wKnit; col[3 * v + 2] = wStrap;
+    glv[4 * v] = occ; glv[4 * v + 1] = seam; glv[4 * v + 2] = rib; glv[4 * v + 3] = wBand;
+  }
+  return { tube, pos: m.pos, nrm: m.nrm, idx: m.idx, col, gloss, glove: glv, glove2: glv2 };
+}
+
 // the bar's hand on a rim of radius R (to its tube's middle): the bar's y round the wheel's middle, in the wheel's frame
 // (the rim in its xy plane, +z toward the driver), unturned
 export function bendGrip(b, R) {
