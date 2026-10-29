@@ -3,10 +3,10 @@ import { glockModel, magazineModel, BORE, RAKE, GRIP_C, GRIP_AXIS, MAG_AXIS, MUZ
 import { prepareHands, barHands, barWrists, skinMaterial, prepareArms, gripArms } from './hand.js';
 import { ik, poseArm, INV, ARM } from './driver.js';
 
-// The Glock 18 on the concrete slab of the cross on the hill (V85): picked up with E, then yours. Two-handed in front of
-// you (your hands and arms: hand.js, the driver's; the right round the grip, the left wrapped over it), it fires as the
-// G18 does: full auto at ~1200 rounds a minute or one round a pull (X: the selector on the slide), 33 in the magazine
-// and one in the chamber; R reloads, the way Call of Duty 4 shows it - the gun tipped toward the left hand, the
+// The Glock 18 on the concrete slab of the cross on the hill (V85): picked up with E (or F), then yours. Two-handed in
+// front of you (your hands and arms: hand.js, the driver's, sculpted in a pistol's grip: HOLD), it fires as the G18
+// does: full auto at 1200 rounds a minute or one round a pull (X: the selector on the slide), 33 in the magazine and
+// one in the chamber; R reloads, the way Call of Duty 4 shows it - the gun raised and tipped toward the left hand, the
 // magazine dropped (it lies where it falls), the hand down to the belt and back with a full one, pushed home and
 // slapped; from an empty gun (the slide locked back) the left hand then racks the slide over the top. The right button
 // aims down the sights (the view narrows); Q puts it away and takes it out.
@@ -62,13 +62,14 @@ const BELT = pose(-0.12, -0.46, -0.12, -0.6, 0.4, 0.6);
 // (the magazine changed with the gun raised toward the middle, its top tipped to the right and its muzzle up and left:
 // the grip's foot toward the left hand; racking: the gun brought in toward the middle, its muzzle up and its top tipped
 // toward you, the hand over it)
-const MAGP = [-0.04, 0.055, 0.018, 0.2, 0.3, -0.85], SLAP = [-0.04, 0.067, 0.012, 0.12, 0.3, -0.85], RACKP = [-0.045, 0.02, -0.03, 0.25, 0.25, 0.6];
+const MAGP = [-0.045, 0.08, 0.005, 0.25, 0.3, -0.85], MAGW = [-0.04, 0.074, 0.009, 0.21, 0.27, -0.79], SLAP = [-0.045, 0.092, -0.001, 0.17, 0.3, -0.85];
+const RACKP = [-0.045, 0.02, -0.03, 0.25, 0.25, 0.6];
 const k7 = (t, v, f = 1) => [t, ...v.map(x => x * f)];
 const TACT = { dur: 1.55, drop: 0.15, insert: [0.82, 0.95], slap: 0.95,
-  gun: [k7(0, MAGP, 0), k7(0.16, MAGP), k7(0.85, MAGP), k7(0.96, SLAP), k7(1.05, MAGP), k7(1.3, MAGP, 0.3), k7(1.55, MAGP, 0)],
+  gun: [k7(0, MAGP, 0), k7(0.16, MAGP), k7(0.5, MAGW), k7(0.85, MAGP), k7(0.96, SLAP), k7(1.05, MAGP), k7(1.3, MAGP, 0.3), k7(1.55, MAGP, 0)],
   left: [[0, 'grip'], [0.12, 'grip'], [0.3, 'belt'], [0.5, 'belt'], [0.82, 'magIn0'], [0.95, 'magIn1'], [1.05, 'magIn1'], [1.3, 'grip']] };
 const EMPTY = { dur: 2.05, drop: 0.15, insert: [0.82, 0.95], slap: 0.95, rack: [1.25, 1.38], release: 1.38,
-  gun: [k7(0, MAGP, 0), k7(0.16, MAGP), k7(0.85, MAGP), k7(0.96, SLAP), k7(1.22, RACKP), k7(1.38, RACKP), k7(1.45, RACKP, 0.7), k7(1.75, RACKP, 0.15), k7(2.05, RACKP, 0)],
+  gun: [k7(0, MAGP, 0), k7(0.16, MAGP), k7(0.5, MAGW), k7(0.85, MAGP), k7(0.96, SLAP), k7(1.22, RACKP), k7(1.38, RACKP), k7(1.45, RACKP, 0.7), k7(1.75, RACKP, 0.15), k7(2.05, RACKP, 0)],
   left: [[0, 'grip'], [0.12, 'grip'], [0.3, 'belt'], [0.5, 'belt'], [0.82, 'magIn0'], [0.95, 'magIn1'], [1.02, 'magIn1'], [1.25, 'rack0'], [1.38, 'rack1'], [1.45, 'rack1'], [1.75, 'grip']] };
 // the first time you take it up: the slide racked to chamber a round
 const FIRST = { dur: 1.15, rack: [0.55, 0.7], release: 0.7,
@@ -141,13 +142,13 @@ export class Glock {
     if (this.owned || !this.spot) return null;
     const d = cam.position.distanceTo(this.spot);
     if (d > 2.2) return null;
-    if (input.hit('KeyE')) {
+    if (input.hit('KeyE') || input.hit('KeyF')) {
       this.owned = true; this.want = true; this.out = 0; this.reload = null;
       this.scene.remove(this.lying); this.lying = null;
       this.audio?.gunCloth?.();
       return '';
     }
-    return 'E — ia Glock 18-ul (cu amortizor, în bandă albă de iarnă) și încărcătoarele de lângă el';
+    return 'E / F — ia Glock 18-ul (cu amortizor, în bandă albă de iarnă) și încărcătoarele de lângă el';
   }
 
   // every frame (logic): ctx { dt, camera, input, player, foot (on foot, not riding), snow }
@@ -156,7 +157,8 @@ export class Glock {
     ctx.world ??= this.world; ctx.audio ??= this.audio;
     this.t += dt;
     const free = this.owned && ctx.foot;
-    if (!free) { this.out = 0; this.vm.visible = false; this.reload = null; this.hud.show(false); this.fovMul = 1; this.ads = 0; player.aimSlow = 1; this.fx.update(dt, ctx); return; }
+    this.hud.touch(free);
+    if (!free) { this.out = 0; this.vm.visible = false; this.reload = null; this.hud.show(false); this.hud.aim(false); this.fovMul = 1; this.ads = 0; player.aimSlow = 1; this.fx.update(dt, ctx); return; }
     if (input.hit('KeyQ')) { this.want = !this.want; this.audio?.gunCloth?.(); }
     // taking it out / putting it away
     this.out = Math.max(0, Math.min(1, this.out + (this.want ? dt / 0.45 : -dt / 0.35)));
@@ -209,6 +211,7 @@ export class Glock {
     this.hud.show(ready || this.out > 0.5);
     this.hud.set(this.mag + (this.chambered ? 1 : 0), this.reserve, this.auto, this.reload ? (this.reload.k === FIRST ? '' : 'Reîncarcă…') : (!this.chambered && this.reserve <= 0 && this.mag <= 0 ? 'Fără muniție' : (this.mag + (this.chambered ? 1 : 0) <= 6 ? 'R — reîncarcă' : '')));
     this.hud.cross(this.out > 0.9 && this.ads < 0.5 && this.sprint < 0.5, this.spread(player), ctx.camera.fov);
+    this.hud.aim(this.ads > 0.5);
     this.fx.update(dt, ctx);
   }
 
@@ -643,6 +646,10 @@ class GunHud {
     this.flashT = 0; this.last = '';
   }
   show(on) { this.el.style.display = on ? 'block' : 'none'; if (!on) this.x.style.display = 'none'; }
+  // the touch screen's buttons for it (index.html: fire, aim, reload, the selector, put it away), while it is yours on
+  // foot; the screen's own dot hidden while you aim down the sights (the sights are the aim)
+  touch(on) { if (on === this.touchOn) return; this.touchOn = on; document.getElementById('gunTouch')?.classList.toggle('on', on); }
+  aim(on) { if (on === this.aimOn) return; this.aimOn = on; const c = document.getElementById('cross'); if (c) c.style.visibility = on ? 'hidden' : ''; }
   set(mag, res, auto, hint) {
     if (performance.now() < (this.flashUntil ?? 0)) hint = this.flashText;
     const s = mag + '|' + res + '|' + auto + '|' + hint;

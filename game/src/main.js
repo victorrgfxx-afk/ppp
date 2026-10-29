@@ -1341,7 +1341,8 @@ async function main() {
         const near = dog || player.noclip ? null : nearestCar();
         const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
         const gunP = player.noclip ? null : glock?.pickup(camera, input);
-        if (gunP === '') hud.toast('Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte', 6);
+        if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte'
+          : 'Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte', 6);
         else if (gunP) prompt = gunP;
         else if (dog) {
           prompt = 'E — mângâie câinele';

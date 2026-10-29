@@ -53,6 +53,9 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
 | T / O | vremea (senin, parțial noros, înnorat, ploaie torențială, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | B | vântul: după vreme, calm, adiere, vânt moderat, vânt tare, vijelie (copacii, iarba și foșnetul frunzelor) | la fel |
+| E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
+| Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
+| R / X / Q | cu Glock-ul: reîncarci / automat ↔ foc cu foc / îl pui deoparte și îl scoți | – |
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
 | K | te duce la marginea luminișului din pădurea de lângă cruce, unde se petrece scena (doar la 23:30, pe vreme înnorată) | la fel (cobori întâi) |
@@ -770,6 +773,43 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Glock 18 cu amortizor, în bandă albă de iarnă (V85)** (`src/glock.js`, `src/weapon.js`, `src/hand.js`, `src/handgeo.js`, `src/driver.js`, `src/input.js`, `src/player.js`, `src/audio.js`, `src/main.js`):
+  * **Unde e:** pe placa de beton a crucii de pe deal, în partea dreaptă, între două picioare ale crucii. Stă culcat pe o parte, cu trei încărcătoare de rezervă alături. Când ajungi lângă el (sub ~2 m), apare „E — ia Glock 18-ul…”; cu E îl iei, împreună cu încărcătoarele.
+  * **Modelul**, la dimensiunile reale ale lui Glock 18 (cadrul Gen 3):
+    * închizător de 186 mm, țeavă de 114 mm cu capătul filetat, mânerul înclinat la 22°, lat de 32 mm;
+    * amortizor de 9 mm (34 mm diametru, 170 mm lungime) și încărcătorul lung de 33 de cartușe, care iese ~9,5 cm sub mâner;
+    * maneta selectorului de foc în spatele închizătorului, pe stânga (specifică lui Glock 18), fereastra de evacuare pe dreapta, striațiile din spate;
+    * ochitoarele Glock: înălțătorul cu crestătură (3,8 mm) și conturul alb în „U”, cătarea (3,4 mm) cu punctul alb. Când ochești, punctul cătării stă în „U”, cu vârful cătării la nivelul înălțătorului.
+  * **Banda albă, ca un camuflaj de zăpadă:** mânerul, cadrul, amortizorul, încărcătoarele și jumătatea din față a închizătorului sunt înfășurate în bandă textilă albă de 25 mm, cu ușoară suprapunere. Se văd țesătura, marginea ridicată a fiecărei spire, cu umbra ei fină, cutele benzii și puțină murdărie de la mâini. Ochitoarele, fereastra de evacuare și comenzile au rămas neacoperite, ca la o armă reală înfășurată pentru iarnă.
+  * **Funcționează ca un Glock 18:**
+    * **clic stânga** trage. În modul automat trage rafală cât ții apăsat, 1200 de cartușe pe minut (cadența reală a lui G18, exact 3 cadre pe cartuș la 60 FPS; restul se poartă de la un cadru la altul); în modul foc cu foc, un cartuș la fiecare apăsare;
+    * **X** comută selectorul (AUTOMAT / FOC CU FOC). Maneta de pe închizător se mișcă și ea, cu un mic gest al armei;
+    * încap 33 de cartușe în încărcător plus unul pe țeavă, iar rezerva e de 99. După ultimul cartuș, închizătorul rămâne blocat în spate, ca la arma reală;
+    * cartușele: 9 mm subsonic (147 grain, ~295 m/s, muniția folosită cu amortizor). Fiecare glonț își zboară traiectoria, cu gravitația, cadru cu cadru, până la ce întâlnește:
+      * pământul: un nor de praf și o urmă;
+      * zidurile și casele: un nor de tencuială și o gaură;
+      * trunchiurile: scoarță;
+      * mașinile și oțelul crucii: scântei;
+      * zăpada: un nor alb;
+    * sunetul impactului vine de acolo, cu întârzierea zborului glonțului și a sunetului înapoi (343 m/s);
+    * tubul fiecărui cartuș iese pe dreapta, se rostogolește, ricoșează pe jos (se aude) și rămâne acolo ~40 s;
+    * la fiecare foc: închizătorul zboară înapoi (~12 ms) și revine (~30 ms), deci un ciclu complet în cele 50 ms dintre două cartușe, vizibil pe 2–3 cadre. Arma se ridică în mâini, iar privirea urcă și revine parțial. Amortizorul scoate un mic fum. Rafala se împrăștie mai mult cu cât trage mai mult, iar în mers sau în săritură e mai puțin precisă.
+  * **Ochirea (clic dreapta):** arma vine în fața ochiului, cu cocoașa înălțătorului pe linia privirii. Imaginea se strânge cu ~20 %, mergi mai încet, iar recul și împrăștierea scad. Când nu ochești, apare o cruce de țintire (4 linii) care se deschide după cât de împrăștiat trage.
+  * **Reîncărcarea (R), în stilul Call of Duty 4 Modern Warfare:**
+    * **cu cartuș pe țeavă** (~1,55 s): arma urcă spre mijlocul ecranului și se înclină, cu baza mânerului spre mâna stângă. Încărcătorul gol cade (rămâne pe jos, cu sunet), mâna stângă coboară la centură și revine cu unul plin, pe care îl vezi intrând. Îl împinge în mâner și îl lovește cu palma: arma tresare;
+    * **pe gol** (~2,05 s): la fel, apoi arma se întoarce cu partea de sus spre tine, iar mâna stângă prinde închizătorul pe deasupra, îl trage și îi dă drumul, ca să intre primul cartuș pe țeavă;
+    * **prima oară când îl iei**, mâna stângă armează închizătorul;
+    * pe gol, clic stânga face „clic” și pornește singur reîncărcarea, dacă mai ai încărcătoare.
+  * **Mâinile și brațele tale** (aceleași mâini și antebrațe musculoase ca la volan, V75–V76), sculptate acum într-o priză reală de pistol, cu ambele degete mari înainte:
+    * **dreapta** ține mânerul sus, cu pielea dintre degetul mare și arătător sub coada cadrului. Arătătorul intră în apărătoare, cu buricul pe trăgaci, iar degetul mare stă înainte pe partea stângă a cadrului, sub închizător;
+    * **stânga** acoperă vârfurile degetelor drepte. Degetele ei înconjoară fața mânerului peste cele ale dreptei, cu arătătorul sub apărătoarea trăgaciului, iar degetul ei mare stă înainte pe lateral, sub cel drept;
+    * pentru încărcător și pentru armare, mâna stângă se deschide și ia altă formă;
+    * pozele degetelor au fost potrivite numeric pe model, la milimetru, apoi verificate din patru unghiuri;
+    * brațele urmează mâinile prin cinematică inversă (umăr, cot, încheietură);
+    * arma se leagănă în mers, rămâne puțin în urmă când întorci privirea și „respiră” când stai.
+  * **Q** pune arma deoparte și o scoate din nou. Când alergi (Shift), arma e ținută în jos și nu trage; lângă un zid, se ridică spre tine ca să nu treacă prin el; în mașină dispare.
+  * **Cum se vede arma pe orice ecran:** câmpul vizual „natural” al jocului poate fi îngust (~25–35°), iar un pistol la 30 cm de ochi ar umple ecranul. Arma și mâinile se desenează, ca în toate jocurile cu armă la persoana întâi, cu un câmp vizual al lor (~55°), fără să se schimbe locul lor în lume. Netezirea marginilor (TAA) le urmărește propria mișcare, așa că nu lasă dâre.
+  * **Ce nu face:** gloanțele trec prin oameni și animale, care nu sunt ținte. Focul nu se vede la celălalt jucător în multiplayer. FPS-ul pe o placă video reală nu l-am măsurat.
 * **Peugeot 508 de la poartă, reglat la cerere pentru 500 km/h**: model de putere constantă (1400 W/kg, aderență limitată la 1,43 g), rezistență aerodinamică pentru o viteză naturală de 580 km/h și limitator electronic la 500 km/h; cutie cu 8 trepte (schimbă la 70, 125, 185, 250, 320, 390, 450 km/h), frâne de 1,4 g. Virajul: aderență de 3,2 g plus apăsare aerodinamică ce crește cu pătratul vitezei (+1,6 g la 500 km/h), deci raza minimă e ~24 m la 100 km/h, ~90 m la 200, ~190 m la 300 și ~410 m la 500 km/h (înainte: 45 / 180 / 410 / 1130 m); direcția e progresivă (virajul complet se atinge în 0,16 s la viteze mici și 0,35 s peste 300 km/h, revine la centru în 0,15 s), ca o apăsare scurtă să dea doar o corecție fină; virajul strâns costă puțină viteză (frecarea anvelopelor), iar mașina se înclină puțin (suspensie rigidă). Măsurat în joc (pas fix de 60 Hz, pe DN1): vezi tabelul din mesajul de livrare. La viteză mare fizica face sub‑pași de ≤ 0,8 m (nu trece prin ziduri), camera urmărește mai strâns și unghiul de vedere se lărgește până la ~90°. Celelalte mașini au rămas neschimbate. Locuri drepte pentru viteză: DN1 spre vest de Câmpina (~1,8 km drept în hartă) și Strada Pietriș (1,2 km).
 * **ATV-ul de pe dealul crucii (V59)** (`src/atv.js`): un ATV 4×4 de 500 cm³, roșu, parcat pe un loc aproape plan la 8–17 m de cruce (în lista de locuri: „ATV — ATV-ul de pe dealul crucii”; **F** urcă, **V** schimbă între camera din spate și privirea pilotului, pilotul se vede doar din spate).
   * **Modelul**: cadru din țeavă, motor cu aripioare de răcire, carcasa variatorului CVT, scut sub motor, toba de eșapament, suspensie independentă cu brațe duble și amortizoare cu arc, aripi cu căptușeală neagră, podele cu striații, far și stopuri, portbagaje față și spate, bara de protecție cu troliu, cârma cu mânere, apărători de mâini și manete (se rotește cu roțile), anvelope de teren cu crampoane (22 × 2 rânduri), jante; pilotul are geacă, pantaloni, cizme, mănuși și cască cu vizor.

@@ -71,6 +71,8 @@
   .tbtns { position: absolute; right: 14px; bottom: 18px; display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; pointer-events: auto; }
   .tbtns button { width: 64px; height: 64px; border-radius: 50%; padding: 0; font-size: 12px; font-weight: 700; background: rgba(20,22,26,.55); border: 2px solid rgba(255,255,255,.3); }
   .tbtns button.on { background: rgba(255,207,63,.6); color: #111; }
+  .gbtns { bottom: 250px; display: none; }
+  .gbtns.on { display: grid; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/addons/" } }
@@ -184,6 +186,13 @@
     <button data-key="ShiftLeft">Fugi</button>
     <button data-key="Space">Sari</button>
     <button data-key="KeyN">Zbor</button>
+  </div>
+  <div class="tbtns gbtns" id="gunTouch">
+    <button data-key="Mouse0">Foc</button>
+    <button data-key="Mouse2">Ochește</button>
+    <button data-key="KeyR">Reîncarcă</button>
+    <button data-key="KeyX">Mod</button>
+    <button data-key="KeyQ">Armă</button>
   </div>
 </div>
 
