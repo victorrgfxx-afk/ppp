@@ -792,6 +792,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * pernuțe peste încheieturile degetelor, cute mai închise și vârfurile degetelor acoperite;
     * manșeta peste încheietura mâinii, din același material;
     * antebrațele rămân goale (tricou).
+  * **Tubul și fumul, la orice câmp vizual (reparat):** în modul de câmp vizual „natural” (îngust, implicit), tubul aruncat și fumul de la țeavă apăreau de câteva ori mai mari decât arma (de ~4 ori la 14°), iar tubul ieșea din ecran într-un cadru. Arma se desenează cu lentila ei, dar ele nu. Acum tubul zboară prin aceeași lentilă ca arma cât timp îl vezi, apoi cade în lume la mărimea lui reală. Fumul are și el mărimea potrivită. Verificat: la 14° și la 55° tubul, fumul și flacăra arată la fel lângă armă.
   * **Flacăra:** în clip e un pistol fără amortizor, cu flacără mare la țeavă la fiecare foc. Glock-ul tău are amortizor, care stinge flacăra. Doar primul foc după o pauză (peste ~2 s) face o scurtă flacără portocalie în jurul capătului amortizorului, timp de 2 cadre: aerul rămas în amortizor arde gazele (efectul real, numit „first round pop”). Următoarele cartușe lasă doar un mic fum.
 * **Harta care nu se desena la calitatea Înaltă și Ultra (reparat în V85)** (`src/campfire.js`, `src/geo/terrain.js`, `src/main.js`):
   * **Ce se vedea:** la calitatea Înaltă (implicită pe calculatoarele cu 8 sau mai multe fire de execuție) și la Ultra, harta nu apărea: lipseau terenul, drumurile, casele și mașinile, deși te puteai mișca.

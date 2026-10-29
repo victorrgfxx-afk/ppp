@@ -304,11 +304,14 @@ export class Glock {
     if (this.t - this.lastShot > 2) { this.popT = this.t; this.pop.rotation.z = Math.random() * Math.PI; }
     this.lastShot = this.t;
     this.audio?.gunShot?.();
-    // the case out of the port, the suppressor's little puff (in the world: where they are in the hands)
+    // the case out of the port (its first flight in the hands' frame, seen through their lens, then in the world); the
+    // suppressor's little puff (in the world, where it is in the hands; its size and drift as through their lens: the
+    // view's squeeze across, placeView - a narrow lens would show it several times too big)
     this.placeView(camera);
     _m4.multiplyMatrices(this.vm.matrix, this.gun.matrix);
-    this.fx.casing(_a.copy(EJECT).applyMatrix4(_m4), camera, player.vel);
-    this.fx.puff(_b.copy(MUZZLE).applyMatrix4(_m4), 0.035, 0.5, 0xd8d6d2, 0.45);
+    this.fx.casing(_a.copy(EJECT).applyMatrix4(this.gun.matrix), camera, player.vel, this.vm);
+    const sq = _s.setFromMatrixColumn(this.vm.matrix, 0).length();
+    this.fx.puff(_b.copy(MUZZLE).applyMatrix4(_m4), 0.035 * sq, 0.5, 0xd8d6d2, 0.45, V3(0, 0.25 * sq, 0));
   }
 
   // where a round (or a probe) from o with velocity v meets something within tMax seconds: { p, n, tag, t, d } | null
@@ -390,6 +393,8 @@ export class Glock {
     m.slide.position.z = this.slide;
     m.trigger.rotation.x = this.trig && this.chambered ? -0.25 : 0;
     m.selector.rotation.x = this.auto ? -0.9 : 0;
+    // the cases still in the hands' frame, where they are through its lens this frame
+    this.fx.vmCases(camera);
     // the magazine: seated, out (dropped), or coming in in the left hand
     this.mags(r);
     this.limbs(r);
@@ -577,11 +582,25 @@ class Effects {
     this.M = M;
     this.world = null;
   }
-  casing(p, cam, vel) {
-    _r.set(1, 0, 0).applyQuaternion(cam.quaternion); _u.set(0, 1, 0).applyQuaternion(cam.quaternion); cam.getWorldDirection(_d);
-    const v = V3().addScaledVector(_r, 2.2 + Math.random() * 0.8).addScaledVector(_u, 1.6 + Math.random() * 0.7).addScaledVector(_d, -0.4 + Math.random() * 0.3).add(vel);
+  // a case out of the port: first in the hands' frame (the viewmodel's, vm; p there), seen through their lens while it is
+  // in sight (as the gun: a narrow lens of the game's would show it several times too big and too fast), then in the
+  // world: falling, bouncing, lying
+  casing(p, cam, vel, vm) {
+    // (in the camera's frame: to the right and up, a little back; your own motion with it)
+    _q.copy(cam.quaternion).invert();
+    const v = V3(2.2 + Math.random() * 0.8, 1.6 + Math.random() * 0.7, 0.1 + Math.random() * 0.3).add(_v.copy(vel).applyQuaternion(_q));
     if (this.cs.length >= 80) this.cs.shift();
-    this.cs.push({ p: p.clone(), v, q: new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6, Math.random() * 6, 0)), w: V3((Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40), age: 0, rest: false, hit: false });
+    this.cs.push({ p: p.clone(), v, vm, q: new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6, Math.random() * 6, 0)), w: V3((Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 40), age: 0, rest: false, hit: false });
+  }
+  // (the cases still in the hands' frame: placed through the lens of this frame - the view's place after the update)
+  vmCases(cam) {
+    let any = false;
+    for (const c of this.cs) if (c.vm) { this.vmCase(c, c.i, cam); any = true; }
+    if (any) this.cases.instanceMatrix.needsUpdate = true;
+  }
+  vmCase(c, i, cam) {
+    const k = _s.setFromMatrixColumn(c.vm.matrix, 0).length();
+    this.cases.setMatrixAt(i, _m4.compose(_a.copy(c.p).applyMatrix4(c.vm.matrix), _q.copy(cam.quaternion).multiply(c.q), _s.set(k, k, k)));
   }
   dropMag(mw, M) {
     const g = magazineModel(M); g.matrixAutoUpdate = false; g.matrix.copy(mw); this.scene.add(g);
@@ -626,6 +645,16 @@ class Effects {
     let n = 0;
     for (const c of this.cs) {
       c.age += dt;
+      if (c.vm) {
+        // (in the hands' frame: the camera's, gravity turned into it; until out of sight through their lens)
+        _q.copy(cam.quaternion).invert();
+        c.v.addScaledVector(_v.set(0, -G, 0).applyQuaternion(_q), dt); c.p.addScaledVector(c.v, dt);
+        _q.setFromEuler(_e.set(c.w.x * dt, c.w.y * dt, c.w.z * dt)); c.q.multiply(_q);
+        const z = -c.p.z, tv = Math.tan(VM_FOV * Math.PI / 360) * 1.1, th = tv * cam.aspect;
+        if (c.vm.visible && c.age < 0.4 && z > 0.02 && Math.abs(c.p.y) < z * tv && Math.abs(c.p.x) < z * th) { c.i = n; this.vmCase(c, n++, cam); continue; }
+        // (out of sight: on into the world from where it is through the lens, at its own speed)
+        c.p.applyMatrix4(c.vm.matrix); c.v.applyQuaternion(cam.quaternion); c.q.premultiply(cam.quaternion); c.vm = null;
+      }
       if (!c.rest) {
         c.v.y -= G * dt; c.p.addScaledVector(c.v, dt);
         _q.setFromEuler(_e.set(c.w.x * dt, c.w.y * dt, c.w.z * dt)); c.q.multiply(_q);
