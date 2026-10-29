@@ -127,10 +127,6 @@ export function barWrists(tube, pose) {
   return [0, 1].map(i => ({ at: v(at, i), dir: v(dir, i), back: v(back, i) }));
 }
 
-// the skin: a little sheen at grazing light (the light the skin scatters back out near its edges), the nails glossy; the
-// arms' (cloth: true) with the T-shirt's knit matt
-// (cuff: the arms' only - a glove's cuff over the forearm's last part toward the wrist, where its last twist bone
-// (armgeo.js: the forearm's four, the wrist's the last) holds it: the pistol's gloves)
 // (value noise for the glove's knit: glove and cuff)
 const GLN = `
 float glN(vec3 p) {
@@ -139,6 +135,11 @@ float glN(vec3 p) {
   vec4 h = fract(sin(vec4(n, n + 1.0, n + 57.0, n + 58.0)) * 43758.5453), k = fract(sin(vec4(n + 113.0, n + 114.0, n + 170.0, n + 171.0)) * 43758.5453);
   vec4 a = mix(h, k, f.z); vec2 b = mix(a.xz, a.yw, f.x); return mix(b.x, b.y, f.y);
 }`;
+
+// the skin: a little sheen at grazing light (the light the skin scatters back out near its edges), the nails glossy; the
+// arms' (cloth: true) with the T-shirt's knit matt
+// (cuff: the arms' only - a glove's cuff over the forearm's last part toward the wrist, where its last twist bone
+// (armgeo.js: the forearm's four, the wrist's the last) holds it: the pistol's gloves)
 export function skinMaterial(cloth = false, cuff = false) {
   const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.52, metalness: 0, sheen: 0.45, sheenRoughness: 0.5,
     sheenColor: new THREE.Color(0.62, 0.26, 0.17), specularIntensity: 0.65 });
@@ -175,7 +176,9 @@ export function gloveMaterial() {
       .replace('#include <color_fragment>', `#include <color_fragment>
   // (the hand's colours: the knuckles redder and darker than the skin, the folds darker still)
   float gL = dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722)), gR = vColor.g / max(vColor.r, 1e-3);
-  float gPad = smoothstep(0.47, 0.43, gR) * smoothstep(0.12, 0.2, gL), gCrease = smoothstep(0.2, 0.1, gL);
+  // (the knuckles: g/r 0.42-0.46 at the skin's brightness; the folds: darker, or redder still)
+  float gPad = (1.0 - smoothstep(0.44, 0.47, gR)) * smoothstep(0.39, 0.42, gR) * smoothstep(0.24, 0.27, gL);
+  float gCrease = max(1.0 - smoothstep(0.18, 0.26, gL), 1.0 - smoothstep(0.36, 0.42, gR));
   float gKnit = glN(vGlP * 600.0) * 0.6 + glN(vGlP * 1500.0) * 0.4;
   diffuseColor.rgb = mix(vec3(0.021, 0.022, 0.024) * (0.85 + 0.3 * gKnit), vec3(0.05, 0.05, 0.052), gPad) * (1.0 - 0.45 * gCrease);`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>

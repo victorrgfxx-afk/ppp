@@ -28,7 +28,7 @@ const OLD_HIP = pose(0.066, -0.084, -0.245, 0.04, 0.12, -0.08);
 // (the shot's flip turns the gun about this point: between the hands' web and the grip's middle, the gun's frame)
 const PIVOT = V3(0, -0.04, 0.01);
 const ADS = pose(0, -0.0222, -0.255, 0, 0, 0);
-const SPRINT = pose(0.07, -0.165, -0.27, -0.55, 0.45, 0.42);
+const SPRINT = pose(0.06, -0.13, -0.3, -0.45, 0.4, 0.4);
 const DOWN = pose(0.07, -0.42, -0.2, -1.1, 0.3, 0.3);
 const TUCK = pose(0.075, -0.07, -0.2, 0.6, 0.18, -0.15);
 export const VIEW = { hip: HIP, ads: ADS, sprint: SPRINT, down: DOWN, tuck: TUCK };
@@ -108,6 +108,11 @@ export class Glock {
     const vm = this.vm = new THREE.Group(); vm.name = 'viewmodel'; vm.matrixAutoUpdate = false; vm.visible = false;
     const m = this.model = glockModel();
     this.gun = new THREE.Group(); this.gun.matrixAutoUpdate = false; this.gun.add(m.group); vm.add(this.gun);
+    // the suppressor's first-round flash: a can full of air, whose oxygen burns the first shot's gases (a brief orange
+    // flash round its end, the shooters' "first round pop"); the rounds after it find it full of spent gas: none
+    this.pop = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.08), new THREE.MeshBasicMaterial({ map: flashTexture(), color: 0xffb468, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.pop.position.copy(MUZZLE).add(V3(0, 0, -0.012)); this.pop.visible = false; this.pop.frustumCulled = false; this.gun.add(this.pop);
+    this.popT = -1; this.lastShot = -10;
     m.group.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
     this.newMag = magazineModel(m.M); this.newMag.matrixAutoUpdate = false; this.newMag.visible = false; vm.add(this.newMag);
     this.oldMag = magazineModel(m.M); this.oldMag.matrixAutoUpdate = false; this.oldMag.visible = false; vm.add(this.oldMag);
@@ -296,6 +301,8 @@ export class Glock {
     player.yaw += (Math.random() - 0.5) * 0.005;
     this.bloom = Math.min(0.045, this.bloom + 0.006);
     this.slideT = 0;                                            // (the slide's cycle)
+    if (this.t - this.lastShot > 2) { this.popT = this.t; this.pop.rotation.z = Math.random() * Math.PI; }
+    this.lastShot = this.t;
     this.audio?.gunShot?.();
     // the case out of the port, the suppressor's little puff (in the world: where they are in the hands)
     this.placeView(camera);
@@ -372,6 +379,7 @@ export class Glock {
       _q.setFromEuler(_e.set(o[3], o[4], o[5], 'YXZ')); _P.q.multiply(_q);
     }
     if (this.selT > 0) { const s = Math.sin(this.selT / 0.35 * Math.PI); _P.p.y += 0.01 * s; _q.setFromEuler(_e.set(0.05 * s, 0, -0.25 * s, 'YXZ')); _P.q.multiply(_q); }
+    this.pop.visible = this.t - this.popT < 0.03;             // (two frames at 60 fps)
     // the shot's flip: the gun turned about the hands' web (not about its bore), and pushed back
     _q.setFromEuler(_e.set(this.flip.x, this.flip.y, this.flip.z, 'YXZ'));
     _P.p.add(_a.copy(PIVOT).applyQuaternion(_P.q)).sub(_b.copy(PIVOT).applyQuaternion(_q).applyQuaternion(_P.q)).add(this.flipP);
@@ -673,6 +681,21 @@ function markTexture() {
   g.fillStyle = rg; g.beginPath();
   for (let k = 0; k <= 24; k++) { const a = k / 24 * Math.PI * 2, r = 22 + 8 * Math.sin(k * 2.7) * Math.cos(k * 1.3); g.lineTo(32 + Math.cos(a) * r, 32 + Math.sin(a) * r); }
   g.fill();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+// the first-round flash: a hot core, an orange glow and a few short tongues of flame
+function flashTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.globalCompositeOperation = 'lighter';
+  const rg = g.createRadialGradient(32, 32, 0, 32, 32, 30);
+  rg.addColorStop(0, 'rgba(255,240,200,1)'); rg.addColorStop(0.25, 'rgba(255,170,70,0.8)'); rg.addColorStop(1, 'rgba(255,90,20,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 7; i++) {
+    const a = (i + Math.random() * 0.5) / 7 * Math.PI * 2, l = 18 + Math.random() * 12, x = 32 + Math.cos(a) * l, y = 32 + Math.sin(a) * l;
+    const lg = g.createLinearGradient(32, 32, x, y);
+    lg.addColorStop(0, 'rgba(255,200,120,0.7)'); lg.addColorStop(1, 'rgba(255,120,40,0)');
+    g.strokeStyle = lg; g.lineWidth = 3; g.beginPath(); g.moveTo(32, 32); g.lineTo(x, y); g.stroke();
+  }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 function puffTexture() {

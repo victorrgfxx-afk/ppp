@@ -773,6 +773,26 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Glock-ul ca în clipul tău (V86)** (`src/weapon.js`, `src/hand.js`): clipul tău a fost măsurat cadru cu cadru (60 de cadre pe secundă), iar arma îl urmează.
+  * **Cum e ținută:** în mijlocul ecranului, puțin sub linia privirii, cu ambele mâini, înclinată câteva grade spre dreapta, ca în Call of Duty-urile moderne. Spatele închizătorului stă unde e și în clip (~54 % din lățime, ~61 % din înălțime). Când alergi, arma rămâne vizibilă jos, înclinată (înainte ieșea din ecran).
+  * **Reîncărcarea (R), după clip:**
+    * arma urcă în dreapta mijlocului, întoarsă pe o parte, cu țeava în sus și spre stânga și partea stângă spre tine (~0,18 s);
+    * mâna stângă prinde baza încărcătorului și îl trage afară de-a lungul mânerului (0,28–0,43 s), coboară cu el, îl pune la centură și ia unul plin;
+    * revine, îl introduce și îl împinge până intră (1,15–1,28 s), iar arma tresare;
+    * mâna stângă se întoarce pe mâner (~1,5 s), iar arma e din nou în centru la 1,8 s;
+    * **pe gol** (~2,15 s): încărcătorul gol cade singur (rămâne pe jos), apoi la fel, plus armarea închizătorului.
+  * **Reculul, măsurat pe clip:**
+    * cadrul focului arată închizătorul în spate și tubul care zboară;
+    * apoi arma sare în mâini, rotită în jurul mâinilor, nu al țevii: ~12–15° în sus, puțin spre stânga și răsucită, și ~3 cm spre tine;
+    * atinge vârful la ~32 ms și dispare în ~90 ms, ca în clip; mișcarea e aceeași la orice FPS;
+    * ochind, reculul e de ~2,5 ori mai mic;
+    * în rafală, fiecare cartuș o ridică mai puțin (mâinile o țin apăsat), dar arma tremură vizibil, iar privirea urcă.
+  * **Mănuși tactice negre:**
+    * material textil mat, cu țesătură fină;
+    * pernuțe peste încheieturile degetelor, cute mai închise și vârfurile degetelor acoperite;
+    * manșeta peste încheietura mâinii, din același material;
+    * antebrațele rămân goale (tricou).
+  * **Ce e diferit de clip, intenționat:** în clip e un pistol fără amortizor, cu flacără mare la țeavă. Glock-ul tău are amortizor, care stinge flacăra, așa că la capătul lui rămâne doar un mic fum.
 * **Harta care nu se desena la calitatea Înaltă și Ultra (reparat în V85)** (`src/campfire.js`, `src/geo/terrain.js`, `src/main.js`):
   * **Ce se vedea:** la calitatea Înaltă (implicită pe calculatoarele cu 8 sau mai multe fire de execuție) și la Ultra, harta nu apărea: lipseau terenul, drumurile, casele și mașinile, deși te puteai mișca.
   * **Cauza 1 (din V82):** focul de tabără are la aceste calități o umbră proprie (o lumină punctiformă), desenată doar noaptea, când arde. Ziua harta ei de umbră nu exista încă, iar three.js r186 pune în locul ei o textură goală de alt tip. Placa video respinge atunci orice desen al materialelor luminate („Mismatch between texture format and sampler type”), adică aproape tot. Măsurat în test, la Înaltă: sute de desenări respinse pe cadru (asfalt, borduri, pietriș, metal, iederă…); la Medie, zero. Acum umbra focului are o hartă desenată din primul cadru, ca soarele, raza lunii și lanterna. După reparație: zero desenări respinse.
@@ -799,14 +819,14 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
       * zăpada: un nor alb;
     * sunetul impactului vine de acolo, cu întârzierea zborului glonțului și a sunetului înapoi (343 m/s);
     * tubul fiecărui cartuș iese pe dreapta, se rostogolește, ricoșează pe jos (se aude) și rămâne acolo ~40 s;
-    * la fiecare foc: închizătorul zboară înapoi (~12 ms) și revine (~30 ms), deci un ciclu complet în cele 50 ms dintre două cartușe, vizibil pe 2–3 cadre. Arma se ridică în mâini, iar privirea urcă și revine parțial. Amortizorul scoate un mic fum. Rafala se împrăștie mai mult cu cât trage mai mult, iar în mers sau în săritură e mai puțin precisă.
+    * la fiecare foc: închizătorul zboară înapoi (~12 ms) și revine (~30 ms), deci un ciclu complet în cele 50 ms dintre două cartușe, vizibil pe 2–3 cadre. Arma sare în mâini (din V86 ca în clipul tău, vezi mai sus), iar privirea urcă și revine parțial. Amortizorul scoate un mic fum. Rafala se împrăștie mai mult cu cât trage mai mult, iar în mers sau în săritură e mai puțin precisă.
   * **Ochirea (clic dreapta):** arma vine în fața ochiului, cu cocoașa înălțătorului pe linia privirii. Imaginea se strânge cu ~20 %, mergi mai încet, iar recul și împrăștierea scad. Când nu ochești, apare o cruce de țintire (4 linii) care se deschide după cât de împrăștiat trage.
   * **Reîncărcarea (R), în stilul Call of Duty 4 Modern Warfare:**
-    * **cu cartuș pe țeavă** (~1,55 s): arma urcă spre mijlocul ecranului și se înclină, cu baza mânerului spre mâna stângă. Încărcătorul gol cade (rămâne pe jos, cu sunet), mâna stângă coboară la centură și revine cu unul plin, pe care îl vezi intrând. Îl împinge în mâner și îl lovește cu palma: arma tresare;
-    * **pe gol** (~2,05 s): la fel, apoi arma se întoarce cu partea de sus spre tine, iar mâna stângă prinde închizătorul pe deasupra, îl trage și îi dă drumul, ca să intre primul cartuș pe țeavă;
+    * **cu cartuș pe țeavă** (~1,8 s): din V86, ca în clipul tău (vezi mai sus): mâna stângă scoate încărcătorul și îl pune la centură, apoi aduce unul plin;
+    * **pe gol** (~2,15 s): încărcătorul gol cade (rămâne pe jos, cu sunet), mâna stângă aduce unul plin, apoi arma se întoarce cu partea de sus spre tine, iar mâna stângă prinde închizătorul pe deasupra, îl trage și îi dă drumul, ca să intre primul cartuș pe țeavă;
     * **prima oară când îl iei**, mâna stângă armează închizătorul;
     * pe gol, clic stânga face „clic” și pornește singur reîncărcarea, dacă mai ai încărcătoare.
-  * **Mâinile și brațele tale** (aceleași mâini și antebrațe musculoase ca la volan, V75–V76), sculptate acum într-o priză reală de pistol, cu ambele degete mari înainte:
+  * **Mâinile și brațele tale** (aceleași mâini și antebrațe musculoase ca la volan, V75–V76; din V86 în mănuși tactice negre), sculptate acum într-o priză reală de pistol, cu ambele degete mari înainte:
     * **dreapta** ține mânerul sus, cu pielea dintre degetul mare și arătător sub coada cadrului. Arătătorul intră în apărătoare, cu buricul pe trăgaci, iar degetul mare stă înainte pe partea stângă a cadrului, sub închizător;
     * **stânga** acoperă vârfurile degetelor drepte. Degetele ei înconjoară fața mânerului peste cele ale dreptei, cu arătătorul sub apărătoarea trăgaciului, iar degetul ei mare stă înainte pe lateral, sub cel drept;
     * pentru încărcător și pentru armare, mâna stângă se deschide și ia altă formă;
