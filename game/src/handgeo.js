@@ -109,13 +109,19 @@ function nail(b, ax, hl, hw) {
 // the little finger) with the forearm as the arms come to the wheel (driver.js: from shoulders over the seat, elbows
 // down; FORE, elbow to wrist, the same within a few degrees in every car); the bar then crosses the palm diagonally,
 // from the index's root to the heel of the hand, as a handle does.
+// A pose (optional: a pistol's grip, weapon.js) changes the hold: gam (the hand's tilt up the bar: smaller, the fingers
+// more square round it, as round a pistol's grip), fore (the forearm's direction), the index finger's bends at its three
+// joints and its extra splay ({ bend: [a1, a2, a3], splay }: off the bar, onto a trigger) and the thumb's metacarpal's
+// end and its direction from there in the bar's frame, its two joints' bends and the side they bend toward
+// ({ mcp, dir, bend: [b1, b2], in }).
 const TP = 0.44, GAM = 0.62, FORE = norm([-0.022, 0.74, -0.672]);
-function handFrame(r) {
-  const D = [Math.cos(TP), 0, Math.sin(TP)], U = norm(add(scl([Math.sin(TP), 0, -Math.cos(TP)], Math.cos(GAM)), [0, Math.sin(GAM), 0]));
+function handFrame(r, pose) {
+  const gam = pose?.gam ?? GAM, fore = pose?.fore ? norm(pose.fore) : FORE;
+  const D = [Math.cos(TP), 0, Math.sin(TP)], U = norm(add(scl([Math.sin(TP), 0, -Math.cos(TP)], Math.cos(gam)), [0, Math.sin(gam), 0]));
   const W = norm(cross(D, U)), h0 = r + 0.0125, P = (u, w, n) => add(add(scl(D, h0 + n), U, u), W, w);
   // the wrist's joint; the forearm from it, flat across D (its back)
-  const J = P(-0.074, 0, 0.0005), Df = norm(add(D, FORE, -dot(D, FORE)));
-  return { D, U, W, P, J, Df };
+  const J = P(-0.074, 0, 0.0005), Df = norm(add(D, fore, -dot(D, fore)));
+  return { D, U, W, P, J, Df, fore };
 }
 // a point of the bar's frame on the rim (the wheel's frame)
 const toWheel = (R, x, y, z) => { const a = GRIP + y / R, c = Math.cos(a), s = Math.sin(a); return [(R + x) * c, (R + x) * s, z, c, s]; };
@@ -129,25 +135,75 @@ export function gripWrist(R, tube) {
 
 // the same on a straight bar (its own frame: the bar along +y, x out of the back of the hand's side, z toward the
 // thumb's): a pistol's grip (glock.js)
-export function gripWristBar(tube) {
-  const { J, Df } = handFrame(tube);
-  return { at: add(J, FORE, -0.035), dir: FORE, back: Df };
+export function gripWristBar(tube, pose) {
+  const { J, Df, fore } = handFrame(tube, pose);
+  return { at: add(J, fore, -0.035), dir: fore, back: Df };
+}
+
+// the knuckle (MCP: u, w, n), its metacarpal's base (w, n), [length, r0, r1] of the three bones, the splay (rad: toward
+// the little finger, so each bends round the bar about an axis near the bar's, the little finger's less)
+const F = [
+  { mcp: [0.020, 0.024, 0.0], base: [0.016, -0.001], seg: [[0.040, 0.0097, 0.0089], [0.0245, 0.0087, 0.0079], [0.0165, 0.0077, 0.0066]], splay: -0.42 },
+  { mcp: [0.019, 0.005, 0.0], base: [0.004, 0.0], seg: [[0.045, 0.0101, 0.0093], [0.0285, 0.0091, 0.0082], [0.0175, 0.008, 0.0069]], splay: -0.36 },
+  { mcp: [0.013, -0.0135, -0.003], base: [-0.008, -0.001], seg: [[0.042, 0.0096, 0.0088], [0.0275, 0.0086, 0.0078], [0.017, 0.0076, 0.0066]], splay: -0.27 },
+  { mcp: [0.005, -0.030, -0.008], base: [-0.018, -0.003], seg: [[0.033, 0.0086, 0.0079], [0.0195, 0.0077, 0.007], [0.015, 0.0068, 0.0059]], splay: -0.16 },
+];
+const COMP = 0.0015;                                                  // (the flesh pressed in)
+// the hand's bones round the bar: each finger's three (each bent until it lies on the bar, or as the pose says), the
+// thumb's metacarpal and two
+function skeleton(r, pose) {
+  const fr = handFrame(r, pose), { D, U, P } = fr;
+  const fingers = F.map((f, fi) => {
+    const own = fi === 0 && pose?.index;
+    const J0 = P(...f.mcp), d0 = rot(U, D, f.splay + (own ? pose.index.splay ?? 0 : 0)), ax = norm(cross(D, d0));
+    const lim = [[0.12, 1.65], [0.2, 1.9], [0.1, 1.35]];
+    let J = J0, d = d0;
+    const bones = f.seg.map(([L, ra, rb], k) => {
+      d = rot(d, ax, own ? pose.index.bend[k] : bend(J, d, ax, L, r + Math.min(ra, rb) - COMP, ...lim[k]));
+      const B = add(J, d, L), b = { a: J, b: B, ra, rb, d, dors: norm(cross(d, ax)) };
+      J = B;
+      return b;
+    });
+    return { J0, ax, bones };
+  });
+  // the thumb: its metacarpal from the wrist's thumb side to the rim's back, then along the rim toward its top (or where
+  // the pose puts it)
+  const CMC = P(-0.05, 0.018, -0.006), tp = pose?.thumb;
+  let tMCP, td, tax;
+  if (tp) {
+    // (its joints bend toward \`in\`: the bar's axis unless the pose says; the nail on the other side)
+    tMCP = tp.mcp; td = norm(tp.dir);
+    tax = norm(cross(td, tp.in ? norm(tp.in) : norm([-tMCP[0], 0, -tMCP[2]])));
+  } else {
+    const th = 1.6, rt = r + 0.0108 + 0.0015, xz = [rt * Math.cos(th), 0, rt * Math.sin(th)];
+    const dxz = Math.hypot(xz[0] - CMC[0], xz[2] - CMC[2]);
+    tMCP = [xz[0], CMC[1] + Math.sqrt(Math.max(0, 0.046 * 0.046 - dxz * dxz)), xz[2]];
+    const rad = norm([tMCP[0], 0, tMCP[2]]), tang = [-Math.sin(th), 0, Math.cos(th)];
+    td = norm(add(scl([0, 1, 0], Math.cos(0.6)), tang, Math.sin(0.6)));
+    tax = norm(cross(rad, td));
+  }
+  const tb = [];
+  let TJ = tMCP;
+  [[0.030, 0.0112, 0.0102, -0.2, 0.5], [0.021, 0.01, 0.0086, 0.15, 0.9]].forEach(([L, ra, rb, lo, hi], k) => {
+    td = rot(td, tax, tp ? tp.bend[k] : bend(TJ, td, tax, L, r + Math.min(ra, rb) - COMP, lo, hi));
+    const B = add(TJ, td, L);
+    tb.push({ a: TJ, b: B, ra, rb, d: td, dors: norm(cross(td, tax)) });
+    TJ = B;
+  });
+  return { ...fr, fingers, CMC, tMCP, tax, tb };
+}
+// the joints, for fitting a pose (weapon.js's tuning): the bar's frame
+export function handSkeleton(r, pose) {
+  const s = skeleton(r, pose);
+  return { J: s.J, D: s.D, U: s.U, W: s.W, palm: s.P(0, 0, 0), web: s.P(0.008, 0.021, -0.001), fingers: s.fingers.map(f => [f.J0, ...f.bones.map(b => b.b)]), thumb: [s.CMC, s.tMCP, ...s.tb.map(b => b.b)],
+    pads: s.fingers.map(f => { const b3 = f.bones[2], L = len(sub(b3.b, b3.a)); return add(add(b3.a, b3.d, 0.55 * L), b3.dors, -b3.ra); }) };
 }
 
 // the right hand round the bar
-function sculpt(r) {
-  const COMP = 0.0015;                                                // (the flesh pressed in)
-  const { D, U, W, P, J, Df } = handFrame(r), A3 = [U, W, D];
+function sculpt(r, pose) {
+  const sk = skeleton(r, pose), { D, U, W, P, J, Df, fore } = sk, A3 = [U, W, D];
   const ball = (c, rr) => ({ f: (x, y, z) => { const dx = x - c[0], dy = y - c[1], dz = z - c[2]; return Math.sqrt(dx * dx + dy * dy + dz * dz) - rr; }, c, R: rr });
   const knuckles = [], nails = [], fingers = [];
-  const F = [
-    // the knuckle (MCP: u, w, n), its metacarpal's base (w, n), [length, r0, r1] of the three bones, the splay (rad:
-    // toward the little finger, so each bends round the bar about an axis near the bar's, the little finger's less)
-    { mcp: [0.020, 0.024, 0.0], base: [0.016, -0.001], seg: [[0.040, 0.0097, 0.0089], [0.0245, 0.0087, 0.0079], [0.0165, 0.0077, 0.0066]], splay: -0.42 },
-    { mcp: [0.019, 0.005, 0.0], base: [0.004, 0.0], seg: [[0.045, 0.0101, 0.0093], [0.0285, 0.0091, 0.0082], [0.0175, 0.008, 0.0069]], splay: -0.36 },
-    { mcp: [0.013, -0.0135, -0.003], base: [-0.008, -0.001], seg: [[0.042, 0.0096, 0.0088], [0.0275, 0.0086, 0.0078], [0.017, 0.0076, 0.0066]], splay: -0.27 },
-    { mcp: [0.005, -0.030, -0.008], base: [-0.018, -0.003], seg: [[0.033, 0.0086, 0.0079], [0.0195, 0.0077, 0.007], [0.015, 0.0068, 0.0059]], splay: -0.16 },
-  ];
   // the palm: its flesh, the four metacarpals fanned from the wrist, the heel (hypothenar), the pad under the knuckles
   // (pressed round the rim), the wrist, the ulna's knob, the forearm to inside the sleeve, the tendons on the back
   const palm = [[ell(P(-0.024, -0.003, -0.002), A3, [0.046, 0.037, 0.0118]), 0]];
@@ -156,21 +212,12 @@ function sculpt(r) {
   palm.push([ell(P(-0.034, -0.026, -0.005), A3, [0.032, 0.011, 0.012]), 0.012]);
   palm.push([ell(P(0.006, -0.002, -0.0085), A3, [0.012, 0.036, 0.0075]), 0.008]);
   palm.push([ball(P(-0.066, -0.024, 0.010), 0.006), 0.006]);
-  palm.push([oval(add(J, FORE, -0.045), add(J, FORE, -0.006), 0.0305, 0.0295, Df, 1.45), 0.014]);
+  palm.push([oval(add(J, fore, -0.045), add(J, fore, -0.006), 0.0305, 0.0295, Df, 1.45), 0.014]);
   for (const f of F) palm.push([cap(P(-0.05, f.base[0] * 0.8, 0.0094), P(f.mcp[0] - 0.008, f.mcp[1], f.mcp[2] + 0.0096), 0.0014, 0.0016), 0.0065]);
   const palmS = chain(palm);
   // the fingers: each bone bent until it lies on the rim
-  for (const f of F) {
-    const J0 = P(...f.mcp), d0 = rot(U, D, f.splay), ax = norm(cross(D, d0));
-    const lim = [[0.12, 1.65], [0.2, 1.9], [0.1, 1.35]];
-    let J = J0, d = d0;
-    const bones = [];
-    f.seg.forEach(([L, ra, rb], k) => {
-      d = rot(d, ax, bend(J, d, ax, L, r + Math.min(ra, rb) - COMP, ...lim[k]));
-      const B = add(J, d, L);
-      bones.push({ a: J, b: B, ra, rb, d, dors: norm(cross(d, ax)) });
-      J = B;
-    });
+  F.forEach((f, fi) => {
+    const { J0, ax, bones } = sk.fingers[fi];
     const [b1, b2, b3] = bones;
     const kn = [add(J0, D, 0.0035), b1.ra + 0.0006], pip = [add(b2.a, norm(add(b1.dors, b2.dors)), 0.0024), b2.ra * 0.93];
     knuckles.push(kn, pip);
@@ -179,20 +226,9 @@ function sculpt(r) {
     const f23 = chain([[cap(b2.a, b2.b, b2.ra, b2.rb), 0], [cap(b3.a, b3.b, b3.ra, b3.rb), 0.0025], [ball(pip[0], pip[1]), 0.003], [pad, 0.003]]);
     nails.push(nail(b3, ax, 0.0058, 0.0047));
     fingers.push({ f1, f23, all: chain([[f1, 0], [f23, 0]]) });
-  }
-  // the thumb: its metacarpal from the wrist's thumb side to the rim's back, then along the rim toward its top
-  const CMC = P(-0.05, 0.018, -0.006), th = 1.6, rt = r + 0.0108 + 0.0015, xz = [rt * Math.cos(th), 0, rt * Math.sin(th)];
-  const dxz = Math.hypot(xz[0] - CMC[0], xz[2] - CMC[2]), tMCP = [xz[0], CMC[1] + Math.sqrt(Math.max(0, 0.046 * 0.046 - dxz * dxz)), xz[2]];
-  const rad = norm([tMCP[0], 0, tMCP[2]]), tang = [-Math.sin(th), 0, Math.cos(th)];
-  let td = norm(add(scl([0, 1, 0], Math.cos(0.6)), tang, Math.sin(0.6)));
-  const tax = norm(cross(rad, td)), tb = [];
-  let TJ = tMCP;
-  [[0.030, 0.0112, 0.0102, -0.2, 0.5], [0.021, 0.01, 0.0086, 0.15, 0.9]].forEach(([L, ra, rb, lo, hi]) => {
-    td = rot(td, tax, bend(TJ, td, tax, L, r + Math.min(ra, rb) - COMP, lo, hi));
-    const B = add(TJ, td, L);
-    tb.push({ a: TJ, b: B, ra, rb, d: td, dors: norm(cross(td, tax)) });
-    TJ = B;
   });
+  // the thumb (skeleton)
+  const { CMC, tMCP, tax, tb } = sk;
   const ma = norm(sub(tMCP, CMC)), m1 = norm(cross(ma, D)), m2 = cross(m1, ma);
   const thenar = ell(add(add(lerp(CMC, tMCP, 0.4), D, -0.004), W, -0.003), [ma, m1, m2], [0.024, 0.0175, 0.0145]);
   const web = cap(lerp(CMC, tMCP, 0.85), P(0.008, 0.021, -0.001), 0.0062, 0.0062);
@@ -224,9 +260,15 @@ const lin = (h) => [lin1((h >> 16 & 255) / 255), lin1((h >> 8 & 255) / 255), lin
 
 // the right hand round a straight bar of radius tube (the bar's frame): positions, normals, triangles, colours (linear),
 // gloss (the nails); bendGrip lays it on a rim
-export function* buildGrip(tube) {
-  const s = sculpt(tube), sdf = s.sdf;
-  const m = yield* sdfMesh(sdf, [-0.075, -0.09, -0.06, 0.09, 0.115, 0.17], 0.0019);
+export function* buildGrip(tube, pose) {
+  const s = sculpt(tube, pose), sdf = s.sdf;
+  // (the box it is meshed in: the wheel's, grown to hold a pose's fingers)
+  const box = [-0.075, -0.09, -0.06, 0.09, 0.115, 0.17];
+  if (pose) {
+    const k = handSkeleton(tube, pose);
+    for (const p of [...k.fingers.flat(), ...k.thumb]) for (let i = 0; i < 3; i++) { box[i] = Math.min(box[i], p[i] - 0.016); box[i + 3] = Math.max(box[i + 3], p[i] + 0.016); }
+  }
+  const m = yield* sdfMesh(sdf, box, 0.0019);
   // colour: the skin, redder over the knuckles, darker and redder in folds, the nails paler, their free edges whiter
   const SKIN = lin(0xc99680), KN = lin(0xb47665), FOLD = lin(0x8a4c40), NAIL = lin(0xd8a493), EDGE = lin(0xeadcd0);
   const n = m.nv, col = new Float32Array(n * 3), gloss = new Float32Array(n);

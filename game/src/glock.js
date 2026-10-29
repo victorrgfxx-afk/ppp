@@ -117,10 +117,12 @@ export function glockModel() {
   const tapeSlide = part(side([[0.080, -0.0118], [0.181, -0.0118], [0.181, 0.0098], [0.176, 0.0158], [0.080, 0.0158]], 0.0275, 0.0012), M.tape);
   scaleUV(tapeSlide.geometry, 10, 10);
   slide.add(tapeSlide);
-  // the sights: the rear's U with its white outline, the front's white dot
-  slide.add(part(mergeGeometries([box(0.0125, 0.0068, 0.009, 0, 0.0200, -0.016), box(0.0034, 0.0076, 0.0055, 0, 0.0198, -0.177)].map(g => g.toNonIndexed())), M.polymer));
-  slide.add(part(mergeGeometries([box(0.0018, 0.0012, 0.0005, -0.0034, 0.0222, -0.0114), box(0.0018, 0.0012, 0.0005, 0.0034, 0.0222, -0.0114),
-    box(0.0018, 0.0018, 0.0005, 0, 0.0215, -0.1795)].map(g => g.toNonIndexed())), M.dot));
+  // the sights (Glock's): the rear's notch (3.8 mm wide, 3.5 deep) with its white U round it, the front post (3.4 mm wide)
+  // with its white dot, both on their faces toward the eye: aimed, the post's top level with the rear's, in the notch
+  slide.add(part(mergeGeometries([box(0.00435, 0.0068, 0.009, -0.004075, 0.0200, -0.016), box(0.00435, 0.0068, 0.009, 0.004075, 0.0200, -0.016),
+    box(0.0038, 0.0033, 0.009, 0, 0.01825, -0.016), box(0.0034, 0.0076, 0.0055, 0, 0.0198, -0.177)].map(g => g.toNonIndexed())), M.polymer));
+  slide.add(part(mergeGeometries([box(0.0011, 0.0030, 0.0005, -0.00255, 0.0214, -0.0113), box(0.0011, 0.0030, 0.0005, 0.00255, 0.0214, -0.0113),
+    box(0.0062, 0.0009, 0.0005, 0, 0.02035, -0.0113), box(0.0018, 0.0018, 0.0005, 0, 0.0216, -0.1740)].map(g => g.toNonIndexed())), M.dot));
   // the G18's selector lever on the slide's left, at the rear (down: semi, up: full auto)
   const selector = new THREE.Group(); selector.name = 'selector';
   selector.add(part(mergeGeometries([box(0.003, 0.0055, 0.0055, 0, 0, 0), box(0.0028, 0.0105, 0.0032, 0, -0.0065, 0.0005)].map(g => g.toNonIndexed())), M.steel));

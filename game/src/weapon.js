@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { glockModel, magazineModel, BORE, RAKE, GRIP_C, MAG_AXIS, MUZZLE, EJECT } from './glock.js';
+import { glockModel, magazineModel, BORE, RAKE, GRIP_C, GRIP_AXIS, MAG_AXIS, MUZZLE, EJECT } from './glock.js';
 import { prepareHands, barHands, barWrists, skinMaterial, prepareArms, gripArms } from './hand.js';
 import { ik, poseArm, INV, ARM } from './driver.js';
 
@@ -16,21 +16,41 @@ import { ik, poseArm, INV, ARM } from './driver.js';
 // spent cases fly out to the right, bounce and stay a while. The sound: the suppressor's cough and the slide's clatter.
 
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-const CAP = 33, RESERVE = 99, RPM = 1200, V0 = 295, G = 9.81, VM_FOV = 55;
-const R_TUBE = 0.019, L_TUBE = 0.024;                      // (the hands sculpted round: the grip; the grip and the right hand)
+const CAP = 33, RESERVE = 99, RPM = 1200, V0 = 295, G = 9.81, VM_FOV = 55, SLIDE = 0.027;   // (SLIDE: the slide's travel, m)
+const L_FREE = 0.019;                                      // (the left hand's shape off the grip: round the slide, a magazine)
 const LIVING = new Set(['actor', 'npc', 'dog', 'bear']);
 const pose = (x, y, z, rx, ry, rz) => ({ p: V3(x, y, z), q: new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'YXZ')) });
 // the gun's poses in the camera's frame: from the hip, aimed down the sights (the rear sight's notch on the eye's line),
 // running, put away, tucked against a wall
-const HIP = pose(0.082, -0.098, -0.315, 0.03, 0.05, -0.03);
+const HIP = pose(0.066, -0.084, -0.245, 0.04, 0.12, -0.08);
 const ADS = pose(0, -0.0222, -0.255, 0, 0, 0);
 const SPRINT = pose(0.07, -0.165, -0.27, -0.55, 0.45, 0.42);
 const DOWN = pose(0.07, -0.42, -0.2, -1.1, 0.3, 0.3);
 const TUCK = pose(0.075, -0.07, -0.2, 0.6, 0.18, -0.15);
-// the hands in the gun's frame: the right round the grip (its bar up the grip's rake), the left over it
+export const VIEW = { hip: HIP, ads: ADS, sprint: SPRINT, down: DOWN, tuck: TUCK };
+// the hands' holds on the gun (each hand sculpted round a bar in a pose of its own: handgeo.js): its bar laid along the
+// grip (raised up it, moved forward and across, turned about it). The right: a high grip, the web up under the
+// beavertail, the index finger on the trigger, the thumb forward along the frame's left side under the slide. The left
+// round the right's fingers, its palm over their tips on the left, its thumb forward along the frame below the right's
+// (the thumbs-forward grip). The thumbs' places are given in the gun's frame (mcp: the thumb's knuckle; dir: the way
+// it points; in: the side its joints bend toward)
+export const HOLD = {
+  right: { tube: 0.019, raise: 0.012, fwd: 0.006, side: 0.001, dy: 0, phi: 0, gam: 0.3, index: { bend: [0.7, 0.45, 1.05], splay: 0.35 },
+    thumb: { mcp: [-0.022, -0.0215, 0.0], dir: [0, 0.02, -1], in: [1, -0.2, 0], bend: [0, 0] } },
+  left: { tube: 0.026, raise: -0.012, fwd: 0.032, side: -0.005, dy: 0, phi: -0.4, gam: 0.5, mirror: true,
+    thumb: { mcp: [-0.027, -0.034, -0.022], dir: [0, 0, -1], in: [1, 0.2, 0], bend: [0, 0.05] } },
+};
 const Q_GRIP = new THREE.Quaternion().setFromAxisAngle(V3(1, 0, 0), -RAKE);
-const RH = { p: GRIP_C.clone().add(V3(0.001, 0, 0.002)), q: Q_GRIP.clone() };
-const LH = { p: GRIP_C.clone().add(V3(-0.006, -0.006, -0.014)), q: Q_GRIP.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), 0.5)) };
+// a hold: the hand's place on the gun { p, q } and the pose it is sculpted in (the thumb's places in its own frame)
+function holdOf(h) {
+  const p = GRIP_C.clone().addScaledVector(GRIP_AXIS, h.raise).add(V3(h.side, h.dy, -h.fwd));
+  const q = Q_GRIP.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), h.phi)), qi = q.clone().invert();
+  const own = (v, point) => { const w = V3(...v); if (point) w.sub(p); w.applyQuaternion(qi); if (h.mirror) w.x = -w.x; return [w.x, w.y, w.z].map(x => +x.toFixed(5)); };
+  const t = h.thumb, pose = { gam: h.gam };
+  if (h.index) pose.index = h.index;
+  if (t) pose.thumb = { mcp: own(t.mcp, true), dir: own(t.dir), in: own(t.in), bend: t.bend };
+  return { p, q, tube: h.tube, pose };
+}
 // the left hand racking the slide over the top: the bar along the slide, the back of the hand up
 const LH_RACK = { p: V3(0, BORE + 0.006, -0.016), q: new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(V3(0, -1, 0), V3(0, 0, 1), V3(-1, 0, 0))) };   // (the wrist to the left, the fingers over to the right side)
 // the left hand holding a magazine (the magazine's frame: its mouth at the origin, its length down -y), low on it
@@ -38,20 +58,23 @@ const LH_MAG = { p: V3(0, -0.135, 0.0), q: new THREE.Quaternion() };
 // down at the belt, out of sight (the camera's frame)
 const BELT = pose(-0.12, -0.46, -0.12, -0.6, 0.4, 0.6);
 
-// the reloads: the gun's own motion over the pose [t, x, y, z, rx, ry, rz], the left hand's [t, where, blend], the events
+// the reloads: the gun's own motion over the pose [t, x, y, z, rx, ry, rz], the left hand's [t, where], the events
+// (the magazine changed with the gun raised toward the middle, its top tipped to the right and its muzzle up and left:
+// the grip's foot toward the left hand; racking: the gun brought in toward the middle, its muzzle up and its top tipped
+// toward you, the hand over it)
+const MAGP = [-0.04, 0.055, 0.018, 0.2, 0.3, -0.85], SLAP = [-0.04, 0.067, 0.012, 0.12, 0.3, -0.85], RACKP = [-0.045, 0.02, -0.03, 0.25, 0.25, 0.6];
+const k7 = (t, v, f = 1) => [t, ...v.map(x => x * f)];
 const TACT = { dur: 1.55, drop: 0.15, insert: [0.82, 0.95], slap: 0.95,
-  gun: [[0, 0, 0, 0, 0, 0, 0], [0.16, -0.02, 0.022, 0.012, 0.14, 0.1, 0.5], [0.85, -0.02, 0.024, 0.012, 0.15, 0.1, 0.52], [0.96, -0.02, 0.036, 0.006, 0.06, 0.1, 0.5],
-    [1.05, -0.02, 0.026, 0.012, 0.12, 0.1, 0.46], [1.3, -0.008, 0.01, 0.004, 0.05, 0.04, 0.18], [1.55, 0, 0, 0, 0, 0, 0]],
+  gun: [k7(0, MAGP, 0), k7(0.16, MAGP), k7(0.85, MAGP), k7(0.96, SLAP), k7(1.05, MAGP), k7(1.3, MAGP, 0.3), k7(1.55, MAGP, 0)],
   left: [[0, 'grip'], [0.12, 'grip'], [0.3, 'belt'], [0.5, 'belt'], [0.82, 'magIn0'], [0.95, 'magIn1'], [1.05, 'magIn1'], [1.3, 'grip']] };
 const EMPTY = { dur: 2.05, drop: 0.15, insert: [0.82, 0.95], slap: 0.95, rack: [1.25, 1.38], release: 1.38,
-  gun: [[0, 0, 0, 0, 0, 0, 0], [0.16, -0.02, 0.022, 0.012, 0.14, 0.1, 0.5], [0.85, -0.02, 0.024, 0.012, 0.15, 0.1, 0.52], [0.96, -0.02, 0.036, 0.006, 0.06, 0.1, 0.5],
-    [1.1, -0.012, 0.02, 0.01, 0.1, 0.05, -0.12], [1.38, -0.01, 0.018, 0.02, 0.08, 0.04, -0.15], [1.45, -0.008, 0.02, 0.0, 0.03, 0.03, -0.1], [1.75, -0.004, 0.006, 0.0, 0.02, 0.02, 0.0], [2.05, 0, 0, 0, 0, 0, 0]],
+  gun: [k7(0, MAGP, 0), k7(0.16, MAGP), k7(0.85, MAGP), k7(0.96, SLAP), k7(1.22, RACKP), k7(1.38, RACKP), k7(1.45, RACKP, 0.7), k7(1.75, RACKP, 0.15), k7(2.05, RACKP, 0)],
   left: [[0, 'grip'], [0.12, 'grip'], [0.3, 'belt'], [0.5, 'belt'], [0.82, 'magIn0'], [0.95, 'magIn1'], [1.02, 'magIn1'], [1.25, 'rack0'], [1.38, 'rack1'], [1.45, 'rack1'], [1.75, 'grip']] };
 // the first time you take it up: the slide racked to chamber a round
 const FIRST = { dur: 1.15, rack: [0.55, 0.7], release: 0.7,
-  gun: [[0, 0, 0, 0, 0, 0, 0], [0.35, -0.012, 0.02, 0.01, 0.1, 0.05, -0.12], [0.7, -0.01, 0.018, 0.02, 0.08, 0.04, -0.15], [0.78, -0.008, 0.02, 0, 0.03, 0.03, -0.1], [1.15, 0, 0, 0, 0, 0, 0]],
+  gun: [k7(0, RACKP, 0), k7(0.35, RACKP), k7(0.7, RACKP), k7(0.78, RACKP, 0.7), k7(1.15, RACKP, 0)],
   left: [[0, 'grip'], [0.15, 'grip'], [0.4, 'rack0'], [0.7, 'rack1'], [0.76, 'rack1'], [1.05, 'grip']] };
-
+export const RELOADS = { TACT, EMPTY, FIRST };
 const smooth = (t) => t * t * (3 - 2 * t);
 function track(keys, t, out) {                         // (the gun's keys: piecewise smooth)
   let i = 0;
@@ -67,7 +90,7 @@ export class Glock {
     this.owned = false; this.out = 0; this.want = false; this.first = true;
     this.mag = CAP; this.chambered = false; this.locked = false; this.reserve = RESERVE; this.auto = true;
     this.reload = null; this.cool = 0; this.ads = 0; this.sprint = 0; this.tuck = 0; this.trig = false;
-    this.bloom = 0; this.kickP = V3(); this.kickR = V3(); this.kickPv = V3(); this.kickRv = V3(); this.slide = 0; this.slideV = 0; this.selT = 0;
+    this.bloom = 0; this.kickP = V3(); this.kickR = V3(); this.kickPv = V3(); this.kickRv = V3(); this.slide = 0; this.slideT = 1; this.selT = 0;
     this.camKick = 0; this.prevYaw = null; this.prevPitch = 0; this.sway = V3(); this.t = 0; this.fovMul = 1;
     // ---- in your hands: the gun, the hands, the arms, all in the camera's frame (placed every frame)
     const vm = this.vm = new THREE.Group(); vm.name = 'viewmodel'; vm.matrixAutoUpdate = false; vm.visible = false;
@@ -79,7 +102,8 @@ export class Glock {
     for (const g of [this.newMag, this.oldMag]) g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
     this.skin = { hand: skinMaterial(), arm: skinMaterial(true) };
     this.hands = null; this.arms = null;
-    prepareHands(R_TUBE); prepareHands(L_TUBE); prepareArms();
+    this.rh = holdOf(HOLD.right); this.lh = holdOf(HOLD.left);
+    prepareHands(this.rh.tube, this.rh.pose); prepareHands(this.lh.tube, this.lh.pose); prepareHands(L_FREE); prepareArms();
     scene.add(vm);
     // ---- the world's: on the slab, and the things it leaves (cases, dropped magazines, marks, puffs)
     this.fx = new Effects(scene, m.M);
@@ -155,11 +179,14 @@ export class Glock {
     // the trigger
     const pull = input.down('Mouse0') && ready && this.tuck < 0.5;
     const pressed = input.hit('Mouse0') && ready && this.tuck < 0.5;
-    this.cool = Math.max(0, this.cool - dt);
+    // (the cycle's time carried over from frame to frame: 1200 a minute is 3 frames a round at 60 fps, not 4)
+    this.cool -= dt;
+    let fired = false;
     if (pull && !this.reload && this.sprint < 0.5) {
-      if (this.chambered && (this.auto || pressed)) { while (this.cool <= 0 && this.chambered) { this.shoot(ctx); this.cool += 60 / RPM; if (!this.auto) break; } }
+      if (this.chambered && (this.auto || pressed)) { while (this.cool <= 1e-9 && this.chambered) { this.shoot(ctx); fired = true; this.cool += 60 / RPM; if (!this.auto) break; } }
       else if (!this.chambered && pressed) { this.audio?.gunDry?.(); if (this.reserve > 0) this.tryReload(); }
     }
+    if (!fired) this.cool = Math.max(this.cool, 0);
     if (!pull) this.cool = Math.min(this.cool, 0);
     this.trig = pull;
     this.bloom = Math.max(0, this.bloom - dt * (pull ? 0.02 : 0.12));
@@ -167,10 +194,11 @@ export class Glock {
     spring(this.kickP, this.kickPv, 260, 26, dt); spring(this.kickR, this.kickRv, 220, 22, dt);
     const back = this.camKick * Math.min(1, dt * 7);
     this.camKick -= back; player.pitch -= back * 0.6;
-    // the slide: back on a shot and home again (a quick spring), held back once the last round has gone (the slide stop)
+    // the slide: back on a shot and home again (back in ~12 ms, home in ~30: a cycle within the 50 ms between two rounds,
+    // seen over two or three frames), held back once the last round has gone (the slide stop)
     if (this.reload?.slideHeld) { /* (in the left hand: stepReload) */ }
-    else if (this.locked) this.slide = damp1(this.slide, 0.027, 40, dt);
-    else { this.slideV += (-this.slide * 2600 - this.slideV * 70) * dt; this.slide = Math.max(0, this.slide + this.slideV * dt); }
+    else if (this.locked) this.slide = damp1(this.slide, SLIDE, 40, dt);
+    else { this.slideT += dt; this.slide = SLIDE * (this.slideT < 0.012 ? this.slideT / 0.012 : Math.max(0, 1 - (this.slideT - 0.012) / 0.03)); }
     // the sway: the gun lags behind the turning view and swings back
     if (this.prevYaw === null) { this.prevYaw = player.yaw; this.prevPitch = player.pitch; }
     let dy = player.yaw - this.prevYaw; if (dy > Math.PI) dy -= 2 * Math.PI; if (dy < -Math.PI) dy += 2 * Math.PI;
@@ -204,9 +232,9 @@ export class Glock {
       this.kickPv.y += 0.25; this.kickRv.x -= 1.5;            // (the slap)
     }
     if (k.rack && at(k.rack[0])) { r.slideHeld = true; this.audio?.slideBack?.(); }
-    if (k.rack && r.t >= k.rack[0] && r.t < k.release) this.slide = 0.027 + 0.003 * smooth(Math.min(1, (r.t - k.rack[0]) / (k.rack[1] - k.rack[0])));
+    if (k.rack && r.t >= k.rack[0] && r.t < k.release) this.slide = SLIDE + 0.003 * smooth(Math.min(1, (r.t - k.rack[0]) / (k.rack[1] - k.rack[0])));
     if (k.release !== undefined && at(k.release)) {
-      r.slideHeld = false; this.locked = false; this.slideV = -1.6;
+      r.slideHeld = false; this.locked = false; this.slideT = 0.012;          // (let go: it flies home)
       if (!this.chambered && this.mag > 0) { this.mag--; this.chambered = true; }
       this.audio?.slideRelease?.();
     }
@@ -235,11 +263,11 @@ export class Glock {
     // the kick: the gun back and up in the hands, the view up a little (more of it comes back than stays)
     const k = 1 - 0.55 * this.ads;
     this.kickPv.z += 0.55 * k; this.kickPv.y += 0.12 * k; this.kickRv.x += (2.4 + Math.random()) * k; this.kickRv.y += (Math.random() - 0.5) * 1.6 * k; this.kickRv.z += (Math.random() - 0.5) * 2 * k;
-    const up = (0.0055 + Math.random() * 0.002) * (1 - 0.3 * this.ads);
+    const up = (0.0065 + Math.random() * 0.003) * (1 - 0.3 * this.ads);
     player.pitch = Math.min(1.45, player.pitch + up); this.camKick += up;
-    player.yaw += (Math.random() - 0.5) * 0.004;
+    player.yaw += (Math.random() - 0.5) * 0.005;
     this.bloom = Math.min(0.045, this.bloom + 0.006);
-    this.slideV = 3.2;                                          // (the slide flies back, the spring brings it home)
+    this.slideT = 0;                                            // (the slide's cycle)
     this.audio?.gunShot?.();
     // the case out of the port, the suppressor's little puff (in the world: where they are in the hands)
     this.placeView(camera);
@@ -301,8 +329,8 @@ export class Glock {
     if (!this.vm.visible) return;
     this.placeView(camera);
     // the gun's pose: hip / aimed / running / tucked, down when put away; the sway, the bob, the breath, the recoil
-    blend(_P, HIP, ADS, this.ads); blendTo(_P, SPRINT, this.sprint * (1 - this.ads)); blendTo(_P, TUCK, this.tuck);
-    blendTo(_P, DOWN, 1 - smooth(this.out));
+    blend(_P, VIEW.hip, VIEW.ads, this.ads); blendTo(_P, VIEW.sprint, this.sprint * (1 - this.ads)); blendTo(_P, VIEW.tuck, this.tuck);
+    blendTo(_P, VIEW.down, 1 - smooth(this.out));
     const bob = player.bobAmt * (1 - 0.8 * this.ads), ph = player.bobPhase;
     _P.p.x += Math.cos(ph) * 0.006 * bob + this.sway.y * 0.08; _P.p.y += -Math.abs(Math.sin(ph)) * 0.008 * bob - this.sway.x * 0.06 - player.landShake * 0.5 + Math.sin(this.t * 1.4) * 0.0012 * (1 - this.ads);
     _P.p.add(this.kickP);
@@ -361,10 +389,11 @@ export class Glock {
   // the hands on the gun and the arms to them
   limbs(r) {
     if (!this.hands) {
-      const h0 = barHands(R_TUBE), h1 = barHands(L_TUBE);
-      if (h0 && h1) {
-        this.hands = [h1.left, h0.right].map(g => { const ms = new THREE.Mesh(g, this.skin.hand); ms.matrixAutoUpdate = false; ms.frustumCulled = false; this.vm.add(ms); return ms; });
-        this.wr = [barWrists(L_TUBE)[1], barWrists(R_TUBE)[0]];
+      const h0 = barHands(this.rh.tube, this.rh.pose), h1 = barHands(this.lh.tube, this.lh.pose), h2 = barHands(L_FREE);
+      if (h0 && h1 && h2) {
+        // (the left: on the grip, or open round the slide or a magazine)
+        this.hands = [h1.left, h0.right, h2.left].map(g => { const ms = new THREE.Mesh(g, this.skin.hand); ms.matrixAutoUpdate = false; ms.frustumCulled = false; this.vm.add(ms); return ms; });
+        this.wr = [barWrists(this.lh.tube, this.lh.pose)[1], barWrists(this.rh.tube, this.rh.pose)[0], barWrists(L_FREE)[1]];
       }
     }
     if (!this.arms) {
@@ -379,26 +408,30 @@ export class Glock {
     }
     if (!this.hands) return;
     // the right hand: on the grip always
-    _HR.multiplyMatrices(this.gun.matrix, _n4.compose(RH.p, RH.q, ONE));
-    // the left: on the grip, or down at the belt, or with the magazine, or racking the slide
-    const left = this.leftPose(r);
-    const H = [left, _HR];
-    for (let i = 0; i < 2; i++) { this.hands[i].matrix.copy(H[i]); this.hands[i].matrixWorldNeedsUpdate = true; }
+    _HR.multiplyMatrices(this.gun.matrix, _n4.compose(this.rh.p, this.rh.q, ONE));
+    // the left: on the grip, or down at the belt, or with the magazine, or racking the slide (its shape for it)
+    const left = this.leftPose(r), onGrip = this.leftOnGrip;
+    const H = [left, _HR, left];
+    for (let i = 0; i < 3; i++) { this.hands[i].matrix.copy(H[i]); this.hands[i].matrixWorldNeedsUpdate = true; }
+    this.hands[0].visible = onGrip; this.hands[2].visible = !onGrip;
     if (!this.arms) return;
     for (let i = 0; i < 2; i++) {
-      const w = this.wr[i], S = SH[i];
+      const w = this.wr[i === 0 && !onGrip ? 2 : i], S = SH[i];
       _w.copy(w.at).applyMatrix4(H[i]); _bk.copy(w.back).transformDirection(H[i]);
       ik(S, _w, ARM, POLE[i], _el, _tip);
       poseArm(this.arms[i], S, _el, _tip, _bk);
     }
   }
   leftPose(r) {
-    const onGrip = _HL.multiplyMatrices(this.gun.matrix, _n4.compose(LH.p, LH.q, ONE));
+    const onGrip = _HL.multiplyMatrices(this.gun.matrix, _n4.compose(this.lh.p, this.lh.q, ONE));
+    this.leftOnGrip = true;
     if (!r) return onGrip;
     const keys = r.k.left;
     let i = 0;
     while (i < keys.length - 2 && r.t > keys[i + 1][0]) i++;
     const a = keys[i], b = keys[Math.min(i + 1, keys.length - 1)], f = b[0] > a[0] ? smooth(Math.min(1, Math.max(0, (r.t - a[0]) / (b[0] - a[0])))) : 1;
+    // (the hand's shape changes halfway between the grip and anywhere else, as it opens and closes)
+    this.leftOnGrip = f < 0.5 ? a[1] === 'grip' : b[1] === 'grip';
     const A = this.leftAt(a[1], onGrip, _LA), B = this.leftAt(b[1], onGrip, _LB);
     // (between two places: the positions and the turns blended)
     A.decompose(_a, _q, _s); B.decompose(_b, _q2, _s);

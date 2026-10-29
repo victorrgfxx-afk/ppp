@@ -5,20 +5,21 @@ import { buildArm } from './armgeo.js';
 // The driver's hands and arms as meshes (driver.js): the right hand sculpted round a straight bar by handgeo.js, the
 // right arm by armgeo.js, in a worker (handworker.js), the hand once per rim thickness (one for every car), so the game
 // never stops for them; where there is no worker, a few milliseconds a frame. The hands laid on each rim (its radius)
-// when asked; the left hand and arm are the right ones mirrored.
-const bars = new Map(), pending = new Set(), rims = new Map();
+// when asked; the left hand and arm are the right ones mirrored. A hand can also be made in a pose of its own (a
+// pistol's grip: handgeo.js), kept apart from the wheel's.
+const bars = new Map(), pending = new Map(), rims = new Map();
 let worker, failed = false, armRaw = null, armGeos = null;
-const tk = (tube) => tube.toFixed(4);
+const tk = (tube, pose) => tube.toFixed(4) + (pose ? '|' + JSON.stringify(pose) : '');
 function done(b) {
   if (b.kind === 'arm') { armRaw = b; pending.delete('arm'); return; }
-  bars.set(tk(b.tube), b); pending.delete(tk(b.tube));
+  bars.set(b.key, b); pending.delete(b.key);
 }
 function post(job) {
   if (!worker && !failed) {
     try {
       worker = new Worker(new URL('./handworker.js', import.meta.url), { type: 'module' });
       worker.onmessage = (e) => done(e.data);
-      worker.onerror = (e) => { e.preventDefault?.(); failed = true; worker.terminate(); worker = null; for (const p of pending) here(p === 'arm' ? { kind: 'arm' } : { kind: 'hand', tube: +p }); };
+      worker.onerror = (e) => { e.preventDefault?.(); failed = true; worker.terminate(); worker = null; for (const job of pending.values()) here(job); };
     } catch (e) { failed = true; worker = null; }
   }
   if (worker) worker.postMessage(job); else here(job);
@@ -26,28 +27,30 @@ function post(job) {
 // (no worker: the sculpture a few milliseconds at a time between frames)
 const slow = [];
 function here(job) {
-  const it = job.kind === 'arm' ? buildArm() : buildGrip(job.tube);
-  slow.push({ it, kind: job.kind });
+  const it = job.kind === 'arm' ? buildArm() : buildGrip(job.tube, job.pose);
+  slow.push({ it, kind: job.kind, key: job.key });
   if (slow.length > 1) return;
   const slice = () => {
     const t0 = performance.now();
-    while (slow.length && performance.now() - t0 < 6) { const r = slow[0].it.next(); if (r.done) { r.value.kind = slow[0].kind; done(r.value); slow.shift(); } }
+    while (slow.length && performance.now() - t0 < 6) { const r = slow[0].it.next(); if (r.done) { r.value.kind = slow[0].kind; r.value.key = slow[0].key; done(r.value); slow.shift(); } }
     if (slow.length) setTimeout(slice, 0);
   };
   setTimeout(slice, 0);
 }
-// start making the hands for a rim's thickness (nothing if they are made or on the way)
-export function prepareHands(tube) {
-  const k = tk(tube);
+// start making the hands for a rim's thickness, or a bar's in a pose (nothing if they are made or on the way)
+export function prepareHands(tube, pose) {
+  const k = tk(tube, pose);
   if (bars.has(k) || pending.has(k)) return;
-  pending.add(k);
-  post({ kind: 'hand', tube });
+  const job = { kind: 'hand', tube, pose, key: k };
+  pending.set(k, job);
+  post(job);
 }
 // start making the arms (nothing if they are made or on the way)
 export function prepareArms() {
   if (armRaw || pending.has('arm')) return;
-  pending.add('arm');
-  post({ kind: 'arm' });
+  const job = { kind: 'arm' };
+  pending.set('arm', job);
+  post(job);
 }
 // the arms, { right, left: BufferGeometry, skinned to armgeo.js's five bones }, if they are made (else null)
 export function gripArms() {
@@ -96,10 +99,10 @@ export function gripHands(R, tube) {
 }
 
 // the hands round a straight bar (a pistol's grip, glock.js), { right, left: BufferGeometry } in the bar's frame (the
-// left the right mirrored across x), if they are made (else null: prepareHands)
+// left the right mirrored across x), if they are made (else null: prepareHands with the same pose)
 const straight = new Map();
-export function barHands(tube) {
-  const k = tk(tube);
+export function barHands(tube, pose) {
+  const k = tk(tube, pose);
   if (straight.has(k)) return straight.get(k);
   const b = bars.get(k);
   if (!b) return null;
@@ -119,8 +122,8 @@ export function barHands(tube) {
 }
 // where each forearm meets its hand on a straight bar, its direction there and the back of the wrist (the bar's frame):
 // [right, left]
-export function barWrists(tube) {
-  const { at, dir, back } = gripWristBar(tube), v = (a, i) => new THREE.Vector3(i ? -a[0] : a[0], a[1], a[2]);
+export function barWrists(tube, pose) {
+  const { at, dir, back } = gripWristBar(tube, pose), v = (a, i) => new THREE.Vector3(i ? -a[0] : a[0], a[1], a[2]);
   return [0, 1].map(i => ({ at: v(at, i), dir: v(dir, i), back: v(back, i) }));
 }
 
