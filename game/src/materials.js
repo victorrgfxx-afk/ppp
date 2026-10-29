@@ -37,8 +37,9 @@ float mossNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.
     float amt = (foot * (0.4 + 0.6 * side) + side * 0.4 * (1.0 - smoothstep(1.5, 5.0, vMossH))) * ${k.toFixed(2)};
     float n = 0.6 * mossNoise(vMapUv * vec2(7.0, 3.0)) + 0.4 * mossNoise(vMapUv * vec2(23.0, 11.0));
     mossK = clamp(amt * 1.6 - 0.25, 0.0, 1.0) * smoothstep(0.3, 0.7, n + (0.45 - lum) * 0.9);
-    // (green algae light and yellowish, moss darker and deeper green)
-    vec3 moss = mix(vec3(0.16, 0.2, 0.06), vec3(0.06, 0.1, 0.03), smoothstep(0.4, 0.8, foot));
+    // (green algae light and yellowish, moss darker and deeper green; down in a furrow as shaded as the furrow itself:
+    // the bark map's own darkening there is its depth, not its colour)
+    vec3 moss = mix(vec3(0.16, 0.2, 0.06), vec3(0.06, 0.1, 0.03), smoothstep(0.4, 0.8, foot)) * clamp(lum / 0.12, 0.25, 1.0);
     diffuseColor.rgb = mix(diffuseColor.rgb, moss * (0.85 + 0.3 * n), mossK * 0.9);
   }`)
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 1.0, mossK);')
@@ -159,7 +160,7 @@ export function buildMaterials() {
   std('bark', { map: TEX.bark, normalMap: TEX.barkN, roughness: 0.95 });
   // the forest species' own bark (barktex.js), the moss and green algae on it by species (mossy)
   for (const k of ['Beech', 'Hornbeam', 'Oak', 'Robinia', 'Birch', 'Spruce', 'Pine']) std('bark' + k, { map: TEX['bark' + k], normalMap: TEX['bark' + k + 'N'], roughness: k === 'Beech' || k === 'Birch' ? 0.82 : 0.95 });
-  for (const [k, a] of [['bark', 0.6], ['barkBeech', 1], ['barkHornbeam', 0.9], ['barkOak', 0.8], ['barkRobinia', 0.45], ['barkBirch', 0.35], ['barkSpruce', 0.55], ['barkPine', 0.4]]) mossy(M[k], a);
+  for (const [k, a] of [['bark', 0.6], ['barkBeech', 1], ['barkHornbeam', 0.9], ['barkOak', 0.7], ['barkRobinia', 0.45], ['barkBirch', 0.35], ['barkSpruce', 0.55], ['barkPine', 0.4]]) mossy(M[k], a);
 
   // --- roofs & metal ---
   std('roofPhoto', { map: TEX.roof_panels, normalMap: TEX.roof_panelsN, roughness: 0.42, metalness: 0.55, color: 0xe4e8ec });
