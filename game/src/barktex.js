@@ -132,12 +132,12 @@ export function genBarkTextures(TEX, tex, heightToNormal, half = false) {
   // across here and there by thin cracks, lichen on their tops
   {
     const wa = fbm2(32, 4), wb = fbm2(36, 4), fine = fbm2(33, 4), lA = fbm2(34, 4), cr = noise2(35), cm = noise2(38), fib = noise2(37);
-    const cells = voronoi(31, 9, 6, 0.75, 1 / 3);                          // (plates ~6 cm across, ~20 cm long)
+    const cells = voronoi(31, 11, 4, 0.75, 1 / 6);                         // (plates ~5 cm across, ~30 cm long)
     put('barkOak', make((u, v, o) => {
       // (the furrows: the plates' borders, wavy, the upright ones ~2-2.5 cm across and dark all over, a V in the relief;
-      // the breaks across the plates narrower; the plates rough, mottled grey-brown, each a shade of its own)
+      // the breaks across the plates much narrower; the plates rough, mottled grey-brown, each a shade of its own)
       const c = cells(u + 0.03 * (wa(u, v, 5, 2) - 0.5), v + 0.02 * (wb(u, v, 3, 4) - 0.5)), e = c[3];
-      const wd = (0.008 + 0.005 * fine(u, v, 6, 3)) * (0.35 + 0.65 * c[4]), fiss = sm(0.0, wd * 1.4, e), plate = Math.sqrt(sm(wd, wd * 1.8, e));
+      const wd = (0.008 + 0.005 * fine(u, v, 6, 3)) * (0.2 + 0.8 * c[4]), fiss = sm(0.0, wd * 1.4, e), plate = Math.sqrt(sm(wd, wd * 1.8, e));
       const dark = 1 - sm(wd * 0.7, wd * 1.15, e);
       // thin cracks across the plates
       const cl = Math.abs(Math.sin(Math.PI * (v * 9 + 0.7 * cr(u, v, 9, 3)))), across = sm(0.07, 0.0, cl) * sm(0.55, 0.7, cm(u, v, 18, 6)) * plate;
