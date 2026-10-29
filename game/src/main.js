@@ -40,6 +40,7 @@ import { Share } from './share.js';
 import { Campfire } from './campfire.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
+import { TWIND } from './treewind.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
@@ -227,6 +228,14 @@ async function main() {
   // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
   // the gale with the snow flying in it (STORM.uStorm: the flakes, the drift, the plastered snow)
   let galeBase = 15, galeAng = Math.atan2(-0.9986, 0.052), squall = false, blizzard = 0;
+  // the wind in the trees (treewind.js): the weather's breeze (m/s at the crowns) or the gale; the B key picks a speed
+  // instead (the Beaufort scale's: calm, a light breeze, a moderate one, a strong one, a gale)
+  const WIND_PICKS = [[0.5, 'calm (0,5 m/s, Beaufort 0–1): aproape nimic nu se mișcă'], [3, 'adiere (3 m/s, Beaufort 2): frunzele foșnesc, crenguțele tremură'],
+    [7, 'vânt moderat (7 m/s, Beaufort 4): se mișcă ramurile mici'], [12, 'vânt tare (12 m/s, Beaufort 6): se mișcă ramurile mari, copacii se leagănă'],
+    [20, 'vijelie (20 m/s, Beaufort 8): copacii se apleacă în rafale']];
+  let breeze = 2.5, treeWind = 2.5, windPick = Math.round(store.get('wind', -1));
+  if (!(windPick >= -1 && windPick < WIND_PICKS.length)) windPick = -1;
+  let leafy = 0, leafyAt = -1;                          // (how much foliage is round you: the rustle's loudness)
   // shelter from the wind where you are (0 in the open .. 0.9 right behind a wall): what stands upwind within a few of
   // its heights takes most of the wind off (behind a wall or a house ~10 % of it gets through close by, about half ~4
   // heights back, all of it ~6 heights back); a trunk or a pole only by how wide it is across the wind; among the
@@ -320,7 +329,7 @@ async function main() {
     scene.fog.near = baseFog = hazeFor(w.vis) * (horror ? 1.3 : 1);
     scene.fog.far = w.hazeH ?? HAZE_H;
     stormTarget = w.storm ?? 0;
-    galeBase = w.gale ?? 15; squall = !!w.squall;
+    galeBase = w.gale ?? 15; squall = !!w.squall; breeze = w.breeze ?? 2.5;
     if (w.galeFrom !== undefined) {                                           // (a compass bearing: where it comes from)
       const b = (w.galeFrom + 180) * Math.PI / 180, th = GEO.meta.origin.bearing * Math.PI / 180, e = Math.sin(b), nn = Math.cos(b);
       galeAng = Math.atan2(e * Math.sin(th) + nn * Math.cos(th), -e * Math.cos(th) + nn * Math.sin(th));
@@ -1274,7 +1283,15 @@ async function main() {
       STORM.uWind.value.set(Math.cos(ang) * windSpeed, Math.sin(ang) * windSpeed);
       STORM.uWindOff.value.addScaledVector(STORM.uWind.value, dt);
       STORM.uStorm.value = blizzard; STORM.gust = storm > 0.01 ? gust : 1; STORM.gale = squall ? storm : 0; STORM.burst = burst;
-      WIND.strength.value = 1 + storm * 1.3 * Math.min(gust, 1.7);      // (the trees sway harder)
+      // the trees: the breeze (its own slow ups and downs) or the gale with its gusts; the gusts running through the
+      // woods are the shader's (twGust), carried along by the wind (uTwOff)
+      const want = windPick >= 0 ? WIND_PICKS[windPick][0] : (1 - storm) * breeze * (0.8 + 0.4 * vn1(t * 0.03 + 21)) + storm * galeBase * Math.min(gust, 1.8);
+      treeWind = damp(treeWind, want, 1.5, dt);
+      TWIND.uTwSpeed.value = treeWind;
+      TWIND.uTwDir.value.set(Math.cos(ang), Math.sin(ang));
+      TWIND.uTwOff.value.addScaledVector(TWIND.uTwDir.value, treeWind * dt);
+      TWIND.uTwCam.value.copy(camera.position);
+      WIND.strength.value = clamp(0.4 + 0.24 * treeWind, 0.4, 3.4);      // (the grass, the weeds, the hedges: materials.js addWind)
       if (baseFog) scene.fog.near = baseFog * (1 + storm * (gust - 1) * 0.6);   // (white curtains with every gust)
     }
     sky.material.uniforms.uTime.value = t;
@@ -1285,6 +1302,12 @@ async function main() {
       if (input.hit('KeyP')) screenshot();
       if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
+      // B: the wind - after the weather, or a speed of the Beaufort scale
+      if (input.hit('KeyB')) {
+        windPick = windPick + 1 >= WIND_PICKS.length ? -1 : windPick + 1;
+        store.set('wind', windPick);
+        hud.toast('Vântul: ' + (windPick < 0 ? `după vreme (acum ~${Math.round(treeWind)} m/s)` : WIND_PICKS[windPick][1]), 3.5);
+      }
       if (input.hit('KeyO')) {
         const opts = hourOptions(), i = opts.findIndex(([v]) => v === (golden ?? hour));
         setHour(opts[(i + 1) % opts.length][0]);
@@ -1498,7 +1521,14 @@ async function main() {
       riverT = 0.5; riverK = geoWorld.water?.sound(camera.position) ?? 0;
       geoWorld.water?.setSun(Math.min(1, sun.intensity / 3.8) * sun.shadow.intensity * (1 - night));   // (the caustics: only in sunshine)
     }
-    audio.update(dt, { river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
+    // (the foliage round you, for the leaves' rustle: the trunks within ~22 m, looked up twice a second)
+    if (t - leafyAt > 0.5) {
+      leafyAt = t; const near = [];
+      for (const pr of world.providers) pr(camera.position.x, camera.position.z, 22, near);
+      let nt = 0; for (const b of near) if (b.tag === 'tree') nt++;
+      leafy = Math.min(1, nt / 18);
+    }
+    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -1688,7 +1718,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

@@ -25,6 +25,12 @@ export class Audio {
     this.windGain = ctx.createGain(); this.windGain.gain.value = 0.05;
     wn.connect(wf).connect(this.windGain).connect(this.master); wn.start();
     this.windFilter = wf;
+    // the leaves in the wind: the sprays' hiss, louder and brighter as the wind rises, in waves with the gusts, among
+    // the trees only (silent in a calm; in winter, the bare twigs, much less)
+    const lr = ctx.createBufferSource(); lr.buffer = this.noise; lr.loop = true; lr.playbackRate.value = 1.3;
+    this.rustleF = ctx.createBiquadFilter(); this.rustleF.type = 'bandpass'; this.rustleF.frequency.value = 3200; this.rustleF.Q.value = 0.7;
+    this.rustleGain = ctx.createGain(); this.rustleGain.gain.value = 0;
+    lr.connect(this.rustleF).connect(this.rustleGain).connect(this.master); lr.start();
     // rain: a hiss (drops on asphalt and leaves) over a soft roar, silent until it rains
     const ra = ctx.createBufferSource(); ra.buffer = this.noise; ra.loop = true;
     const rh = ctx.createBiquadFilter(); rh.type = 'highpass'; rh.frequency.value = 900;
@@ -319,8 +325,12 @@ export class Audio {
     const now = this.ctx.currentTime;
     // the wind: a breeze, or in a blizzard a roar that rises and falls with the gusts, whistling at its peaks
     const storm = st.storm ?? 0, gust = st.gust ?? 1, lee = st.shelter ?? 0;   // (in the lee the roar is overhead: duller, the hiss gone)
-    this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41) + storm * (250 + 700 * gust) * (1 - 0.6 * lee), now, 0.4);
-    this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0) + storm * (0.12 + 0.2 * gust), now, 0.3);
+    const U = st.windU ?? 2.5;                                   // (the wind at the crowns, m/s: main.js)
+    this.windFilter.frequency.setTargetAtTime(300 + 200 * Math.sin(this.t * 0.13) + 120 * Math.sin(this.t * 0.41) + 18 * U + storm * (250 + 700 * gust) * (1 - 0.6 * lee), now, 0.4);
+    this.windGain.gain.setTargetAtTime(0.04 + 0.025 * (0.5 + 0.5 * Math.sin(this.t * 0.07)) + Math.min(0.12, 0.0003 * U * U) * (1 - storm) + (st.speed ? Math.min(0.15, st.speed * 0.004) : 0) + storm * (0.12 + 0.2 * gust), now, 0.3);
+    const surge = 0.65 + 0.35 * Math.sin(this.t * 0.9) * Math.sin(this.t * 0.37 + 1), lv = (st.leaves ?? 0) * (st.bare ? 0.35 : 1);
+    this.rustleGain.gain.setTargetAtTime(lv * Math.min(0.16, 0.012 * Math.pow(Math.max(0, U - 0.8), 1.3)) * surge * (1 - 0.5 * lee), now, 0.25);
+    this.rustleF.frequency.setTargetAtTime(2400 + 160 * Math.min(U, 20) + 600 * surge, now, 0.3);
     this.galeF.frequency.setTargetAtTime(420 + 650 * gust + 120 * Math.sin(this.t * 0.9), now, 0.35);
     this.galeGain.gain.setTargetAtTime(storm * 0.11 * gust * gust * (1 - 0.55 * lee), now, 0.3);
     this.hissGain.gain.setTargetAtTime(storm * 0.035 * gust * (1 - 0.85 * lee), now, 0.3);

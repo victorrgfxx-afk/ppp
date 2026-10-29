@@ -33,9 +33,10 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const UP = V(0, 1, 0);
 
 // a tube through points P (radii R), `sides` round; rad(i, a) may shape the section (buttresses, fluting); the bark
-// texture keeps its scale: uRep wraps across the stem, v runs 1 per 1.2 m
-function tube(out, P, R, sides, { rad = null, uRep = 1, v0 = 0 } = {}) {
-  const pos = [], nrm = [], uv = [], idx = [];
+// texture keeps its scale: uRep wraps across the stem, v runs 1 per 1.2 m; w: the wind's facts (treewind.js aWind):
+// the tree's height H and wf(i) = [how much ring i swings with its branch, the branch's phase]
+function tube(out, P, R, sides, { rad = null, uRep = 1, v0 = 0, w = null } = {}) {
+  const pos = [], nrm = [], uv = [], idx = [], aw = [];
   const T = V(0, 0, 0), N = V(0, 0, 0), B = V(0, 0, 0), d = V(0, 0, 0);
   let len = v0;
   let prevN = null;
@@ -54,6 +55,8 @@ function tube(out, P, R, sides, { rad = null, uRep = 1, v0 = 0 } = {}) {
       pos.push(P[i].x + d.x * r, P[i].y + d.y * r, P[i].z + d.z * r);
       nrm.push(d.x, d.y, d.z);
       uv.push(s / sides * uRep, len / 1.2);
+      const [bw, ph] = w?.wf ? w.wf(i) : [0, 0];
+      aw.push(w?.H ?? 1, bw, ph, 0);
     }
   }
   for (let i = 0; i < P.length - 1; i++) for (let s = 0; s < sides; s++) {
@@ -64,6 +67,7 @@ function tube(out, P, R, sides, { rad = null, uRep = 1, v0 = 0 } = {}) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('aWind', new THREE.Float32BufferAttribute(aw, 4));
   g.setIndex(idx);
   out.push(g.toNonIndexed());
 }
@@ -83,7 +87,7 @@ function envelope(shape, u) {
 // t: the type (geo/trees.js TYPES: H, crown, trunkR, bole, cards, droop), form: a HABIT key, seed: the variant
 // detail 0: the instanced model near you; -1: lighter (seen from 75 m on: fewer limbs drawn, the same crown); 1: richer
 export function broadTree(t, form, seed, detail = 0) {
-  const h = HABIT[form] ?? HABIT.generic, r = rng(seed * 7919 + 13);
+  const h = HABIT[form] ?? HABIT.generic, r = rng(seed * 7919 + 13), rw = rng(seed * 104729 + 7);   // (rw: the wind's phases only - the shape's draws stay as they were)
   const H = t.H, R0 = t.trunkR, bole = t.bole ?? 0.4, crownR = t.crown;
   const yb = H * bole, wood = [], cards = [];
   const lite = detail < 0, sides = detail > 0 ? 10 : lite ? 5 : 7;
@@ -103,7 +107,9 @@ export function broadTree(t, form, seed, detail = 0) {
     stem.push(axis(y)); stemR.push(radius(y));
   }
   const lob = h.lobes, lph = r() * 6.28, flute = h.flute ?? 0;
+  const W0 = { H, wf: () => [0, 0] };                               // (the stem: it bends, it does not swing)
   tube(wood, stem, stemR, sides, {
+    w: W0,
     uRep: Math.max(1, Math.round(2 * Math.PI * R0 / 0.55)),
     rad: (i, a) => {
       const y = stem[i].y;
@@ -122,7 +128,7 @@ export function broadTree(t, form, seed, detail = 0) {
         dir.x += (r() - 0.5) * h.kink * 0.6; dir.z += (r() - 0.5) * h.kink * 0.6; dir.y += 0.05; dir.normalize();
         P.push(P[s - 1].clone().addScaledVector(dir, L / 4)); Rr.push(rT * 0.75 * (1 - 0.7 * s / 4));
       }
-      tube(wood, P, Rr, Math.max(5, sides - 2), { uRep: Math.max(1, Math.round(2 * Math.PI * rT * 0.75 / 0.55)) });
+      tube(wood, P, Rr, Math.max(5, sides - 2), { uRep: Math.max(1, Math.round(2 * Math.PI * rT * 0.75 / 0.55)), w: W0 });   // (a heavy limb bends with the stem)
       leaders.push({ P, R: Rr });
     }
   } else leaders.push({ P: stem, R: stemR });
@@ -160,12 +166,14 @@ export function broadTree(t, form, seed, detail = 0) {
       P.push(P[s - 1].clone().addScaledVector(dir, L / n));
       Rb.push(Rb[0] * Math.pow(1 - s / (n + 0.6), 1.15) + 0.008);
     }
-    if (!lite) tube(wood, P, Rb, detail > 0 ? 6 : 4);
-    else if (k % 2 === 0) tube(wood, [P[0], P[2], P[3]], [Rb[0], Rb[2], Rb[3]], 3);
+    // (the wind: a branch swings the more the longer it is and the farther out along it)
+    const flex = Math.min(1.1, Math.max(0.35, L / 4)), bph = rw() * 6.28, bwAt = (f) => flex * Math.pow(f, 1.5);
+    if (!lite) tube(wood, P, Rb, detail > 0 ? 6 : 4, { w: { H, wf: (i) => [bwAt(i / n), bph] } });
+    else if (k % 2 === 0) tube(wood, [P[0], P[2], P[3]], [Rb[0], Rb[2], Rb[3]], 3, { w: { H, wf: (i) => [bwAt([0, 2, 3][i] / n), bph] } });
     const tip = P[n];
-    anchors.push([tip, tip.clone().sub(c0).setY(0).normalize(), 3]);
-    anchors.push([P[Math.ceil(n * 0.6)], P[Math.ceil(n * 0.6)].clone().sub(c0).setY(0).normalize(), 1.4]);
-    if (h.low) anchors.push([P[1], P[1].clone().sub(c0).setY(0).normalize(), 1.2]);   // (leafy along the whole limb, down low)
+    anchors.push([tip, tip.clone().sub(c0).setY(0).normalize(), 3, bwAt(1), bph]);
+    anchors.push([P[Math.ceil(n * 0.6)], P[Math.ceil(n * 0.6)].clone().sub(c0).setY(0).normalize(), 1.4, bwAt(Math.ceil(n * 0.6) / n), bph]);
+    if (h.low) anchors.push([P[1], P[1].clone().sub(c0).setY(0).normalize(), 1.2, bwAt(1 / n), bph]);   // (leafy along the whole limb, down low)
     // secondaries: off the outer part, to either side and up
     const nSec = detail > 0 ? 3 : (L > 2.2 ? 2 : 1);
     for (let q = 0; q < nSec; q++) {
@@ -177,18 +185,20 @@ export function broadTree(t, form, seed, detail = 0) {
       const S = [sp, sp.clone().addScaledVector(sd, sl * 0.55), null];
       sd.y += 0.15 * h.up - (h.droop ?? 0) * 0.4; sd.normalize();
       S[2] = S[1].clone().addScaledVector(sd, sl * 0.45);
-      if (!lite) tube(wood, S, [Rb[i] * 0.55, Rb[i] * 0.32, 0.008], detail > 0 ? 5 : 3);
-      anchors.push([S[2], S[2].clone().sub(c0).setY(0).normalize(), 2]);
+      // (in step with its branch, one swing more on top: it stays on it where it forks off)
+      const b0 = bwAt(f), fs = Math.min(0.8, Math.max(0.3, sl / 3)), sph = bph;
+      if (!lite) tube(wood, S, [Rb[i] * 0.55, Rb[i] * 0.32, 0.008], detail > 0 ? 5 : 3, { w: { H, wf: (j) => [b0 + fs * Math.pow(j / 2, 1.3), sph] } });
+      anchors.push([S[2], S[2].clone().sub(c0).setY(0).normalize(), 2, b0 + fs, sph]);
     }
   }
   // the top: the leader's end in the crown, a few short shoots
-  if (h.leader > 0) { const tp = axis(top); for (let k = 0; k < 3; k++) anchors.push([V(tp.x + (r() - 0.5) * crownR * 0.4, H * (0.93 + 0.06 * r()), tp.z + (r() - 0.5) * crownR * 0.4), V(r() - 0.5, 0, r() - 0.5).normalize(), 2]); }
+  if (h.leader > 0) { const tp = axis(top); for (let k = 0; k < 3; k++) anchors.push([V(tp.x + (r() - 0.5) * crownR * 0.4, H * (0.93 + 0.06 * r()), tp.z + (r() - 0.5) * crownR * 0.4), V(r() - 0.5, 0, r() - 0.5).normalize(), 2, 0.35, rw() * 6.28]); }
   // the stubs of shed lower branches on a forest-grown bole
   if (bole > 0.3) for (let k = 0, n = detail > 0 ? 7 : 3; k < n; k++) {
     const y = yb * (0.35 + 0.6 * r()), a = r() * 6.28, p = axis(y), rr = radius(y);
     const dir = V(Math.cos(a) * 0.85, 0.5, Math.sin(a) * 0.85).normalize();
     const sl = 0.12 + r() * 0.25, sr = 0.035 + 0.03 * r();
-    if (!lite) tube(wood, [p, p.clone().addScaledVector(dir, rr + sl)], [sr, 0.012], 4);
+    if (!lite) tube(wood, [p, p.clone().addScaledVector(dir, rr + sl)], [sr, 0.012], 4, { w: W0 });
   }
   // ---- the foliage: sprays round the anchors, weighted to the tips
   const tot = anchors.reduce((a, b) => a + b[2], 0);
@@ -198,7 +208,7 @@ export function broadTree(t, form, seed, detail = 0) {
   for (let i = 0; i < nC; i++) {
     let a = r() * tot, an = anchors[0];
     for (const x of anchors) { a -= x[2]; if (a <= 0) { an = x; break; } }
-    const [p0, out] = an, rad = cs * (0.4 + 0.9 * r());
+    const [p0, out, , abw, aph] = an, rad = cs * (0.4 + 0.9 * r());
     const p = p0.clone().add(V((r() - 0.5) * 2 * rad, (r() - 0.35) * rad * (h.flat ? 0.6 : 1.1), (r() - 0.5) * 2 * rad)).addScaledVector(out, rad * 0.35);
     if (t.droop || h.droop) p.y -= Math.max(0, p.y - yb) * 0.04 * (t.droop ? 3 : 1);
     if (p.y < yb * 0.9) p.y = yb * 0.9 + r() * 0.5;
@@ -215,7 +225,10 @@ export function broadTree(t, form, seed, detail = 0) {
       v.y = v.y * 0.7 + 0.4; v.normalize();
       nrm.setXYZ(k, v.x, v.y, v.z);
     }
-    cards.push(g.toNonIndexed());
+    const gn = g.toNonIndexed(), aw = new Float32Array(gn.attributes.position.count * 4);
+    for (let k = 0; k < aw.length; k += 4) { aw[k] = H; aw[k + 1] = abw; aw[k + 2] = aph; aw[k + 3] = 1; }   // (the spray goes with its branch, and flutters)
+    gn.setAttribute('aWind', new THREE.BufferAttribute(aw, 4));
+    cards.push(gn);
   }
   // a dark, lumpy inner volume for the far billboards only (the crown reads as a mass from afar)
   const core = new THREE.IcosahedronGeometry(1, 1);                     // (non-indexed already)
@@ -227,6 +240,7 @@ export function broadTree(t, form, seed, detail = 0) {
     cp.setXYZ(k, x * crownR * 0.55 * f, y * vr * 0.7 * f + cc.y, z * crownR * 0.55 * f);
     const v = V(x, y * 0.7 + 0.35, z).normalize(); cn.setXYZ(k, v.x, v.y, v.z);
   }
-  const clean = (g) => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k); return g; };
+  { const aw = new Float32Array(cp.count * 4); for (let k = 0; k < aw.length; k += 4) aw[k] = H; core.setAttribute('aWind', new THREE.BufferAttribute(aw, 4)); }
+  const clean = (g) => { for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'aWind'].includes(k)) g.deleteAttribute(k); return g; };
   return { wood: mergeGeometries(wood.map(clean)), leaves: mergeGeometries(cards.map(clean)), core: clean(core) };
 }

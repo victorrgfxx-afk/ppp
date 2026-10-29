@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { M, addWind } from './materials.js';
+import { windTree, windShadows, windAuto } from './treewind.js';
 import { rng, WIND } from './util.js';
 
 // ---------- tree archetypes (local space, base at origin) ----------
@@ -14,10 +15,11 @@ function cardGeo(w, l, a, droop, twist, y, offset = 0) {
   return g;
 }
 
-function taperedCyl(p0, p1, r0, r1, seg = 7) {
+// (hs: rings along it - a stem that bends in the wind needs them)
+function taperedCyl(p0, p1, r0, r1, seg = 7, hs = 1) {
   const d = new THREE.Vector3().subVectors(p1, p0);
   const len = d.length();
-  const g = new THREE.CylinderGeometry(r1, r0, len, seg, 1, true);
+  const g = new THREE.CylinderGeometry(r1, r0, len, seg, hs, true);
   g.translate(0, len / 2, 0);
   const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
   g.applyQuaternion(q);
@@ -53,7 +55,7 @@ export function spruceArchetype(seed, H = 13, Rmax = 2.6) {
   // leader
   cards.push(cardGeo(0.35, 0.8, 0, -Math.PI / 2 + 0.05, 0, H - 0.3));
   const foliage = mergeGeometries(cards.map(strip));
-  const trunk = mergeGeometries([strip(taperedCyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, H, 0), 0.28, 0.03, 9))]);
+  const trunk = mergeGeometries([strip(taperedCyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, H, 0), 0.28, 0.03, 9, 8))]);
   // dark inner cone so the crown never looks see-through
   const core = new THREE.ConeGeometry(Rmax * 0.62, H - y0 - 0.2, 12, 8);
   core.translate(0, y0 + (H - y0) / 2 - 0.3, 0);
@@ -88,7 +90,7 @@ export function broadleafArchetype(seed, { H = 7, crown = 3, trunkR = 0.18, leaf
     }
   } else {
     const trunkTop = new THREE.Vector3((r() - 0.5) * 0.4, H * 0.42, (r() - 0.5) * 0.4);
-    wood.push(strip(taperedCyl(new THREE.Vector3(0, -0.2, 0), trunkTop, trunkR, trunkR * 0.75, 9)));
+    wood.push(strip(taperedCyl(new THREE.Vector3(0, -0.2, 0), trunkTop, trunkR, trunkR * 0.75, 9, 3)));
     const nb = 4 + Math.floor(r() * 2);
     for (let i = 0; i < nb; i++) {
       const a = i / nb * Math.PI * 2 + r() * 0.5;
@@ -195,6 +197,16 @@ export function yuccaArchetype(seed, H = 0.8) {
 }
 
 // ---------- instanced placement ----------
+// a shared material for the trees: a copy with the tree's wind, its own hooks kept (a clone of a material loses them)
+const WIND_MATS = new Map();
+function windMat(m) {
+  if (!WIND_MATS.has(m)) {
+    const c = m.clone();
+    c.onBeforeCompile = m.onBeforeCompile; c.customProgramCacheKey = m.customProgramCacheKey;
+    WIND_MATS.set(m, windTree(c));
+  }
+  return WIND_MATS.get(m);
+}
 export class Forest {
   constructor(scene) { this.scene = scene; this.types = new Map(); this.records = new Map(); }
   add(type, archetypeFn, x, y, z, rotY = 0, scale = 1) {
@@ -205,7 +217,13 @@ export class Forest {
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     for (const [, t] of this.types) {
       const arch = t.make();
-      for (const [geo, material] of arch.parts) {
+      // the trees and bushes take the wind as the map's do (treewind.js): their height and crown from the model
+      const tree = arch.parts.some(([, m]) => m === M.bark);
+      let H = 1, crown = 0.5;
+      if (tree) for (const [g] of arch.parts) { const pp = g.attributes.position; for (let i = 0; i < pp.count; i++) { H = Math.max(H, pp.getY(i)); crown = Math.max(crown, Math.hypot(pp.getX(i), pp.getZ(i))); } }
+      for (const [geo, mat0] of arch.parts) {
+        let material = mat0;
+        if (tree) { windAuto(geo, H, crown, mat0.alphaTest > 0, mat0 === M.fir ? 0.3 : 1); material = windMat(mat0); }
         geo.computeBoundingSphere();
         const im = new THREE.InstancedMesh(geo, material, t.list.length);
         t.list.forEach(([x, y, z, ry, sc], i) => {
@@ -213,8 +231,9 @@ export class Forest {
           im.setMatrixAt(i, m4.compose(p, q, s));
         });
         im.castShadow = true;
-        im.receiveShadow = material !== M.fir;
-        im.userData.noAO = material.alphaTest > 0;
+        if (tree) windShadows(im);
+        im.receiveShadow = mat0 !== M.fir;
+        im.userData.noAO = mat0.alphaTest > 0;
         im.computeBoundingSphere();
         this.scene.add(im);
         (t.ims ??= []).push(im);

@@ -9,6 +9,7 @@ import { broadTree } from './broadgen.js';
 import { treeOnRoad } from './roadbed.js';
 import { SEASON, autumnize } from '../season.js';
 import { DITHER, DITHER_GLSL } from '../taa.js';
+import { windTree, windShadows, windAuto, windStem } from '../treewind.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
 // Sentinel-2 shows vegetation). Near: light 3D trees per 200 m chunk; far: impostor billboards
@@ -76,9 +77,10 @@ const GENUS_CONIFER = [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1];
 const GENUS_SHRUB = [1, 0.45, 1, 0.65, 0.5, 0.5, 0.6, 0.9, 1, 0.9, 0.7, 0.8, 0.5];
 
 // (the bark texture keeps its scale, as on the broadleaves' stems (broadgen.js): a tile 0.55 m round, 1.2 m up)
-function cyl(p0, p1, r0, r1, seg) {
+// (hs: rings up it - a stem that bends in the wind needs them)
+function cyl(p0, p1, r0, r1, seg, hs = 1) {
   const d = new THREE.Vector3().subVectors(p1, p0), L = d.length();
-  const g = new THREE.CylinderGeometry(r1, r0, L, seg, 1, true), uv = g.attributes.uv, rep = Math.max(1, Math.round(2 * Math.PI * r0 / 0.55));
+  const g = new THREE.CylinderGeometry(r1, r0, L, seg, hs, true), uv = g.attributes.uv, rep = Math.max(1, Math.round(2 * Math.PI * r0 / 0.55));
   for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * rep, uv.getY(i) * L / 1.2);
   g.translate(0, L / 2, 0);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
@@ -92,7 +94,7 @@ function broadModel(t, seed) {
   const wood = [], cards = [];
   const bole = t.bole ?? 0.4, vr = t.H * 0.34 * (1 - bole) / 0.6;          // crown base and vertical radius
   const top = new THREE.Vector3(0, t.H * bole, 0);
-  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), top, t.trunkR, t.trunkR * 0.7, 6));
+  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), top, t.trunkR, t.trunkR * 0.7, 6, 4));
   const ends = [];
   for (let i = 0; i < 4; i++) {
     const a = i / 4 * Math.PI * 2 + r() * 0.6;
@@ -156,7 +158,7 @@ function spruceModel(t, seed) {
       cards.push(clean(g));
     }
   }
-  const trunk = cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.9, 0), 0.3, 0.05, 9);
+  const trunk = cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.9, 0), 0.3, 0.05, 9, 8);
   return [[clean(trunk), 'barkSpruce'], [clean(core.toNonIndexed()), 'core'], [mergeGeometries(cards), 'fir']];
 }
 
@@ -166,7 +168,7 @@ function pineModel(t, seed) {
   const r = rng(seed);
   const wood = [], cards = [];
   const base = t.H * 0.6;
-  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.96, 0), 0.27, 0.07, 9));
+  wood.push(cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, t.H * 0.96, 0), 0.27, 0.07, 9, 8));
   const clumps = [];
   for (let i = 0; i < 16; i++) {
     const a = i * 2.4 + r() * 0.8, k = r();
@@ -268,9 +270,13 @@ export function buildTrees(scene, world, renderer, quality) {
   for (const k of ['bark', 'barkBeech', 'barkHornbeam', 'barkOak', 'barkRobinia', 'barkBirch', 'barkHazel', 'barkSpruce', 'barkPine']) if (mats[k]) mats[k].userData.bark = true;
   mats.crown.userData.core = mats.pineCore.userData.core = true;
   // every skeleton type (broadgen.js) in NVAR variants; the billboards far away are baked from the first
+  // (the wind's facts on every part, treewind.js: the skeleton trees bring their own; the others from the shape -
+  // the conifers' needles flutter less than leaves)
   const partsOf = (t, i, v, lite) => {
     if (t.form) { const g = broadTree(t, t.form, 50 + i + 101 * v, lite ? -1 : 0); return [[g.wood, t.bark ?? 'bark'], [g.core, 'crown'], [g.leaves, 'leaf']]; }
-    return t.pine ? pineModel(t, 50 + i) : t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
+    const ps = t.pine ? pineModel(t, 50 + i) : t.conifer ? spruceModel(t, 50 + i) : broadModel(t, 50 + i);
+    for (const [g, k] of ps) windAuto(g, t.H, t.crown, k === 'leaf' || k === 'fir' || k === 'pine', k === 'leaf' ? 1 : 0.3);
+    return ps;
   };
   // (lite: the same tree with fewer limbs drawn, for the forest's sub-tiles from ~75 m on)
   const variants = TYPES.map((t, i) => {
@@ -322,7 +328,7 @@ export function buildTrees(scene, world, renderer, quality) {
   };
   // near 3D models: built lazily the first time a chunk comes close
   const nearMats = new Map();
-  const nearMat = (mat) => { if (!nearMats.has(mat)) nearMats.set(mat, withSwitch(mat, nearR, false, 'near')); return nearMats.get(mat); };
+  const nearMat = (mat) => { if (!nearMats.has(mat)) nearMats.set(mat, windTree(withSwitch(mat, nearR, false, 'near'))); return nearMats.get(mat); };
   const buildNear = (ch) => {
     const grp = new THREE.Group();
     ch.firs = [];
@@ -337,6 +343,7 @@ export function buildTrees(scene, world, renderer, quality) {
         const im = new THREE.InstancedMesh(g, nearMat(mat), list.length);
         list.forEach((k, j) => setInst(im, k, j, TYPES[ty].tint ?? 0xffffff, leafy));
         im.castShadow = true; im.receiveShadow = true;
+        windShadows(im);                                 // (the shadows sway with the tree)
         im.userData.noAO = true;
         im.computeBoundingSphere();
         grp.add(im);
@@ -349,7 +356,7 @@ export function buildTrees(scene, world, renderer, quality) {
     return grp;
   };
   // far impostors: 3 crossed quads per tree, one InstancedMesh per 1.5 km chunk and type (frustum culled)
-  const impGeo = models.map(({ imp }) => {
+  const impGeo = models.map(({ imp, t }) => {
     if (!imp) return null;
     const quads = [];
     for (const a of [0, Math.PI / 3, 2 * Math.PI / 3]) {
@@ -359,11 +366,11 @@ export function buildTrees(scene, world, renderer, quality) {
       const nn = g.attributes.normal; for (let k = 0; k < nn.count; k++) nn.setXYZ(k, 0, 1, 0);
       quads.push(g);
     }
-    return mergeGeometries(quads);
+    return windStem(mergeGeometries(quads), t.H);              // (far off a tree still bends in a strong wind: its stem only)
   });
   const farList = [];
   const farCull = { 'Scăzută': 3200, 'Medie': 4300, 'Înaltă': 5500 }[quality.label] ?? 6500;   // impostor chunks fade into the ground colour
-  const impMat = models.map(({ t, imp }) => imp && withSwitch(autumnize(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), t.leaf), nearR, true, 'far'));
+  const impMat = models.map(({ t, imp }) => imp && windTree(withSwitch(autumnize(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), t.leaf), nearR, true, 'far')));
   for (const ch of far.values()) {
     const byType = TYPES.map(() => []);
     for (const k of ch.idx) byType[TY[k]].push(k);
@@ -546,9 +553,9 @@ function eachShrub(x0, z0, x1, z1, cb) {
 function buildForest(scene, world, quality, { models, variants, varOf, impGeo, withSwitch, setInst }) {
   if (!GEO.forestBits) return { update() {}, count: () => 0, Q: null };
   const Q = FOREST_Q[quality.label] ?? { imp: 1500, near: 180, shrub: 95 };
-  const impMat = models.map(({ t, imp }) => imp && withSwitch(autumnize(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), t.leaf), Q.near, true, 'ffar', Q.imp));
+  const impMat = models.map(({ t, imp }) => imp && windTree(withSwitch(autumnize(new THREE.MeshStandardMaterial({ map: imp.tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9, color: 0xffffff }), t.leaf), Q.near, true, 'ffar', Q.imp)));
   const nearMats = new Map();
-  const nearMat = (mat, r) => { const k = mat.uuid + r; if (!nearMats.has(k)) nearMats.set(k, withSwitch(mat, r, false, 'fnear')); return nearMats.get(k); };
+  const nearMat = (mat, r) => { const k = mat.uuid + r; if (!nearMats.has(k)) nearMats.set(k, windTree(withSwitch(mat, r, false, 'fnear'))); return nearMats.get(k); };
   const tiles = new Map();
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sv = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
   let live = 0;
@@ -560,6 +567,7 @@ function buildForest(scene, world, quality, { models, variants, varOf, impGeo, w
     });
     im.computeBoundingSphere();
     im.castShadow = cast; im.receiveShadow = true; im.userData.noAO = true;
+    if (cast) windShadows(im);
     return im;
   };
   const buildTile = (ti, tj) => {

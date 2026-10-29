@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { M, mossy } from '../materials.js';
+import { windTree, windShadows } from '../treewind.js';
 import { TEX } from '../textures.js';
 import { WIND, rng } from '../util.js';
 import { SNOW, STORM } from '../rain.js';
@@ -157,7 +158,17 @@ export function spruceDetail(spec) {
   for (let i = 0; i < 4; i++) branch(H - 0.7, i * Math.PI / 2 + r() * 0.5, 0.45, 0.95, true);
   const sg = snow.build();
   sg.computeVertexNormals();
-  return { wood: wood.build(), needle: needle.build(), snow: sg };
+  return { wood: windFacts(wood.build(), H, 0), needle: windFacts(needle.build(), H, 0.3), snow: windFacts(sg, H, 0) };
+}
+// the wind's facts (treewind.js aWind): the tree's height, the swing as the flex along the branch, the branch's phase
+// from its bearing round the stem and its height (as the card model's: geo/trees.js), the needles' little flutter
+function windFacts(g, H, flutter) {
+  const p = g.attributes.position, f = g.attributes.aFlex, a = new Float32Array(p.count * 4);
+  for (let i = 0; i < p.count; i++) {
+    a[i * 4] = H; a[i * 4 + 1] = f.getX(i); a[i * 4 + 2] = 3 * Math.atan2(p.getZ(i), p.getX(i)) + 0.45 * p.getY(i); a[i * 4 + 3] = flutter;
+  }
+  g.setAttribute('aWind', new THREE.BufferAttribute(a, 4));
+  return g;
 }
 
 // ------------------------------------------------------------------ the near pool, the branches you push, the snow that falls
@@ -180,12 +191,8 @@ const FIR_VERT = /* glsl */`
   }
   transformed = aAnchor + (transformed - aAnchor) * fk;
 #endif
+  // (the wind has bent it already: treewind.js, as every tree)
   vec3 fwp = fm * transformed + fo, fd = vec3(0.0);
-  // wind: the branch tips sway, the tree leans a little in the gusts
-  float fph = fo.x * 0.35 + fo.z * 0.27, fg = (0.6 + 0.4 * sin(uTime * 0.23 + fo.x * 0.02)) * uWind;
-  fd.x += (sin(uTime * 1.3 + fph + position.y * 0.4) * 0.6 + sin(uTime * 3.4 + fph * 1.7) * 0.25) * 0.09 * aFlex * fg;
-  fd.z += cos(uTime * 1.05 + fph + position.y * 0.3) * 0.06 * aFlex * fg;
-  fd.xz += vec2(sin(uTime * 0.7 + fph), cos(uTime * 0.6 + fph)) * 0.0002 * position.y * position.y * fg;
   // the bodies pushing through: the branches give way around them (and swing back: w is a spring)
   for (int i = 0; i < ${NC}; i++) {
     vec4 c = uFirC[i];
@@ -237,9 +244,9 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
     };
     const bark = M.barkSpruce.clone(); bark.color = new THREE.Color(0xe8e2dc);   // (barktex.js: the spruce's scales; the twigs a little lighter)
     this.mats = {
-      wood: mossy(inject(bark, false, 'firWood'), 0.55),          // (the clone lost its moss and its shade: again, over the sway)
-      needle: inject(new THREE.MeshStandardMaterial({ map: TEX.spruceAtlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.74, color: 0xe2f0d6 }), false, 'firNeedle'),
-      snow: inject(new THREE.MeshStandardMaterial({ roughness: 0.85, map: TEX.snowLump, normalMap: TEX.snowLumpN, normalScale: new THREE.Vector2(0.9, 0.9), color: new THREE.Color().setRGB(0.95, 0.96, 0.99) }), true, 'firSnow'),
+      wood: windTree(mossy(inject(bark, false, 'firWood'), 0.55)),          // (the clone lost its moss and its shade: again, over the sway)
+      needle: windTree(inject(new THREE.MeshStandardMaterial({ map: TEX.spruceAtlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.74, color: 0xe2f0d6 }), false, 'firNeedle')),
+      snow: windTree(inject(new THREE.MeshStandardMaterial({ roughness: 0.85, map: TEX.snowLump, normalMap: TEX.snowLumpN, normalScale: new THREE.Vector2(0.9, 0.9), color: new THREE.Color().setRGB(0.95, 0.96, 0.99) }), true, 'firSnow')),
     };
     this.mats.needle.userData.snow = 0.8;                       // (rain.js: the needles' tops whiten too)
     this.mats.snow.userData.noWet = true;
@@ -260,6 +267,7 @@ uniform float uShedTop[${NS}], uCapK, uTime, uWind;`)
       const im = new THREE.InstancedMesh(geo[part], this.mats[part], this.cap);
       im.count = 0; im.frustumCulled = false;
       im.castShadow = part !== 'snow'; im.receiveShadow = true;
+      if (im.castShadow) windShadows(im);
       im.userData.noAO = true; im.userData.ueSkip = 'trees';
       if (part === 'needle') im.setColorAt(0, new THREE.Color(1, 1, 1));
       this.scene.add(im);

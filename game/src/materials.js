@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { TEX } from './textures.js';
 import { WIND } from './util.js';
+import { TWIND, TWIND_GLSL } from './treewind.js';
 import { autumnize } from './season.js';
 
 export const M = {};
@@ -63,25 +64,35 @@ function std(name, o) {
 }
 
 // Adds a gentle wind sway to foliage (vertex shader), strength by height above object base.
+// the plain sway of a plant (grass, weeds, ferns, a hedge, a creeper): bent downwind by the wind of the day, as far as
+// the gust passing over it (treewind.js twGust: the same gusts that run through the trees ripple through the grass),
+// swinging about that; amp: the sway per metre of height at the day's wind (WIND.strength 1). Trees with their limbs
+// (treewind.js windTree) leave this out
 export function addWind(material, amp = 0.08, freq = 1.3) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = WIND.time;
     shader.uniforms.uWind = WIND.strength;
+    Object.assign(shader.uniforms, TWIND);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uWind;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uWind;\n#ifndef TREE_WIND\n' + TWIND_GLSL + '\n#endif')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
+#ifndef TREE_WIND
         {
-          vec4 wp = modelMatrix * vec4(position, 1.0);
+          mat4 pm = modelMatrix;
           #ifdef USE_INSTANCING
-            wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+            pm = modelMatrix * instanceMatrix;
           #endif
+          vec4 wp = pm * vec4(position, 1.0);
           float h = max(0.0, position.y);
           float ph = wp.x * 0.35 + wp.z * 0.27;
           float s = sin(uTime * ${freq.toFixed(2)} + ph) * 0.6 + sin(uTime * ${(freq * 2.7).toFixed(2)} + ph * 1.7) * 0.25;
-          float gust = 0.6 + 0.4 * sin(uTime * 0.23 + wp.x * 0.02);
-          transformed.x += s * ${amp.toFixed(3)} * h * uWind * gust;
-          transformed.z += cos(uTime * ${(freq * 0.8).toFixed(2)} + ph) * ${(amp * 0.6).toFixed(3)} * h * uWind * gust;
-        }`);
+          float k = ${amp.toFixed(3)} * h * uWind * (0.4 + 0.9 * twGust1(wp.xz));
+          // (in the world's frame: downwind, swinging about that, a little across; back into the model's)
+          vec3 dw = vec3(uTwDir.x, 0.0, uTwDir.y) * (0.35 + 0.55 * (0.5 + 0.5 * s)) + vec3(-uTwDir.y, 0.0, uTwDir.x) * (0.35 * cos(uTime * ${(freq * 0.8).toFixed(2)} + ph));
+          mat3 m3 = mat3(pm);
+          transformed += transpose(m3) * dw * k / dot(m3[0], m3[0]);
+        }
+#endif`);
     // (a negative alpha in the scene buffer marks what sways: the anti-aliasing, taa.js, keeps less of its past there -
     // it moves with no motion the reprojection knows of; the passes reading the alpha take its magnitude)
     // (only in the frame's scene pass: WIND.mark; an impostor baked from these leaves must keep its alpha)
