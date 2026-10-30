@@ -777,6 +777,81 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Modul shooter: mecanicile Call of Duty-urilor noi, adaptate, cât ai Glock-ul scos (V89)** (`src/player.js`, `src/weapon.js`, `src/range.js`, `src/audio.js`, `src/geo/hillwood.js`, `src/main.js`, `index.html`):
+  * **Când e activ:** cât ții pistolul scos. Cu Q îl pui deoparte și revii la mersul de dinainte (C = ghemuit, Shift = fugă).
+  * **Sprintul tactic** (din MW 2019, implicit în MWII, MWIII și BO6; în BO7 și MW4 a devenit atu):
+    * Shift apăsat a doua oară în 0,3 s, mergând înainte;
+    * ~7,6 m/s față de 6,2 m/s la fuga obișnuită, cel mult ~4,5 s; apoi treci la fuga obișnuită. Respirația revine în ~6 s, și cât fugi normal (ca în MWIII);
+    * pistolul stă ridicat lângă cap, în mâna dreaptă, cu țeava în sus. Mâna stângă se ia de pe armă și se balansează, în afara ecranului;
+    * ca în jocuri, tragi mai târziu ieșind din el decât din fuga obișnuită: 267 ms față de 117 ms (măsurat).
+  * **Alunecarea** (C sau Ctrl din fugă; în jocuri pornește tot doar din sprint):
+    * pe șold, ~0,9 s (pe ud ~1 s, pe zăpadă ~1,4 s), frânată de frecare: ~0,45 g pe iarbă și asfalt, ~0,32 g pe ud, ~0,14 g pe zăpadă. Panta te împinge mai departe la vale și te oprește mai repede la deal;
+    * camera coboară la ~0,85 m și se înclină ~4°, iar arma se înclină și ea. Simți asperitățile terenului în cameră;
+    * măsurat pe pajiștea de lângă cruce: din fuga de 6,2 m/s pornești cu 6,8 m/s și aluneci 4,2 m în 0,92 s, ieșind cu 3,1 m/s. Pe iarbă udă aluneci 5,1 m în 1,0 s, pe zăpadă 7,7 m în 1,4 s, iar la vale (panta de ~5% a pajiștii) 4,8 m;
+    * poți trage și ochi din ea. Dacă ochești în alunecare, intri singur în Tac-Stance (ca în MWIII);
+    * **anularea alunecării** (slide cancel, MWIII, MW4): Shift în timpul ei. Te ridici și fugi mai departe; Shift de două ori te ridică direct în sprint tactic, fiindcă alunecarea nu-i consumă respirația;
+    * **săritura din alunecare:** Space, după primele 0,15 s (și MW4 a mărit întârzierea asta). Viteza se păstrează.
+  * **Alunecarea pe spate** (Supine Slide, nou în MW4: „double-tap the slide”):
+    * C apăsat de două ori din fugă. Alunecarea e mai lungă (~1,35 s) și mai joasă și se termină pe spate, cu ochii la ~0,42 m;
+    * pe spate poți privi de jur împrejur, ochi și trage. Ochirea e mai lentă, ca în MW4;
+    * Space, C sau Shift te ridică în ~0,6 s;
+    * măsurat: 4,9 m în 1,3 s, cu ochii coborând la ~0,5 m, apoi culcat la 0,42 m. După 0,1 s de ochire, arma e la jumătatea drumului spre cătare, față de trei sferturi în picioare. Te ridici în 0,62 s.
+  * **Tac-Stance** (MWIII):
+    * V cât ții clic dreapta (combinația implicită din MWIII pe PC) sau Z oricând;
+    * arma se înclină ~45° spre mijloc, puțin mai jos și mai departe decât la ochire;
+    * dispersia e la jumătate față de tragerea de la șold. Mergi aproape ca de la șold (−12%, față de −40% la ochire);
+    * ieși din ea când dai drumul la clic dreapta (dacă ai intrat cu V), când fugi, sau cu Z.
+  * **Lovitura cu pistolul** (V, fără ochire; tasta implicită de corp la corp în CoD pe PC):
+    * pistolul pleacă din dreapta spre stânga, iar mâna stângă se ia de pe el;
+    * lovitura vine la 0,17 s, cu rază de ~1,25 m: o țintă cade, un zid, un copac sau o mașină dau o bufnitură.
+  * **Inspectarea armei** (I, tasta din MWII):
+    * ~3,5 s: arma întoarsă pe partea stângă, apoi un press check (închizătorul tras ~1 cm ca să vezi cartușul din cameră), apoi partea dreaptă;
+    * ochitul, focul, fuga, alunecarea sau reîncărcarea o întrerup.
+  * **Fără fugă cu arma la ochi:** ochirea sau trăgaciul ținut opresc fuga, ca în jocuri.
+  * **Poligonul de pe pajiștea de lângă cruce** (`src/range.js`):
+    * **Unde:** o linie de tragere (o grindă de lemn pe iarbă) la 9 m de cruce, spre nord-nord-vest (340°), în sus pe pajiște:
+      * terenul urcă ~5%, iar marginea pădurii e la ~75 m, ca parapet;
+      * e departe de drumeagul de peste deal, care trece pe lângă cruce prin est;
+      * e departe și de luminișul scenei de noapte (~115 m spre vest-nord-vest).
+      * culoarul e cosit (iarba de ~10–20 cm, fără flori), ca la un poligon adevărat; în rest pajiștea rămâne cu iarba ei înaltă.
+    * **6 ținte pop-up la 7–28 m**, staggered ca să nu se acopere una pe alta:
+      * siluete E-type din plastic oliv, ca ale armatei, ~50 × 100 cm, pe ridicătoare de oțel;
+      * cad pe spate după un glonț în cap sau trei în corp (gâtul se socotește la cap, ca în jocuri);
+      * după 3,5 s motorul le ridică la loc;
+      * găurile rămân în plastic;
+      * nu treci prin ele cât stau ridicate.
+    * **3 plăci de oțel AR500**, albe, de 20, 25 și 30 cm, la 15, 25 și 35 m:
+      * atârnă în lanțuri de o bară pe doi stâlpi de lemn;
+      * fiecare glonț le leagănă după impulsul lui (9,5 g × 295 m/s ≈ 2,8 N·s), cu momentul de inerție al discului: placa de 30 cm (7 kg), lovită de la 35 m, se leagănă ~15°;
+      * sună „ding” după zborul glonțului și drumul sunetului înapoi, cu modurile unui disc liber de oțel de 10 mm (~816 Hz × (25 cm/diametru)², apoi 1,73×, 2,33×, 3,9×, 4,1×), ~1–2 s;
+      * plumbul lasă stropi gri pe ele.
+    * Gloanțele ajung la ținte când trebuie (după timpul de zbor). Hitmarkerul și sunetul vin în acel moment, nu la apăsarea trăgaciului.
+  * **HUD-ul, ca în jocurile noi:**
+    * **hitmarker:** patru linii scurte pe diagonale, albe la lovitură, roșii la eliminare, mai mari pentru cap. Fiecare are sunetul lui: un „tic” la lovitură, unul mai greu la eliminare, cu un clinchet la cap;
+    * **punctaj lângă cruce:** +100 ELIMINARE, +50 LOVITURĂ ÎN CAP, +50 DE LA DISTANȚĂ (de la ~22 m), +50 UN GLONȚ, O ELIMINARE, DUBLĂ / TRIPLĂ ELIMINARE (în 3 s);
+    * **medalii** sus, **kill feed** pe stânga („TU ▸ GLOCK 18 ▸ ȚINTA 3 · 18 m · în cap”);
+    * **sub punct:** „MUNIȚIE PUȚINĂ”, „[R] REÎNCARCĂ”, „FĂRĂ MUNIȚIE”;
+    * **statistica poligonului** sub muniție: doborâte, precizie, în cap, XP.
+  * **Pe telefon:**
+    * butoane noi Tac, Lovește și Inspect, pe 4 coloane mai mici, ca să încapă pe ecran;
+    * Fugi de două ori: sprint tactic;
+    * Jos din fugă: alunecare; de două ori: pe spate.
+  * **Ce n-am pus, și de ce:**
+    * omnimovement-ul din BO6 și BO7 (sprint, alunecare și plonjon în orice direcție): fuga de aici merge oricum în orice direcție, dar plonjonul cere tot corpul animat;
+    * wall jump-ul din BO7 și cățăratul peste obstacole din MW4 (mantle): cer detectarea marginilor fiecărui obiect din lume;
+    * atuurile și seriile de eliminări.
+  * **Surse:**
+    * [Call of Duty: ghidul de mișcare din BO6](https://callofduty.com/guides/blackops6/training/call-of-duty-guides-black-ops-6-multiplayer-training-movement);
+    * [Call of Duty Wiki: Tactical Sprint](https://callofduty.fandom.com/wiki/Tactical_Sprint);
+    * [GameWith: Tac Stance în MW3](https://gamewith.net/cod-mw3/42432) și [ONE Esports: Tac Stance](https://www.oneesports.gg/call-of-duty/tactical-stance-how-to-use-mw3-wz/) (ADS + V);
+    * [Twinfinite: Tac Stance la ochire în alunecare](https://twinfinite.net/call-of-duty/how-to-turn-off-tac-stance-in-modern-warfare-3-mw3/);
+    * [Gfinity: inspectarea armei în MWII](https://www.gfinityesports.com/guides/modern-warfare-2-how-to-inspect-weapon) (tasta I);
+    * [Dexerto: mișcarea din MW4](https://www.dexerto.com/wikis/modern-warfare-4/movement-changes/) (Supine Slide, fără omnimovement);
+    * [MP1st: MW4 scoate sprintul tactic implicit](https://mp1st.com/news/modern-warfare-4-beta-feedback-remove-tactical-sprint-default-increased-ttk) și [Destructoid: patch-ul betei MW4](https://www.destructoid.com/mw4-beta-weekend-2-patch-notes/);
+    * [Insider Gaming: slide cancel în MW4](https://insider-gaming.com/modern-warfare-4-will-not-feature-omnimovement-but-does-have-slide-canceling/);
+    * [Dexerto: atuul Tac Sprinter din BO7](https://www.dexerto.com/wikis/black-ops-7-guides-walkthrough-tips/equipment/tac-sprinter/);
+    * [SteelSeries: tastele din BO6](https://steelseries.com/blog/best-pc-keybinds-for-black-ops-6-multiplayer-1187) (Shift: sprint / sprint tactic, V: corp la corp).
+    * Culorile hitmarkerului (alb lovitură, roșu eliminare) sunt convenția larg folosită; n-am găsit o confirmare oficială de la Activision pentru fiecare joc.
 * **Mâna și arma nu mai tremură când rotești privirea (V88)** (`src/weapon.js`):
   * **Cauza, măsurată:** legănarea armei (arma rămâne puțin în urma privirii când o rotești) folosea direct pasul privirii din fiecare cadru. Mișcările mouse-ului sau ale degetului ajung însă neregulat în cadre: două într-unul, trei sau niciunul în următorul, iar cadrele nu durează nici ele exact la fel. Arma și mâinile tremurau astfel de la un cadru la altul. La o rotire rapidă se loveau și de o limită dură, apoi reveneau brusc.
     * Măsurat la o rotire a privirii stânga–dreapta și sus–jos (până la ~4 rad/s), la 60 FPS: capătul armei tremura ~0,35° cu mouse-ul și ~0,43° pe touch (până la 1,1–1,3° într-un cadru), adică 7–8 pixeli la 1080p. Mâna tremura ~0,11–0,14°.

@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { addMownGrass } from './geo/hillwood.js';
 
 // The range on the meadow by the cross (V89): where the Glock lies, a training lane up the hill as the Call of Duty
 // games' firing ranges have it - pop-up targets that go down when "killed" and come back up, and steel plates that
 // ring. It runs from a firing line 9 m out from the cross toward the north-north-west (340 deg): up a slope of ~5 %,
-// open grass to the wood's edge ~75 m on (a backstop of rising ground and trees); away from the lane over the hill
-// (it passes the cross on its east side, coming from the north-north-east and going on to the south-east) and from
-// the clearing of the night's scene (to the west-north-west, ~115 m).
+// open grass to the wood's edge ~75 m on (a backstop of rising ground and trees), the lane itself mown; away from the
+// lane over the hill (it passes the cross on its east side, coming from the north-north-east and going on to the
+// south-east) and from the clearing of the night's scene (to the west-north-west, ~115 m).
 // The pop-ups: olive plastic E-type silhouettes (the army's, ~50 x 100 cm) on lifters - a round in the head puts one
 // down, three in the body (it falls back flat behind its lifter, is raised again 3.5 s later by its motor). The
 // plates: AR500 steel discs of 20, 25 and 30 cm, white, hung by two chains from a bar on two posts, swinging with
@@ -35,6 +36,8 @@ export class Range {
     const at = (d, l) => { const x = cross.x + f.x * (9 + d) + r.x * l, z = cross.z + f.z * (9 + d) + r.z * l; return V3(x, world.groundHeight(x, z), z); };
     this.line = at(0, 0);
     this.center = at(18, 1);
+    // (its lane mown, as a range's is: from behind the firing line to past the last plate, 7 m to each side)
+    addMownGrass((x, z) => { const dx = x - this.line.x, dz = z - this.line.z, a = dx * f.x + dz * f.z; return a > -3 && a < 40 && Math.abs(dx * r.x + dz * r.z) < 7; });
     const g = this.group = new THREE.Group(); g.name = 'range'; scene.add(g);
     const olive = new THREE.MeshStandardMaterial({ color: 0x4d5a2a, roughness: 0.72 });
     const drab = new THREE.MeshStandardMaterial({ color: 0x3a4027, roughness: 0.55, metalness: 0.35 });
@@ -147,7 +150,7 @@ export class Range {
       // plate and a little more - the lead splashes back out)
       tg.av += (h.local.z > 0 ? 1 : -1) * 1.1 * M_ROUND * V_ROUND * Math.max(0.05, -h.local.y) / tg.I;
       this.audio?.gong?.(d, d / 343, tg.f0);
-      this.hits++;
+      if (!melee) this.hits++;
       this.emit({ type: 'hit', plate: true, d, target: tg });
       return;
     }
@@ -175,10 +178,10 @@ export class Range {
       if (e.d >= 22 && !e.melee) { lines.push(['DE LA DISTANȚĂ', 50]); medal = 'DE LA DISTANȚĂ'; }
       if (e.first && !e.head && !e.melee) lines.push(['UN GLONȚ, O ELIMINARE', 50]);
       if (e.multi >= 2) { const nm = e.multi === 2 ? 'DUBLĂ ELIMINARE' : e.multi === 3 ? 'TRIPLĂ ELIMINARE' : e.multi + ' DINTR-O SUFLARE'; lines.push([nm, Math.min(100, 25 * e.multi)]); medal = nm; }
-    } else lines.push([e.plate ? 'OȚEL' : 'LOVITURĂ', e.plate ? 10 : 0]);
+    }
     const pts = lines.reduce((s, l) => s + l[1], 0);
     this.xp += pts;
-    this.onEvent?.({ ...e, lines: lines.filter(l => l[1] > 0 || e.type === 'kill'), pts, medal, name: (e.target.kind === 'plate' ? 'Placa ' : 'Ținta ') + e.target.n });
+    this.onEvent?.({ ...e, lines, pts, medal, name: (e.target.kind === 'plate' ? 'Placa ' : 'Ținta ') + e.target.n });
   }
   mark(tg, l) {
     const i = tg.hi++ % 40;

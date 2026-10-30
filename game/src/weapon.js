@@ -902,6 +902,7 @@ class GunHud {
     this.md = mk('left:50%;top:22%;transform:translateX(-50%);z-index:21;opacity:0;text-align:center;font:800 18px system-ui,sans-serif;color:#ffe9a8;letter-spacing:.08em;text-shadow:0 2px 6px rgba(0,0,0,.9);white-space:nowrap');
     this.fd = mk('left:14px;top:46%;z-index:20;font:600 12px system-ui,sans-serif;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9)');
     this.wn = mk('left:50%;top:calc(50% + 40px);transform:translateX(-50%);z-index:20;font:700 12px system-ui,sans-serif;letter-spacing:.12em;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap');
+    this.touchUI = matchMedia('(pointer: coarse)').matches;
     this.hmT = -1e9; this.hmK = 0; this.scT = -1e9; this.scPts = 0; this.scLines = []; this.mdT = -1e9; this.feeds = []; this.wnS = ''; this.rngS = '';
   }
   hit(kill, head) {
@@ -927,13 +928,12 @@ class GunHud {
     while (this.feeds.length > 4) this.feeds.pop().d.remove();
   }
   warn(rounds, res) {
-    const touch = matchMedia('(pointer: coarse)').matches;
-    const [txt, col] = rounds < 0 ? ['', ''] : rounds === 0 ? (res > 0 ? [(touch ? '' : '[R] ') + 'REÎNCARCĂ', '#ff5a4a'] : ['FĂRĂ MUNIȚIE', '#ff5a4a']) : rounds <= 10 ? ['MUNIȚIE PUȚINĂ', '#ffd24a'] : ['', ''];
+    const [txt, col] = rounds < 0 ? ['', ''] : rounds === 0 ? (res > 0 ? [(this.touchUI ? '' : '[R] ') + 'REÎNCARCĂ', '#ff5a4a'] : ['FĂRĂ MUNIȚIE', '#ff5a4a']) : rounds <= 10 ? ['MUNIȚIE PUȚINĂ', '#ffd24a'] : ['', ''];
     const k = txt + col; if (k === this.wnS) return; this.wnS = k;
     this.wn.textContent = txt; this.wn.style.color = col;
   }
   range(r) {
-    const t = r ? 'POLIGON · ' + r.kills + ' doborâte · ' + (r.shots ? Math.round(100 * Math.min(1, r.hits / r.shots)) : 0) + '% precizie · ' + r.heads + ' în cap · ' + r.xp + ' XP' : '';
+    const t = r ? 'POLIGON · doborâte: ' + r.kills + ' · precizie: ' + (r.shots ? Math.round(100 * Math.min(1, r.hits / r.shots)) : 0) + '% · în cap: ' + r.heads + ' · ' + r.xp + ' XP' : '';
     if (t !== this.rngS) { this.rngS = t; this.k.rng.textContent = t; }
   }
   tick() {

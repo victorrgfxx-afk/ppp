@@ -92,6 +92,10 @@ const blocked = (x, z) => { const i = Math.round(x - BL.x0), j = Math.round(z - 
 const SHORT = [];
 export function addShortGrass(fn) { SHORT.push(fn); }
 const short = (x, z) => SHORT.some(f => f(x, z));
+// mown: a lawn's height where another place says so (range.js: the range's lane) - thinner, ~10-20 cm, no flowers
+const MOWN = [];
+export function addMownGrass(fn) { MOWN.push(fn); }
+const mown = (x, z) => MOWN.some(f => f(x, z));
 // trodden short: by the cross, around the flagpole and the parked car (the photo's foreground)
 function trodden(x, z) {
   if (!SP) return false;
@@ -371,9 +375,10 @@ export function buildHillwood(scene, world, quality) {
         let h, w, c;
         if (!s.forest) {
           const patch = 0.75 + 0.5 * valueNoise2(x, z, 9, 5), dry = valueNoise2(x, z, 14, 77);
-          const tall = !short(x, z) && (!near || (r1 < 0.3 && s.tk === 1 && !trodden(x, z)));
+          const mw = mown(x, z), tall = !mw && !short(x, z) && (!near || (r1 < 0.3 && s.tk === 1 && !trodden(x, z)));
           if (tall) { h = (0.55 + 0.4 * r2) * patch * (near ? 1 : 1.12); w = h * (near ? 1.0 : vfar ? 2.2 : 1.35); }
           else { h = (0.24 + 0.18 * r2) * s.tk; w = 0.95 + 0.4 * r3; }
+          if (mw) { if (r3 < 0.35) continue; h *= 0.45; }
           c = [0.8 + 0.28 * dry, 0.9 + 0.08 * dry, 0.62 + 0.1 * dry];
           if (near && trodden(x, z)) {                                                // trodden: half as thick, short, straw-dry
             if (r3 < 0.5) continue;
@@ -389,7 +394,7 @@ export function buildHillwood(scene, world, quality) {
       // meadow flowers, in patches
       if (near) for (let k = 0, n = Math.round(area * 0.09 * Q.d); k < n; k++) {
         const x = x0 + R() * TS, z = z0 + R() * TS, s = site(x, z), r1 = R();
-        if (!s || s.forest || s.onTrack || trodden(x, z) || valueNoise2(x, z, 12, 91) < 0.55) continue;
+        if (!s || s.forest || s.onTrack || trodden(x, z) || mown(x, z) || valueNoise2(x, z, 12, 91) < 0.55) continue;
         const h = 0.4 + 0.3 * r1; L.flower.push({ x, z, ry: r1 * 6.283, s: [h, h, h], c: [1, 1, 1] });
       }
       // the wood's floor: leaf litter all over, twigs and branches, ferns in the shade, brambles at the edge
@@ -413,7 +418,7 @@ export function buildHillwood(scene, world, quality) {
       }
       if (!vfar) for (let k = 0, n = Math.round(area * 0.14 * Q.d); k < n; k++) {
         const x = x0 + R() * TS, z = z0 + R() * TS, s = site(x, z), r1 = R();
-        if (!s || s.onTrack || trodden(x, z)) continue;
+        if (!s || s.onTrack || trodden(x, z) || mown(x, z)) continue;
         const nearWood = s.forest ? s.edge >= 0.55 : (wood(x + 5, z) || wood(x - 5, z) || wood(x, z + 5) || wood(x, z - 5));
         if (!nearWood || r1 > 0.55) continue;
         const h = 0.6 + 0.6 * R(), w = h * (1.1 + 0.5 * R()); L.bramble.push({ x, z, ry: R() * 6.283, s: [w, h, w], c: [1, 1, 1] });

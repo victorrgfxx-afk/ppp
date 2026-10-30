@@ -46,6 +46,7 @@ export class Player {
   setNoclip(on) {
     this.noclip = on;
     this.vel.set(0, 0, 0);
+    this.sl = null; this.sup = null; this.tacWant = false; this.tac = false;
     if (!on) {
       const gh = this.world.groundHeight(this.pos.x, this.pos.z, this.pos.y + 1);
       if (this.pos.y < gh) this.pos.y = gh;
@@ -122,7 +123,8 @@ export class Player {
       hs = Math.hypot(this.vel.x, this.vel.z);
       if (input.hit('Space') && s.t > 0.15) { this.sl = null; this.vel.y = 4.1; this.onGround = false; jumped = true; audio?.jump(); }
       else if (shiftHit && !s.long) this.sl = null;
-      else if (s.t >= (s.long ? 1.35 : 0.9) || (hs < 1 && s.t > 0.3)) { this.sl = null; if (s.long) this.sup = { t: 0, up: -1 }; }
+      // (~0.9 s on grass or tarmac, the long one ~1.35; on wet grass and on snow, gliding, a little longer: ~1.0 / ~1.35 s)
+      else if (s.t >= (s.long ? 1.35 : 0.9) * Math.pow(0.45 / mu, 0.35) || (hs < 1 && s.t > 0.3)) { this.sl = null; if (s.long) this.sup = { t: 0, up: -1 }; }
     }
     // on your back: still (the view free all round); getting up ~0.6 s
     if (this.sup) {
