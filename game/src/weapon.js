@@ -15,6 +15,12 @@ import { gloveCuff } from './handgeo.js';
 // to what it meets: the ground (dust, a mark), a wall or a house (a puff of plaster and a hole), a trunk (bark), a car
 // or the cross's steel (sparks and a ring); people and animals are not targets here (the rounds go past them). The
 // spent cases fly out to the right, bounce and stay a while. The sound: the suppressor's cough and the slide's clatter.
+// V89, the shooter's mode of the modern Call of Duty games while it is out (the moves: player.js; the range: range.js):
+// the tactical stance (MWIII's Tac Stance: V while aiming, or Z - the gun canted ~45 deg, between the hip and the
+// sights; aiming in a slide takes it by itself), the tactical sprint's raised pistol (and the longer wait to fire out
+// of it), a slide's cant, the strike (V, not aiming: the pistol whipped across), the inspection (I, as MWII binds
+// it: both sides and a press check); on the range the hit markers (white a hit, red a kill), the score, the medals
+// and the feed; under the dot the games' prompts (low on rounds, reload, none).
 
 const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const CAP = 33, RESERVE = 99, RPM = 1200, V0 = 295, G = 9.81, VM_FOV = 55, SLIDE = 0.027;   // (SLIDE: the slide's travel, m)
@@ -34,7 +40,12 @@ const ADS = pose(0, -0.0222, -0.255, 0, 0, 0);
 const SPRINT = pose(0.06, -0.13, -0.3, -0.45, 0.4, 0.4);
 const DOWN = pose(0.07, -0.42, -0.2, -1.1, 0.3, 0.3);
 const TUCK = pose(0.075, -0.07, -0.2, 0.6, 0.18, -0.15);
-export const VIEW = { hip: HIP, ads: ADS, sprint: SPRINT, down: DOWN, tuck: TUCK };
+// (V89) the tactical stance: canted ~45 deg in toward the middle, a little lower and further out than at the sights;
+// the tactical sprint: the pistol up beside your head in the right hand, its muzzle to the sky (the left arm swinging,
+// out of sight)
+const STANCE = pose(0.018, -0.052, -0.315, 0.02, 0.03, 0.78);
+const TAC = pose(0.13, -0.075, -0.24, 1.2, 0.45, 0.25);
+export const VIEW = { hip: HIP, ads: ADS, sprint: SPRINT, down: DOWN, tuck: TUCK, stance: STANCE, tac: TAC };
 // the hands' holds on the gun (each hand sculpted round a bar in a pose of its own: handgeo.js): its bar laid along the
 // grip (raised up it, moved forward and across, turned about it). The right: a high grip, the web up under the
 // beavertail, the index finger on the trigger, the thumb forward along the frame's left side under the slide. The left
@@ -93,6 +104,19 @@ const FIRST = { dur: 1.15, rack: [0.55, 0.7], release: 0.7,
   gun: [k7(0, RACKP, 0), k7(0.35, RACKP), k7(0.7, RACKP), k7(0.78, RACKP, 0.7), k7(1.15, RACKP, 0)],
   left: [[0, 'grip'], [0.15, 'grip'], [0.4, 'rack0'], [0.7, 'rack1'], [0.76, 'rack1'], [1.05, 'grip']] };
 export const RELOADS = { TACT, EMPTY, FIRST };
+// (V89) the strike (V, not aiming): the pistol whipped across from the right, the left hand off it, the blow at 0.17 s,
+// back by 0.6 s; the inspection (I): the gun turned to show its left side, a press check (the muzzle forward again,
+// the gun rolled to bring its port up to the eye, the slide eased back ~1 cm by the left hand over it: the brass in the
+// chamber), its right side, and back (~3.5 s). Their keys as the reloads' (the
+// gun's motion over the pose, the left hand's places)
+const MELEE = { dur: 0.6, strike: 0.17,
+  gun: [[0, 0, 0, 0, 0, 0, 0], [0.1, 0.07, 0.03, 0.05, 0.25, -0.5, -0.6], [0.2, -0.1, -0.03, -0.12, -0.15, 0.75, 0.9], [0.3, -0.13, -0.06, -0.08, -0.2, 0.9, 1.0], [0.6, 0, 0, 0, 0, 0, 0]],
+  left: [[0, 'grip'], [0.05, 'grip'], [0.15, 'belt'], [0.4, 'belt'], [0.58, 'grip']] };
+const INSPECT = { dur: 3.5, press: [1.75, 1.9, 2.15, 2.25],
+  gun: [[0, 0, 0, 0, 0, 0, 0], [0.5, -0.01, 0.03, 0.03, 0.3, 1.1, 0.15], [1.3, -0.005, 0.035, 0.03, 0.32, 1.15, 0.12], [1.6, -0.015, 0.012, 0.05, 0.12, 0.08, 0.5], [2.3, -0.015, 0.014, 0.05, 0.13, 0.07, 0.48],
+    [2.75, 0.02, 0.03, 0.02, 0.2, -0.9, -0.2], [3.1, 0.02, 0.032, 0.02, 0.22, -0.95, -0.22], [3.5, 0, 0, 0, 0, 0, 0]],
+  left: [[0, 'grip'], [1.45, 'grip'], [1.65, 'press0'], [1.85, 'press1'], [2.15, 'press1'], [2.25, 'press0'], [2.5, 'grip']] };
+export const ACTS = { MELEE, INSPECT };
 const smooth = (t) => t * t * (3 - 2 * t);
 function track(keys, t, out) {                         // (the gun's keys: piecewise smooth)
   let i = 0;
@@ -111,6 +135,9 @@ export class Glock {
     this.bloom = 0; this.kickP = V3(); this.kickR = V3(); this.kickPv = V3(); this.kickRv = V3(); this.slide = 0; this.slideT = 1; this.selT = 0;
     this.flips = []; this.flip = V3(); this.flipP = V3(); this.heat = 0;
     this.camKick = 0; this.prevYaw = null; this.prevPitch = 0; this.sway = V3(); this.swV = V3(); this.swW = V3(); this.t = 0; this.fovMul = 1;
+    // (V89) the tactical stance (canted), the tactical sprint's raised pistol, a slide's cant; a strike or the
+    // inspection (act); the range's targets (range.js, main.js)
+    this.stance = 0; this.tacOn = false; this.tacAds = false; this.tacS = 0; this.slideS = 0; this.act = null; this.targets = null;
     // ---- in your hands: the gun, the hands, the arms, all in the camera's frame (placed every frame)
     const vm = this.vm = new THREE.Group(); vm.name = 'viewmodel'; vm.matrixAutoUpdate = false; vm.visible = false;
     const m = this.model = glockModel();
@@ -181,7 +208,7 @@ export class Glock {
     this.t += dt;
     const free = this.owned && ctx.foot;
     this.hud.touch(free);
-    if (!free) { this.out = 0; this.vm.visible = false; this.reload = null; this.hud.show(false); this.hud.aim(false); this.fovMul = 1; this.ads = 0; player.aimSlow = 1; this.fx.update(dt, ctx); return; }
+    if (!free) { this.out = 0; this.vm.visible = false; this.reload = null; this.act = null; this.hud.show(false); this.hud.aim(false); this.hud.tick(); this.fovMul = 1; this.ads = 0; this.stance = 0; this.tacOn = false; player.aimSlow = 1; player.armed = false; player.gunBusy = false; this.fx.update(dt, ctx); return; }
     if (input.hit('KeyQ')) { this.want = !this.want; this.audio?.gunCloth?.(); }
     // taking it out / putting it away
     this.out = Math.max(0, Math.min(1, this.out + (this.want ? dt / 0.45 : -dt / 0.35)));
@@ -190,24 +217,42 @@ export class Glock {
     // the selector
     if (input.hit('KeyX') && ready && !this.reload) { this.auto = !this.auto; this.selT = 0.35; this.audio?.gunSelect?.(); this.hud.flash(this.auto ? 'AUTOMAT' : 'FOC CU FOC'); }
     this.selT = Math.max(0, this.selT - dt);
-    // reloading
-    if (input.hit('KeyR') && ready) this.tryReload();
+    // reloading (the inspection gives way to it; not in a strike)
+    if (input.hit('KeyR') && ready && this.act?.k !== MELEE) { if (this.act) this.endAct(); this.tryReload(); }
     if (this.reload) this.stepReload(dt);
-    // running, aiming, a wall in front
-    const hs = Math.hypot(player.vel.x, player.vel.z), running = (input.down('ShiftLeft') || input.down('ShiftRight')) && hs > 4;
-    const aiming = input.down('Mouse2') && ready && !running && !(this.reload && this.reload.k !== FIRST);
-    this.ads = damp1(this.ads, aiming ? 1 : 0, 14, dt);
+    // running (the sprint, player.js), aiming or the tactical stance, a wall in front
+    const running = !!player.running, aimHeld = input.down('Mouse2') && ready, busy = this.reload && this.reload.k !== FIRST;
+    // (the tactical stance: V while aiming, as MWIII binds it, or Z any time; letting go of the sights ends a V-stance,
+    // a sprint ends it; aiming in a slide takes it by itself)
+    const vHit = input.hit('KeyV') && ready;
+    if (vHit && aimHeld) { this.tacOn = !this.tacOn; this.tacAds = this.tacOn; this.audio?.gunCloth?.(); }
+    if (input.hit('KeyZ') && ready) { this.tacOn = !this.tacOn; this.tacAds = false; this.audio?.gunCloth?.(); }
+    if ((this.tacAds && !aimHeld) || running) { this.tacOn = false; this.tacAds = false; }
+    const inStance = ready && !running && !busy && (this.tacOn || (aimHeld && (player.slK ?? 0) > 0.5));
+    const aiming = aimHeld && !running && !busy && !inStance;
+    // (V not aiming: the strike; I: the inspection - the hands free for it; anything else cuts the inspection short)
+    const handsFree = ready && !this.reload && !this.act;
+    if (vHit && !aimHeld && handsFree) this.startAct(MELEE);
+    if (input.hit('KeyI') && handsFree && !aiming && !inStance && !running && !input.down('Mouse0')) this.startAct(INSPECT);
+    if (this.act?.k === INSPECT && (aimHeld || input.down('Mouse0') || running || inStance || player.tac || player.sl)) this.endAct();
+    if (this.act) this.stepAct(dt, ctx);
+    this.ads = damp1(this.ads, aiming ? 1 : 0, player.sup ? 7 : 14, dt);          // (on your back: slower to the sights, MW4's)
+    this.stance = damp1(this.stance, inStance ? 1 : 0, 16, dt);
     this.sprint = damp1(this.sprint, running && !this.trig ? 1 : 0, 8, dt);
+    // (flat out: the pistol up - slower down from it than from the run: firing out of a tactical sprint waits longer)
+    this.tacS = damp1(this.tacS, player.tac && !this.reload && !this.act ? 1 : 0, player.tac ? 7 : 5, dt);
+    this.slideS = player.slK ?? 0;
     this.tuck = damp1(this.tuck, this.wallAhead(ctx.camera) ? 1 : 0, 10, dt);
-    player.aimSlow = 1 - 0.4 * this.ads;
-    this.fovMul = 1 - 0.2 * this.ads;
+    player.aimSlow = 1 - 0.4 * this.ads - 0.12 * this.stance;
+    this.fovMul = 1 - 0.2 * this.ads - 0.05 * this.stance;
+    player.armed = ready; player.gunBusy = aimHeld || (input.down('Mouse0') && ready);    // (no sprinting with the sights up or the trigger held)
     // the trigger
-    const pull = input.down('Mouse0') && ready && this.tuck < 0.5;
-    const pressed = input.hit('Mouse0') && ready && this.tuck < 0.5;
+    const pull = input.down('Mouse0') && ready && this.tuck < 0.5 && !this.act;
+    const pressed = input.hit('Mouse0') && ready && this.tuck < 0.5 && !this.act;
     // (the cycle's time carried over from frame to frame: 1200 a minute is 3 frames a round at 60 fps, not 4)
     this.cool -= dt;
     let fired = false;
-    if (pull && !this.reload && this.sprint < 0.5) {
+    if (pull && !this.reload && this.sprint < 0.5 && this.tacS < 0.3) {
       if (this.chambered && (this.auto || pressed)) { while (this.cool <= 1e-9 && this.chambered) { this.shoot(ctx); fired = true; this.cool += 60 / RPM; if (!this.auto) break; } }
       else if (!this.chambered && pressed) { this.audio?.gunDry?.(); if (this.reserve > 0) this.tryReload(); }
     }
@@ -229,7 +274,7 @@ export class Glock {
     this.camKick -= back; player.pitch -= back * 0.6;
     // the slide: back on a shot and home again (back in ~12 ms, home in ~30: a cycle within the 50 ms between two rounds,
     // seen over two or three frames), held back once the last round has gone (the slide stop)
-    if (this.reload?.slideHeld) { /* (in the left hand: stepReload) */ }
+    if (this.reload?.slideHeld || this.act?.slideHeld) { /* (in the left hand: stepReload, stepAct) */ }
     else if (this.locked) this.slide = damp1(this.slide, SLIDE, 40, dt);
     else { this.slideT += dt; this.slide = SLIDE * (this.slideT < 0.012 ? this.slideT / 0.012 : Math.max(0, 1 - (this.slideT - 0.012) / 0.03)); }
     // the sway: the gun lags behind the turning view and swings back, with the inertia of a gun in two hands. It is
@@ -245,15 +290,57 @@ export class Glock {
     critical(this.sway, this.swV, 0.11 * Math.tanh(this.swW.x * 0.5), 0.11 * Math.tanh(this.swW.y * 0.5), 18, dt);
     this.vm.visible = this.out > 0;
     this.hud.show(ready || this.out > 0.5);
-    this.hud.set(this.mag + (this.chambered ? 1 : 0), this.reserve, this.auto, this.reload ? (this.reload.k === FIRST ? '' : 'Reîncarcă…') : (!this.chambered && this.reserve <= 0 && this.mag <= 0 ? 'Fără muniție' : (this.mag + (this.chambered ? 1 : 0) <= 6 ? 'R — reîncarcă' : '')));
-    this.hud.cross(this.out > 0.9 && this.ads < 0.5 && this.sprint < 0.5, this.spread(player), ctx.camera.fov);
+    const rounds = this.mag + (this.chambered ? 1 : 0);
+    this.hud.set(rounds, this.reserve, this.auto, this.reload ? (this.reload.k === FIRST ? '' : 'Reîncarcă…') : this.inStanceHint(inStance));
+    this.hud.warn(ready && !this.reload ? rounds : -1, this.reserve);
+    this.hud.cross(this.out > 0.9 && this.ads < 0.5 && this.sprint < 0.5 && this.tacS < 0.5 && this.act?.k !== INSPECT, this.spread(player), ctx.camera.fov);
     this.hud.aim(this.ads > 0.5);
+    this.hud.range(this.targets?.near(ctx.camera.position) ? this.targets : null);
+    this.hud.tick();
     this.fx.update(dt, ctx);
   }
 
+  inStanceHint(on) { return on ? 'TAC-STANCE' : ''; }
+  // (the hip's spread; at the sights ~a fifth of it, in the tactical stance half; moving, in the air: more)
   spread(player) {
     const hs = Math.hypot(player.vel.x, player.vel.z);
-    return (0.024 + 0.02 * Math.min(1, hs / 6) + this.bloom) * (1 - 0.82 * this.ads) + (player.onGround ? 0 : 0.03);
+    return (0.024 + 0.02 * Math.min(1, hs / 6) + this.bloom) * (1 - 0.82 * this.ads) * (1 - 0.5 * this.stance) + (player.onGround ? 0 : 0.03);
+  }
+
+  // ---- (V89) a strike, the inspection: their timelines (as a reload's), the blow
+  startAct(k) { this.act = { k, t: 0, slideHeld: false }; if (k === MELEE) this.audio?.swing?.(); else this.audio?.gunCloth?.(); }
+  endAct() { if (this.act?.slideHeld) { this.slide = 0; this.slideT = 1; } this.act = null; }
+  stepAct(dt, ctx) {
+    const a = this.act, k = a.k, t0 = a.t; a.t += dt;
+    const at = (x) => t0 < x && a.t >= x;
+    if (k === MELEE && at(k.strike)) this.strike(ctx);
+    if (k.press) {
+      // (the press check: the slide eased back ~11 mm and held a moment, then let forward under its spring by the hand)
+      const [p0, p1, p2, p3] = k.press;
+      if (at(p0)) { a.slideHeld = true; this.audio?.slideBack?.(); }
+      if (a.slideHeld) this.slide = 0.011 * smooth(Math.min(1, Math.max(0, (a.t - p0) / (p1 - p0)))) * (a.t < p2 ? 1 : Math.max(0, 1 - (a.t - p2) / (p3 - p2)));
+      if (at(p3)) { a.slideHeld = false; this.slide = 0; this.slideT = 1; this.audio?.gunDry?.(); }
+    }
+    if (a.t >= k.dur) this.endAct();
+  }
+  // the blow: what is within reach in front (~1.25 m) - a target goes down; a wall, a trunk, a car: a thud
+  strike(ctx) {
+    const cam = ctx.camera; cam.getWorldDirection(_d);
+    const hit = this.trace(cam.position, _v.copy(_d).multiplyScalar(1.25), 1, true);
+    if (!hit) return;
+    this.audio?.meleeHit?.(!hit.target);
+    if (hit.target) this.targets.blow(hit, cam.position);
+    this.kickRv.z -= 1.5; this.kickPv.z += 0.15; ctx.player.landShake = Math.max(ctx.player.landShake, 0.012);
+  }
+  // the range's word on a round (range.js): the hit marker and its tick, the score, the medal, the feed; a puff off it
+  onRange(e) {
+    const kill = e.type === 'kill';
+    this.hud.hit(kill, !!e.head);
+    if (kill) this.audio?.killMark?.(e.head); else this.audio?.hitMark?.();
+    if (e.lines.length) this.hud.score(e.pts, e.lines.map(l => l[0]));
+    if (e.medal) this.hud.medal(e.medal);
+    if (kill) this.hud.feed(e.name.toUpperCase() + ' · ' + Math.round(e.d) + ' m' + (e.head ? ' · în cap' : '') + (e.melee ? ' · corp la corp' : ''));
+    if (e.p) this.fx.puff(_a.copy(e.p).addScaledVector(e.n, 0.02), 0.02, 0.35, e.plate ? 0xa9abaf : 0x6b7448, 0.55, e.n.clone().multiplyScalar(0.6));
   }
 
   tryReload() {
@@ -299,7 +386,9 @@ export class Glock {
     _u.set(0, 1, 0).applyQuaternion(camera.quaternion); _r.crossVectors(_d, _u).normalize(); _u.crossVectors(_r, _d);
     _v.copy(_d).addScaledVector(_r, Math.cos(a) * rr).addScaledVector(_u, Math.sin(a) * rr).normalize().multiplyScalar(V0);
     const hit = this.trace(camera.position, _v, 2.5);
-    if (hit) this.fx.impact(hit, camera.position, ctx, this.audio);
+    this.targets?.shot(camera.position);
+    if (hit?.target) this.targets.hit(hit, camera.position);           // (on the range: its effect when the round gets there)
+    else if (hit) this.fx.impact(hit, camera.position, ctx, this.audio);
     // the kick: the gun flips up in the hands, a little to the left and turned, and comes back toward you (~12 deg at
     // its peak 32 ms after the shot, gone by ~90 ms: the user's clip); aimed, less; in a burst each round flips
     // it less (the hands bear down on it) while the view climbs; the view up a little (more of it comes back than stays)
@@ -337,7 +426,7 @@ export class Glock {
       world.query(mx, mz, half + 1.5, out);
       let best = null;
       for (const b of out) {
-        if (LIVING.has(b.tag) || b.ghost) continue;
+        if (LIVING.has(b.tag) || b.ghost || b.tag === 'range') continue;
         let y0 = b.y0, y1 = b.y1;
         if (b.tag === 'car') { const gy = b.vehicle?.car?.group?.position?.y ?? world.groundHeight(b.x, b.z); y0 = gy - 0.1; y1 = gy + 1.5; }
         const h = segBox(x, y, z, nx, ny, nz, b, y0, y1);
@@ -354,6 +443,9 @@ export class Glock {
           gf = hi; break;
         }
       }
+      // the range's targets along it, as they stand this frame (range.js: the plastic, the steel)
+      const tg = this.targets?.segment(x, y, z, nx, ny, nz);
+      if (tg && (!best || tg.f < best.f) && (gf === null || tg.f < gf)) return { p: tg.p, n: tg.n, tag: 'target', t: t + tg.f * step, d: d + tg.f * L, target: tg.target, zone: tg.zone, local: tg.local };
       if (gf !== null && (!best || gf < best.f)) {
         const px = x + (nx - x) * gf, pz = z + (nz - z) * gf, e = 0.25;
         const h0 = world.groundHeight(px, pz), hx = world.groundHeight(px + e, pz), hz = world.groundHeight(px, pz + e);
@@ -379,17 +471,21 @@ export class Glock {
     if (!this.vm.visible) return;
     this.placeView(camera);
     // the gun's pose: hip / aimed / running / tucked, down when put away; the sway, the bob, the breath, the recoil
-    blend(_P, VIEW.hip, VIEW.ads, this.ads); blendTo(_P, VIEW.sprint, this.sprint * (1 - this.ads)); blendTo(_P, VIEW.tuck, this.tuck);
+    blend(_P, VIEW.hip, VIEW.ads, this.ads); blendTo(_P, VIEW.stance, this.stance);
+    blendTo(_P, VIEW.sprint, this.sprint * (1 - this.ads) * (1 - this.tacS)); blendTo(_P, VIEW.tac, this.tacS); blendTo(_P, VIEW.tuck, this.tuck);
     blendTo(_P, VIEW.down, 1 - smooth(this.out));
     const bob = player.bobAmt * (1 - 0.8 * this.ads), ph = player.bobPhase;
     _P.p.x += Math.cos(ph) * 0.006 * bob + this.sway.y * 0.08; _P.p.y += -Math.abs(Math.sin(ph)) * 0.008 * bob - this.sway.x * 0.06 - player.landShake * 0.5 + Math.sin(this.t * 1.4) * 0.0012 * (1 - this.ads);
     _P.p.add(this.kickP);
-    _e.set(this.kickR.x - this.sway.x * 0.7 + Math.sin(this.t * 1.1) * 0.003 * (1 - this.ads), this.kickR.y - this.sway.y * 0.9, this.kickR.z - this.sway.y * 0.5 + Math.cos(ph) * 0.01 * bob, 'YXZ');
+    // (sliding: the gun canted in ~16 deg; flat out: swinging with the stride)
+    _P.p.y -= Math.abs(Math.sin(ph)) * 0.012 * this.tacS;
+    _e.set(this.kickR.x - this.sway.x * 0.7 + Math.sin(this.t * 1.1) * 0.003 * (1 - this.ads), this.kickR.y - this.sway.y * 0.9, this.kickR.z - this.sway.y * 0.5 + Math.cos(ph) * (0.01 * bob + 0.05 * this.tacS) + 0.28 * this.slideS * (1 - this.ads) * (1 - this.stance), 'YXZ');
+    this._ph = ph;
     _q.setFromEuler(_e); _P.q.multiply(_q);
-    // a reload's own motion of the gun; the selector's flick
-    const r = this.reload;
-    if (r) {
-      const o = track(r.k.gun, r.t, _o);
+    // a reload's own motion of the gun (or a strike's, the inspection's); the selector's flick
+    const r = this.reload, act = r ?? this.act;
+    if (act) {
+      const o = track(act.k.gun, act.t, _o);
       _P.p.x += o[0]; _P.p.y += o[1]; _P.p.z += o[2];
       _q.setFromEuler(_e.set(o[3], o[4], o[5], 'YXZ')); _P.q.multiply(_q);
     }
@@ -409,14 +505,14 @@ export class Glock {
     this.fx.vmCases(camera);
     // the magazine: seated, out (dropped), or coming in in the left hand
     this.mags(r);
-    this.limbs(r);
+    this.limbs(act);
   }
 
   mags(r) {
     const m = this.model, seat = m.mag.userData.seat;
     m.mag.visible = true; m.mag.position.copy(seat);
     this.newMag.visible = false;
-    if (!r || r.k === FIRST) { this.oldMag.visible = false; return; }
+    if (!r || r.k === FIRST) { this.oldMag.visible = false; this.oldInHand = false; this.magInFree = false; return; }
     const k = r.k;
     this.oldInHand = false;
     // the old one stripped by the left hand: down the grip's axis with it, then in the hand to the belt (put away)
@@ -511,7 +607,15 @@ export class Glock {
   leftPose(r) {
     const onGrip = _HL.multiplyMatrices(this.gun.matrix, _n4.compose(this.lh.p, this.lh.q, ONE));
     this.leftOnGrip = true;
-    if (!r) return onGrip;
+    if (!r) {
+      if (this.tacS < 0.02) return onGrip;
+      // (flat out: off the gun, low and swinging with the stride - out of sight; its shape changes halfway)
+      const f = smooth(Math.min(1, this.tacS * 1.25));
+      this.leftOnGrip = f < 0.5;
+      onGrip.decompose(_a, _q, _s); this.leftAt('pump', onGrip, _LB).decompose(_b, _q2, _s);
+      _a.lerp(_b, f); _q.slerp(_q2, f);
+      return _HL.compose(_a, _q, ONE);
+    }
     const keys = r.k.left;
     let i = 0;
     while (i < keys.length - 2 && r.t > keys[i + 1][0]) i++;
@@ -534,14 +638,15 @@ export class Glock {
   leftAt(name, onGrip, out) {
     if (name === 'grip') return out.copy(onGrip);
     if (name === 'belt') return out.compose(BELT.p, BELT.q, ONE);
+    if (name === 'pump') { const ph = this._ph ?? 0; return out.compose(_c.set(BELT.p.x - 0.04, BELT.p.y + 0.05 * Math.sin(ph), BELT.p.z - 0.1 * Math.cos(ph)), BELT.q, ONE); }
     if (name === 'magIn0' || name === 'magIn1') {
       // (the hand low on the magazine where it will be: below the well, 6 cm down / pushed home)
       const seat = this.model.mag.userData.seat;
       _n4.compose(_c.copy(seat).addScaledVector(MAG_AXIS, name === 'magIn0' ? 0.06 : 0), this.model.mag.quaternion, ONE);
       return out.multiplyMatrices(this.gun.matrix, _n4).multiply(_m4b.compose(LH_MAG.p, LH_MAG.q, ONE));
     }
-    // racking: on the slide's rear, pulled back with it
-    const pull = name === 'rack1' ? 0.03 : 0;
+    // racking: on the slide's rear, pulled back with it (a press check: eased back ~11 mm)
+    const pull = name === 'rack1' ? 0.03 : name === 'press1' ? 0.011 : 0;
     return out.multiplyMatrices(this.gun.matrix, _n4.compose(_c.copy(LH_RACK.p).add(V3(0, 0, pull)), LH_RACK.q, ONE));
   }
 }
@@ -779,7 +884,7 @@ class GunHud {
   constructor() {
     const el = this.el = document.createElement('div');
     el.style.cssText = 'position:fixed;right:26px;bottom:22px;color:#fff;font:600 13px system-ui,sans-serif;text-align:right;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;display:none;z-index:20';
-    el.innerHTML = '<div style="opacity:.85;letter-spacing:.06em">GLOCK 18 · <span data-k="mode"></span></div><div><span data-k="mag" style="font-size:38px;font-weight:700"></span><span style="font-size:20px;opacity:.75"> / <span data-k="res"></span></span></div><div data-k="hint" style="color:#ffd27a;min-height:16px"></div>';
+    el.innerHTML = '<div style="opacity:.85;letter-spacing:.06em">GLOCK 18 · <span data-k="mode"></span></div><div><span data-k="mag" style="font-size:38px;font-weight:700"></span><span style="font-size:20px;opacity:.75"> / <span data-k="res"></span></span></div><div data-k="hint" style="color:#ffd27a;min-height:16px"></div><div data-k="rng" style="font-size:11px;font-weight:600;opacity:.88;letter-spacing:.03em"></div>';
     document.body.appendChild(el);
     this.k = Object.fromEntries([...el.querySelectorAll('[data-k]')].map(e => [e.dataset.k, e]));
     const x = this.x = document.createElement('div');
@@ -788,8 +893,61 @@ class GunHud {
     document.body.appendChild(x);
     this.bars = [...x.children];
     this.flashT = 0; this.last = '';
+    // (V89) the hit marker: four short strokes on the diagonals round the middle - white a hit, red a kill, bigger for a
+    // head - gone in a quarter of a second (a kill's in half); the score beside it (+100 ...), the medal above, the feed
+    // on the left; under the dot the games' prompts: low on rounds, reload, none
+    const mk = (css, html = '') => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;pointer-events:none;' + css; d.innerHTML = html; document.body.appendChild(d); return d; };
+    this.hm = mk('left:50%;top:50%;width:0;height:0;z-index:21;opacity:0', [45, 135, 225, 315].map(a => `<div style="position:absolute;left:-1px;top:0;width:2px;height:8px;transform-origin:1px 0;transform:rotate(${a}deg) translateY(6px);background:currentColor;box-shadow:0 0 2px rgba(0,0,0,.9)"></div>`).join(''));
+    this.sc = mk('left:calc(50% + 34px);top:calc(50% + 12px);z-index:21;opacity:0;font:700 20px system-ui,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);white-space:nowrap');
+    this.md = mk('left:50%;top:22%;transform:translateX(-50%);z-index:21;opacity:0;text-align:center;font:800 18px system-ui,sans-serif;color:#ffe9a8;letter-spacing:.08em;text-shadow:0 2px 6px rgba(0,0,0,.9);white-space:nowrap');
+    this.fd = mk('left:14px;top:46%;z-index:20;font:600 12px system-ui,sans-serif;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9)');
+    this.wn = mk('left:50%;top:calc(50% + 40px);transform:translateX(-50%);z-index:20;font:700 12px system-ui,sans-serif;letter-spacing:.12em;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap');
+    this.hmT = -1e9; this.hmK = 0; this.scT = -1e9; this.scPts = 0; this.scLines = []; this.mdT = -1e9; this.feeds = []; this.wnS = ''; this.rngS = '';
   }
-  show(on) { this.el.style.display = on ? 'block' : 'none'; if (!on) this.x.style.display = 'none'; }
+  hit(kill, head) {
+    this.hmT = performance.now(); this.hmK = kill ? (head ? 3 : 2) : 1;
+    this.hm.style.color = kill ? '#ff3b30' : '#ffffff';
+  }
+  // (a kill's points add up while they keep coming, ~1.6 s)
+  score(pts, lines) {
+    const now = performance.now();
+    if (now - this.scT > 1600) { this.scPts = 0; this.scLines = []; }
+    this.scT = now; this.scPts += pts; this.scLines = [...lines, ...this.scLines].slice(0, 4);
+    this.sc.innerHTML = '+' + this.scPts + '<div style="font:700 11px system-ui,sans-serif;color:#f2e6b8;letter-spacing:.06em;line-height:1.35">' + this.scLines.join('<br>') + '</div>';
+  }
+  medal(name) {
+    this.mdT = performance.now();
+    this.md.innerHTML = '<div style="width:44px;height:44px;margin:0 auto 6px;border-radius:50%;border:3px solid #e8c25a;background:radial-gradient(circle,#6a5822 0,#2a220c 72%);box-shadow:0 0 14px rgba(232,194,90,.55)"></div>' + name;
+  }
+  feed(text) {
+    const d = document.createElement('div');
+    d.style.cssText = 'background:rgba(10,12,14,.5);padding:3px 8px;margin-bottom:3px;border-radius:2px;transition:opacity .4s';
+    d.innerHTML = 'TU <span style="color:#c9c9c9">▸ GLOCK 18 ▸</span> ' + text;
+    this.fd.prepend(d); this.feeds.unshift({ d, t: performance.now() });
+    while (this.feeds.length > 4) this.feeds.pop().d.remove();
+  }
+  warn(rounds, res) {
+    const touch = matchMedia('(pointer: coarse)').matches;
+    const [txt, col] = rounds < 0 ? ['', ''] : rounds === 0 ? (res > 0 ? [(touch ? '' : '[R] ') + 'REÎNCARCĂ', '#ff5a4a'] : ['FĂRĂ MUNIȚIE', '#ff5a4a']) : rounds <= 10 ? ['MUNIȚIE PUȚINĂ', '#ffd24a'] : ['', ''];
+    const k = txt + col; if (k === this.wnS) return; this.wnS = k;
+    this.wn.textContent = txt; this.wn.style.color = col;
+  }
+  range(r) {
+    const t = r ? 'POLIGON · ' + r.kills + ' doborâte · ' + (r.shots ? Math.round(100 * Math.min(1, r.hits / r.shots)) : 0) + '% precizie · ' + r.heads + ' în cap · ' + r.xp + ' XP' : '';
+    if (t !== this.rngS) { this.rngS = t; this.k.rng.textContent = t; }
+  }
+  tick() {
+    const now = performance.now();
+    const a = now - this.hmT, life = this.hmK > 1 ? 480 : 260;
+    if (a < life) { const u = a / life; this.hm.style.opacity = String(1 - u * u); this.hm.style.transform = 'scale(' + ((this.hmK === 3 ? 1.45 : this.hmK === 2 ? 1.2 : 1) * (1 + 0.25 * Math.max(0, 1 - a / 60))).toFixed(3) + ')'; }
+    else if (this.hm.style.opacity !== '0') this.hm.style.opacity = '0';
+    const b = now - this.scT;
+    this.sc.style.opacity = b < 1600 ? String(Math.min(1, (1600 - b) / 300)) : '0';
+    const c = now - this.mdT;
+    this.md.style.opacity = c < 2200 ? String(Math.min(1, c / 120, (2200 - c) / 400)) : '0';
+    for (let i = this.feeds.length - 1; i >= 0; i--) { const f = this.feeds[i]; if (now - f.t > 5000) { f.d.remove(); this.feeds.splice(i, 1); } else if (now - f.t > 4600) f.d.style.opacity = '0'; }
+  }
+  show(on) { this.el.style.display = on ? 'block' : 'none'; if (!on) { this.x.style.display = 'none'; this.warn(-1, 0); } }
   // the touch screen's buttons for it (index.html: fire, aim, reload, the selector, put it away), while it is yours on
   // foot; the screen's own dot hidden while you aim down the sights (the sights are the aim)
   touch(on) { if (on === this.touchOn) return; this.touchOn = on; document.getElementById('gunTouch')?.classList.toggle('on', on); }

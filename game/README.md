@@ -42,12 +42,12 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 |---|---|---|
 | W A S D / săgeți | mers | accelerație / frână‑marșarier / volan |
 | Mouse | privire | rotește camera |
-| Shift | fugă | – |
+| Shift | fugă (cu Glock-ul, de două ori: sprint tactic) | – |
 | Space | săritură | frână de mână (drift) |
-| C / Ctrl | ghemuit | – |
+| C / Ctrl | ghemuit (cu Glock-ul, din fugă: alunecare) | – |
 | F / E | urcă în mașina de lângă tine | coboară |
 | E | lângă focul de tabără de la sonde (lângă Fiatul roșu): îl aprinzi / îl stingi | – |
-| V | – | cameră spate ↔ interior (cockpit) |
+| V | cu Glock-ul: lovitură cu pistolul / Tac-Stance (mai jos) | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
@@ -56,6 +56,10 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
 | Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
 | R / X / Q | cu Glock-ul: reîncarci / automat ↔ foc cu foc / îl pui deoparte și îl scoți | – |
+| Shift de două ori | cu Glock-ul scos: sprint tactic (~4,5 s, apoi fugă obișnuită) | – |
+| C / Ctrl din fugă | cu Glock-ul scos: alunecare; apăsat de două ori: alunecare lungă, pe spate (Space / C / Shift te ridică). În alunecare: Shift o anulează și fugi mai departe, Space sari din ea | – |
+| V / Z | cu Glock-ul: V lovești cu pistolul; V cu clic dreapta ținut, sau Z: Tac-Stance (arma înclinată ~45°) | – |
+| I | cu Glock-ul: inspectezi arma | – |
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
 | K | te duce la marginea luminișului din pădurea de lângă cruce, unde se petrece scena (doar la 23:30, pe vreme înnorată) | la fel (cobori întâi) |

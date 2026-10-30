@@ -42,6 +42,7 @@ import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { TWIND } from './treewind.js';
 import { Glock } from './weapon.js';
+import { Range } from './range.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
 import { buildDogs } from './dogs.js';
@@ -500,6 +501,9 @@ async function main() {
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
   // the Glock 18 on the cross's slab (weapon.js): E takes it
   const glock = crossAt ? new Glock(scene, world, audio, crossAt) : null;
+  // the range on the meadow by it (range.js, V89): pop-up targets and steel plates; what a round does there, to the HUD
+  const range = crossAt ? new Range(scene, world, audio, crossAt) : null;
+  if (glock && range) { glock.targets = range; range.onEvent = (e) => glock.onRange(e); }
   // no GPS signal on the hill of the cross: the hill (its meadows and wood, geo/drapel.js) and the whole lane over it
   // (urcus.js: the walkers' clip, the Maybach), wherever it is more than 150 m from a house (the last houses of Strada
   // Măgurii stand ~280 m below the cross); a 10 m raster. Driving in, the navigation - the car's, your phone's, the
@@ -1365,9 +1369,10 @@ async function main() {
         const near = dog || player.noclip ? null : nearestCar();
         const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
         const gunP = player.noclip ? null : glock?.pickup(camera, input);
-        if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte'
-          : 'Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte', 6);
+        if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte. Modul shooter: Fugi de două ori - sprint tactic, Jos din fugă - alunecare (de două ori: pe spate), Tac - Tac-Stance, Lovește, Inspect. Poligonul e pe pajiștea de lângă cruce'
+          : 'Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte. Modul shooter: Shift de două ori - sprint tactic, C din fugă - alunecare (de două ori: pe spate), V cu clic dreapta (sau Z) - Tac-Stance, V - lovitură, I - inspectezi. Poligonul e pe pajiștea de lângă cruce', 9);
         else if (gunP) prompt = gunP;
+        else if (player.sup && player.sup.up < 0) prompt = matchMedia('(pointer: coarse)').matches ? 'Sari / Jos — te ridici' : 'Space / C — te ridici';
         else if (dog) {
           prompt = 'E — mângâie câinele';
           if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); share.petted(mp, dogs.dogs.indexOf(dog)); hud.toast('Câinele dă fericit din coadă'); }
@@ -1400,6 +1405,7 @@ async function main() {
       }
       // the pistol in your hands (on foot only: put away in a car, while riding or flying)
       glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value });
+      range?.update(dt, camera);
       // parked cars (and cars pushed by collisions) settle
       for (const v of vehicles) if (v !== active && !v.remote) v.update(dt, null);   // (a friend's car moves as they drive it: remote.js)
     }
@@ -1605,6 +1611,7 @@ async function main() {
     TRACTION.wind = storm > 0.05 ? shWind : null;
     player.wind = storm > 0.05 ? { x: shWind.x, z: shWind.y } : null;
     player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
+    player.snowK = SNOW.uSnow.value; player.wetK = RAIN.uWet.value;        // (a slide: far on snow, further on wet grass)
     const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002;
     let occNew = false;
     if (wetNow || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) occNew = rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip, wetNow);
@@ -1756,7 +1763,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

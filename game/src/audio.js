@@ -165,6 +165,72 @@ export class Audio {
   slideRelease() { this.burst({ f: 2200, q: 3, dur: 0.03, gain: 0.35 }); this.burst({ f: 700, q: 1, dur: 0.06, gain: 0.2 }); }
   caseTink(d) { const k = this.att(d, 3, 0); if (k < 0.02) return; this.burst({ f: 6000, q: 8, dur: 0.05, gain: 0.12 * k }); this.burst({ f: 4200, q: 10, dur: 0.08, gain: 0.08 * k, delay: 0.06 }); }
   magDrop(d) { const k = this.att(d, 3, 0); if (k < 0.02) return; this.burst({ f: 600, q: 1, dur: 0.06, gain: 0.25 * k }); this.burst({ f: 2400, q: 4, dur: 0.03, gain: 0.1 * k, delay: 0.01 }); }
+  // the shooter's moves and the range (V89). A slide: the body's drop, then the cloth scraping over what is under you
+  // (held, then let go: a long noise with its own envelope), snow a soft hiss and crunch
+  scrape({ f, q = 0.6, type = 'bandpass', gain, a = 0.03, hold, rel, delay = 0, rate = 1 }) {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const s = ctx.createBufferSource(); s.buffer = this.noise; s.playbackRate.value = rate;
+    const f1 = ctx.createBiquadFilter(); f1.type = type; f1.frequency.value = f; f1.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + a); g.gain.setValueAtTime(gain, t + a + hold); g.gain.linearRampToValueAtTime(0, t + a + hold + rel);
+    s.connect(f1).connect(g).connect(this.master);
+    s.start(t, Math.random() * 1.2); s.stop(t + a + hold + rel + 0.05);
+  }
+  slide(kind, k = 1) {
+    this.burst({ f: 200, q: 0.7, dur: 0.14, gain: 0.32 * k, type: 'lowpass' });
+    if (kind === 'snow') { this.scrape({ f: 3200, type: 'highpass', gain: 0.07 * k, hold: 0.45, rel: 0.4 }); this.scrape({ f: 520, type: 'lowpass', gain: 0.1 * k, hold: 0.3, rel: 0.4, rate: 0.7 }); }
+    else if (kind === 'gravel') { this.scrape({ f: 2300, q: 0.7, gain: 0.14 * k, hold: 0.45, rel: 0.35 }); for (let i = 0; i < 7; i++) this.burst({ f: 2500 + Math.random() * 2500, q: 3, dur: 0.02, gain: 0.08 * k, delay: 0.05 + i * 0.1 + Math.random() * 0.05 }); }
+    else if (kind === 'grass') this.scrape({ f: 1100, q: 0.5, gain: 0.12 * k, hold: 0.4, rel: 0.4, rate: 0.85 });
+    else this.scrape({ f: 1700, q: 0.6, gain: 0.13 * k, hold: 0.4, rel: 0.35 });
+  }
+  // the pistol swung (a strike, V): the air past it, rising; what it meets (a thud, or the knock on a target)
+  swing() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const s = ctx.createBufferSource(); s.buffer = this.noise;
+    const f1 = ctx.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 1.4; f1.frequency.setValueAtTime(500, t); f1.frequency.exponentialRampToValueAtTime(2100, t + 0.13);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.16, t + 0.08); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    s.connect(f1).connect(g).connect(this.master); s.start(t, Math.random()); s.stop(t + 0.25);
+  }
+  meleeHit(hard) { this.burst({ f: 260, q: 0.8, dur: 0.1, gain: 0.45, type: 'lowpass' }); this.burst({ f: hard ? 1500 : 900, q: 1.2, dur: 0.04, gain: 0.3 }); }
+  // the hit markers' ticks (the Call of Duty way: a crisp tick for a hit, a heavier one for a kill, a bright ring on top
+  // of it for a head): heard as the round lands, not over its distance - they are the game's, not the range's
+  hitMark() { this.burst({ f: 4600, q: 2.5, dur: 0.035, gain: 0.2 }); this.burst({ f: 2300, q: 3, dur: 0.02, gain: 0.1 }); }
+  killMark(head) {
+    if (!this.ctx) return;
+    this.burst({ f: 650, q: 0.9, dur: 0.09, gain: 0.32, type: 'lowpass' }); this.burst({ f: 3000, q: 4, dur: 0.05, gain: 0.2 });
+    if (head) this.ring([2650, 4100], [0.12, 0.08], [0.09, 0.05], 0);
+  }
+  // decaying partials (a struck plate: the modes of a free disc)
+  ring(fs, amps, decs, delay) {
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    fs.forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f * (0.995 + Math.random() * 0.01);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amps[i], t + 0.002); g.gain.exponentialRampToValueAtTime(0.0005, t + decs[i] * 3);
+      o.connect(g).connect(this.master); o.start(t); o.stop(t + decs[i] * 3 + 0.02);
+    });
+  }
+  // a steel plate rung by a round (AR500, hanging on its chains): a free disc's modes - for 10 mm steel ~816 Hz x
+  // 25 cm / its diameter squared, then 1.73, 2.33, 3.9, 4.1 of it - ringing a second or two; heard after the round's
+  // flight and the sound's way back
+  gong(d, delay, f0) {
+    const k = this.att(d, 15, 0); if (k < 0.01 || !this.ctx) return;
+    this.burst({ f: 3000, q: 1.5, dur: 0.02, gain: 0.3 * k, delay });
+    this.ring([1, 1.73, 2.33, 3.9, 4.12].map(r => f0 * r), [0.3, 0.2, 0.15, 0.1, 0.08].map(a => a * k), [0.5, 0.36, 0.28, 0.17, 0.15], delay);
+  }
+  // the pop-up targets: a round through the plastic (a slap), the target slapped down flat, its lifter's motor raising it
+  plasticHit(d, delay) { const k = this.att(d, 12, 0); if (k < 0.01) return; this.burst({ f: 1500, q: 1, dur: 0.05, gain: 0.22 * k, delay }); }
+  targetDown(d) { const k = this.att(d, 12, 0); if (k < 0.01) return; this.burst({ f: 380, q: 0.8, dur: 0.1, gain: 0.35 * k, type: 'lowpass', delay: 0.3 }); this.burst({ f: 1300, q: 1.5, dur: 0.04, gain: 0.18 * k, delay: 0.3 }); }
+  targetUp(d) {
+    const k = this.att(d, 12, 0); if (k < 0.01 || !this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, o = ctx.createOscillator(), f1 = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(95, t); o.frequency.linearRampToValueAtTime(150, t + 0.35); o.frequency.linearRampToValueAtTime(120, t + 0.75);
+    f1.type = 'lowpass'; f1.frequency.value = 700;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.05 * k, t + 0.05); g.gain.setValueAtTime(0.05 * k, t + 0.65); g.gain.linearRampToValueAtTime(0, t + 0.8);
+    o.connect(f1).connect(g).connect(this.master); o.start(t); o.stop(t + 0.85);
+    this.burst({ f: 900, q: 1.2, dur: 0.05, gain: 0.2 * k, delay: 0.78 });
+  }
   // a round arriving: a thud in the earth, a knock in wood, a crack on stone or plaster, a ring on steel (heard after
   // its flight and the sound's way back)
   bulletHit(kind, d, delay) {
