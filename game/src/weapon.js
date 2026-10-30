@@ -882,8 +882,10 @@ function puffTexture() {
 // ---- the counter (the rounds in the gun, the rest, the fire mode) and the crosshair, the way Call of Duty shows them
 class GunHud {
   constructor() {
+    // (on a touch screen the counter goes up top right, under the menu's button: the bottom right is the buttons')
+    this.touchUI = matchMedia('(pointer: coarse)').matches;
     const el = this.el = document.createElement('div');
-    el.style.cssText = 'position:fixed;right:26px;bottom:22px;color:#fff;font:600 13px system-ui,sans-serif;text-align:right;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;display:none;z-index:20';
+    el.style.cssText = 'position:fixed;right:26px;bottom:22px;color:#fff;font:600 13px system-ui,sans-serif;text-align:right;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;display:none;z-index:20' + (this.touchUI ? ';right:14px;bottom:auto;top:62px' : '');
     el.innerHTML = '<div style="opacity:.85;letter-spacing:.06em">GLOCK 18 · <span data-k="mode"></span></div><div><span data-k="mag" style="font-size:38px;font-weight:700"></span><span style="font-size:20px;opacity:.75"> / <span data-k="res"></span></span></div><div data-k="hint" style="color:#ffd27a;min-height:16px"></div><div data-k="rng" style="font-size:11px;font-weight:600;opacity:.88;letter-spacing:.03em"></div>';
     document.body.appendChild(el);
     this.k = Object.fromEntries([...el.querySelectorAll('[data-k]')].map(e => [e.dataset.k, e]));
@@ -902,7 +904,6 @@ class GunHud {
     this.md = mk('left:50%;top:22%;transform:translateX(-50%);z-index:21;opacity:0;text-align:center;font:800 18px system-ui,sans-serif;color:#ffe9a8;letter-spacing:.08em;text-shadow:0 2px 6px rgba(0,0,0,.9);white-space:nowrap');
     this.fd = mk('left:14px;top:46%;z-index:20;font:600 12px system-ui,sans-serif;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.9)');
     this.wn = mk('left:50%;top:calc(50% + 40px);transform:translateX(-50%);z-index:20;font:700 12px system-ui,sans-serif;letter-spacing:.12em;text-shadow:0 1px 3px rgba(0,0,0,.9);white-space:nowrap');
-    this.touchUI = matchMedia('(pointer: coarse)').matches;
     this.hmT = -1e9; this.hmK = 0; this.scT = -1e9; this.scPts = 0; this.scLines = []; this.mdT = -1e9; this.feeds = []; this.wnS = ''; this.rngS = '';
   }
   hit(kill, head) {

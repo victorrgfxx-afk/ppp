@@ -833,7 +833,8 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * **sub punct:** „MUNIȚIE PUȚINĂ”, „[R] REÎNCARCĂ”, „FĂRĂ MUNIȚIE”;
     * **statistica poligonului** sub muniție: doborâte, precizie, în cap, XP.
   * **Pe telefon:**
-    * butoane noi Tac, Lovește și Inspect, pe 4 coloane mai mici, ca să încapă pe ecran;
+    * butoane noi Tac, Lovește și Inspect. Butoanele armei stau acum pe două coloane, lângă cele principale, cu Foc și Ochește jos, sub degetul mare. Înainte stăteau deasupra celor principale și, pe un telefon ținut orizontal, ajungeau peste „Meniu”;
+    * contorul de muniție urcă sus, în dreapta, sub „Meniu”: jos, în dreapta, stătea sub butoane;
     * Fugi de două ori: sprint tactic;
     * Jos din fugă: alunecare; de două ori: pe spate.
   * **Ce n-am pus, și de ce:**
