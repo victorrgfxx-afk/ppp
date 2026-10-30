@@ -773,6 +773,17 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Mâna și arma nu mai tremură când rotești privirea (V88)** (`src/weapon.js`):
+  * **Cauza, măsurată:** legănarea armei (arma rămâne puțin în urma privirii când o rotești) folosea direct pasul privirii din fiecare cadru. Mișcările mouse-ului sau ale degetului ajung însă neregulat în cadre: două într-unul, trei sau niciunul în următorul, iar cadrele nu durează nici ele exact la fel. Arma și mâinile tremurau astfel de la un cadru la altul. La o rotire rapidă se loveau și de o limită dură, apoi reveneau brusc.
+    * Măsurat la o rotire a privirii stânga–dreapta și sus–jos (până la ~4 rad/s), la 60 FPS: capătul armei tremura ~0,35° cu mouse-ul și ~0,43° pe touch (până la 1,1–1,3° într-un cadru), adică 7–8 pixeli la 1080p. Mâna tremura ~0,11–0,14°.
+  * **Acum:** legănarea e o mișcare cu inerție:
+    * pornește de la viteza de rotire a privirii, netezită pe ~50 ms, ca neregularitățile intrării să nu mai conteze;
+    * arma rămâne în urmă cât ~55 ms din rotire, cel mult ~0,11 rad, atinși treptat, nu printr-un opritor;
+    * o urmărește un arc amortizat critic, fără oscilații, calculat exact, deci identic la orice FPS.
+  * **Măsurat după:**
+    * tremuratul capătului armei e ~0,12° cu mouse-ul, pe touch și cu o intrare perfect lină, deci intrarea nu mai contează; restul vine doar din durata inegală a cadrelor din test;
+    * tremuratul mâinii a scăzut de la ~0,11–0,14° la ~0,04°;
+    * amplitudinea legănării e aceeași la 30, 60 și 144 FPS (5,8–5,9°), cu ~25% mai calmă decât înainte.
 * **Mâinile refăcute, în mănuși tactice ca în clipul tău (V87)** (`src/handgeo.js`, `src/hand.js`, `src/weapon.js`):
   * **Umflătura de la încheietură, scoasă la cauză:**
     * capătul rotunjit al antebrațului ieșea prin dosul palmei, ca o bilă. Antebrațul, pus de cinematica brațului de la umăr, intra în mână cu 44° (stânga) și 62° (dreapta) abatere față de încheietura sculptată, iar la ochire, la alergare și la reîncărcare cu până la 107°;

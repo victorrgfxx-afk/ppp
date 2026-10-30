@@ -110,7 +110,7 @@ export class Glock {
     this.reload = null; this.cool = 0; this.ads = 0; this.sprint = 0; this.tuck = 0; this.trig = false;
     this.bloom = 0; this.kickP = V3(); this.kickR = V3(); this.kickPv = V3(); this.kickRv = V3(); this.slide = 0; this.slideT = 1; this.selT = 0;
     this.flips = []; this.flip = V3(); this.flipP = V3(); this.heat = 0;
-    this.camKick = 0; this.prevYaw = null; this.prevPitch = 0; this.sway = V3(); this.t = 0; this.fovMul = 1;
+    this.camKick = 0; this.prevYaw = null; this.prevPitch = 0; this.sway = V3(); this.swV = V3(); this.swW = V3(); this.t = 0; this.fovMul = 1;
     // ---- in your hands: the gun, the hands, the arms, all in the camera's frame (placed every frame)
     const vm = this.vm = new THREE.Group(); vm.name = 'viewmodel'; vm.matrixAutoUpdate = false; vm.visible = false;
     const m = this.model = glockModel();
@@ -232,12 +232,17 @@ export class Glock {
     if (this.reload?.slideHeld) { /* (in the left hand: stepReload) */ }
     else if (this.locked) this.slide = damp1(this.slide, SLIDE, 40, dt);
     else { this.slideT += dt; this.slide = SLIDE * (this.slideT < 0.012 ? this.slideT / 0.012 : Math.max(0, 1 - (this.slideT - 0.012) / 0.03)); }
-    // the sway: the gun lags behind the turning view and swings back
+    // the sway: the gun lags behind the turning view and swings back, with the inertia of a gun in two hands. It is
+    // driven by the view's turn rate with the input's unevenness smoothed out (a mouse's or a finger's moves come into
+    // the frames unevenly: two in one, three or none in the next; the old sway took each frame's own step, so the gun
+    // and the hands shook ~0.4 deg frame to frame on a swung view, measured), its lag ~55 ms of the turn (at most ~0.11
+    // rad, reached softly, not against a stop) followed through a critically damped spring; the same at any frame rate
     if (this.prevYaw === null) { this.prevYaw = player.yaw; this.prevPitch = player.pitch; }
     let dy = player.yaw - this.prevYaw; if (dy > Math.PI) dy -= 2 * Math.PI; if (dy < -Math.PI) dy += 2 * Math.PI;
     const dp = player.pitch - this.prevPitch; this.prevYaw = player.yaw; this.prevPitch = player.pitch;
-    this.sway.x = damp1(this.sway.x + dp * 0.5, 0, 9, dt); this.sway.y = damp1(this.sway.y + dy * 0.5, 0, 9, dt);
-    this.sway.x = Math.max(-0.12, Math.min(0.12, this.sway.x)); this.sway.y = Math.max(-0.12, Math.min(0.12, this.sway.y));
+    if (Math.abs(dy) > 0.6 || Math.abs(dp) > 0.6 || dt <= 0) this.swW.set(0, 0, 0);          // (a cut: a view picked)
+    else { const a = 1 - Math.exp(-dt / 0.05); this.swW.x += (dp / dt - this.swW.x) * a; this.swW.y += (dy / dt - this.swW.y) * a; }
+    critical(this.sway, this.swV, 0.11 * Math.tanh(this.swW.x * 0.5), 0.11 * Math.tanh(this.swW.y * 0.5), 18, dt);
     this.vm.visible = this.out > 0;
     this.hud.show(ready || this.out > 0.5);
     this.hud.set(this.mag + (this.chambered ? 1 : 0), this.reserve, this.auto, this.reload ? (this.reload.k === FIRST ? '' : 'Reîncarcă…') : (!this.chambered && this.reserve <= 0 && this.mag <= 0 ? 'Fără muniție' : (this.mag + (this.chambered ? 1 : 0) <= 6 ? 'R — reîncarcă' : '')));
@@ -554,6 +559,14 @@ const damp1 = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 // a shot's flip over the time since it: none on the shot's own frame (it shows the slide back and the case), half of it
 // ~17 ms on, all of it at 32 ms, a quarter at ~68 ms, gone by ~90 ms (the clip's, frame by frame)
 const bump = (t) => t <= 0 ? 0 : (t / 0.032) ** 4 * Math.exp(4 * (1 - t / 0.032));
+// a critically damped spring (no overshoot) pulling x (x, y) toward (tx, ty), solved exactly over dt: angular frequency w
+function critical(x, v, tx, ty, w, dt) {
+  const e = Math.exp(-w * dt);
+  for (const [k, t] of [['x', tx], ['y', ty]]) {
+    const d = x[k] - t, b = v[k] + w * d;
+    x[k] = t + (d + b * dt) * e; v[k] = (v[k] - w * b * dt) * e;
+  }
+}
 // a damped spring solved exactly over dt (the same motion at any frame rate): angular frequency w, damping ratio z < 1
 function spring(x, v, w, z, dt) {
   const wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * dt), c = Math.cos(wd * dt), s = Math.sin(wd * dt);
