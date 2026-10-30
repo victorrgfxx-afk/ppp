@@ -164,7 +164,7 @@ export function skinMaterial(cloth = false, cuff = false) {
 }
 
 // a tactical glove (the pistol's hands, weapon.js; sculpted by handgeo.js, its parts' weights on its vertices), as the
-// user's clip shows them: black synthetic suede with a fine fibrous speckle, a little sheen at grazing light; moulded
+// user's clip shows them (its tone set against the clip's in the game's daylight: charcoal): black synthetic suede with a fine fibrous speckle, a little sheen at grazing light; moulded
 // rubber pads on the fingers' backs, perforated, and a rubber band over the knuckles with a knurled pattern, darker grey
 // and smoother; knit on the thumb and the fingers' sides, ribbed; a mesh panel on the back's little-finger side; the
 // cuff's strap of hook-and-loop, matt, stitched round; the seams sunk and dark, the folds darker. The patterns are
@@ -172,7 +172,7 @@ export function skinMaterial(cloth = false, cuff = false) {
 // finer than the pixels (no moire)
 export function gloveMaterial() {
   const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.84, metalness: 0, sheen: 0.6, sheenRoughness: 0.5,
-    sheenColor: new THREE.Color(0.26, 0.26, 0.28), specularIntensity: 0.45 });
+    sheenColor: new THREE.Color(0.1, 0.1, 0.106), specularIntensity: 0.4 });
   m.userData.noWet = true; m.envMapIntensity = 0.5;
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 aGlove, aGlove2; attribute float aGloss; varying vec3 vGlP; varying vec4 vGlove, vGlove2; varying float vStitch;')
@@ -193,24 +193,24 @@ vec3 glBump(vec3 n, float h) {
   float gPx = length(fwidth(vGlP));
   // the suede: fibres (0.3 mm), a few specks catching the light, a blotchiness of wear
   float gFib = glN(vGlP * 3300.0), gSpk = smoothstep(0.9, 0.99, glN(vGlP * 5200.0 + 7.3)), gWear = glN(vGlP * 180.0);
-  vec3 cFab = vec3(0.04, 0.04, 0.043) * (0.8 + 0.4 * gFib) * (0.85 + 0.3 * gWear) + vec3(0.035) * gSpk;
+  vec3 cFab = vec3(0.019, 0.019, 0.021) * (0.8 + 0.4 * gFib) * (0.85 + 0.3 * gWear) + vec3(0.018) * gSpk;
   // the mesh panel: a fine diamond weave (1.1 mm), its holes darker
   float gMa = 1.0 - smoothstep(0.25, 0.6, gPx / 0.0011);
   float gMw = (0.5 + 0.5 * sin(vGlove2.y * 6.2832 / 0.0011)) * (0.5 + 0.5 * sin(vGlove2.z * 6.2832 / 0.0011));
-  cFab = mix(cFab, vec3(0.036, 0.036, 0.039) * (1.0 - 0.6 * gMa * (1.0 - gMw)), wMesh);
+  cFab = mix(cFab, vec3(0.017, 0.017, 0.019) * (1.0 - 0.6 * gMa * (1.0 - gMw)), wMesh);
   // the pads' perforations (a lattice of holes 2.3 mm apart, ~0.9 mm across), the band's knurling
   vec3 gC = fract(vGlP / 0.0023) - 0.5;
   float gHole = 1.0 - smoothstep(0.17, 0.24, length(gC));
   float gKnurl = sin(vGlP.x * 2600.0) * sin(vGlP.y * 2600.0) * sin(vGlP.z * 2600.0);
   float gHa = 1.0 - smoothstep(0.3, 0.7, gPx / 0.0023);
   gHole *= gHa; gKnurl *= 1.0 - smoothstep(0.3, 0.7, gPx / 0.0024);
-  vec3 cRub = vec3(0.06, 0.06, 0.063) * mix(1.0, 0.4, gHole * wPad / max(wRub, 1e-3)) * (0.85 + 0.15 * gKnurl * wBand / max(wRub, 1e-3));
+  vec3 cRub = vec3(0.029, 0.029, 0.031) * mix(1.0, 0.4, gHole * wPad / max(wRub, 1e-3)) * (0.85 + 0.15 * gKnurl * wBand / max(wRub, 1e-3));
   // the knit's ribs (1.5 mm), darker in their grooves; the strap's hook-and-loop fuzz and its stitches
   float gRa = 1.0 - smoothstep(0.3, 0.7, fwidth(vGlove.z) / 0.0015);
   float gRib = 0.5 + 0.5 * sin(vGlove.z * 6.2832 / 0.0015) * gRa;
-  vec3 cKnit = vec3(0.034, 0.034, 0.037) * (0.65 + 0.5 * gRib) * (0.85 + 0.3 * gFib);
+  vec3 cKnit = vec3(0.016, 0.016, 0.018) * (0.65 + 0.5 * gRib) * (0.85 + 0.3 * gFib);
   float gFuzz = glN(vGlP * 4200.0), gDash = step(0.45, fract(vGlove.z / 0.003)) * vStitch;
-  vec3 cStrap = vec3(0.045, 0.045, 0.048) * (0.8 + 0.4 * gFuzz) * (1.0 - 0.5 * gDash);
+  vec3 cStrap = vec3(0.021, 0.021, 0.023) * (0.8 + 0.4 * gFuzz) * (1.0 - 0.5 * gDash);
   vec3 gBase = cFab;
   gBase = mix(gBase, cKnit, wKnit); gBase = mix(gBase, cRub, wRub); gBase = mix(gBase, cStrap, wStrap);
   diffuseColor.rgb = gBase * (1.0 - 0.6 * gSeam) * (0.45 + 0.55 * gOcc);

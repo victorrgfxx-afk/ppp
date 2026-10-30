@@ -270,8 +270,9 @@ function sculpt(r, pose) {
       const b = f.bones[k], L = len(sub(b.b, b.a)), rm = (b.ra + b.rb) / 2;
       pads.push(ell(add(lerp(b.a, b.b, 0.52), b.dors, rm - 0.0008), [b.d, f.ax, b.dors], [0.38 * L + 0.002, 0.8 * rm, 0.0052]));
     }
-    const kc = [0, 1, 2, 3].map(i => add(knuckles[2 * i][0], D, 0.0024));
-    const band = chain([0, 1, 2].map(i => [cap(kc[i], kc[i + 1], 0.0092, 0.0092), 0.004]));
+    // (the band ~2 mm proud of the suede over the knuckles' tops: their balls' centres plus ~1.2 cm out)
+    const kc = [0, 1, 2, 3].map(i => add(knuckles[2 * i][0], D, 0.0045));
+    const band = chain([0, 1, 2].map(i => [cap(kc[i], kc[i + 1], 0.0096, 0.0096), 0.004]));
     // (the cuff: from the hand's heel to ~5 cm past the wrist's joint, as the clip's)
     const c0 = add(J, fore, 0.009), c1 = add(J, fore, -0.05);
     const cuff = tube(c0, c1, 0.0335, 0.0358, Df, 1.3, 0.0035);

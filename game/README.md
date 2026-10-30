@@ -787,7 +787,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * un inel metalic (D-ring), cusut pe manșeta mănușii drepte, pe partea degetului mic, ca în clip;
     * tricot cu dungi pe degetul mare și pe lateralele degetelor, un panou de plasă pe dosul palmei spre degetul mic, cusături pe dosul palmei, în jurul pernuțelor, al benzii și la manșetă.
   * **Materialele:**
-    * țesătura: gri foarte închis, cu fibre fine, câteva puncte care prind lumina și un luciu moale la margini;
+    * țesătura: neagră-cărbune (tonul reglat după clip, în lumina zilei din joc), cu fibre fine, câteva puncte care prind lumina și un luciu moale la margini;
     * cauciucul pernuțelor: gri închis, mai neted, cu găurile mai închise;
     * tricotul are dungi de 1,5 mm, iar ariciul e mat și scămoșat;
     * modelele sunt reliefuri de câteva zecimi de milimetru. Acolo unde ar fi mai fine decât pixelii, se estompează, ca să nu facă moar.
