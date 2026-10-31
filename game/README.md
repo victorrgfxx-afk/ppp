@@ -777,6 +777,53 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Ploaia în rafale mai realistă, urme în noroi și ceață (V92)** (`src/rain.js`, `src/main.js`, `src/player.js`, `src/snowtrail.js`, `src/materials.js`, `src/geo/terrain.js`, `src/lighting.js`):
+  * **Stropii picăturilor, ca în filmările de mare viteză:**
+    * **coroana:** picătura care atinge solul ridică o foiță subțire de apă, în inel, de 1,4–3,8 cm (cu o treime mai mare pe apă). Are buza „mărgelată”, din care se rup picăturile, și dispare în ~30 ms. Văzută de sus e o elipsă, din lateral o bandă, mai luminoasă pe margini, unde foița se vede din profil;
+    * **picăturile din coroană:** 6, aruncate jos (17–43°), cu 1/6–1/3 din viteza picăturii. Cad la 5–40 cm. Studiile de eroziune prin stropire măsoară o viteză a stropilor de ~1/3 din viteza picăturii;
+    * **pe apă** (bălți, apă care curge): coroana e mai mare și ține mai mult. Craterul care se închide aruncă un jet subțire de 2–4 cm (jetul Worthington), între ~18 și ~90 ms, iar din vârful lui se rupe o picătură;
+    * **pe pământ:** doar 3 picături, tulburi. **În iarbă** aproape nimic, pentru că picătura se sparge în fire. Nici suprafața ierbii nu mai „fierbe” cu pete gri, ca asfaltul;
+    * mărimea picăturilor urmează distribuția Marshall–Palmer, iar viteza la impact pe cea a lui Atlas (1973);
+    * **câți:** până la ~18 000 de stropi pe secundă în cei ~7 m din jurul tău pe Înaltă și Ultra (~12 700 pe Medie, ~7 300 pe Scăzută), mai deși aproape de tine;
+    * la câțiva metri un strop e sub un pixel. Se desenează ca un punct estompat, cât lumina lui reală, nu dispare;
+    * **ce era înainte:** o singură coroană de 4–11 cm, care ținea ~0,3 s.
+  * **Rafalele aruncă ploaia în valuri:**
+    * **fronturi de rafală** purtate de aer, adânci de câteva zeci de metri și mai late de-a curmezișul vântului. În ele aerul și ploaia merg cu ~30% mai repede decât vântul din jur, între ele cu ~25% mai încet;
+    * picăturile chiar zboară așa: în front mai culcat, fiecare dusă cu atât mai departe cu cât cade de mai mult timp. Nu doar desenul lor se înclină;
+    * **perdele de ploaie** de câteva sute de metri trec peste câmpuri, purtate de vânt: ceața ploii e mai deasă în ele. Sunt aceleași fronturi, la scară mare: când una ajunge la tine, ploaia din jur se îndesește;
+    * **ceața de stropi** de pe asfalt e smulsă mai tare în rafale, în vălătuci moi. Înainte se vedeau marginile drepte ale „plăcilor” ei, unde intrau în asfalt;
+    * **reparat, ploaia care pâlpâia:** benzile mai dese și mai rare ale ploii se orientau după direcția de moment a vântului, care se rotește la fiecare rafală. Cu cât jucai mai mult, cu atât se roteau mai repede, până pâlpâiau. Acum stau pe direcția medie a vântului.
+  * **Vântul nu te mai împinge** și nu te mai încetinește, nici în viscol (era același cod). Mergi cum vrei. Rafalele încă îți zgâlțâie privirea, iar mașina e încă împinsă lateral.
+  * **Urme în noroi:** pe pământul ud rămân urmele pașilor tăi, ale sătenilor și ale prietenilor, plus urmele roților mașinii:
+    * **unde:** câmpuri, poteci, straturile din grădini și solul pădurii. În iarbă puțin, pe pietriș aproape deloc, pe asfalt deloc;
+    * **cum arată:** aceeași hartă ca urmele din zăpadă. Talpa e apăsată ~2,5 cm, mai închisă și mai netedă (pământ presat și îmbibat), cu crestăturile tălpii și cu marginea de noroi împinsă în sus;
+    * **cu apă:** în ploaie, apa stă în urmele adânci;
+    * **cât țin:** ploaia le netezește încet (~10 min). Se fac și pe ceață, când pământul e reavăn;
+    * **claritate:** pe Medie harta are 4,7 cm pe pixel, deci urmele ies estompate. Pe Înaltă și Ultra are 2,3 cm.
+  * **Ceață** (nouă în **T**, după *Înnorat*): ceața de radiație a unei dimineți de toamnă, așezată în vale, în aer aproape liniștit (~1 m/s):
+    * **vizibilitatea:** ~150 m în stradă. OMM numește ceață orice vizibilitate sub 1 km, iar prognozele britanice pentru public vorbesc de ceață sub ~180 m;
+    * **în sus se subțiază**, pe ~80 m. Pe dealul crucii (~120 m mai sus) vizibilitatea e de ~670 m;
+    * **nu e uniformă:** petice de câteva zeci de metri și fâșii de ~10 m, purtate încet de aer;
+    * **lumina:** un gri luminos și egal. Soarele e doar un disc palid, aproape fără umbre. Cerul e chiar ceața, ziua și noaptea: dealurile se pierd în ea, fără siluete, iar luna nu se vede. Totul e reavăn;
+    * **noaptea:** felinarele au aure moi și largi, din lumina pe care picăturile ceții o împrăștie spre tine de-a lungul privirii. Strălucirea scade cam ca 1/unghi față de felinar și se stinge cu distanța: 12 felinare pe ~120 m în jurul tău.
+  * **Testat în joc** (randare software, 960×540, calitatea Medie):
+    * shaderele noi compilează fără erori;
+    * **pe drumul de pe deal, în rafale:**
+      * coroanele și picăturile lor se văd la mărimea reală, iar ceața de stropi e moale;
+      * harta de adăpost confirmă că nimic din fața ta nu e tăiat greșit;
+      * în trei cadre la câte 0,5 s distanță, un front aduce o perdea de dâre lungi, culcate de vânt, iar după el ploaia se rărește;
+    * **pe un câmp ud** (~300 m de stradă):
+      * o plimbare de 6,3 m are 8 pași, iar urmele lor se văd pe câmp;
+      * 5 pași puși direct apar în hartă cu apăsarea de 0,68–0,98 în centrul tălpii;
+      * de la înălțimea ochilor se vede un șir de urme, alternativ stânga–dreapta;
+    * ceața: coeficient de extincție 0,026/m la stradă (150 m vizibilitate), cu contrastul verificat pe mașini și stâlpi la 4–12 m;
+    * cât costă pe o placă video reală n-am putut măsura (testele rulează cu randare software).
+  * **Surse:**
+    * [OMM, Atlasul norilor: ceață și pâclă](https://cloudatlas.wmo.int/en/fog-compared-with-mist.html) (ceață: vizibilitate sub 1 km) și [ceața de radiație](https://cloudatlas.wmo.int/en/radiation-fog.html) (solul se răcește prin radiație, de obicei noaptea);
+    * [Royal Meteorological Society: ceață sau pâclă](https://www.rmets.org/metmatters/fog-mist-difference) („for the general public, forecasters frequently use the term fog … less than 180 m”);
+    * [MIT News: filmări de mare viteză ale unei picături care cade în apă](https://news.mit.edu/2025/high-speed-videos-show-what-happens-when-droplet-splashes-pool-0221) (craterul, coroana, picăturile secundare aruncate din coroană);
+    * [Sun et al. 2021, Frontiers in Earth Science: eroziunea prin stropire](https://www.frontiersin.org/articles/10.3389/feart.2021.739804/full) („the splash velocity is about 1/3 of single raindrop terminal velocity”);
+    * jetul Worthington: A. M. Worthington, *A Study of Splashes* (1908).
 * **Țintele ies din pământ (V91)** (`src/range.js`):
   * **Când iei pistolul:** siluetele ies pe verticală din pământ, una după alta, fiecare cu motorul ridicătorului ei (~0,8 s). Cadrele plăcilor de oțel ies și ele, cu plăcile atârnate (~1 s).
   * **Când pistolul nu mai e în mână:** intră la loc în pământ (siluetele în ~0,6 s, plăcile în ~0,8 s).

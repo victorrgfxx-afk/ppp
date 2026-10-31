@@ -1687,6 +1687,66 @@ void main() {
   gl_FragColor = vec4(uColor, a);
 }`;
 
+// (V92) the halo of a lamp in a fog: the light its droplets scatter towards you all along your line of sight past it.
+// In an even fog of extinction b, a lamp of intensity I at distance D seen th off its centre glows (single scattering)
+// L(th) ~ b I (pi - th) / (4 pi D sin th) e^(-b D): bright close round it and falling off as 1/th - the wide soft glow
+// round a street lamp in a fog. One quad round each lamp head near you, across the line of sight just this side of it
+// (what stands in front of the lamp hides its glow), drawn added on.
+const GLOW_VERT = /* glsl */`
+attribute vec2 corner;
+uniform vec4 uLampsF[12];            // the lamp heads (xyz) and how bright they burn (w; 0 none)
+uniform float uFogB;                 // the fog's extinction where you are (1/m)
+uniform vec3 uCam;
+varying vec2 vQ;
+varying float vI;
+void main() {
+  vQ = vec2(0.0); vI = 0.0;
+  gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
+  vec4 L = uLampsF[gl_InstanceID];
+  if (L.w <= 0.0) return;
+  vec3 toL = L.xyz - uCam; float D = length(toL);
+  if (D < 1.0) return;
+  vec3 f = toL / D, r = normalize(cross(f, vec3(0.0, 1.0, 0.0)) + vec3(1e-5)), u = cross(r, f);
+  vQ = corner * 0.35;                                         // (out to 20 deg off the lamp)
+  vec3 p = uCam + f * (D - 0.3) + (r * corner.x + u * corner.y) * 0.365 * (D - 0.3);
+  vI = L.w * uFogB * exp(-uFogB * D) / D;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+}`;
+const GLOW_FRAG = /* glsl */`
+uniform vec3 uColor;
+varying vec2 vQ;
+varying float vI;
+void main() {
+  float th = length(vQ);
+  if (th > 0.35 || vI <= 0.0) discard;
+  float s = (3.1416 - th) / (12.566 * max(sin(th), 0.004)) * (1.0 - smoothstep(0.22, 0.35, th));
+  gl_FragColor = vec4(uColor * vI * s, 1.0);
+}`;
+export class FogGlow {
+  constructor(scene, n = 12) {
+    this.lamps = { value: Array.from({ length: n }, () => new THREE.Vector4()) };
+    this.cam = { value: new THREE.Vector3() }; this.b = { value: 0 }; this.color = { value: new THREE.Color(1, 0.78, 0.5) };
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('corner', new THREE.Float32BufferAttribute([-1, -1, 1, -1, 1, 1, -1, 1], 2));
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+    g.setIndex([0, 1, 2, 0, 2, 3]); g.instanceCount = n;
+    const m = new THREE.ShaderMaterial({ vertexShader: GLOW_VERT, fragmentShader: GLOW_FRAG, uniforms: { uLampsF: this.lamps, uFogB: this.b, uCam: this.cam, uColor: this.color },
+      transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    this.mesh = new THREE.Mesh(g, m);
+    this.mesh.frustumCulled = false; this.mesh.renderOrder = 6; this.mesh.visible = false;
+    this.mesh.userData.noAO = true; this.mesh.userData.ueSkip = 'rain';
+    scene.add(this.mesh);
+  }
+  // lamps: the lamp heads near you ({x, y, z}); level: how bright they burn; b: the fog's extinction where you are
+  update(camera, lamps, level, b) {
+    const on = b > 1e-3 && level > 0.05 && lamps.length > 0;
+    this.mesh.visible = on;
+    if (!on) return;
+    this.cam.value.copy(camera.position); this.b.value = b;
+    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l) v.set(l.x, l.y, l.z, level * 8); else v.w = 0; });
+  }
+}
+
 export class Spray {
   constructor(scene, noise, n = 420) {
     this.n = n; this.next = 0;

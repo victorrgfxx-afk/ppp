@@ -4,7 +4,7 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
-import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray } from './rain.js';
+import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray, FogGlow } from './rain.js';
 import { Runoff, EaveStreams } from './runoff.js';
 import { SnowTrail } from './snowtrail.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
@@ -347,7 +347,7 @@ async function main() {
     const Nz = fogMode ? N.fog : N.zenith, Nh = fogMode ? N.fog : N.horizon;
     setSkyWeather(sky, { ...w, envGround: (w.envGround ?? [0.33, 0.33, 0.31]).map(v => v * gk), sunColor: mul(w.sunColor, L.color).map(v => v * sunVis),
       zenith: mixA(w.zenith, Nz, night), horizon: mixA(horizonAway, Nh, night), horizonSun: mixA(horizonSun, Nh, night), sunLow: low * sunVis * (1 - night),
-      cloudLit: mixA(mul(w.cloudLit, warm), N.cloudLit, night), cloudDark: mixA(w.cloudDark, N.cloudDark, night),
+      cloudLit: mixA(mul(w.cloudLit, warm), fogMode ? N.fog : N.cloudLit, night), cloudDark: mixA(w.cloudDark, fogMode ? N.fog : N.cloudDark, night),
       bright: THREE.MathUtils.lerp(w.bright * (0.3 + 0.7 * d), 1, night) });
     const su = sky.material.uniforms;
     su.uNight.value = night; su.uMoonDir.value.copy(moonInfo.dir); su.uMoonCol.value.set(0.9, 0.93, 1).multiplyScalar(moonUp * (fogMode ? 0 : 1));
@@ -736,7 +736,8 @@ async function main() {
   }
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
-  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx]);
+  const fogGlow = new FogGlow(scene);                 // (V92: the lamps' halos in a fog)
+  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
@@ -782,6 +783,7 @@ async function main() {
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
+  let fogLamps = [];                                                    // (in a fog, the 12 nearest within ~120 m: their halos)
   // the texture units (V85): a lit material gets every shadow-casting light's map besides its own textures, and past the
   // graphics card's limit (most give WebGL 16 in a fragment shader) its shader does not link and nothing of it is drawn -
   // at Înaltă the ground's material went past it and the whole map vanished on real cards (the software renderer of the
@@ -1356,7 +1358,6 @@ async function main() {
       // (or in a squall the sheets of rain its gusts drive along: the fog chunk above, and the streaks on the same air)
       AIR_FOG.x = fogMode || (squall ? 0.85 * storm : 0); AIR_FOG.w = fogMode ? 0 : 10 + galeAng;
       RAIN.uAirOff.value.set(AIR_FOG.y, AIR_FOG.z);
-      if (post.bloom) { post.bloom.strength = 0.1 + 0.4 * fogMode; post.bloom.radius = 0.4 + 0.5 * fogMode; }   // (in a fog the lamps and headlights wear wide halos)
       STORM.uStorm.value = blizzard; STORM.gust = storm > 0.01 ? gust : 1; STORM.gale = squall ? storm : 0; STORM.burst = burst;
       // the trees: the breeze (its own slow ups and downs) or the gale with its gusts; the gusts running through the
       // woods are the shader's (twGust), carried along by the wind (uTwOff)
@@ -1543,6 +1544,11 @@ async function main() {
         const cp = camera.position;
         snowLamps = allLamps.filter(l => Math.abs(l.x - cp.x) < 45 && Math.abs(l.z - cp.z) < 45).sort((a, b) => ((a.x - cp.x) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.z - cp.z) ** 2)).slice(0, 6);
       } else snowLamps = [];
+      if (fogMode && M.lampGlass.emissiveIntensity > 0.2) {
+        const cp = camera.position, near = [];
+        for (const l of allLamps) { const d = (l.x - cp.x) ** 2 + (l.z - cp.z) ** 2; if (d < 120 * 120) near.push([d, l]); }
+        fogLamps = near.sort((a, b) => a[0] - b[0]).slice(0, 12).map(e => e[1]);
+      } else fogLamps = [];
       // the easter egg in the wood of the hill of the cross
       const egg = hillEgg && !hillEggFound ? hillEgg : null;
       if (egg && Math.hypot(pos0().x - egg.x, pos0().z - egg.z) < egg.r) { hillEggFound = true; hud.toast('Easter egg: ai găsit scheletul din pădurea de pe dealul crucii!', 6); }
@@ -1682,6 +1688,7 @@ async function main() {
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4,
       weatherKey === 'rafale' ? 60 : 40, night);   // (a downpour ~40 mm/h, a squall's ~60: the drops' sizes, so their speeds, fixed per weather - how many fall goes with the rain)
     eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
+    fogGlow.update(camera, fogLamps, M.lampGlass.emissiveIntensity / 4, scene.fog.near * AIR_FOG.x * Math.exp(-Math.max(0, camera.position.y) / scene.fog.far));
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
     // the car you are in (at the wheel, or riding with the friend): no flakes, drops or leaves inside it (rain.js)
