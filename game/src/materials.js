@@ -120,6 +120,8 @@ export function buildMaterials() {
   std('soil', { map: TEX.soil, normalMap: TEX.soilN, roughness: 0.98 });
   // the bare ground: the water that runs off it in a downpour is muddy (rain.js)
   for (const k of ['gravel', 'grassGround', 'soil']) M[k].userData.wet = 'ground';
+  // (how much of it is bare earth that takes a print in the mud, rain.js - V92: a bed's soil, the lawn a little, the gravel hardly)
+  M.soil.userData.mud = 1; M.grassGround.userData.mud = 0.3; M.gravel.userData.mud = 0.15; M.grassGround.userData.grass = 1;
   std('tiles', { map: TEX.tiles, normalMap: TEX.tilesN, roughness: 0.55 });
   std('plinthTile', { map: TEX.plinth, normalMap: TEX.plinthN, roughness: 0.6 });
   std('rustStrip', { map: TEX.rust_strip, normalMap: TEX.rust_stripN, roughness: 0.75, metalness: 0.3 });

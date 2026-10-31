@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { SNOW } from './rain.js';
+import { SNOW, RAIN } from './rain.js';
 
 // Footprints and tyre tracks in the snow: a map laid on the ground around you (±24 m, 2.3 cm a texel on high) of how
 // much of the snow's depth has been pressed out (R), the rim pushed up around the prints (G) and the tread on their
 // floor (B), stamped with every step (yours and the villager's) and every turn of the wheels of the car you drive.
 // The lying snow (rain.js: the blanket and the cover) sinks by it. While it snows the prints fill in again (in a few
 // minutes; in a blizzard the drift fills them in about a minute). It follows you in steps of 64 texels, keeping what
-// it holds.
+// it holds. On wet ground (V92) the same map holds the prints pressed into the mud (rain.js: where the ground is earth).
 const STAMP_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aP;          // centre x, z, heading, kind (0 a boot, 1 a tyre's track, 2 a drag or a car's belly)
@@ -160,11 +160,11 @@ export class SnowTrail {
     }
   }
 
-  // each frame: on while there is snow; it follows the camera, fills in while it snows (fill: per second), and takes
-  // this frame's stamps
+  // each frame: on while there is snow or the ground is wet (the mud); it follows the camera, fills in while it snows
+  // (fill: per second), and takes this frame's stamps
   update(renderer, camPos, dt, fill) {
-    const snow = SNOW.uSnow.value > 0.01;
-    if (!snow) {
+    const on = SNOW.uSnow.value > 0.01 || RAIN.uWet.value > 0.1;
+    if (!on) {
       if (this.on) { this.on = false; this.box.w = 0; this.dirty = true; this.feet = { '-1': null, 1: null }; this.wheels.clear(); }
       this.n = 0;
       return;

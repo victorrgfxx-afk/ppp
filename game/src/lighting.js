@@ -183,7 +183,19 @@ WEATHER.viscol = {
   sun: 0.25, sunColor: [0.93, 0.95, 1], hemi: 0.72, hemiSky: [0.84, 0.87, 0.92], hemiGround: [0.7, 0.72, 0.76],
   env: 1.0, envGround: [0.7, 0.72, 0.76], fog: [0.67, 0.7, 0.74], vis: 330, hazeH: 4000, exposure: 0.92, shadow: 0.12, snow: 1, storm: 1, winter: true,
 };
-export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ploaie', 'rafale', 'ninsoare', 'viscol', 'zapada'];
+// fog (ceață, V92): the radiation fog of an autumn morning, settled in the valley in still air (~1 m/s). Visibility
+// ~150 m at the street (WMO: fog is under 1 km; the British forecasters call it fog for the public under ~180 m),
+// thinning upward over ~80 m: the hill of the cross stands in a lighter veil, the ridges above it nearly clear. A bright,
+// even grey, the sun no more than a pale disc, hardly a shadow; everything damp (damp: the surfaces' wetness), the
+// fog's patches drifting through it on the air (fogPatches: main.js, the fog chunk); the lamps and headlights haloed
+WEATHER.ceata = {
+  label: 'Ceață', breeze: 0.8, cover: 1, cumulus: 0, zenith: [0.58, 0.595, 0.61], horizon: [0.6, 0.61, 0.62], bright: 1,
+  cloudLit: [0.62, 0.63, 0.64], cloudDark: [0.54, 0.55, 0.57],
+  sun: 0.55, sunColor: [1, 0.97, 0.92], hemi: 0.6, hemiSky: [0.86, 0.88, 0.9], hemiGround: [0.38, 0.37, 0.35],
+  env: 1.0, envGround: [0.42, 0.42, 0.4], fog: [0.6, 0.61, 0.62], vis: 150, hazeH: 80, exposure: 0.92, shadow: 0.15,
+  damp: 0.35, fogPatches: 1,
+};
+export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ceata', 'ploaie', 'rafale', 'ninsoare', 'viscol', 'zapada'];
 
 // ------------------------------------------------------------------ time of day
 // Direct sunlight through the atmosphere: Kasten-Young air mass and per-channel optical depths (Rayleigh at

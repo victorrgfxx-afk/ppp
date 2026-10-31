@@ -60,6 +60,7 @@ THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
 	uniform vec3 fogColor;
 	uniform vec4 airSun;
 	uniform vec3 airCool;
+	uniform vec4 airFog;
 	varying float vFogDepth;
 	varying vec3 vFogW;
 	#ifdef FOG_EXP2
@@ -69,6 +70,34 @@ THREE.ShaderChunk.fog_pars_fragment = `#ifdef USE_FOG
 		uniform float fogFar;
 	#endif
 ${AIR_GLSL}
+	// (V92) a fog is never even: patches some tens of metres across, wisps of ~10 m, a few thinner gaps, all drifting on
+	// the air. Its density along the line of sight relative to its mean, from three points along it (the nearest 150 m:
+	// further off the patches average out)
+	float airFogHash( vec2 p ) { vec3 q = fract( vec3( mod( p, 4096.0 ).xyx ) * 0.1031 ); q += dot( q, q.yzx + 33.33 ); return fract( ( q.x + q.y ) * q.z ); }
+	float airFogNoise( vec2 p ) {
+		vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+		return mix( mix( airFogHash( i ), airFogHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( airFogHash( i + vec2( 0.0, 1.0 ) ), airFogHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+	}
+	float airFogPatches( vec3 e, vec3 p ) {
+		vec3 v = p - e; float d = length( v ), s = 0.0, k;
+		if ( airFog.w > 1.0 ) {
+			// (a squall, airFog.w = 10 + the gale's bearing: the sheets of rain its gusts drive along the wind, a few hundred
+			// metres across and deep, sweeping past - the streaks' own pattern on the same air, rain.js: when one reaches
+			// you, the rain round you thickens with it. Over the nearest 600 m)
+			vec2 ax = vec2( cos( airFog.w - 10.0 ), sin( airFog.w - 10.0 ) ); k = min( 1.0, 600.0 / max( d, 1e-3 ) );
+			for ( int i = 0; i < 4; i ++ ) {
+				vec2 w = ( e + v * k * ( float( i ) + 0.5 ) / 4.0 ).xz - airFog.yz;
+				s += smoothstep( 0.3, 0.7, airFogNoise( vec2( dot( w, ax ) / 160.0, dot( w, vec2( -ax.y, ax.x ) ) / 320.0 ) ) );
+			}
+			return mix( 1.0, 0.6 + 0.9 * s / 4.0, airFog.x * ( 1.0 - smoothstep( 600.0, 1400.0, d ) ) );
+		}
+		k = min( 1.0, 150.0 / max( d, 1e-3 ) );
+		for ( int i = 0; i < 3; i ++ ) {
+			vec2 w = ( e + v * k * ( float( i ) + 0.5 ) / 3.0 ).xz - airFog.yz;
+			s += 0.65 * airFogNoise( w / 38.0 ) + 0.35 * airFogNoise( w / 11.0 + 7.3 );
+		}
+		return mix( 1.0, 0.45 + 1.1 * s / 3.0, airFog.x * ( 1.0 - smoothstep( 150.0, 450.0, d ) ) );
+	}
 #endif`;
 THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 	{
@@ -78,6 +107,7 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 			float airB = fogNear, airH = fogFar;
 		#endif
 		vec3 airT, airL; float airTau;
+		if ( airFog.x > 0.0 ) airB *= airFogPatches( cameraPosition, vFogW );
 		vec3 airV = vFogW - cameraPosition;
 		float airMie = pow( max( dot( airV, airSun.xyz ) * inversesqrt( max( dot( airV, airV ), 1e-12 ) ), 0.0 ), 6.0 );
 		airPath( cameraPosition, vFogW, airB, airH, fogColor * ( 1.0 - airCool * ( 1.0 - airToward( airV, airSun.xyz ) ) ) * ( 1.0 + airSun.w * airMie ), airT, airL, airTau );
@@ -92,7 +122,9 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 // applyWeather). One shared value in every built-in material's uniforms: three clones its own vector types, not plain
 // objects, and every material's uniforms are uploaded at least once a frame.
 const AIR_SUN = { x: 0, y: 1, z: 0, w: 0 }, AIR_COOL = { x: 0, y: 0, z: 0 };
-for (const k in THREE.ShaderLib) { const u = THREE.ShaderLib[k].uniforms; if (u.fogColor) { u.airSun = { value: AIR_SUN }; u.airCool = { value: AIR_COOL }; } }
+// (V92) a fog's patches: how much (0 none), and how far the air has carried them (x, z)
+const AIR_FOG = { x: 0, y: 0, z: 0, w: 0 };
+for (const k in THREE.ShaderLib) { const u = THREE.ShaderLib[k].uniforms; if (u.fogColor) { u.airSun = { value: AIR_SUN }; u.airCool = { value: AIR_COOL }; u.airFog = { value: AIR_FOG }; } }
 // one sun, several shadow maps (fine near, coarse far): patched into the light loop before any shader compiles
 installCascadedShadows();
 // Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina. The hour can be
@@ -207,6 +239,7 @@ async function main() {
   let weatherKey = WEATHER[store.get('weather', 'senin')] ? store.get('weather', 'senin') : 'senin';
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
+  let wetTarget = 0, fogMode = 0;                     // (V92: a fog's dampness on everything; the fog's patches and halos)
   // (the sun's - by night the moon's - light as the hour gives it, and how much of the disk the land lets through where
   // you are: the main loop)
   let sunBase = 0, sunOcc = 1, occTarget = 1, occStale = true;
@@ -282,7 +315,7 @@ async function main() {
     const w = WEATHER[key], L = sunlightAt(sunInfo.el), d = L.day, warm = L.color.map(c => THREE.MathUtils.lerp(c, 1, d));
     night = 1 - THREE.MathUtils.smoothstep(sunInfo.el, -12, -3);           // 0 by day, 1 after nautical dusk
     const moonUp = THREE.MathUtils.smoothstep(moonInfo.el, -1, 5) * moonInfo.illum, overcast = w.cover > 0.6;
-    rainTarget = w.rain ?? 0;
+    rainTarget = w.rain ?? 0; wetTarget = Math.max(rainTarget, w.damp ?? 0); fogMode = w.fogPatches ?? 0; AIR_FOG.x = fogMode;
     snowFall = w.snow ?? 0; snowCover = w.snowCover ?? 0;
     if (!!w.winter !== winter) { winter = !!w.winter; setWinter?.(winter); }
     SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];                       // (bare in the snow)
@@ -309,13 +342,16 @@ async function main() {
     const lum = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2], low = overcast ? 0 : 1 - d;
     const horizonSun = mixA(mul(w.horizon, warm), L.color.map(c => c * 1.6 * lum(w.horizon) / lum(L.color)), 0.85 * low * THREE.MathUtils.smoothstep(sunInfo.el, -6, 1));   // (~1.6 times brighter than the rest: forward scattering)
     const horizonAway = mixA(mul(w.horizon, warm), w.horizon, 0.8 * (overcast ? 0 : 1));
+    // (V92: in a fog the sky is the fog's own grey, by night too - an 80 m layer of it lets ~12% of the sky through even
+    // straight up: no moon, no gap in the deck; the far hills sink into it, not dark against a lighter sky)
+    const Nz = fogMode ? N.fog : N.zenith, Nh = fogMode ? N.fog : N.horizon;
     setSkyWeather(sky, { ...w, envGround: (w.envGround ?? [0.33, 0.33, 0.31]).map(v => v * gk), sunColor: mul(w.sunColor, L.color).map(v => v * sunVis),
-      zenith: mixA(w.zenith, N.zenith, night), horizon: mixA(horizonAway, N.horizon, night), horizonSun: mixA(horizonSun, N.horizon, night), sunLow: low * sunVis * (1 - night),
+      zenith: mixA(w.zenith, Nz, night), horizon: mixA(horizonAway, Nh, night), horizonSun: mixA(horizonSun, Nh, night), sunLow: low * sunVis * (1 - night),
       cloudLit: mixA(mul(w.cloudLit, warm), N.cloudLit, night), cloudDark: mixA(w.cloudDark, N.cloudDark, night),
       bright: THREE.MathUtils.lerp(w.bright * (0.3 + 0.7 * d), 1, night) });
     const su = sky.material.uniforms;
-    su.uNight.value = night; su.uMoonDir.value.copy(moonInfo.dir); su.uMoonCol.value.set(0.9, 0.93, 1).multiplyScalar(moonUp);
-    su.uHole.value = night * (overcast ? 1 : 0);                              // the moon looks through a gap above the hill
+    su.uNight.value = night; su.uMoonDir.value.copy(moonInfo.dir); su.uMoonCol.value.set(0.9, 0.93, 1).multiplyScalar(moonUp * (fogMode ? 0 : 1));
+    su.uHole.value = night * (overcast ? 1 : 0) * (fogMode ? 0 : 1);          // the moon looks through a gap above the hill
     if (night > 0.5) { sun.color.setRGB(1, 0.94, 0.86); sun.intensity = moonDir; }   // (sunlight off the moon, a little redder, ~4100 K: the blue of a moonlit night is the eye's - vision.js)
     else { sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; }
     sunBase = sun.intensity; sun.intensity *= sunOcc; occStale = true;
@@ -336,6 +372,7 @@ async function main() {
       const b = (w.galeFrom + 180) * Math.PI / 180, th = GEO.meta.origin.bearing * Math.PI / 180, e = Math.sin(b), nn = Math.cos(b);
       galeAng = Math.atan2(e * Math.sin(th) + nn * Math.cos(th), -e * Math.cos(th) + nn * Math.sin(th));
     } else galeAng = Math.atan2(-0.9986, 0.052);
+    STORM.axis.set(Math.cos(galeAng), Math.sin(galeAng));
     exposeTo(THREE.MathUtils.lerp(w.exposure * (1 + 0.7 * (1 - d)), 2.6, night));   // like a camera: it opens up when the light is low
     scene.environment?.dispose();
     scene.environment = buildEnvironment(renderer, sky);
@@ -674,7 +711,7 @@ async function main() {
   player.update(0, input, null, 0);
   // rain: every lit material learns to get wet (before compiling, so switching to rain recompiles nothing)
   wetScene(scene);
-  const rainFX = new RainFX(scene), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise), snowFX = new SnowFX(scene);
+  const rainFX = new RainFX(scene, qKey === 'low' ? 1600 : qKey === 'medium' ? 2800 : 4000), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise), snowFX = new SnowFX(scene);
   // left out of the rain's height map: the sky, the falling rain and snow, and the far forests' canopy shell (a lid at
   // crown height over the whole stand, roads through the wood included; near the camera the real trees stand in for it)
   // the lying snow: a blanket over the ground near the camera, shaped from the height maps and the roads (rain.js)
@@ -685,8 +722,10 @@ async function main() {
   // your footprints and the tyre tracks in it (snowtrail.js), and the snow's flight seen from upwind: nothing it
   // cannot blow through lets it pass (rain.js)
   const trail = new SnowTrail(lowQ ? 1024 : 2048, 24), snowLee = new SnowLee(lowQ ? 512 : 1024, lowQ ? 256 : 512);
-  player.onStep = (foot, hs) => { if (SNOW.uSnow.value > 0.05) trail.step(player.pos, player.yaw, foot, hs > 4, SNOW.uSnowDepth.value); };
-  player.onLand = () => { if (SNOW.uSnow.value > 0.05) trail.land(player.pos, player.yaw); };
+  // (the prints: in the snow, and in the mud where the ground is wet earth - V92; rain.js shows each where it belongs)
+  const printing = () => SNOW.uSnow.value > 0.05 || (RAIN.uWet.value > 0.12 && SNOW.uSnow.value < 0.01);
+  player.onStep = (foot, hs) => { if (printing()) trail.step(player.pos, player.yaw, foot, hs > 4, SNOW.uSnowDepth.value); };
+  player.onLand = () => { if (printing()) trail.land(player.pos, player.yaw); };
   // the spruces near you in detail: the branches you push through, the snow that falls off them (geo/firs.js)
   const firs = new FirDetail(scene, { cap: { 'Scăzută': 12, 'Medie': 24, 'Înaltă': 40 }[Q.label] ?? 56, audio });
   firs.addSource(geoWorld.trees.firSource);
@@ -1313,6 +1352,11 @@ async function main() {
       windSpeed = (1 - storm) * 0.55 * (0.6 + 0.8 * vn1(t * 0.2 + 3)) + storm * galeBase * gust;
       STORM.uWind.value.set(Math.cos(ang) * windSpeed, Math.sin(ang) * windSpeed);
       STORM.uWindOff.value.addScaledVector(STORM.uWind.value, dt);
+      AIR_FOG.y += STORM.uWind.value.x * dt; AIR_FOG.z += STORM.uWind.value.y * dt;     // (the fog's patches drift on the air)
+      // (or in a squall the sheets of rain its gusts drive along: the fog chunk above, and the streaks on the same air)
+      AIR_FOG.x = fogMode || (squall ? 0.85 * storm : 0); AIR_FOG.w = fogMode ? 0 : 10 + galeAng;
+      RAIN.uAirOff.value.set(AIR_FOG.y, AIR_FOG.z);
+      if (post.bloom) { post.bloom.strength = 0.1 + 0.4 * fogMode; post.bloom.radius = 0.4 + 0.5 * fogMode; }   // (in a fog the lamps and headlights wear wide halos)
       STORM.uStorm.value = blizzard; STORM.gust = storm > 0.01 ? gust : 1; STORM.gale = squall ? storm : 0; STORM.burst = burst;
       // the trees: the breeze (its own slow ups and downs) or the gale with its gusts; the gusts running through the
       // woods are the shader's (twGust), carried along by the wind (uTwOff)
@@ -1580,7 +1624,7 @@ async function main() {
     // rain: it starts / stops in ~2 s, the surfaces soak in ~10 s and dry in ~1 min; where it lands comes from the
     // height map seen from above (crowns, roofs, car roofs), refreshed as you move
     RAIN.uRain.value = damp(RAIN.uRain.value, rainTarget * (squall ? 0.6 + 0.4 * STORM.burst : 1), 1.2, dt);   // (a squall's rain: heaviest in the bursts)
-    RAIN.uWet.value = RAIN.uWet.value < rainTarget ? Math.min(rainTarget, RAIN.uWet.value + dt / 10) : Math.max(rainTarget, RAIN.uWet.value - dt / 60);
+    RAIN.uWet.value = RAIN.uWet.value < wetTarget ? Math.min(wetTarget, RAIN.uWet.value + dt / 10) : Math.max(wetTarget, RAIN.uWet.value - dt / 60);
     RAIN.uRainTime.value = t;
     // snow: it starts / stops in ~3 s; while it snows the cover builds up in ~1 min and then gets deeper by ~8 cm a
     // minute, up to 60 cm (a time-lapse: a heavy snowfall brings 2-8 cm an hour); the clear day after keeps at least
@@ -1609,7 +1653,6 @@ async function main() {
     } else shelter = 0;
     shWind.copy(STORM.uWind.value).multiplyScalar(1 - shelter);
     TRACTION.wind = storm > 0.05 ? shWind : null;
-    player.wind = storm > 0.05 ? { x: shWind.x, z: shWind.y } : null;
     player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
     player.snowK = SNOW.uSnow.value; player.wetK = RAIN.uWet.value;        // (a slide: far on snow, further on wet grass)
     const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002;
@@ -1648,8 +1691,8 @@ async function main() {
       SNOW.uSnowCarY.value.set(inCar.car.group.position.y, inCar.m.roofH ??= Math.max(...inCar.m.roof.map(p => p[1])));
     } else SNOW.uSnowCar.value.w = 0;
     // the prints: the car's tyres (yours on foot come with each step: player.onStep), the villager's steps; they fill in
-    // while it snows (in ~2.5 min, a blizzard's drift in ~1)
-    if (SNOW.uSnow.value > 0.05) {
+    // while it snows (in ~2.5 min, a blizzard's drift in ~1); in the mud the rain slowly smooths them out (~10 min)
+    if (printing()) {
       if (mode === 'car' && active) trail.car(active, SNOW.uSnowDepth.value);
       others.prints(trail, SNOW.uSnowDepth.value);                      // (a friend's steps and tyres: remote.js)
       for (const w of walkers) {
@@ -1657,7 +1700,7 @@ async function main() {
         if (w.down <= 0 && k !== w.stepK) { if (w.stepK !== undefined) trail.step({ x: w.x, z: w.z }, w.h + Math.PI, k & 1 ? 1 : -1, false, SNOW.uSnowDepth.value, w.feet ??= {}); w.stepK = k; }
       }
     }
-    trail.update(renderer, camera.position, dt, SNOW.uSnowFall.value * (1 + 1.5 * storm) / 150);
+    trail.update(renderer, camera.position, dt, SNOW.uSnow.value > 0.01 ? SNOW.uSnowFall.value * (1 + 1.5 * storm) / 150 : RAIN.uRain.value / 600);
     blanket.update(camera);
     // who pushes through the spruces: you on foot (a 1.75 m capsule) or the car you drive (its front and back)
     const firBodies = [];

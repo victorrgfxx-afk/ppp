@@ -16,6 +16,9 @@ export const RAIN = {
   uGale: { value: 0 },         // a squall's gale (0..1): the rain driven along the wind, kept off by what stands upwind
   uFlow: { value: null },      // the running water (runoff.js): depth, velocity, the surface it runs on
   uFlowBox: { value: new THREE.Vector4(0, 0, 48, 0) },   // centre x, z, half size, on
+  // (V92) for the splashes: the roads and the ground under everything (RainOcclusion's maps, on the occlusion's box)
+  uRoad: { value: null }, uLow: { value: null }, uSurfOn: { value: 0 },
+  uAirOff: { value: new THREE.Vector2() },   // how far the air has carried the haze's patterns (main.js: the squall's sheets of rain)
 };
 
 // snow (the same hook as the rain: every patched material can be covered)
@@ -76,6 +79,10 @@ float rainTop(vec2 xz) {
 // (world cells run to 10^5 and more a few km out: brought into a small range first, or float precision leaves the hash
 // with a handful of values and every pattern built on it flat)
 float rainHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float rainNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 `;
 
 // what keeps the flying snow off (the flakes and the drift): SnowLee's map of the things in its way, seen along its
@@ -110,6 +117,8 @@ uniform vec4 uOccBox, uTrailBox, uFlowBox;
 uniform float uGale;
 varying vec3 vWetP;
 float wetReflOut = 0.0;                              // how much this point mirrors the scene (screen-space reflections, post.js)
+float wetEarth = -1.0;                               // how much of the ground here is bare earth (geo/terrain.js sets it; else MUD_K)
+float wetGrass = -1.0;                               // and how much of it grass (geo/terrain.js; else GRASS_K)
 float snowGlintK = 0.0;                              // fresh snow here: its crystals glint in the sun (after the lights)
 ${OCC_GLSL}
 ${TRAIL_GLSL}
@@ -290,6 +299,25 @@ if (uWet > 0.001) {
     flowRough = film * smoothstep(0.15, 1.0, sp);          // (a running surface is never quite a mirror)
   }
 #endif
+#ifdef WET_GROUND
+  // (V92) the prints in the mud (snowtrail.js: the snow's map): where the wet ground is earth - a field, a path, a garden
+  // bed, the floor of a wood; a little in the grass, hardly on gravel. The floor of a print darker and smoother (the soil
+  // pressed and soaked), the lugs of the tread in it, the rim squeezed up round it; the deeper ones hold water in the rain
+  if (uTrailBox.w > 0.5 && uSnow < 0.02) {
+    float earth = (wetEarth >= 0.0 ? wetEarth : MUD_K) * smoothstep(0.1, 0.45, uWet) * upF;
+    vec4 tr = trailAt(wp.xz);
+    if (earth > 0.01 && tr.r + tr.g > 0.003) {
+      // (its shape - ~2.5 cm deep in its middle, the rim ~0.8 cm up - as a slope, from the map 2 cm either side)
+      vec2 e = vec2(0.02, 0.0);
+      vec4 ax = trailAt(wp.xz + e.xy) - trailAt(wp.xz - e.xy), az = trailAt(wp.xz + e.yx) - trailAt(wp.xz - e.yx);
+      slopeW += vec2(-0.025 * ax.r + 0.008 * ax.g, -0.025 * az.r + 0.008 * az.g) / (2.0 * e.x) * earth * (1.0 - smoothstep(10.0, 22.0, dist));
+      float pr = tr.r * earth;
+      diffuseColor.rgb *= (1.0 - 0.32 * pr - 0.1 * tr.b * earth) * (1.0 + 0.1 * tr.g * earth);
+      roughnessFactor = mix(roughnessFactor, 0.28, pr);
+      water = max(water, smoothstep(0.55, 0.9, tr.r) * earth * smoothstep(0.15, 0.6, uRain + 0.3 * uWet));
+    }
+  }
+#endif
   diffuseColor.rgb *= 1.0 - 0.3 * water;
   roughnessFactor = mix(roughnessFactor, 0.05, water);
   roughnessFactor = max(roughnessFactor, 0.11 * flowRough);
@@ -302,6 +330,9 @@ if (uWet > 0.001) {
   // the impacts: in a downpour hard ground 'boils' with tiny crowns of spray (~4 cm), each lasting ~0.08 s, about
   // 140 at a time on every square metre (~3000 drops/m2/s at 50 mm/h)
   float imp = uRain * hit * upF * (1.0 - smoothstep(5.0, 13.0, dist));
+#ifdef WET_GROUND
+  imp *= 1.0 - 0.8 * (wetGrass >= 0.0 ? wetGrass : GRASS_K);   // (V92: in the grass the drops break on the blades - no boil)
+#endif
   if (imp > 0.01) {
     float sp = 0.0;
     for (int k = 0; k < 2; k++) {
@@ -423,7 +454,7 @@ if (snowGlintK > 0.001) {
 #endif
 `;
 
-function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false, cut = false) {
+function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false, cut = false, mudK = 0, grassK = 0) {
   const v = sh.vertexShader, f = sh.fragmentShader;
   if (v.includes('vWetP')) return;                 // already in (a material cloned from a patched one keeps its hook)
   if (!v.includes('#include <project_vertex>') || !f.includes('#include <normal_fragment_maps>') || !f.includes('#include <normal_fragment_begin>') || !f.includes('#include <lights_physical_fragment>') || !f.includes('#include <lights_fragment_end>')) return;
@@ -437,7 +468,7 @@ function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false, c
     wetW = instanceMatrix * wetW;
 #endif
     vWetP = (modelMatrix * wetW).xyz; }`);
-  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : kind === 'ground' ? '#define WET_GROUND\n' : '') + (opaque ? '#define WET_OUT\n' : '') +
+  const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : kind === 'ground' ? '#define WET_GROUND\n' : '') + (opaque ? '#define WET_OUT\n' : '') + `#define MUD_K ${mudK.toFixed(2)}\n#define GRASS_K ${grassK.toFixed(2)}\n` +
     `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '') + (glass ? '#define WET_GLASS\n' : '') + (cut ? '#define CABIN_CUT\n' : '');
   sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS + GLINT_GLSL)
     // (a leaf of a bush or a tree a car stands in: not inside the car you are in - as the rain and the snow are not)
@@ -467,8 +498,9 @@ export function wetMaterial(m) {
   const opaque = !m.transparent;
   // (leaf cards, not a car's own glass, lenses or badges: buildCar tags its materials)
   const cut = kind === 'leaf' && !glass && !m.userData.car;
-  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass, cut); };
-  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + (glass ? 'g' : '') + (cut ? 'c' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '') + '|p' + plasterK;
+  const mudK = m.userData.mud ?? 0, grassK = m.userData.grass ?? 0;   // (bare earth that takes a print in the mud; grass: V92)
+  m.onBeforeCompile = function (sh, r) { prev.call(this, sh, r); injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass, cut, mudK, grassK); };
+  m.customProgramCacheKey = () => key0 + '|wet-' + kind + (opaque ? '-o' : '') + (glass ? 'g' : '') + (cut ? 'c' : '') + '|s' + snowK.toFixed(2) + (snowSkip ? 'x' : '') + '|p' + plasterK + '|m' + mudK + grassK;
   m.needsUpdate = true;
 }
 export function wetScene(root) {
@@ -628,6 +660,7 @@ export class RainOcclusion {
     const ss = new THREE.Scene(); ss.add(sq);
     this.snow = { low, solid, field, field2, smooth, ss, camLow, canvas, ctx: canvas.getContext('2d'), roadTex, qs, qc: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
     SNOW.uSnowField.value = field.texture;
+    RAIN.uRoad.value = roadTex; RAIN.uLow.value = low.texture;       // (what a drop lands on: the splashes, V92)
   }
 
   // the roads around (cx, cz), white on black, as wide as they are (the snow's bake blurs the edges)
@@ -692,6 +725,7 @@ export class RainOcclusion {
       for (const o of off) o.visible = true;
       scene.overrideMaterial = ov;
       this.drawRoads(cx, cz);
+      RAIN.uSurfOn.value = 1;
     }
     if (snow) {
       const S = this.snow;
@@ -861,6 +895,8 @@ uniform vec4 uCarL, uCarLDir;        // the headlights of the car you drive (w: 
 uniform sampler2D uOcc;
 uniform vec4 uOccBox;
 uniform vec2 uWind, uWindOff;        // the wind now and how far it has carried the air so far (no jumps when it changes)
+uniform vec2 uAxis;                  // the wind's mean bearing (unit): the patterns carried on the air keep it
+uniform vec2 uAirOff;                // how far the air has carried the squall's sheets of rain (main.js: the haze's own)
 uniform vec3 uCam;
 uniform vec4 uTorch, uTorchDir;      // torch position (w: on) and direction (w: cos of the cone)
 uniform vec4 uBeam, uBeamDir;        // the moon's shaft: a point on its axis (w: radius) and the axis (w: on)
@@ -887,6 +923,20 @@ void main() {
   vec3 org = uCam - vec3(uRadius, uHeight * 0.4, uRadius);
   // world-anchored drops wrapped into a box around the camera (they keep their place when you move)
   vec3 p = org + mod(vec3(aSeed.x, aSeed.z, aSeed.y) * box + vec3(uWindOff.x + tw.x * uRainTime, -fall * uRainTime, uWindOff.y + tw.y * uRainTime) - org, box);
+  // (V92) a squall's gusts come as fronts carried along on the air, some tens of metres deep and wider across the wind:
+  // in one the air - and the rain in it - runs ~30% faster than the wind around it, between them ~25% slower, so there
+  // the drops fly flatter (each carried the further the longer it has been falling: its depth under the top of the box)
+  // and come thicker - the sheets of rain that sweep past in waves (the pattern rides the air on the gale's bearing)
+  float gf = 0.0, sheet = 0.45;
+  if (uGale > 0.05) {
+    vec2 q = p.xz - uAirOff;
+    gf = smoothstep(0.35, 0.75, rainNoise(vec2(dot(q, uAxis) / 34.0, dot(q, vec2(-uAxis.y, uAxis.x)) / 75.0)));
+    // (and the sheets of rain the haze shows sweeping along, a few hundred metres across: main.js, the fog chunk)
+    sheet = smoothstep(0.3, 0.7, rainNoise(vec2(dot(q, uAxis) / 160.0, dot(q, vec2(-uAxis.y, uAxis.x)) / 320.0)));
+    vec2 gv = uAxis * (gf - 0.45) * 0.6 * uGale * length(uWind);
+    p.xz = org.xz + mod(p.xz + gv * (org.y + box.y - p.y) / fall - org.xz, box.xz);
+    vel.xz += gv;
+  }
   // landed: on a crown, a roof or the ground. Driven by a gale: wherever the wind cannot carry it, behind (along its
   // flight) a wall, a house, a fence, a car; under a roof or a crown only some, blown in from the open side or dripping
   float top = rainTop(p.xz);
@@ -915,9 +965,11 @@ void main() {
   vAmp = 0.55 * smoothstep(1.0, 3.0, D);
   // the rain comes in sheets (curtains) carried along by the air, denser and sparser bands across the wind some tens of
   // metres apart; in a squall they sweep past with every gust
-  vec2 wd = normalize(uWind + vec2(1e-4)), wn = vec2(-wd.y, wd.x), ap = p.xz - uWindOff;
+  // (on the wind's mean bearing, V92: on its passing one - it veers with every gust - the bands far from where the air's
+  // travel was first summed up turned round faster and faster, the longer you played: a flicker)
+  vec2 wd = uAxis, wn = vec2(-wd.y, wd.x), ap = p.xz - uWindOff;
   float cur = 0.5 + 0.5 * sin(dot(ap, wd) * 0.09 + 1.6 * sin(dot(ap, wn) * 0.035 + 1.3)) * cos(dot(ap, wn) * 0.05 + uRainTime * 0.37 * (1.0 - uGale));
-  vA *= mix(1.0, 0.2 + 0.8 * cur, max(uCurtain, uGale * 0.85));
+  vA *= mix(1.0, 0.2 + 0.8 * cur, max(uCurtain, uGale * 0.85)) * mix(1.0, (0.55 + 0.75 * gf) * (0.6 + 0.9 * sheet), uGale);
   // drops caught in the torch's cone or in the moon's shaft light up
   vec3 tp = p - uTorch.xyz; float tl = length(tp);
   vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
@@ -951,55 +1003,147 @@ void main() {
   gl_FragColor = vec4(uColor * vB + vec3(0.9, 0.92, 1.0) * vLit * 1.4 + vLamp, min(a, 1.0));
 }`;
 
+// (V92) the splash of a drop, as high-speed films show it (a 2-3 mm drop landing at 7-8 m/s): the sheet thrown up round
+// it - a crown ~2 cm across, gone in ~30 ms - breaking up into droplets that fly out low at a sixth to a third of the
+// drop's speed (splash-erosion measurements) and come down 5-40 cm off; on standing water the crater closing again throws up a
+// jet (Worthington's), ~2-3 cm, from ~20 to ~90 ms, that pinches off a droplet; on bare earth fewer droplets, muddy.
+// Each instance is one piece of one impact (9 a slot: 0 the crown, 1-6 its droplets, 7 the jet, 8 the jet's droplet);
+// a slot lands a drop every 0.22 s somewhere new within uRadius of you (denser close up: further off a splash is under a
+// pixel - drawn a pixel, as faint as it is small - and the surfaces' own boil takes over: WET_MAIN). The old splash was
+// one 4-11 cm crown that lasted ~0.3 s
 const SPLASH_VERT = /* glsl */`
 attribute vec2 corner;
-attribute vec4 aSeed;
-uniform float uRain, uRainTime, uOccOn, uRadius, uGale;
-uniform sampler2D uOcc;
-uniform vec4 uOccBox;
+uniform float uRain, uRainTime, uOccOn, uRadius, uGale, uRate, uPx, uSurfOn;
+uniform sampler2D uOcc, uFlow, uRoad, uLow;
+uniform vec4 uOccBox, uFlowBox;
 uniform vec3 uCam;
-varying vec2 vC;
-varying float vA, vPh;
+varying vec2 vC, vFl;
+varying float vA, vKind, vT;
+varying vec3 vTint;
+varying vec4 vCr;
 ${OCC_GLSL}
 ${LEE_GLSL}
 void main() {
-  vC = corner; vA = 0.0; vPh = 0.0;
+  vC = corner; vA = 0.0; vKind = 0.0; vT = 0.0; vTint = vec3(1.0); vCr = vec4(0.0); vFl = vec2(0.0, 1.0);
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
-  if (aSeed.w > uRain) return;
-  float life = 0.28 + 0.12 * aSeed.z;
-  float tt = uRainTime / life + aSeed.z * 7.0;
-  float cyc = floor(tt), ph = fract(tt);
-  // a new spot every cycle, where that drop lands (the top surface)
-  vec2 h = vec2(rainHash(vec2(cyc * 0.731, aSeed.x * 91.0)), rainHash(vec2(aSeed.y * 57.0, cyc * 1.37)));
-  vec2 xz = uCam.xz + (h - 0.5) * 2.0 * uRadius;
+  int slot = gl_InstanceID / 9, part = gl_InstanceID - slot * 9;
+  float fs = float(slot);
+  if (rainHash(vec2(fs * 0.137, 7.1)) > uRain) return;
+  float tt = uRainTime / 0.22 + rainHash(vec2(fs, 3.3)), cyc = floor(tt), t = fract(tt) * 0.22;
+  // (the pieces not up at this moment: out before any of the maps is read)
+  if ((part == 0 && t > 0.05) || (part == 7 && (t < 0.018 || t > 0.09)) || (part == 8 && t < 0.054)) return;
+  vec2 h = vec2(rainHash(vec2(cyc * 0.731, fs * 0.91)), rainHash(vec2(fs * 0.57, cyc * 1.37)));
+  float an = 6.2832 * h.y;
+  vec2 xz = uCam.xz + vec2(cos(an), sin(an)) * uRadius * h.x;
   float top = rainTop(xz);
   if (top < -1e4) return;
-  vec3 c = vec3(xz.x, top + 0.005, xz.y);
+  vec3 c = vec3(xz.x, top + 0.002, xz.y);
   if (uGale > 0.05 && leeGap(c + vec3(0.0, 0.3, 0.0)) > 0.06) return;     // (the driven rain does not reach it)
   // (none inside the car you drive: the map of tops is redrawn every ~0.5 s, the car meanwhile metres on)
   if (inCar(c + vec3(0.0, 0.05, 0.0))) return;
-  vec3 toCam = uCam - c;
-  float dist = length(toCam);
-  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
-  float s = (0.035 + 0.075 * ph) * (0.7 + 0.6 * aSeed.w);
-  vec3 pos = c + right * corner.x * s + vec3(0.0, 1.0, 0.0) * (corner.y * 0.5 + 0.5) * s * 0.8;
-  vA = (1.0 - smoothstep(uRadius * 0.6, uRadius, length(toCam.xz))) * smoothstep(0.6, 1.5, dist);
-  vPh = ph;
+  // the drop: its size (Marshall-Palmer, as the streaks') and its speed when it lands (Atlas et al. 1973)
+  float u = rainHash(vec2(cyc * 1.91, fs * 1.3 + 0.5));
+  float D = min(5.0, 0.5 - log(1.0 - 0.99 * u) / (4.1 * pow(max(uRate, 1.0), -0.21)));
+  float V = max(1.6, 9.65 - 10.3 * exp(-0.6 * D)), big = clamp((D - 0.8) / 2.5, 0.0, 1.0);
+  // what it lands on: water (the run-off standing or running here, a road's puddles as the road draws them), the bare
+  // ground (earth, grass), or something hard (a road between its puddles, a roof, a step, a car)
+  vec2 uv = vec2(0.5 + (xz.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (xz.y - uOccBox.y) / (2.0 * uOccBox.z));
+  float depth = 0.0, road = 0.0, ground = 1.0;
+  if (uFlowBox.w > 0.5) depth = texture2D(uFlow, vec2(0.5 + (xz.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (xz.y - uFlowBox.y) / (2.0 * uFlowBox.z))).r;
+  if (uSurfOn > 0.5) {
+    road = texture2D(uRoad, uv).r;
+    ground = 1.0 - smoothstep(0.25, 0.6, top - uOccBox.w - texture2D(uLow, vec2(uv.x, 1.0 - uv.y)).r);   // (down on the ground, not up on something)
+  }
+  float n = rainNoise(xz * 0.45) * 0.65 + rainNoise(xz * 1.7 + 5.3) * 0.35;
+  float water = max(smoothstep(0.002, 0.006, depth), road * ground * smoothstep(0.57, 0.66, n));
+  float earth = ground * (1.0 - road) * (1.0 - water);
+  vec3 up = vec3(0.0, 1.0, 0.0), toC = uCam - c;
+  vec3 right = normalize(cross(up, toC));
+  float fade = (1.0 - smoothstep(uRadius * 0.55, uRadius, length(toC.xz))) * smoothstep(0.35, 0.9, length(toC));
+  vec3 pos;
+  if (part == 0) {
+    // the crown: up in ~8 ms, gone by ~30 ms (on water a little bigger and longer); hardly any in the grass
+    float Tc = 0.028 + 0.02 * water;
+    if (t > Tc) return;
+    // (its rim's radius: ~0.7-1.9 cm, a third more on water - 1.4-3.8 cm across)
+    float w = (0.004 + 0.003 * D) * (1.0 + 0.35 * water), hc = w * (0.9 + 0.5 * water), g = smoothstep(0.0, 0.008, t);
+    // as you see it: a ring of the sheet standing round the spot (from above an ellipse), its rim w out, hh tall; the
+    // quad facing you holds the cup seen from where you are (sE: how steeply you look down on it)
+    vec3 vdir = normalize(toC), by = normalize(cross(vdir, right));
+    float sE = clamp(vdir.y, 0.0, 1.0), cE = sqrt(1.0 - sE * sE), wr = w * (0.6 + 0.4 * g), hh = hc * g;
+    float y0 = -wr * sE, y1 = hh * cE + wr * sE;
+    // (a few metres off it is under a pixel: drawn a pixel or so, a soft dot as faint as the light it really sends)
+    float pw = uPx * length(toC), W = max(wr, 1.2 * pw), Hq = max(y1 - y0, 1.6 * pw), k2 = wr * (y1 - y0) / (W * Hq);
+    vec2 qc = vec2(corner.x * W, y0 + (corner.y * 0.5 + 0.5) * Hq);
+    pos = c + right * qc.x + by * qc.y + vdir * 1.2 * wr;   // (brought a rim's breadth towards you: its near foot not in the ground)
+    vCr = vec4(qc / wr, sE, hh * cE / wr); vFl = vec2(smoothstep(0.3, 0.8, 1.0 - k2), k2);
+    vA = fade * (1.0 - t / Tc) * (0.6 + 0.4 * big) * (1.0 - 0.7 * earth); vT = t / Tc;
+  } else if (part <= 6) {
+    // a droplet of it: out from the rim, low (20-45 deg; off water steeper), coming down under gravity; drawn as the
+    // streak it makes in ~12 ms
+    int k = part - 1;
+    if (earth > 0.5 && k >= 3) return;                            // (off the earth fewer, and muddy)
+    float j = rainHash(vec2(cyc + float(k) * 7.3, fs * 2.1));
+    float az = 6.2832 * (float(k) + 0.6 * j) / 6.0 + an * 3.0;
+    vec3 dir = vec3(cos(az), 0.0, sin(az));
+    float v = V * (0.15 + 0.17 * rainHash(vec2(fs * 3.1, cyc + float(k)))) * mix(1.0, 0.7, water);
+    float th = mix(0.3, 0.75, rainHash(vec2(cyc * 2.3, fs + float(k)))) + 0.35 * water;
+    float tau = t - 0.004, vh = v * cos(th), vy = v * sin(th), y = 0.004 + vy * tau - 4.905 * tau * tau;
+    if (tau <= 0.0 || y < 0.0) return;
+    vec3 p = c + dir * (0.004 + 0.003 * D + vh * tau) + up * y;
+    vec3 vel = dir * vh + up * (vy - 9.81 * tau);
+    float sp = length(vel), d = length(uCam - p), dw = 0.0003 + 0.0003 * big;
+    vec3 vd = vel / max(sp, 1e-4), side = normalize(cross(vd, uCam - p));
+    pos = p - vd * sp * 0.012 * (corner.y * 0.5 + 0.5) + side * max(uPx * d, dw) * 0.5 * corner.x;
+    vA = fade * (0.5 + 0.5 * big) * min(1.0, dw / max(uPx * d, 1e-6) + 0.3) * (1.0 - 0.45 * earth);
+    vKind = 1.0;
+    vTint = mix(vec3(1.0), vec3(0.62, 0.5, 0.38), 0.6 * earth);
+  } else if (water > 0.5) {
+    // the jet on water: up out of the closing crater from ~18 ms to ~90 ms (taller for a bigger drop), and the droplet
+    // it pinches off at its top
+    float t0 = 0.018, T = 0.072, Hj = 0.008 + 0.007 * D;
+    if (part == 7) {
+      if (t < t0 || t > t0 + T) return;
+      float hj = Hj * sin(3.1416 * (t - t0) / T);
+      pos = c + right * corner.x * (0.0018 + 0.0006 * D) + up * (corner.y * 0.5 + 0.5) * hj;
+      vA = fade * 0.85; vKind = 2.0;
+    } else {
+      float tau = t - t0 - 0.5 * T, y = Hj + (0.5 + 0.12 * D) * tau - 4.905 * tau * tau;
+      if (tau < 0.0 || y < 0.0 || D < 1.5) return;
+      vec3 p = c + up * y;
+      float sz = max(uPx * length(uCam - p), 0.0012 + 0.0004 * D) * 0.6;
+      pos = p + right * corner.x * sz + up * corner.y * sz;
+      vA = fade * 0.85; vKind = 3.0;
+    }
+  } else return;
   gl_Position = projectionMatrix * viewMatrix * vec4(pos, 1.0);
 }`;
 const SPLASH_FRAG = /* glsl */`
 uniform vec3 uColor;
 uniform float uOpacity;
-varying vec2 vC;
-varying float vA, vPh;
+varying vec2 vC, vFl;
+varying float vA, vKind, vT;
+varying vec3 vTint;
+varying vec4 vCr;
 void main() {
-  // a small crown: a thin rim that opens up, with a couple of droplets thrown out
-  vec2 q = vec2(vC.x, vC.y * 0.5 + 0.5);
-  float rim = (1.0 - smoothstep(0.0, 0.25, abs(length(vec2(q.x, q.y * 1.6)) - 0.55 - 0.3 * vPh))) * (1.0 - smoothstep(0.2, 0.9, q.y));
-  float drops = 2.0 - smoothstep(0.0, 0.12, length(q - vec2(0.55, 0.45 + 0.4 * vPh))) - smoothstep(0.0, 0.12, length(q - vec2(-0.5, 0.5 + 0.35 * vPh)));
-  float a = vA * uOpacity * (1.0 - vPh) * (rim + drops);
+  float a;
+  if (vKind < 0.5) {
+    // the crown (vCr: where on it, in its rim's radius; how steeply you look down; its height on the screen): a thin
+    // sheet standing in a ring, brightest at its sides where you see it edge-on, and its rim - a beaded ellipse round
+    // the top, the fingers that break up into the droplets
+    float X = vCr.x, Y = vCr.y, sE = max(vCr.z, 0.06), Hc = vCr.w, k = sqrt(max(1.0 - X * X, 0.0));
+    float wall = step(abs(X), 1.0) * smoothstep(-sE * k - 0.08, -sE * k + 0.02, Y) * (1.0 - smoothstep(Hc + sE * k - 0.02, Hc + sE * k + 0.08, Y))
+      * min(2.2, 0.3 / max(k, 0.14));
+    vec2 e = vec2(X, (Y - Hc) / sE);
+    float rr = max(length(e), 1e-3), d = abs(rr - 0.95) * rr / max(length(vec2(e.x, e.y / sE)), 1e-3);
+    float rim = (1.0 - smoothstep(0.03, 0.13, d)) * (0.5 + 0.5 * sin(atan(e.y, e.x) * 8.0 + vT * 5.0));
+    a = mix(max(rim, 0.3 * wall) * (1.0 - 0.6 * vT), (1.0 - smoothstep(0.2, 1.0, length(vC))) * vFl.y, vFl.x);   // (the sheet itself clear: its sides and rim catch the light)
+  } else if (vKind < 1.5) a = (1.0 - abs(vC.x)) * smoothstep(-1.0, -0.5, vC.y) * (1.0 - smoothstep(0.6, 1.0, vC.y));   // (a droplet's streak)
+  else if (vKind < 2.5) { float y = vC.y * 0.5 + 0.5; a = (1.0 - smoothstep(0.5, 1.0, abs(vC.x) * (1.2 - 0.5 * y))) * (1.0 - smoothstep(0.9, 1.0, y)); }   // (the jet, thicker at its top)
+  else a = 1.0 - smoothstep(0.3, 1.0, length(vC));                                      // (its droplet)
+  a *= vA * uOpacity;
   if (a < 0.003) discard;
-  gl_FragColor = vec4(uColor, min(a, 1.0));
+  gl_FragColor = vec4(uColor * vTint, min(a, 1.0));
 }`;
 
 // the spray of a downpour: the drops burst on the hard ground into a fine mist that hangs over it, mostly within a hand
@@ -1030,24 +1174,27 @@ void main() {
   // (only off the hard, streaming surfaces: where the water runs in a film - not off the grass)
   vec2 fuv = vec2(0.5 + (q.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (q.y - uFlowBox.y) / (2.0 * uFlowBox.z));
   if (uFlowBox.w > 0.5 && texture2D(uFlow, fuv).r < 3e-4) return;
-  vec3 p = vec3(q.x, top + 0.04 + h, q.y);
-  if (leeGap(p) > 0.06 || inCar(p)) return;
   float life = fract(uRainTime * (0.5 + 0.3 * fract(aSeed.y * 3.3)) + aSeed.z);   // (each puff swells and thins out)
+  float s = (0.25 + 0.5 * fract(aSeed.y * 7.1)) * (0.6 + 0.8 * life) * (1.0 + 0.8 * h);
+  // (its lower rim just over the ground, V92: a puff stuck into the road showed the line where it went in - the veils
+  // came out as hard-edged sheets)
+  vec3 p = vec3(q.x, top + 0.02 + h + 0.3 * s, q.y);
+  if (leeGap(p) > 0.06 || inCar(p)) return;
   vec3 toCam = uCam - p;
   float dist = length(toCam);
   vec2 wd = normalize(uWind + vec2(1e-4));
   vec3 along = vec3(wd.x, 0.0, wd.y), side = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
-  float s = (0.25 + 0.5 * fract(aSeed.y * 7.1)) * (0.6 + 0.8 * life) * (1.0 + 0.8 * h);
   vec3 ax = normalize(mix(side, along, 0.5 * uGale));
-  gl_Position = projectionMatrix * viewMatrix * vec4(p + ax * corner.x * s * (1.3 + 1.2 * uGale) + vec3(0.0, 1.0, 0.0) * corner.y * s * 0.45, 1.0);
-  vA = (0.01 + 0.018 * uGale) * sin(life * 3.14159) * (1.0 - smoothstep(uRadius * 0.6, uRadius, length(toCam.xz))) * smoothstep(0.6, 2.5, dist) * (1.0 - 0.6 * smoothstep(0.1, 0.8, h));
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + ax * corner.x * s * (1.3 + 1.2 * uGale) + vec3(0.0, 1.0, 0.0) * corner.y * s * 0.3, 1.0);
+  // (V92: in a burst the gale tears much more of it off the puddles and the streaming road - white veils driven along)
+  vA = (0.01 + uGale * (0.018 + 0.024 * smoothstep(1.1, 1.9, uGust))) * sin(life * 3.14159) * (1.0 - smoothstep(uRadius * 0.6, uRadius, length(toCam.xz))) * smoothstep(0.6, 2.5, dist) * (1.0 - 0.6 * smoothstep(0.1, 0.8, h));
 }`;
 const MIST_FRAG = /* glsl */`
 uniform vec3 uColor;
 varying float vA;
 varying vec2 vC;
 void main() {
-  float a = vA * exp(-2.2 * dot(vC, vC));
+  float a = vA * max(0.0, exp(-2.2 * dot(vC, vC)) - 0.111) * 1.125;   // (nothing left at its rim: the quads' edges showed)
   if (a < 0.002) discard;
   gl_FragColor = vec4(uColor, a);
 }`;
@@ -1065,30 +1212,33 @@ function cloud(n, corners, idx) {
 }
 
 export class RainFX {
-  constructor(scene) {
+  // splashes: how many drops' splashes at a time (their slots, V92: 4000 on the higher settings)
+  constructor(scene, splashes = 4000) {
     this.group = new THREE.Group();
     this.group.userData.ueSkip = 'rain';
     this.group.visible = false;
     scene.add(this.group);
-    const common = { uRain: RAIN.uRain, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uGale: RAIN.uGale,
+    const common = { uRain: RAIN.uRain, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uGale: RAIN.uGale, uAirOff: RAIN.uAirOff,
       uLee: SNOW.uLee, uLeeVP: SNOW.uLeeVP, uLeeOrg: SNOW.uLeeOrg, uLeeDir: SNOW.uLeeDir, uLeeOn: SNOW.uLeeOn, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize, uSnowCarY: SNOW.uSnowCarY };
     this.cam = { value: new THREE.Vector3() };
     this.color = { value: new THREE.Color(0.6, 0.63, 0.67) };
     this.wind = { value: new THREE.Vector2(1.6, 0.7) }; this.windOff = { value: new THREE.Vector2() }; this.lastT = null;
+    this.axis = { value: new THREE.Vector2(1.6, 0.7).normalize() };
     this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
     this.beam = { value: new THREE.Vector4() }; this.beamDir = { value: new THREE.Vector4(0, 1, 0, 0) };
     this.rate = { value: 40 }; this.px = { value: 1.1e-3 }; this.pupil = { value: 0.003 };
     this.carL = { value: new THREE.Vector4() }; this.carLDir = { value: new THREE.Vector4(0, 0, -1, 0.9) };
     this.lamps = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
     Object.assign(common, { uRate: this.rate, uPx: this.px, uPupil: this.pupil, uCarL: this.carL, uCarLDir: this.carLDir, uLamps: this.lamps });
-    const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uWindOff: this.windOff, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
+    const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uWindOff: this.windOff, uAxis: this.axis, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
       transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });   // (the quads face either way)
     const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5; this.group.add(m); return m; };
     // two layers of streaks: close ones (a few metres, the ones you read as drops) and the curtain further out
     const quad = [-1, 0, 1, 0, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
     add(cloud(10000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uLen: { value: 0.045 }, uOpacity: { value: 0.95 }, uWidth: { value: 1 }, uCurtain: { value: 0.3 } }));
     add(cloud(30000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uLen: { value: 0.05 }, uOpacity: { value: 0.66 }, uWidth: { value: 1 }, uCurtain: { value: 1 } }));
-    add(cloud(2600, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mk(SPLASH_VERT, SPLASH_FRAG, { uRadius: { value: 12 }, uOpacity: { value: 0.55 } }));
+    // the splashes (V92): slots of 9 pieces each, within 7 m
+    add(cloud(splashes * 9, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mk(SPLASH_VERT, SPLASH_FRAG, { uRadius: { value: 7 }, uOpacity: { value: 1.6 }, uFlow: RAIN.uFlow, uFlowBox: RAIN.uFlowBox, uRoad: RAIN.uRoad, uLow: RAIN.uLow, uSurfOn: RAIN.uSurfOn }));
     // the spray mist over the ground (not added on: it veils what is behind it)
     this.gust = { value: 1 }; this.mistColor = { value: new THREE.Color() };
     const mist = mk(MIST_VERT, MIST_FRAG, { uRadius: { value: 22 }, uGust: this.gust, uColor: this.mistColor, uFlow: RAIN.uFlow, uFlowBox: RAIN.uFlowBox });
@@ -1116,6 +1266,9 @@ export class RainFX {
     const g = STORM.gale, W = STORM.uWind.value;
     this.wind.value.set(1.6 + 0.8 * Math.sin(t * 0.37), 0.7 + 0.5 * Math.sin(t * 0.23 + 1)).multiplyScalar(1 - g).addScaledVector(W, g);
     this.windOff.value.addScaledVector(this.wind.value, dt);
+    this.axis.value.set(0.916, 0.401).multiplyScalar(1 - g).addScaledVector(STORM.axis, g);
+    if (this.axis.value.lengthSq() < 1e-6) this.axis.value.set(1, 0);
+    this.axis.value.normalize();
     RAIN.uGale.value = g;
   }
 }
@@ -1250,7 +1403,8 @@ void main() {
 }`;
 
 // the wind (main.js): now (m/s, world x / z), the air's travel so far, how stormy (0..1)
-export const STORM = { uStorm: { value: 0 }, uWind: { value: new THREE.Vector2(0.03, -0.55) }, uWindOff: { value: new THREE.Vector2() }, gust: 1, gale: 0, burst: 0 };
+export const STORM = { uStorm: { value: 0 }, uWind: { value: new THREE.Vector2(0.03, -0.55) }, uWindOff: { value: new THREE.Vector2() }, gust: 1, gale: 0, burst: 0,
+  axis: new THREE.Vector2(0.052, -0.9986) };   // (the gale's mean bearing, unit: main.js)
 
 export class SnowFX {
   constructor(scene) {

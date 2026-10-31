@@ -106,6 +106,10 @@ uniform vec4 uMeadowBox;`)
   // there being a blend with the water and the scrub)
   vec3 farCol = mix(orth * 1.08, uAvgR * vec3(0.7, 0.69, 0.66), 0.6 * wr / ws);
   diffuseColor.rgb *= mix(nearCol, farCol, farK * (1.0 - 0.9 * wf / ws));
+#ifdef WET_GROUND
+  wetEarth = clamp((wa + 0.75 * wf + 0.3 * wg + 0.15 * wr) / ws, 0.0, 1.0);   // (the bare earth here, for the prints in the mud: rain.js)
+  wetGrass = clamp(wg / ws, 0.0, 1.0);                                          // (and the grass: no boil of splashes on it)
+#endif
   // autumn (season.js): the grass dries in patches to olive and straw (the pastures on the hills in the drone photos;
   // the mown lawns by the houses stay greener: the patches are tens of metres across)
   // (winter, season.js uDormant: dry nearly everywhere, the patches only a little greener)

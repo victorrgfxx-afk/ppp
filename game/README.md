@@ -51,7 +51,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | L / H | – | faruri / claxon |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
-| T / O | vremea (senin, parțial noros, înnorat, ploaie torențială, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
+| T / O | vremea (senin, parțial noros, înnorat, ceață, ploaie torențială, ploaie în rafale, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | B | vântul: după vreme, calm, adiere, vânt moderat, vânt tare, vijelie (copacii, iarba și foșnetul frunzelor) | la fel |
 | E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
 | Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
@@ -124,7 +124,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * **Ploaia nu trece prin nimic**: aceeași hartă ca la viscol, privită din direcția din care zboară picăturile. În spatele caselor, zidurilor și mașinilor, de-a lungul zborului, nu cad picături și nu sar stropi. Sub streașina dinspre vânt ploaia intră.
   * **Pereții bătuți de vânt se udă de sus până jos** și pe ei curg șiroaie. Pereții dinspre partea adăpostită rămân mai uscați.
   * **Ceață de stropi**: picăturile care se sparg pe asfalt fac o ceață joasă, pe care rafalele o mătură în valuri de-a lungul străzii.
-  * Copacii se apleacă și se zbat în rafale, iar fulgerele luminează plafonul și sunt urmate de tunete. Vântul te împinge (mai puțin la adăpost), iar viteza lui apare lângă hartă.
+  * Copacii se apleacă și se zbat în rafale, iar fulgerele luminează plafonul și sunt urmate de tunete. Viteza vântului apare lângă hartă. Din V92 vântul nu te mai împinge: în rafale ți se zgâlțâie doar camera.
   * Totul se udă: solul, tencuiala și asfaltul se închid la culoare, iar suprafețele devin lucioase. Ploaia începe în ~2 s, suprafețele se udă în ~10 s și se usucă în ~1 min după ce se oprește.
 * **Râurile și lacurile (V63)** (`src/geo/water.js`): Prahova, Câmpinița, pâraiele și iazurile, refăcute.
   * **Adâncimea**: fiecare colț al apei știe cât de adâncă e apa peste albia săpată (până la ~1,5 m în canalul Prahovei, câțiva centimetri la marginile cu prundiș). Nivelul și curentul se potrivesc de la o celulă la alta, deci suprafața nu mai are trepte și cusături.
@@ -260,10 +260,10 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
     * Harta se reface când te muți cu 3 m sau când rafalele rotesc zborul cu 1,5°.
     * În mașina pe care o conduci nu intră niciun fulg.
     * Pe ninsoare liniștită e la fel, dar zăpada cade aproape vertical.
-  * **La adăpost nici vântul nu te mai împinge.** Se caută în direcția din care bate vântul ce stă între el și tine.
+  * **La adăpost vântul scade.** Se caută în direcția din care bate vântul ce stă între el și tine.
     * În spatele unui zid sau al unei case trece ~10% din rafală aproape de obstacol și jumătate la ~4 înălțimi de el. La ~6 înălțimi bate din nou din plin.
     * Un trunchi sau un stâlp te adăpostește doar cât e de lat. În pădure vântul scade cu până la ~60%.
-    * Același adăpost oprește împingerea, încetinirea când mergi contra vântului, zgâlțâiala camerei și împingerea laterală a mașinii.
+    * Același adăpost oprește zgâlțâiala camerei și împingerea laterală a mașinii.
     * Vuietul se aude înăbușit, iar sâsâitul zăpezii dispare.
     * Lângă hartă scrie vântul de unde ești, cu „(la adăpost)” când e cazul. Măsurat: 0 în stradă, 0,9 în spatele casei și al mașinii.
   * **Zăpada de pe jos e spulberată**: șuvițe care curg pe suprafața zăpezii (nu peste acoperișuri), mai încet decât vântul de sus, în panglici șerpuite. Majoritatea curge sub genunchi, puțină ajunge la înălțimea capului. Șuvițele se opresc în ziduri, garduri și mașini și nu ajung sub ele.
@@ -272,7 +272,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * Troienele din spatele obstacolelor și valurile de vânt de pe zăpadă devin de ~2 ori mai mari. Stratul crește cu ~12 cm pe minut.
   * Copacii se clatină mult mai tare. Brazii își scutură singuri zăpada de pe ramuri la câteva secunde, în rafale.
   * **Se aude vuietul vântului**, care crește și scade cu rafalele și șuieră la vârfuri, plus sâsâitul zăpezii purtate de vânt.
-  * **Te simți în furtună**: camera e zgâlțâită de rafale (mai puțin în mașină). Contra vântului mergi cu ~o treime mai încet, cu vântul puțin mai repede, iar vântul te împinge ușor.
+  * **Te simți în furtună**: camera e zgâlțâită de rafale (mai puțin în mașină). Din V92 vântul nu te mai împinge și nu te mai încetinește: mergi cum vrei, în orice direcție.
   * **Mașina e împinsă lateral** (~0,9 m/s² la 20 m/s, forța laterală ½·ρ·v²·A·C) și se abate de pe bandă dacă nu corectezi din volan.
   * **Farurile mașinii luminează acum cu adevărat** (tasta **L** în mașină; se aprind singure noaptea și în viscol): un fascicul cald pe drum, în care fulgii se aprind. Noaptea, fulgii se învârt luminați în jurul celor mai apropiate 6 felinare și în conul lanternei.
 * **Noaptea, cu lună plină** (orele 22:00 și 23:30; la 20:00 e amurg): noaptea de 26 septembrie 2026 chiar are lună plină (16:49 UTC). Luna e pusă exact unde e pe cer (32° deasupra orizontului spre est-sud-est la 22:00, 44° spre sud-est la 23:30), verificat cu PyEphem la 0,1°. Cerul are stele, discul lunii are mări și halo, felinarele sunt aprinse, iar lanterna (**L**) aruncă umbre.
