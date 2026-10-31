@@ -777,6 +777,18 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Țintele poligonului se activează doar cu pistolul în mână (V90)** (`src/range.js`, `src/weapon.js`):
+  * **Până iei pistolul:** pajiștea de lângă cruce arată ca înainte. Țintele stau culcate în iarba cosită, iar ridicătoarele lor sunt îngropate în pământ, ca la poligoanele cu ținte în șanț. Nu se văd, nu te opresc și nu pot fi lovite.
+  * **Când iei pistolul** (sau îl scoți cu Q): țintele se ridică una după alta, la ~0,12 s una de alta, fiecare cu motorul ei; se aude fiecare. Siluetele se ridică în ~0,8 s, cadrele plăcilor de oțel în ~1 s.
+  * **Când nu mai e în mână:** când îl pui deoparte (Q), urci în mașină sau zbori (N), se culcă la loc: siluetele în ~0,6 s, plăcile în ~0,8 s. O țintă doborâtă rămâne jos și nu se mai ridică.
+  * **Ridicătoarele vizibile au dispărut:** cutiile de oțel ale siluetelor nu mai sunt pe iarbă. Balamaua e la rădăcina ierbii, iar silueta stă cu ~10 cm mai jos decât înainte (capul la ~1 m).
+  * **Măsurat în joc:**
+    * înainte să iei pistolul, toate cele 9 ținte sunt culcate și ascunse;
+    * după ce îl iei, siluetele sunt sus între 1,1 și 1,7 s, iar toate țintele în ~2,3 s;
+    * cu Q se culcă toate în ~1,1 s și rămân jos cât timp pistolul e pus deoparte;
+    * scos din nou, se ridică iar;
+    * în zbor se culcă și se ridică la loc când aterizezi;
+    * o țintă doborâtă cât ai pistolul în mână se ridică singură după 3,5 s.
 * **Modul shooter: mecanicile Call of Duty-urilor noi, adaptate, cât ai Glock-ul scos (V89)** (`src/player.js`, `src/weapon.js`, `src/range.js`, `src/audio.js`, `src/geo/hillwood.js`, `src/main.js`, `index.html`):
   * **Când e activ:** cât ții pistolul scos. Cu Q îl pui deoparte și revii la mersul de dinainte (C = ghemuit, Shift = fugă).
   * **Sprintul tactic** (din MW 2019, implicit în MWII, MWIII și BO6; în BO7 și MW4 a devenit atu):
@@ -815,13 +827,13 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
       * e departe și de luminișul scenei de noapte (~115 m spre vest-nord-vest).
       * culoarul e cosit (iarba de ~10–20 cm, fără flori), ca la un poligon adevărat; în rest pajiștea rămâne cu iarba ei înaltă.
     * **6 ținte pop-up la 7–28 m**, staggered ca să nu se acopere una pe alta:
-      * siluete E-type din plastic oliv, ca ale armatei, ~50 × 100 cm, pe ridicătoare de oțel;
+      * siluete E-type din plastic oliv, ca ale armatei, ~50 × 100 cm, pe ridicătoare îngropate în pământ (din V90: se ridică doar cu pistolul în mână, mai jos);
       * cad pe spate după un glonț în cap sau trei în corp (gâtul se socotește la cap, ca în jocuri);
       * după 3,5 s motorul le ridică la loc;
       * găurile rămân în plastic;
       * nu treci prin ele cât stau ridicate.
     * **3 plăci de oțel AR500**, albe, de 20, 25 și 30 cm, la 15, 25 și 35 m:
-      * atârnă în lanțuri de o bară pe doi stâlpi de lemn;
+      * atârnă în lanțuri de o bară pe doi stâlpi de lemn, iar cadrul stă tot pe un ridicător;
       * fiecare glonț le leagănă după impulsul lui (9,5 g × 295 m/s ≈ 2,8 N·s), cu momentul de inerție al discului: placa de 30 cm (7 kg), lovită de la 35 m, se leagănă ~15°;
       * sună „ding” după zborul glonțului și drumul sunetului înapoi, cu modurile unui disc liber de oțel de 10 mm (~816 Hz × (25 cm/diametru)², apoi 1,73×, 2,33×, 3,9×, 4,1×), ~1–2 s;
       * plumbul lasă stropi gri pe ele.

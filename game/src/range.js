@@ -8,11 +8,14 @@ import { addMownGrass } from './geo/hillwood.js';
 // open grass to the wood's edge ~75 m on (a backstop of rising ground and trees), the lane itself mown; away from the
 // lane over the hill (it passes the cross on its east side, coming from the north-north-east and going on to the
 // south-east) and from the clearing of the night's scene (to the west-north-west, ~115 m).
-// The pop-ups: olive plastic E-type silhouettes (the army's, ~50 x 100 cm) on lifters - a round in the head puts one
-// down, three in the body (it falls back flat behind its lifter, is raised again 3.5 s later by its motor). The
-// plates: AR500 steel discs of 20, 25 and 30 cm, white, hung by two chains from a bar on two posts, swinging with
-// each round (the round's momentum, ~2.8 N s) and ringing (audio.js: gong). The rounds leave their holes in the
-// plastic and their grey lead splashes on the steel.
+// The pop-ups: olive plastic E-type silhouettes (the army's, ~50 x 100 cm) on lifters sunk in the ground - a round in
+// the head puts one down, three in the body (it falls back flat, is raised again 3.5 s later by its motor). The
+// plates: AR500 steel discs of 20, 25 and 30 cm, white, hung by two chains from a bar on two posts (on a lifter too),
+// swinging with each round (the round's momentum, ~2.8 N s) and ringing (audio.js: gong). The rounds leave their holes
+// in the plastic and their grey lead splashes on the steel.
+// Live only while the pistol is in your hands (V90; weapon.js: setLive): till then every target lies flat in the
+// grass, out of sight (the meadow as it was); taken out, they come up one after another, each by its lifter's motor;
+// put away (Q), or in a car, or flying, they go down again.
 // It tells what a round did (onEvent): a hit, a kill (head, distance, a melee blow) - the hit markers, the score and
 // the medals of the HUD (weapon.js: GunHud)
 
@@ -21,7 +24,8 @@ const G = 9.81, M_ROUND = 0.0095, V_ROUND = 295;
 // the E-type's outline: half of it (x >= 0), from the base up; the head above the neck (y > NECK)
 // (the neck from 0.72 up counts as the head, as the games' head boxes take it)
 const HALF = [[0.25, 0], [0.25, 0.555], [0.243, 0.6], [0.222, 0.635], [0.19, 0.658], [0.09, 0.7], [0.075, 0.777]];
-const HEAD = { y: 0.875, rx: 0.105, ry: 0.14 }, NECK = 0.777, HEADZ = 0.72, STEM = 0.1, LIFT_H = 0.22;
+// (PIV: the lifters' hinges, at the grass's roots - the lifters themselves in the ground)
+const HEAD = { y: 0.875, rx: 0.105, ry: 0.14 }, NECK = 0.777, HEADZ = 0.72, STEM = 0.1, PIV = 0.03, FLAT = Math.PI / 2;
 // the lane's layout: [down range from the firing line, to the right] (m)
 const POPUPS = [[7, -2.0], [10, 2.2], [14, -0.6], [18, 1.4], [23, -2.4], [28, 0.4]];
 const PLATES = [[15, 4.6, 0.1], [25, 4.0, 0.125], [35, 4.4, 0.15]];   // (+ the disc's radius)
@@ -29,7 +33,7 @@ const PLATES = [[15, 4.6, 0.1], [25, 4.0, 0.125], [35, 4.4, 0.15]];   // (+ the 
 export class Range {
   constructor(scene, world, audio, cross) {
     this.scene = scene; this.world = world; this.audio = audio;
-    this.onEvent = null; this.t = 0; this.pending = []; this.kills = 0; this.heads = 0; this.hits = 0; this.shots = 0; this.xp = 0;
+    this.onEvent = null; this.t = 0; this.pending = []; this.kills = 0; this.heads = 0; this.hits = 0; this.shots = 0; this.xp = 0; this.live = false;
     this.multi = { n: 0, t: -10 };
     const a = 340 * Math.PI / 180;
     const f = this.f = V3(Math.sin(a), 0, Math.cos(a)), r = this.r = V3(-f.z, 0, f.x);
@@ -47,11 +51,11 @@ export class Range {
     this.holeMat = new THREE.MeshBasicMaterial({ map: holeTexture(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     this.splatMat = new THREE.MeshStandardMaterial({ map: splatTexture(), transparent: true, depthWrite: false, roughness: 0.5, metalness: 0.5, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const yaw = Math.atan2(-f.x, -f.z);                      // (each faces back up the lane, toward the firing line)
-    const woodG = [], drabG = [];
     // the firing line: a beam on the grass across the lane
     const beam = new THREE.BoxGeometry(3.2, 0.08, 0.12);
     beam.applyMatrix4(new THREE.Matrix4().compose(V3(0, 0.04, 0), new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), yaw), V3(1, 1, 1)));
-    beam.translate(this.line.x, this.line.y, this.line.z); woodG.push(beam);
+    beam.translate(this.line.x, this.line.y, this.line.z);
+    const beamM = new THREE.Mesh(beam, wood); beamM.castShadow = true; beamM.receiveShadow = true; g.add(beamM);
     // the pop-ups
     const shape = new THREE.Shape();
     // (the outline: up the right side, over the head from where it meets the neck, down the left)
@@ -66,32 +70,28 @@ export class Range {
     this.targets = [];
     POPUPS.forEach(([d, l], i) => {
       const base = at(d, l);
-      const lifter = new THREE.BoxGeometry(0.46, LIFT_H, 0.3);
-      lifter.applyMatrix4(new THREE.Matrix4().compose(V3(0, LIFT_H / 2, 0), new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), yaw), V3(1, 1, 1)));
-      lifter.translate(base.x, base.y, base.z); drabG.push(lifter);
-      world.addStatic(new world.Box(base.x, base.z, 0.23, 0.15, yaw, base.y - 1, base.y + LIFT_H, 'pole'));            // (its steel: sparks)
-      const body = world.addStatic(new world.Box(base.x, base.z, 0.26, 0.04, yaw, base.y, base.y + 1.35, 'range'));    // (you do not walk through it)
-      const pivot = new THREE.Group(); pivot.position.set(base.x, base.y + LIFT_H, base.z); pivot.rotation.y = yaw; g.add(pivot);
-      const arm = new THREE.Group(); pivot.add(arm);         // (turned about its x: down flat behind the lifter)
+      const body = world.addStatic(new world.Box(base.x, base.z, 0.26, 0.04, yaw, base.y, base.y + 1.2, 'range'));    // (you do not walk through it standing)
+      body.ghost = true;
+      const pivot = new THREE.Group(); pivot.position.set(base.x, base.y + PIV, base.z); pivot.rotation.y = yaw; g.add(pivot);
+      const arm = new THREE.Group(); arm.rotation.x = -FLAT; pivot.add(arm);         // (turned about its x: down flat in the grass, away from you)
       const m = new THREE.Mesh(sil, olive); m.castShadow = true; m.receiveShadow = true; arm.add(m);
       const sm = new THREE.Mesh(stem, drab); sm.castShadow = true; arm.add(sm);
       const holes = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.014, 0.014), this.holeMat, 40); holes.count = 0; holes.frustumCulled = false; holes.visible = false; arm.add(holes);
-      this.targets.push({ kind: 'popup', n: i + 1, base, pivot, arm, holes, body, hi: 0, hp: 100, hitsOn: 0, state: 'up', ang: 0, av: 0, tDown: 0, mid: V3(0, STEM + 0.5, 0) });
+      pivot.visible = false;
+      this.targets.push({ kind: 'popup', n: i + 1, base, pivot, arm, holes, body, hi: 0, hp: 100, hitsOn: 0, state: 'stowed', dir: 1, ang: FLAT, av: 0, tDown: 0, liveAt: 0, mid: V3(0, STEM + 0.5, 0) });
     });
     // the plates
     PLATES.forEach(([d, l, R], i) => {
       const base = at(d, l), H = 1.2, CH = 0.22;
-      for (const s of [-1, 1]) {
-        const p = new THREE.BoxGeometry(0.09, H + 0.1, 0.09);
-        p.applyMatrix4(new THREE.Matrix4().compose(V3(s * 0.42, (H + 0.1) / 2 - 0.05, 0), new THREE.Quaternion(), V3(1, 1, 1)));
-        p.applyMatrix4(new THREE.Matrix4().makeRotationY(yaw)); p.translate(base.x, base.y, base.z); woodG.push(p);
-        const wx = base.x + r.x * s * 0.42, wz = base.z + r.z * s * 0.42;
-        world.addStatic(new world.Box(wx, wz, 0.05, 0.05, 0, base.y - 1, base.y + H + 0.1, 'fence'));
-      }
-      const bar = new THREE.CylinderGeometry(0.02, 0.02, 0.92, 10); bar.rotateZ(Math.PI / 2); bar.translate(0, H, 0);
-      bar.applyMatrix4(new THREE.Matrix4().makeRotationY(yaw)); bar.translate(base.x, base.y, base.z);
-      const barM = new THREE.Mesh(bar, steelBar); barM.castShadow = true; g.add(barM);
-      const pivot = new THREE.Group(); pivot.position.set(base.x, base.y + H, base.z); pivot.rotation.y = yaw; g.add(pivot);
+      // (on its lifter: the frame - two posts, the bar - turned up out of the grass about its feet)
+      const frame = new THREE.Group(); frame.position.set(base.x, base.y + PIV, base.z); frame.rotation.y = yaw; g.add(frame);
+      const tilt = new THREE.Group(); tilt.rotation.x = -FLAT; frame.add(tilt);
+      const posts = new THREE.Mesh(mergeGeometries([-1, 1].map(s => new THREE.BoxGeometry(0.09, H + 0.08, 0.09).translate(s * 0.42, (H + 0.08) / 2 - PIV, 0))), wood);
+      posts.castShadow = true; posts.receiveShadow = true; tilt.add(posts);
+      const barM = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.92, 10).rotateZ(Math.PI / 2).translate(0, H, 0), steelBar); barM.castShadow = true; tilt.add(barM);
+      // (the posts stop you, and a round, while it stands)
+      const boxes = [-1, 1].map(s => { const b = world.addStatic(new world.Box(base.x + r.x * s * 0.42, base.z + r.z * s * 0.42, 0.05, 0.05, 0, base.y - 1, base.y + H + 0.1, 'fence')); b.ghost = true; return b; });
+      const pivot = new THREE.Group(); pivot.position.set(0, H, 0); tilt.add(pivot);
       const arm = new THREE.Group(); pivot.add(arm);
       const disc = new THREE.CylinderGeometry(R, R, 0.0127, 40); disc.rotateX(Math.PI / 2); disc.translate(0, -CH - R, 0);
       const links = [];
@@ -101,9 +101,9 @@ export class Range {
       const marks = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.05, 0.05), this.splatMat, 40); marks.count = 0; marks.frustumCulled = false; marks.visible = false; arm.add(marks);
       const L = CH + R, mass = 7850 * Math.PI * R * R * 0.0127;
       // (its swing about the bar: the disc's moment of inertia there, m (L^2 + R^2 / 4))
-      this.targets.push({ kind: 'plate', n: i + 1, base, pivot, arm, holes: marks, hi: 0, R, L, mass, I: mass * (L * L + R * R / 4), ang: 0, av: 0, f0: 816 * (0.125 / R) ** 2, mid: V3(0, -CH - R, 0) });
+      frame.visible = false;
+      this.targets.push({ kind: 'plate', n: i + 1, base, pivot: frame, tilt, boxes, arm, holes: marks, hi: 0, R, L, mass, I: mass * (L * L + R * R / 4), ang: 0, av: 0, f0: 816 * (0.125 / R) ** 2, mid: V3(0, -CH - R, 0), state: 'stowed', fa: FLAT, liveAt: 0 });
     });
-    for (const [geos, mat] of [[drabG, drab], [woodG, wood]]) { const ms = new THREE.Mesh(mergeGeometries(geos), mat); ms.castShadow = true; ms.receiveShadow = true; g.add(ms); }
     g.updateMatrixWorld(true);
   }
 
@@ -112,6 +112,7 @@ export class Range {
   segment(x0, y0, z0, x1, y1, z1) {
     let best = null;
     for (const tg of this.targets) {
+      if (!tg.pivot.visible) continue;                       // (down in the grass, out of play)
       // (quick: the segment's distance from the target's middle)
       const c = _c.copy(tg.mid).applyMatrix4(tg.arm.matrixWorld), rr = tg.kind === 'popup' ? 0.7 : tg.R + 0.05;
       _a.set(x0, y0, z0); _b.set(x1, y1, z1); _d.subVectors(_b, _a);
@@ -133,6 +134,22 @@ export class Range {
     }
     return best;
   }
+
+  // (V90) live while the pistol is in your hands (weapon.js): the targets up out of the grass one after another; put
+  // away, all of them down flat again
+  setLive(on) {
+    if (on === this.live) return;
+    this.live = on;
+    this.targets.forEach((tg, i) => { tg.liveAt = this.t + (on ? 0.3 + i * 0.12 : i * 0.04); });
+  }
+  // a lifter's motor: up from the flat (a pop-up from where it lies, a plate's frame), or down to it from where it is
+  raise(tg, cam) { tg.state = 'rising'; tg.tUp = this.t; tg.pivot.visible = true; this.motor(tg, cam); }
+  lower(tg, cam) {
+    tg.state = 'lowering'; tg.tLow = this.t; this.motor(tg, cam);
+    if (tg.kind === 'plate') { tg.a0 = tg.fa; tg.ang = 0; tg.av = 0; tg.boxes.forEach(b => { b.ghost = true; }); }
+    else { tg.a0 = Math.abs(tg.arm.rotation.x); if (tg.a0 < 1e-3) tg.dir = 1; tg.body.ghost = true; }
+  }
+  motor(tg, cam) { if (cam && this.group.visible) this.audio?.targetUp?.(cam.position.distanceTo(tg.base)); }
 
   // a round fired (for the accuracy), on the range or near it
   near(p) { return Math.hypot(p.x - this.center.x, p.z - this.center.z) < 90; }
@@ -199,14 +216,33 @@ export class Range {
     const near = !cam || cam.position.distanceTo(this.center) < 400;
     this.group.visible = near;
     for (const tg of this.targets) {
+      const go = this.t >= tg.liveAt;
       if (tg.kind === 'plate') {
+        // (its frame on the lifter: up in ~1 s, down in ~0.8)
+        if (tg.state === 'stowed') { if (this.live && go) this.raise(tg, cam); }
+        else if ((tg.state === 'up' || tg.state === 'rising') && !this.live && go) this.lower(tg, cam);
+        else if (tg.state === 'rising') {
+          const u = Math.min(1, (this.t - tg.tUp) / 1.0); tg.fa = FLAT * (1 - u * u * (3 - 2 * u));
+          if (u >= 1) { tg.state = 'up'; tg.boxes.forEach(b => { b.ghost = false; }); }
+        } else if (tg.state === 'lowering') {
+          const u = Math.min(1, (this.t - tg.tLow) / 0.8); tg.fa = tg.a0 + (FLAT - tg.a0) * u * u * (3 - 2 * u);
+          if (u >= 1) { tg.state = 'stowed'; tg.pivot.visible = false; }
+        }
+        tg.tilt.rotation.x = -tg.fa;
         if (Math.abs(tg.ang) < 1e-5 && Math.abs(tg.av) < 1e-5) continue;
         // (a pendulum on its chains: m g L / I, damped by the chains' links and the air)
         const w2 = tg.mass * G * tg.L / tg.I, n = Math.ceil(dt / 0.004);
         for (let k = 0; k < n; k++) { const h = dt / n; tg.av += (-w2 * Math.sin(tg.ang) - 0.9 * tg.av) * h; tg.ang += tg.av * h; }
         tg.arm.rotation.x = tg.ang;
       } else {
-        if (tg.state === 'down') {
+        if (tg.state === 'stowed') { if (this.live && go) this.raise(tg, cam); }
+        else if ((tg.state === 'up' || tg.state === 'rising') && !this.live && go) this.lower(tg, cam);
+        else if (tg.state === 'lowering') {
+          // (laid down by its lifter, ~0.6 s; from where it was, the way it was going)
+          const u = Math.min(1, (this.t - tg.tLow) / 0.6);
+          tg.arm.rotation.x = -tg.dir * (tg.a0 + (FLAT - tg.a0) * u * u * (3 - 2 * u));
+          if (u >= 1) { tg.state = 'stowed'; tg.pivot.visible = false; }
+        } else if (tg.state === 'down') {
           // (let go by its lifter, falling back about its pivot: a board ~1.1 m tall on its edge, 3 g / 2 h sin a, ~0.4 s
           // to the flat; a bounce or two)
           if (!tg.settled) {
@@ -214,7 +250,9 @@ export class Range {
             if (tg.ang >= Math.PI / 2 && tg.av > 0) { tg.ang = Math.PI / 2; if (tg.av < 1) { tg.av = 0; tg.settled = true; } else tg.av *= -0.25; }
           }
           tg.arm.rotation.x = -tg.dir * tg.ang;
-          if (this.t - tg.tDown > 3.5) { tg.state = 'rising'; tg.tUp = this.t; if (near) this.audio?.targetUp?.(cam ? cam.position.distanceTo(tg.base) : 30); }
+          // (put away meanwhile: it stays down; else up again 3.5 s on)
+          if (!this.live && tg.settled) { tg.state = 'stowed'; tg.pivot.visible = false; }
+          else if (this.live && this.t - tg.tDown > 3.5) this.raise(tg, cam);
         } else if (tg.state === 'rising') {
           const u = Math.min(1, (this.t - tg.tUp) / 0.8), s = u * u * (3 - 2 * u);
           tg.arm.rotation.x = -tg.dir * Math.PI / 2 * (1 - s);
