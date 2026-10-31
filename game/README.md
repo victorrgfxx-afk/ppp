@@ -777,8 +777,13 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Țintele ies din pământ (V91)** (`src/range.js`):
+  * **Când iei pistolul:** siluetele ies pe verticală din pământ, una după alta, fiecare cu motorul ridicătorului ei (~0,8 s). Cadrele plăcilor de oțel ies și ele, cu plăcile atârnate (~1 s).
+  * **Când pistolul nu mai e în mână:** intră la loc în pământ (siluetele în ~0,6 s, plăcile în ~0,8 s).
+  * **O țintă doborâtă** se smucește pe spate (~26° într-o zecime de secundă) și cade în pământ tot mai repede (~0,35 s). Cât ai pistolul în mână, iese din nou după 3,5 s.
+  * **Ce s-a schimbat față de V90:** până acum se ridicau rotindu-se din iarbă și cădeau pe spate. Ridicătoarele sunt tot în pământ, iar fanta lor e acoperită de iarba cosită.
 * **Țintele poligonului se activează doar cu pistolul în mână (V90)** (`src/range.js`, `src/weapon.js`):
-  * **Până iei pistolul:** pajiștea de lângă cruce arată ca înainte. Țintele stau culcate în iarba cosită, iar ridicătoarele lor sunt îngropate în pământ, ca la poligoanele cu ținte în șanț. Nu se văd, nu te opresc și nu pot fi lovite.
+  * **Până iei pistolul:** pajiștea de lângă cruce arată ca înainte. Țintele stau culcate în iarba cosită (din V91: în pământ), iar ridicătoarele lor sunt îngropate în pământ, ca la poligoanele cu ținte în șanț. Nu se văd, nu te opresc și nu pot fi lovite.
   * **Când iei pistolul** (sau îl scoți cu Q): țintele se ridică una după alta, la ~0,12 s una de alta, fiecare cu motorul ei; se aude fiecare. Siluetele se ridică în ~0,8 s, cadrele plăcilor de oțel în ~1 s.
   * **Când nu mai e în mână:** când îl pui deoparte (Q), urci în mașină sau zbori (N), se culcă la loc: siluetele în ~0,6 s, plăcile în ~0,8 s. O țintă doborâtă rămâne jos și nu se mai ridică.
   * **Ridicătoarele vizibile au dispărut:** cutiile de oțel ale siluetelor nu mai sunt pe iarbă. Balamaua e la rădăcina ierbii, iar silueta stă cu ~10 cm mai jos decât înainte (capul la ~1 m).
