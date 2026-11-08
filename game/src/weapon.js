@@ -118,11 +118,38 @@ const INSPECT = { dur: 3.5, press: [1.75, 1.9, 2.15, 2.25],
   left: [[0, 'grip'], [1.45, 'grip'], [1.65, 'press0'], [1.85, 'press1'], [2.15, 'press1'], [2.25, 'press0'], [2.5, 'grip']] };
 export const ACTS = { MELEE, INSPECT };
 const smooth = (t) => t * t * (3 - 2 * t);
-function track(keys, t, out) {                         // (the gun's keys: piecewise smooth)
+// (V93) the gun's keys, joined by one smooth curve per channel (a monotone cubic, Fritsch-Carlson): it flows through a
+// key without stopping there - the old curves (a smoothstep from key to key) brought the gun to a standstill at every
+// key, a stop-and-go of the hands - and stops only where the motion turns back (no overshoot past a key), at rest at
+// the first and the last; a key held (the same values twice) holds
+const _tan = new WeakMap();
+function tangents(keys) {
+  let T = _tan.get(keys);
+  if (T) return T;
+  T = keys.map(() => new Float64Array(6));
+  for (let i = 1; i < keys.length - 1; i++) {
+    const a = keys[i - 1], b = keys[i], c = keys[i + 1], h0 = b[0] - a[0], h1 = c[0] - b[0];
+    if (h0 <= 0 || h1 <= 0) continue;
+    for (let k = 1; k < 7; k++) {
+      const d0 = (b[k] - a[k]) / h0, d1 = (c[k] - b[k]) / h1;
+      if (d0 * d1 <= 0) continue;                                   // (it turns back here, or holds: at rest)
+      let m = (d0 * h1 + d1 * h0) / (h0 + h1);
+      const lim = 3 * Math.min(Math.abs(d0), Math.abs(d1));
+      if (Math.abs(m) > lim) m = Math.sign(m) * lim;
+      T[i][k - 1] = m;
+    }
+  }
+  _tan.set(keys, T);
+  return T;
+}
+function track(keys, t, out) {
   let i = 0;
   while (i < keys.length - 2 && t > keys[i + 1][0]) i++;
-  const a = keys[i], b = keys[Math.min(i + 1, keys.length - 1)], f = b[0] > a[0] ? smooth(Math.min(1, Math.max(0, (t - a[0]) / (b[0] - a[0])))) : 1;
-  for (let k = 1; k < 7; k++) out[k - 1] = a[k] + (b[k] - a[k]) * f;
+  const a = keys[i], b = keys[Math.min(i + 1, keys.length - 1)], h = b[0] - a[0];
+  if (h <= 0) { for (let k = 1; k < 7; k++) out[k - 1] = b[k]; return out; }
+  const T = tangents(keys), u = Math.min(1, Math.max(0, (t - a[0]) / h)), u2 = u * u, u3 = u2 * u;
+  const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = 3 * u2 - 2 * u3, h11 = u3 - u2;
+  for (let k = 1; k < 7; k++) out[k - 1] = h00 * a[k] + h10 * h * T[i][k - 1] + h01 * b[k] + h11 * h * T[Math.min(i + 1, keys.length - 1)][k - 1];
   return out;
 }
 
@@ -208,7 +235,7 @@ export class Glock {
     this.t += dt;
     const free = this.owned && ctx.foot;
     this.hud.touch(free);
-    if (!free) { this.targets?.setLive(false); this.out = 0; this.vm.visible = false; this.reload = null; this.act = null; this.hud.show(false); this.hud.aim(false); this.hud.tick(); this.fovMul = 1; this.ads = 0; this.stance = 0; this.tacOn = false; player.aimSlow = 1; player.armed = false; player.gunBusy = false; this.fx.update(dt, ctx); return; }
+    if (!free) { this.targets?.setLive(false); this.out = 0; this.vm.visible = false; this.reload = null; this.act = null; this.hud.show(false); this.hud.aim(false); this.hud.tick(); this.fovMul = 1; this.ads = 0; this.stance = 0; this.adsV = this.stanceV = 0; this.fade = null; this.tacOn = false; player.aimSlow = 1; player.armed = false; player.gunBusy = false; this.fx.update(dt, ctx); return; }
     if (input.hit('KeyQ')) { this.want = !this.want; this.audio?.gunCloth?.(); }
     this.targets?.setLive(this.want);                // (V90: the range's targets up only while it is in your hands)
     // taking it out / putting it away
@@ -237,13 +264,15 @@ export class Glock {
     if (input.hit('KeyI') && handsFree && !aiming && !inStance && !running && !input.down('Mouse0')) this.startAct(INSPECT);
     if (this.act?.k === INSPECT && (aimHeld || input.down('Mouse0') || running || inStance || player.tac || player.sl)) this.endAct();
     if (this.act) this.stepAct(dt, ctx);
-    this.ads = damp1(this.ads, aiming ? 1 : 0, player.sup ? 7 : 14, dt);          // (on your back: slower to the sights, MW4's)
-    this.stance = damp1(this.stance, inStance ? 1 : 0, 16, dt);
-    this.sprint = damp1(this.sprint, running && !this.trig ? 1 : 0, 8, dt);
+    // (V93: each on a critically damped spring - it sets off from rest and comes to rest, never past it; the old
+    // exponential approach went off at its fastest on the first frame of a change: a jerk at every start)
+    crit1(this, 'ads', aiming ? 1 : 0, player.sup ? 14 : 28, dt);          // (on your back: slower to the sights, MW4's)
+    crit1(this, 'stance', inStance ? 1 : 0, 32, dt);
+    crit1(this, 'sprint', running && !this.trig ? 1 : 0, 16, dt);
     // (flat out: the pistol up - slower down from it than from the run: firing out of a tactical sprint waits longer)
-    this.tacS = damp1(this.tacS, player.tac && !this.reload && !this.act ? 1 : 0, player.tac ? 7 : 5, dt);
+    crit1(this, 'tacS', player.tac && !this.reload && !this.act ? 1 : 0, player.tac ? 14 : 10, dt);
     this.slideS = player.slK ?? 0;
-    this.tuck = damp1(this.tuck, this.wallAhead(ctx.camera) ? 1 : 0, 10, dt);
+    crit1(this, 'tuck', this.wallAhead(ctx.camera) ? 1 : 0, 20, dt);
     player.aimSlow = 1 - 0.4 * this.ads - 0.12 * this.stance;
     this.fovMul = 1 - 0.2 * this.ads - 0.05 * this.stance;
     player.armed = ready; player.gunBusy = aimHeld || (input.down('Mouse0') && ready);    // (no sprinting with the sights up or the trigger held)
@@ -310,7 +339,14 @@ export class Glock {
 
   // ---- (V89) a strike, the inspection: their timelines (as a reload's), the blow
   startAct(k) { this.act = { k, t: 0, slideHeld: false }; if (k === MELEE) this.audio?.swing?.(); else this.audio?.gunCloth?.(); }
-  endAct() { if (this.act?.slideHeld) { this.slide = 0; this.slideT = 1; } this.act = null; }
+  endAct() {
+    const a = this.act;
+    if (a?.slideHeld) { this.slide = 0; this.slideT = 1; }
+    // (V93) cut short - a run, the sights, the trigger, a reload - it eases out from where it was (~0.25 s), the left hand
+    // back onto the grip with it; before, the gun and the hand were home again in one frame: a jump
+    if (a && a.t < a.k.dur - 1e-3) this.fade = { o: track(a.k.gun, a.t, [0, 0, 0, 0, 0, 0]), t0: this.t, lh: this._lhRel ? this._lhRel.clone() : null, open: !this.leftOnGrip };
+    this.act = null;
+  }
   stepAct(dt, ctx) {
     const a = this.act, k = a.k, t0 = a.t; a.t += dt;
     const at = (x) => t0 < x && a.t >= x;
@@ -476,10 +512,13 @@ export class Glock {
     blendTo(_P, VIEW.sprint, this.sprint * (1 - this.ads) * (1 - this.tacS)); blendTo(_P, VIEW.tac, this.tacS); blendTo(_P, VIEW.tuck, this.tuck);
     blendTo(_P, VIEW.down, 1 - smooth(this.out));
     const bob = player.bobAmt * (1 - 0.8 * this.ads), ph = player.bobPhase;
-    _P.p.x += Math.cos(ph) * 0.006 * bob + this.sway.y * 0.08; _P.p.y += -Math.abs(Math.sin(ph)) * 0.008 * bob - this.sway.x * 0.06 - player.landShake * 0.5 + Math.sin(this.t * 1.4) * 0.0012 * (1 - this.ads);
+    // (the dip with each step: sin^2, as deep as |sin| was but smooth - |sin| turned sharply at every footfall: a tick
+    // of the hands at each step)
+    const dip = Math.sin(ph) ** 2;
+    _P.p.x += Math.cos(ph) * 0.006 * bob + this.sway.y * 0.08; _P.p.y += -dip * 0.008 * bob - this.sway.x * 0.06 - player.landShake * 0.5 + Math.sin(this.t * 1.4) * 0.0012 * (1 - this.ads);
     _P.p.add(this.kickP);
     // (sliding: the gun canted in ~16 deg; flat out: swinging with the stride)
-    _P.p.y -= Math.abs(Math.sin(ph)) * 0.012 * this.tacS;
+    _P.p.y -= dip * 0.012 * this.tacS;
     _e.set(this.kickR.x - this.sway.x * 0.7 + Math.sin(this.t * 1.1) * 0.003 * (1 - this.ads), this.kickR.y - this.sway.y * 0.9, this.kickR.z - this.sway.y * 0.5 + Math.cos(ph) * (0.01 * bob + 0.05 * this.tacS) + 0.28 * this.slideS * (1 - this.ads) * (1 - this.stance), 'YXZ');
     this._ph = ph;
     _q.setFromEuler(_e); _P.q.multiply(_q);
@@ -489,6 +528,13 @@ export class Glock {
       const o = track(act.k.gun, act.t, _o);
       _P.p.x += o[0]; _P.p.y += o[1]; _P.p.z += o[2];
       _q.setFromEuler(_e.set(o[3], o[4], o[5], 'YXZ')); _P.q.multiply(_q);
+    }
+    // (an act cut short, easing out: endAct)
+    const fd = this.fade;
+    if (fd) {
+      const f = 1 - smooth(Math.min(1, (this.t - fd.t0) / 0.25));
+      if (f <= 0) this.fade = null;
+      else { _P.p.x += fd.o[0] * f; _P.p.y += fd.o[1] * f; _P.p.z += fd.o[2] * f; _q.setFromEuler(_e.set(fd.o[3] * f, fd.o[4] * f, fd.o[5] * f, 'YXZ')); _P.q.multiply(_q); }
     }
     if (this.selT > 0) { const s = Math.sin(this.selT / 0.35 * Math.PI); _P.p.y += 0.01 * s; _q.setFromEuler(_e.set(0.05 * s, 0, -0.25 * s, 'YXZ')); _P.q.multiply(_q); }
     this.pop.visible = this.t - this.popT < 0.03;             // (two frames at 60 fps)
@@ -520,11 +566,8 @@ export class Glock {
     if (k.strip && r.t >= k.strip[0]) {
       m.mag.visible = false;
       this.oldMag.visible = r.t < k.stow;
-      if (r.t < k.strip[1]) {
-        const f = smooth((r.t - k.strip[0]) / (k.strip[1] - k.strip[0]));
-        _m4.copy(this.gun.matrix).multiply(_n4.compose(_a.copy(seat).addScaledVector(MAG_AXIS, 0.06 * f), m.mag.quaternion, ONE));
-        this.oldMag.matrix.copy(_m4); this.oldMag.matrixWorldNeedsUpdate = true;
-      } else this.oldInHand = this.oldMag.visible;
+      // (in the hand from the pull on: the hand draws it down the grip and away in one motion - V93, leftPose)
+      this.oldInHand = this.oldMag.visible;
     }
     // the old one: out at the drop, falling out of the grip, gone after a little (dropped into the world)
     if (k.drop !== undefined && r.t >= k.drop) {
@@ -546,7 +589,7 @@ export class Glock {
       // (its place below the well, 6 cm down at the start of the push; before that it is in the hand: limbs())
       _m4.copy(this.gun.matrix).multiply(_n4.compose(_a.copy(seat).addScaledVector(MAG_AXIS, 0.06 * f), m.mag.quaternion, ONE));
       this.magIn = _m4.clone();
-      if (r.t < k.insert[0]) this.magInFree = true; else this.magInFree = false;
+      this.magInFree = true;          // (in the hand through the push as well: brought up and home in one motion, V93)
       this.newMag.matrix.copy(_m4); this.newMag.matrixWorldNeedsUpdate = true;
     } else if (r.t >= k.insert[1]) { m.mag.visible = true; this.magIn = null; }
   }
@@ -581,7 +624,19 @@ export class Glock {
     // the right hand: on the grip always
     _HR.multiplyMatrices(this.gun.matrix, _n4.compose(this.rh.p, this.rh.q, ONE));
     // the left: on the grip, or down at the belt, or with the magazine, or racking the slide (its shape for it)
-    const left = this.leftPose(r), onGrip = this.leftOnGrip;
+    let left = this.leftPose(r), onGrip = this.leftOnGrip;
+    // (an act cut short: the left hand eases back from where it was, in the gun's frame - endAct)
+    const fd = this.fade;
+    if (fd?.lh) {
+      const f = 1 - smooth(Math.min(1, (this.t - fd.t0) / 0.25));
+      if (f > 0) {
+        left.decompose(_b, _q2, _s); _LC.multiplyMatrices(this.gun.matrix, fd.lh).decompose(_a, _q, _s);
+        _a.lerp(_b, 1 - f); _q.slerp(_q2, 1 - f);
+        left = _HL.compose(_a, _q, ONE);
+        if (fd.open && f > 0.5) onGrip = false;
+      }
+    }
+    if (r) (this._lhRel ??= new THREE.Matrix4()).copy(this.gun.matrix).invert().multiply(left);
     const H = [left, _HR, left];
     for (let i = 0; i < 3; i++) { this.hands[i].matrix.copy(H[i]); this.hands[i].matrixWorldNeedsUpdate = true; }
     this.hands[0].visible = onGrip; this.hands[2].visible = !onGrip;
@@ -620,13 +675,24 @@ export class Glock {
     const keys = r.k.left;
     let i = 0;
     while (i < keys.length - 2 && r.t > keys[i + 1][0]) i++;
-    const a = keys[i], b = keys[Math.min(i + 1, keys.length - 1)], f = b[0] > a[0] ? smooth(Math.min(1, Math.max(0, (r.t - a[0]) / (b[0] - a[0])))) : 1;
+    const a = keys[i], b = keys[Math.min(i + 1, keys.length - 1)], h = b[0] - a[0];
+    const u = h > 0 ? Math.min(1, Math.max(0, (r.t - a[0]) / h)) : 1;
     // (the hand's shape changes halfway between the grip and anywhere else, as it opens and closes)
-    this.leftOnGrip = f < 0.5 ? a[1] === 'grip' : b[1] === 'grip';
+    this.leftOnGrip = u < 0.5 ? a[1] === 'grip' : b[1] === 'grip';
     const A = this.leftAt(a[1], onGrip, _LA), B = this.leftAt(b[1], onGrip, _LB);
-    // (between two places: the positions and the turns blended)
     A.decompose(_a, _q, _s); B.decompose(_b, _q2, _s);
-    _a.lerp(_b, f); _q.slerp(_q2, f);
+    // (V93) along one smooth curve through its places: it passes a place on its way without stopping there (as from
+    // pulling the magazine out to the belt), easing in and out only where it holds - on the grip, at the belt - or
+    // starts and ends; the old blend stopped the hand at every place. Its velocity at a place it passes: from the
+    // places either side (the one before, the one after), weighted by the times
+    const p0 = keys[i - 1], p3 = keys[i + 2], moves = a[1] !== b[1];
+    const passA = moves && !!p0 && p0[1] !== a[1] && p0[0] < a[0], passB = moves && !!p3 && p3[1] !== b[1] && p3[0] > b[0];
+    _ta.set(0, 0, 0); _tb.set(0, 0, 0);
+    if (passA) { this.leftAt(p0[1], onGrip, _LC).decompose(_c0, _q3, _s); secant(_c0, _a, _b, a[0] - p0[0], h, _ta); }
+    if (passB) { this.leftAt(p3[1], onGrip, _LC).decompose(_c0, _q3, _s); secant(_a, _b, _c0, h, p3[0] - b[0], _tb); }
+    const u2 = u * u, u3 = u2 * u, h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = 3 * u2 - 2 * u3, h11 = u3 - u2;
+    _a.multiplyScalar(h00).addScaledVector(_ta, h10 * h).addScaledVector(_b, h01).addScaledVector(_tb, h11 * h);
+    _q.slerp(_q2, Math.min(1, Math.max(0, h01 + (passA ? h10 : 0) + (passB ? h11 : 0))));
     // the new magazine rides in the hand until the push; the stripped one from its pull to the belt
     const carried = this.newMag.visible && this.magInFree ? this.newMag : this.oldInHand ? this.oldMag : null;
     if (carried) {
@@ -654,7 +720,13 @@ export class Glock {
 
 // ---- the world's side: cases, dropped magazines, bullet marks, dust and sparks
 const _d = V3(), _u = V3(), _r = V3(), _v = V3(), _a = V3(), _b = V3(), _c = V3(), _w = V3(), _bk = V3(), _el = V3(), _tip = V3(), _s = V3();
-const _hd = V3(), _fa = V3(), _sh = V3();
+const _hd = V3(), _fa = V3(), _sh = V3(), _ta = V3(), _tb = V3(), _c0 = V3(), _q3 = new THREE.Quaternion(), _LC = new THREE.Matrix4();
+// (a curve's velocity at P1 between P0 and P2, h0 and h1 the times: the secants weighted by the times across)
+function secant(P0, P1, P2, h0, h1, out) {
+  out.subVectors(P1, P0).multiplyScalar(h1 / h0).addScaledVector(_c1.subVectors(P2, P1), h0 / h1).multiplyScalar(1 / (h0 + h1));
+  return out;
+}
+const _c1 = V3();
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler(), _m4 = new THREE.Matrix4(), _m4b = new THREE.Matrix4(), _n4 = new THREE.Matrix4();
 const _sc = new THREE.Matrix4(), _HR = new THREE.Matrix4(), _HL = new THREE.Matrix4(), _LA = new THREE.Matrix4(), _LB = new THREE.Matrix4(), _o = [0, 0, 0, 0, 0, 0];
 const _P = { p: V3(), q: new THREE.Quaternion() }, ONE = V3(1, 1, 1);
@@ -662,6 +734,14 @@ const _P = { p: V3(), q: new THREE.Quaternion() }, ONE = V3(1, 1, 1);
 const SH = [V3(-0.19, -0.25, 0.05), V3(0.19, -0.25, 0.05)], POLE = [V3(-0.6, -1, 0.25).normalize(), V3(0.6, -1, 0.25).normalize()];
 export const ARMS = { SH, POLE };
 const damp1 = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
+// (V93) a weight (0..1) on a critically damped spring, solved exactly over dt (the same at any frame rate): o[k] and
+// its rate o[k + 'V'], pulled toward target with angular frequency w
+function crit1(o, k, target, w, dt) {
+  const kv = k + 'V', v = o[kv] ?? 0, d = o[k] - target, b = v + w * d, e = Math.exp(-w * dt);
+  let x = target + (d + b * dt) * e, nv = (v - w * b * dt) * e;
+  if (x < 0) { x = 0; nv = Math.max(0, nv); } else if (x > 1) { x = 1; nv = Math.min(0, nv); }
+  o[k] = x; o[kv] = nv;
+}
 // a shot's flip over the time since it: none on the shot's own frame (it shows the slide back and the case), half of it
 // ~17 ms on, all of it at 32 ms, a quarter at ~68 ms, gone by ~90 ms (the clip's, frame by frame)
 const bump = (t) => t <= 0 ? 0 : (t / 0.032) ** 4 * Math.exp(4 * (1 - t / 0.032));

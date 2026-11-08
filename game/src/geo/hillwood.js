@@ -124,13 +124,27 @@ export function grassTexture() {
     g.quadraticCurveTo(x - w * 0.5 + lean * 0.35, H - h * 0.55, x + lean, H - h);
     g.quadraticCurveTo(x + w * 0.5 + lean * 0.35, H - h * 0.55, x + w, H); g.closePath(); g.fill();
   };
-  for (let i = 0; i < 170; i++) blade(4 + R() * (W - 8), 45 + R() * 85, (R() - 0.5) * 50, 2 + R() * 2.2, '#22371a', '#3b5826', '#5d7d34');   // the sward
-  for (let i = 0; i < 120; i++) {
-    const dry = R() < 0.42, h = 115 + R() * 135;
-    blade(6 + R() * (W - 12), h, (R() - 0.5) * 70, 1.8 + R() * 2.2, dry ? '#46502a' : '#29441b', dry ? '#8d8748' : '#557a2e', dry ? '#cdbd86' : '#88a24a');
+  // (V93) a tuft, not a block: the blades tallest and thickest in its middle, fewer and shorter toward its sides, fanning
+  // out there, none reaching the card's edges - the cards' straight sides and flat tops showed as rectangles in the hay
+  // (u: across the card, 0..1; dome: 1 in its middle, 0 at its sides)
+  const across = (pad, fan) => {
+    for (let k = 0; k < 8; k++) {
+      const u = R(), dome = 1 - (2 * u - 1) ** 2;
+      if (R() < 0.3 + 0.7 * dome) return { x: pad + u * (W - 2 * pad), dome, fan: (u - 0.5) * fan };
+    }
+    return { x: W / 2, dome: 1, fan: 0 };
+  };
+  const inside = (x, lean, pad) => Math.max(pad - x, Math.min(W - pad - x, lean));   // (the tip kept off the edges)
+  for (let i = 0; i < 205; i++) {                                                     // the sward (more of it: a tuft covers less than the block did)
+    const a = across(14, 70), h = (45 + R() * 85) * (0.55 + 0.45 * a.dome);
+    blade(a.x, h, inside(a.x, (R() - 0.5) * 50 + a.fan, 6), 2 + R() * 2.2, '#22371a', '#3b5826', '#5d7d34');
+  }
+  for (let i = 0; i < 145; i++) {
+    const a = across(18, 110), dry = R() < 0.42, h = (115 + R() * 135) * (0.4 + 0.6 * Math.pow(a.dome, 0.7));
+    blade(a.x, h, inside(a.x, (R() - 0.5) * 70 + a.fan, 6), (1.8 + R() * 2.2) * (0.75 + 0.25 * a.dome), dry ? '#46502a' : '#29441b', dry ? '#8d8748' : '#557a2e', dry ? '#cdbd86' : '#88a24a');
   }
   for (let i = 0; i < 34; i++) {                                                     // stems with their panicles
-    const x = 10 + R() * (W - 20), top = H - (175 + R() * 76), lean = (R() - 0.5) * 30;
+    const a = across(40, 40), x = a.x, top = H - (175 + R() * 76) * (0.7 + 0.3 * a.dome), lean = inside(x, (R() - 0.5) * 30 + a.fan, 14);
     g.strokeStyle = R() < 0.5 ? '#8f8a52' : '#6f7d3c'; g.lineWidth = 1.2;
     g.beginPath(); g.moveTo(x, H); g.quadraticCurveTo(x + lean * 0.4, (H + top) / 2, x + lean, top); g.stroke();
     for (let k = 0; k < 9; k++) {

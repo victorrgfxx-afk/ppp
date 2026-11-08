@@ -8,6 +8,13 @@ import { DAYLIGHT } from './cars.js';
 // 5-speed gearbox for the engine sound, per-wheel ground sampling for pitch/roll.
 const GEARS = [3.6, 2.2, 1.5, 1.12, 0.9];
 const tmp = [];
+// (the tyre's round over a step: five points under it, along the car, and how far each is above its lowest point,
+// in its radius)
+// (and four across it, its tread and shoulders - a round of ~15 cm in its cross-section: a curb met from the side is
+// climbed over the tyre's width, not in one step)
+const TYRE = [-0.85, -0.45, 0, 0.45, 0.85].map(d => [d, 1 - Math.sqrt(1 - d * d), 0]);
+const SHOULDER = [-0.12, -0.06, 0.06, 0.12].map(o => [o, 0.15 - Math.sqrt(0.15 * 0.15 - o * o)]);
+const ALL_GRIP = [1, 1, 1], _grips = [1, 1, 1];
 // 'hyper' tune (the user's Peugeot 508): 1400 W/kg with a 1.43 g traction limit, drag for a natural 580 km/h,
 // electronic limiter at 500 km/h -> 0-100 km/h 2.0 s, 0-300 6.4 s, 0-500 14 s (tools/../README); 8-speed box
 // grip of the road under the tyres, relative to dry asphalt (main.js: ~0.3 on snow): on snow the longitudinal and
@@ -20,6 +27,20 @@ const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, sh
   // progressive steering: full lock in 0.16 s (50 km/h) to 0.35 s (300+ km/h), back to centre in 0.15 s; tyre scrub 4 %
   lat: 3.2 * 9.81, latAero: 1.6 * 9.81, steerIn: 0.35, steerOut: 0.15, scrub: 0.04 };
 HYPER.cd = (HYPER.P / HYPER.top - 0.15) / (HYPER.top * HYPER.top);
+
+// (V93) the suspension. Each wheel on a spring and a damper carrying its quarter of the car - an ordinary car bounces at
+// ~1.4 Hz with ~35% of critical damping, a sports car stiffer (~1.9 Hz), an air-sprung limousine softer (~1.1 Hz) -
+// and the car a rigid body over them that rises, falls, pitches and rolls (its inertia: radii of gyration ~0.48 of the
+// wheelbase in pitch - a 1.6 t car's ~3000 kg m^2 - and ~0.38 of the track in roll). So it is no longer glued to the road: over a crest taken fast it
+// gets light and leaves the ground (once v^2 / R > g: a crest of 145 m radius at ~136 km/h), flies its arc - the nose
+// dipping, the rear wheels pushing longest - lands on its springs (the bump stops past their travel) and settles. A
+// wheel carries a load (1: its quarter of the car at rest) and grips, drives, brakes and steers in proportion to it,
+// up to its full grip: off the ground, nothing. Its tyre rolls over a step (a curb) instead of jumping it: the ground
+// under it is the highest of five points under the tyre's round. (f: Hz, zeta: of critical damping, droop / bump: the
+// wheel's travel below / above where it rests, m)
+export const SUSP = { f: 1.4, zeta: 0.35, droop: 0.11, bump: 0.08 };
+const SUSP_HYPER = { f: 1.9, zeta: 0.45, droop: 0.07, bump: 0.06 }, SUSP_OFFROAD = { f: 1.6, zeta: 0.4, droop: 0.15, bump: 0.12 };
+const smooth01 = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
 
 export class Vehicle {
   constructor(car, world, x, z, heading, opts = {}) {
@@ -38,6 +59,12 @@ export class Vehicle {
     this.hyper = opts.hyper ? HYPER : opts.tune ?? null;
     if (this.hyper && this.hyper.cd === undefined) this.hyper.cd = (this.hyper.P / this.hyper.top - 0.15) / (this.hyper.top * this.hyper.top);
     this.wheelbase = this.m.axles[1] - this.m.axles[0];
+    // the springs (SUSP): per wheel, a quarter of the car's stiffness and damping, per unit of its mass
+    const sp = { ...SUSP, ...(this.hyper === HYPER ? SUSP_HYPER : {}), ...(this.m.offroad ? SUSP_OFFROAD : {}), ...(opts.susp ?? {}) }, w = 2 * Math.PI * sp.f;
+    const hw = this.m.W / 2 - 0.15, zf = this.m.axles[0] - this.m.L / 2, zr = this.m.axles[1] - this.m.L / 2;
+    this.sp = { ...sp, k: w * w / 4, c: 2 * sp.zeta * w / 4, s0: 9.81 / (w * w), kb: 2.5 * w * w, cb: 0.5 * w,
+      rp2: (0.48 * this.wheelbase) ** 2, rr2: (0.38 * 2 * hw) ** 2, spots: [[-hw, zf], [hw, zf], [-hw, zr], [hw, zr]] };
+    this.vs = null; this.landing = 0;
     this.box = new Box(x, z, car.half.w, car.half.l, heading, -1, 1.6, 'car');
     this.box.vehicle = this;
     world.addDynamic(this.box);
@@ -46,9 +73,8 @@ export class Vehicle {
     this.place(0);
   }
   get speed() { return -(this.vx * Math.sin(this.h) + this.vz * Math.cos(this.h)); }
-  place(dt) {
-    const g = this.car.group;
-    // ground under the 4 wheels
+  // the ground under the 4 wheels (fl, fr, rl, rr) and the plane through them: where a car at rest stands
+  groundFit() {
     const s = Math.sin(this.h), c = Math.cos(this.h);
     const hw = this.m.W / 2 - 0.15;
     const zf = this.m.axles[0] - this.m.L / 2, zr = this.m.axles[1] - this.m.L / 2;
@@ -59,19 +85,32 @@ export class Vehicle {
       const at = (lx, lz) => this.world.groundHeight(this.x + lx * c + lz * s, this.z - lx * s + lz * c, this.gy);
       k.x = this.x; k.z = this.z; k.h = this.h; k.gy = this.gy;
       k.fl = at(-hw, zf); k.fr = at(hw, zf); k.rl = at(-hw, zr); k.rr = at(hw, zr);
+      k.y = (k.fl + k.fr + k.rl + k.rr) / 4;
+      k.pitch = Math.atan2((k.fl + k.fr) / 2 - (k.rl + k.rr) / 2, this.wheelbase);    // (> 0: the nose up the hill)
+      k.roll = Math.atan2((k.fr + k.rr) / 2 - (k.fl + k.rl) / 2, hw * 2);
     }
-    const { fl, fr, rl, rr } = k;
-    const y = (fl + fr + rl + rr) / 4;
+    return k;
+  }
+  place(dt) {
+    const g = this.car.group, fit = this.groundFit(), S = this.vs?.awake ? this.vs : null;
+    this.slope = fit.pitch;
+    // on its springs (suspend), or at rest on the ground
+    const y = S ? S.y : fit.y;
     this.gy = y;
-    const pitchG = Math.atan2((fl + fr) / 2 - (rl + rr) / 2, this.wheelbase);
-    this.slope = pitchG;                                   // (> 0: the nose up the hill)
-    const rollG = Math.atan2((fr + rr) / 2 - (fl + fr + rl + rr - (fr + rr)) / 2, hw * 2);
     g.position.set(this.x, y, this.z);
-    g.rotation.set(pitchG, this.h, rollG, 'YXZ');
+    g.rotation.set(S ? S.th : fit.pitch, this.h, S ? S.ph : fit.roll, 'YXZ');
     this.car.bodyPivot.rotation.set(this.pitch, 0, this.roll);
     this.car.bodyPivot.position.y = -Math.abs(this.pitch) * 0.2;
-    // wheels
-    this.car.setWheels(this.spin, this.steer);
+    // wheels: down on the ground while they touch it, hanging at full droop off it
+    this.car.setWheels(this.spin, this.steer, S ? S.drop : null);
+    // its contact shadow stays on the ground under it, fading as the car leaves it
+    const b = this.car.blob;
+    if (b) {
+      const up = S ? Math.max(0, (S.e[0] + S.e[1] + S.e[2] + S.e[3]) / 4) : 0;
+      if (up > 0.01 && !b.userData.own) { b.material = b.material.clone(); b.userData.own = true; b.userData.op = b.material.opacity; }
+      b.position.y = 0.02 - up;
+      if (b.userData.own) b.material.opacity = b.userData.op * (1 - smooth01(up / 1.2));
+    }
     // the steering wheel (7 turns of it to the wheels' angle), or an ATV's bars, about their leaning column
     if (this.car.steer) {
       if (this.m.steerRatio) this.car.steer.rotation.y = -this.steer * this.m.steerRatio; else this.car.steer.rotation.z = this.steer * 7;
@@ -134,15 +173,19 @@ export class Vehicle {
     // tyres and four driven wheels bite into it (snowGrip: the share of the grip the snow takes away)
     const mu = this.m.snowGrip ? 1 - (1 - TRACTION.mu) * this.m.snowGrip : TRACTION.mu;
     if (mu < 0.999) { const aMax = (this.hyper ? this.hyper.aMax ?? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
-    // rolling resistance + aero drag + engine braking
+    // (V93) the wheels drive and brake by the load on them (suspend): light over a crest, nothing in the air
+    const [kAll, kFront, kRear] = this.grips();
+    accel *= kAll;
+    // rolling resistance + aero drag + engine braking (the air's drag in the air too)
     const cd = this.hyper ? this.hyper.cd : 0.0012;
-    const drag = cd * vF * Math.abs(vF) + Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * (this.m.float ?? 1) * Math.min(1, TRACTION.sink / 0.3));
-    if (Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle)) { vF *= Math.exp(-6 * dt); }
+    const drag = cd * vF * Math.abs(vF) + kAll * Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * (this.m.float ?? 1) * Math.min(1, TRACTION.sink / 0.3));
+    if (Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle) && kAll > 0.5) { vF *= Math.exp(-6 * dt); }
     else vF -= drag * dt;
-    if (hand) vF *= Math.exp(-(ctl ? 1.2 : 5) * dt);
+    if (hand) vF *= Math.exp(-(ctl ? 1.2 : 5) * kRear * dt);
     vF += accel * dt;
     // off-road: the hill pulls it back going up and on going down (cars keep their road manners)
-    if (this.m.offroad && this.slope) vF -= 9.81 * Math.sin(this.slope) * dt;
+    // (V93: held by its handbrake where it stands, up to ~37 deg - it crept down the hill of the cross, 7 mm a second)
+    if (this.m.offroad && this.slope && !(hand && Math.abs(vF) < 0.5 && Math.abs(Math.sin(this.slope)) < 0.6)) vF -= 9.81 * Math.sin(this.slope) * dt * kAll;
     if (this.hyper) vF = Math.min(vF, this.hyper.limit);
 
     // steering (less lock at speed)
@@ -160,15 +203,15 @@ export class Vehicle {
       this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
     } else this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
     // on a slippery road the car turns only as tightly as the tyres hold (lateral mu * g): it runs wide
-    let yawRate = -vF * Math.tan(this.steer) / this.wheelbase;
+    let yawRate = -vF * Math.tan(this.steer) / this.wheelbase * kFront;    // (front wheels off the ground steer nothing)
     if (mu < 0.999 && Math.abs(vF) > 1) { const lim = 9.81 * mu * 1.05 / Math.abs(vF); yawRate = clamp(yawRate, -lim, lim); }
     const slip = hand && Math.abs(vF) > 4 ? 1.55 : 1;
     this.h += yawRate * dt * slip;
     // tyre scrub: cornering hard costs a little speed
-    if (Hs) vF -= Math.sign(vF) * Math.abs(vF * yawRate) * Hs.scrub * dt;
+    if (Hs) vF -= Math.sign(vF) * Math.abs(vF * yawRate) * Hs.scrub * dt * kFront;
 
     // lateral grip (handbrake lets the rear slide)
-    const grip = (hand && Math.abs(vF) > 3 ? 1.4 : 11) * (0.25 + 0.75 * mu);
+    const grip = (hand && Math.abs(vF) > 3 ? 1.4 : 11) * (0.25 + 0.75 * mu) * kAll;
     vR *= Math.exp(-grip * dt);
     this.lastLat = vR;
     const nfX = -Math.sin(this.h), nfZ = -Math.cos(this.h);
@@ -206,10 +249,86 @@ export class Vehicle {
     }
 
     this.resolveStatic();
+    this.suspend(dt, !!ctl);
     // lights
     const tl = this.car.lights.tailMat;
     tl.emissiveIntensity = this.brake ? 3.0 : (this.lightsOn ? 0.9 : 0.12 * DAYLIGHT.k);
     this.place(dt);
+  }
+  // (V93) the springs: one step of the car's rise and fall, pitch and roll over its 4 wheels (update's sub-steps), and
+  // the loads the wheels carry. A parked car sleeps on the ground (the plane through its wheels: place) until it is
+  // driven or pushed; a car taken somewhere else at a stroke starts again at rest there
+  suspend(dt, driven) {
+    const P = this.sp, fit = this.groundFit();
+    const S = this.vs ??= { awake: false, y: 0, vy: 0, th: 0, wth: 0, ph: 0, wph: 0, e: [0, 0, 0, 0], load: [1, 1, 1, 1], drop: [0, 0, 0, 0], gp: null, still: 0, air: 0, x: NaN, z: NaN };
+    const moving = Math.hypot(this.vx, this.vz) > 0.05;
+    if (!S.awake && !driven && !moving) return;
+    if (!S.awake || dt <= 0 || Math.hypot(this.x - S.x, this.z - S.z) > 12 || Math.abs(S.y - fit.y) > 4) {
+      // (at rest on its springs where it stands, rising and falling with the road under it as it goes)
+      S.awake = true; S.y = fit.y; S.th = fit.pitch; S.ph = fit.roll; S.vy = Math.tan(fit.pitch) * this.speed; S.wth = S.wph = 0; S.gp = null; S.still = 0; S.air = 0;
+      S.e.fill(0); S.load.fill(1); S.drop.fill(0);
+    }
+    S.x = this.x; S.z = this.z;
+    if (dt <= 0) return;
+    // the ground under each tyre: the corners' (a car pushed about), or the highest of five points under the tyre's
+    // round (the car you drive: it rolls up a curb's edge)
+    const g4 = this._g4 ??= [0, 0, 0, 0];
+    if (driven) {
+      const s = Math.sin(this.h), c = Math.cos(this.h), r = this.m.r;
+      for (let i = 0; i < 4; i++) {
+        const [lx, lz] = P.spots[i];
+        let best = -Infinity;
+        for (const d of TYRE) {
+          const dz = lz + d[0] * r, h = this.world.groundHeight(this.x + lx * c + dz * s, this.z - lx * s + dz * c, this.gy) - d[1] * r;
+          if (h > best) best = h;
+        }
+        for (const [o, up] of SHOULDER) {
+          const h = this.world.groundHeight(this.x + (lx + o) * c + lz * s, this.z - (lx + o) * s + lz * c, this.gy) - up;
+          if (h > best) best = h;
+        }
+        g4[i] = best;
+      }
+    } else { g4[0] = fit.fl; g4[1] = fit.fr; g4[2] = fit.rl; g4[3] = fit.rr; }
+    let Fy = 0, Mt = 0, Mp = 0, touching = 0, worst = 0, hit = 0;
+    const sth = Math.sin(S.th), cth = Math.cos(S.th), sph = Math.sin(S.ph), cph = Math.cos(S.ph);
+    for (let i = 0; i < 4; i++) {
+      const [lx, lz] = P.spots[i];
+      const e = S.y - lz * sth + lx * sph - g4[i];                             // (the chassis over this wheel, above its rest)
+      const gd = S.gp ? Math.max(-25, Math.min(25, (g4[i] - S.gp[i]) / dt)) : 0;   // (how fast the ground under it rises)
+      const ed = S.gp ? S.vy - lz * cth * S.wth + lx * cph * S.wph - gd : 0;
+      let F = 0;
+      if (e < P.droop) {
+        // (a damper's valves blow off at speed: it pushes or holds at most ~1.2 times the wheel's share of the car)
+        F = P.k * (P.s0 - e) - Math.max(-3, Math.min(3, P.c * ed));
+        if (e < -P.bump) F += P.kb * (-P.bump - e) - P.cb * Math.min(0, ed);   // (on the bump stop)
+        F = Math.max(0, F);
+        touching++;
+        if (S.air > 0.12 && ed < hit) hit = ed;                                // (the landing: how fast it came down on it)
+      }
+      S.e[i] = e; S.load[i] = F / 2.4525;                                       // (a quarter of g: its share at rest)
+      S.drop[i] = -Math.max(-P.bump - 0.02, Math.min(P.droop, e));
+      Fy += F; Mt -= F * lz; Mp += F * lx;
+      worst = Math.min(worst, e + P.bump + 0.07);
+    }
+    (S.gp ??= [0, 0, 0, 0]).splice(0, 4, ...g4);
+    S.air = touching ? 0 : S.air + dt;
+    if (hit < -1) this.landing = Math.max(this.landing, -hit);
+    // gravity, the springs' push and their turning moments over the car's inertia (semi-implicit Euler: steady at 60 fps)
+    S.vy += (Fy - 9.81) * dt; S.wth += Mt / P.rp2 * dt; S.wph += Mp / P.rr2 * dt;
+    S.y += S.vy * dt; S.th += S.wth * dt; S.ph += S.wph * dt;
+    // (beyond its bump stops the body would go into the ground: a crash landing - held on it, the blow taken)
+    if (worst < 0) { S.y -= worst; if (S.vy < 0) S.vy *= 0.2; S.wth *= 0.5; S.wph *= 0.5; }
+    // (asleep again once it has stood still on its wheels for a second, the car not driven: back to the plane)
+    if (!driven && !moving && touching === 4 && Math.abs(S.vy) < 0.03 && Math.abs(S.wth) < 0.03 && Math.abs(S.wph) < 0.03) { S.still += dt; if (S.still > 1) S.awake = false; }
+    else S.still = 0;
+  }
+  // (how much of each wheel's grip it has: its load, at most its full grip; all 4, the front pair, the rear pair)
+  grips() {
+    const S = this.vs?.awake ? this.vs : null;
+    if (!S) return ALL_GRIP;
+    const l = S.load, c = (x) => Math.max(0, Math.min(1, x));
+    _grips[0] = c((l[0] + l[1] + l[2] + l[3]) / 4); _grips[1] = c((l[0] + l[1]) / 2); _grips[2] = c((l[2] + l[3]) / 2);
+    return _grips;
   }
   resolveStatic() {
     const list = this.world.query(this.x, this.z, 4, tmp);

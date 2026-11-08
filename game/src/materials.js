@@ -68,6 +68,25 @@ function std(name, o) {
 // the gust passing over it (treewind.js twGust: the same gusts that run through the trees ripple through the grass),
 // swinging about that; amp: the sway per metre of height at the day's wind (WIND.strength 1). Trees with their limbs
 // (treewind.js windTree) leave this out
+// (V93) a leaf lets the light through: lit from behind - the sun beyond a crown, a lamp beyond a hedge - it glows yellow-
+// green. Chlorophyll takes most of the red and the blue and leaves the green (the leaves' green peak at ~550 nm: Gausman
+// & Allen 1973), so the light through a leaf is its own colour, a little yellower: chosen here as 70% of its green, 55%
+// of its red and 30% of its blue as it would reflect them lit from the front (needles, thick: a fifth of that). It is
+// the sun's light as it reaches the leaf - its shadows on it already taken - so the crowns glow at their edges and in
+// their gaps, not in their shaded insides
+const LEAF_DIRECT = 'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseContribution ) * ( 1.0 - F );';
+export function translucent(material, k = 1) {
+  const src = THREE.ShaderChunk.lights_physical_pars_fragment;
+  if (!src.includes(LEAF_DIRECT)) { console.warn('translucent leaves: unknown lights_physical_pars_fragment'); return material; }
+  const t = [0.55, 0.7, 0.3].map(v => (v * k).toFixed(3)).join(', ');
+  const chunk = src.replace(LEAF_DIRECT, LEAF_DIRECT + `\n\treflectedLight.directDiffuse += saturate( -dot( geometryNormal, directLight.direction ) ) * directLight.color * BRDF_Lambert( material.diffuseContribution ) * vec3( ${t} );`);
+  const prev = material.onBeforeCompile, key0 = material.customProgramCacheKey?.bind(material);
+  material.onBeforeCompile = function (sh, r) { prev?.call(this, sh, r); sh.fragmentShader = sh.fragmentShader.replace('#include <lights_physical_pars_fragment>', chunk); };
+  material.customProgramCacheKey = () => (key0 ? key0() : '') + '|lt' + k;
+  material.userData.translucent = k;
+  return material;
+}
+
 export function addWind(material, amp = 0.08, freq = 1.3) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = WIND.time;
@@ -217,7 +236,7 @@ export function buildMaterials() {
 
   // --- foliage ---
   // (the broadleaves turn in autumn: season.js)
-  const leaf = (name, map, color, amp) => autumnize(addWind(std(name, { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, color, alphaToCoverage: false }), amp), name);
+  const leaf = (name, map, color, amp) => translucent(autumnize(addWind(std(name, { map, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75, color, alphaToCoverage: false }), amp), name), /fir|pine/.test(name) ? 0.2 : 1);
   leaf('leaves', TEX.leaves, 0xffffff, 0.035);
   leaf('leavesSmall', TEX.leavesSmall, 0xe8f0d8, 0.04);
   leaf('leavesDense', TEX.leavesDense, 0xe8f0d8, 0.04);                     // fruit trees, willows

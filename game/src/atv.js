@@ -253,8 +253,9 @@ export function buildATV(paintHex = 0xa3201a) {
     spin.add(tyre, rim); pivot.add(spin); group.add(pivot);
     wheels.push({ pivot, spin, front: ai === 0, side: sg, x: sg * track, z: a - m.L / 2 });
   }
-  const setWheels = (spinA, steerA) => {
-    for (const w of wheels) { w.spin.rotation.x = spinA; if (w.front) w.pivot.rotation.y = -steerA; }
+  // (drops: each wheel's place on its spring, up (+) or down (-) from where it rests, m - V93: vehicle.js)
+  const setWheels = (spinA, steerA, drops = null) => {
+    wheels.forEach((w, i) => { w.spin.rotation.x = spinA; if (w.front) w.pivot.rotation.y = -steerA; w.pivot.position.y = R + (drops ? drops[i] : 0); });
   };
 
   // ---- the rider: winter jacket, gloves on the grips, boots on the floorboards, helmet (outside views only)
@@ -294,7 +295,7 @@ export function buildATV(paintHex = 0xa3201a) {
   group.add(blob);
 
   return {
-    group, bodyPivot, wheels, setWheels, steer, model: m, rider,
+    group, bodyPivot, wheels, setWheels, steer, model: m, rider, blob,
     lights: { head: headL, tail: tailL, tailMat, headMat },
     glass: { opacity: 0 },
     half: { w: m.W / 2 + 0.03, l: m.L / 2 },

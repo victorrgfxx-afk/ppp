@@ -264,6 +264,14 @@ export class Audio {
   }
   land(surface) { this.step(surface, 1.2); this.burst({ f: 140, q: 0.7, dur: 0.12, gain: 0.2 }); }
   door() { this.burst({ f: 180, q: 0.8, dur: 0.18, gain: 0.35 }); this.burst({ f: 900, q: 2, dur: 0.05, gain: 0.1, delay: 0.02 }); }
+  // (V93) a car landing on its springs after a jump: the tyres' thump, the suspension's clunk against its stops, at
+  // a hard landing a scrape under it
+  carLand(v) {
+    const g = Math.min(0.8, 0.12 + v * 0.07);
+    this.burst({ f: 95, q: 0.7, dur: 0.3, gain: g, type: 'lowpass' });
+    this.burst({ f: 520, q: 1.6, dur: 0.07, gain: g * 0.35, delay: 0.012 });
+    if (v > 4) this.burst({ f: 1800, q: 0.8, dur: 0.14, gain: g * 0.15, delay: 0.02 });
+  }
   crash(v) { const g = Math.min(0.9, v * 0.08); this.burst({ f: 250, q: 0.5, dur: 0.4, gain: g, type: 'lowpass' }); this.burst({ f: 3200, q: 1, dur: 0.25, gain: g * 0.4 }); }
   chirp(pan) {
     const ctx = this.ctx, t0 = ctx.currentTime;

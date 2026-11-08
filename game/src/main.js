@@ -622,7 +622,7 @@ async function main() {
       keepClear(best.x, best.z, 3.6);
       const car = buildMaybach();
       scene.add(car.group);
-      maybach = new Vehicle(car, world, best.x, best.z, best.h, { tune: MAYBACH_TUNE });
+      maybach = new Vehicle(car, world, best.x, best.z, best.h, { tune: MAYBACH_TUNE, susp: { f: 1.1, zeta: 0.32, droop: 0.1, bump: 0.08 } });   // (its air springs: soft)
       maybach.name = 'Mercedes-Maybach GLS 600'; maybach._spot = { s: best.s, o: best.o };
       vehicles.push(maybach);
       maybach.update(0.016, null);
@@ -1447,6 +1447,9 @@ async function main() {
         }
         active?.car.cabin?.update(active, true, active.lightsOn || night > 0.5 ? 1 : 0, noSignal);
         if (active && active.impact > 2.5) { audio.crash(active.impact); shake = Math.min(0.35, active.impact * 0.03); }
+        // (V93) back on the ground after a jump: the thump and the jolt, by how fast it came down
+        if (active && active.landing > 1.2) { audio.carLand(active.landing); shake = Math.max(shake, Math.min(0.3, active.landing * 0.035)); }
+        if (active) active.landing = 0;
       }
       // the pistol in your hands (on foot only: put away in a car, while riding or flying)
       glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value });

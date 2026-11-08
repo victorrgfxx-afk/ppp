@@ -777,6 +777,59 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Suspensie reală: mașina nu mai e lipită de asfalt (V93)** (`src/vehicle.js`, `src/cars.js`, `src/atv.js`, `src/audio.js`, `src/main.js`):
+  * **Ce era:** mașina era pusă în fiecare cadru exact la înălțimea solului de sub roți, fără viteză verticală, deci lipită de drum la orice viteză. Măsurat pe o culme de pe DN1: la 100, 150, 200 și 300 km/h rămânea la ±12 cm de sol.
+  * **Acum fiecare roată are arc și amortizor**, iar caroseria e un corp rigid care urcă, coboară, se apleacă înainte-înapoi și în lateral, cu inerția unei mașini de ~1,6 t (rază de girație ~0,48 din ampatament la tangaj, ~0,38 din ecartament la ruliu):
+    * o mașină obișnuită oscilează la ~1,4 Hz, cu ~35% din amortizarea critică;
+    * Peugeot-ul sport e mai tare (~1,9 Hz);
+    * Maybach-ul are perne de aer moi (~1,1 Hz);
+    * ATV-ul are cursă lungă.
+  * **Peste culmi:**
+    * mașina se desprinde de asfalt când drumul fuge de sub ea mai repede decât o trage gravitația înapoi: pe o culme rotundă când v²/R > g, la o rupere bruscă de pantă Δ când v·Δ > √(g · cursa suspensiei);
+    * zboară pe arcul ei, cu botul puțin în jos (roțile din spate împing ultimele);
+    * aterizează pe arcuri, cu tampoanele de la capătul cursei, cu o bufnitură și o zguduitură pe măsura vitezei cu care cade.
+  * **Măsurat pe culmea de pe DN1** (la ~490 m de stradă: panta de +4,8% se rupe în jos), cu viteza ținută constant:
+
+    | viteză | zbor | înălțime | aterizare |
+    |---|---|---|---|
+    | 50 km/h | rămâne pe roți | – | – |
+    | 90 km/h | rămâne pe roți (se ușurează) | – | – |
+    | 100 km/h | 0,45 s | ~34 cm | 3,0 m/s |
+    | 130 km/h | 0,8 s | ~65 cm | 3,9 m/s |
+    | 160 km/h | 1,1 s | ~1,5 m | 6,4 m/s |
+    | 200 km/h | 0,85 s | ~77 cm | 4,6 m/s |
+
+    În aer botul coboară cu ~9–12°.
+
+  * **Roțile în aer** nu mai trag, nu frânează și nu virează. Aderența fiecărei roți e pe măsura încărcării ei: mai mică pe culme, deloc în aer. În aer roțile atârnă la capătul cursei, iar pe drum rămân pe sol când arcurile lucrează.
+  * **Bordurile:**
+    * anvelopa urcă pe bordură pe rotunjimea ei (5 puncte pe lungime, 4 pe lățime), nu dintr-o treaptă;
+    * amortizoarele au supape care le limitează forța la viteze mari;
+    * măsurat: bordura de 13 cm din stradă, luată la 20 km/h, înclină mașina ~4° fără s-o arunce.
+  * **Umbra de contact** rămâne pe sol și se estompează când mașina se ridică.
+  * **Mașinile parcate stau pe loc** (măsurat: 118 mașini, 5 s, nicio mișcare). ATV-ul parcat pe deal nu mai alunecă la vale: cobora ~7 mm/s, un defect vechi.
+  * **Cocoașe din date:** pe câteva drumuri din hartă panta se rupe brusc. Acolo mașina sare puțin chiar și la 50–70 km/h, cum ar sări și o mașină reală pe o asemenea cocoașă.
+* **Mâna cu pistolul se mișcă continuu, fără opriri (V93)** (`src/weapon.js`):
+  * **Animațiile** (reîncărcările, armarea, lovitura, inspecția) trec prin cheile lor pe o singură curbă netedă (spline cubic monoton, Fritsch–Carlson). Mișcarea nu se mai oprește la fiecare cheie, ci doar acolo unde își schimbă sensul, fără să depășească vreo cheie.
+  * **Mâna stângă** merge și ea pe o curbă prin pozițiile ei: de pe mâner la încărcător, la centură și înapoi. Încărcătorul rămâne în mână tot drumul.
+  * **Tranzițiile** (ochirea, Tac-Stance, fuga, sprintul tactic, pistolul strâns lângă un perete) pornesc și se opresc lin, pe arcuri critice, fără smucitura de la început. La ochire, cea mai bruscă schimbare de viteză a scăzut de la 91 la 35 m/s².
+  * **Legănarea la mers** nu mai are un „colț” la fiecare pas (era |sin|, acum sin²): de la 3,8 la 0,7 m/s².
+  * **O inspecție întreruptă** (fugi, ochești, tragi sau reîncarci) nu mai sare înapoi într-un singur cadru (~5 cm și ~30°). Se stinge lin în ~0,25 s, cu mâna stângă cu tot. Măsurat: cel mult 1,9 cm și 2,6° pe cadru.
+* **Grafică: smocuri de iarbă și frunze prin care trece lumina (V93)** (`src/geo/hillwood.js`, `src/materials.js`):
+  * **Iarba înaltă de pe dealul crucii:**
+    * era desenată pe cartonașe cu firele întinse uniform pe toată lățimea, așa că de aproape și de departe se vedeau rânduri de blocuri dreptunghiulare;
+    * acum fiecare cartonaș e un smoc: firele sunt mai înalte și mai dese la mijloc, mai scurte și mai rare spre margini, răsfirate în afară, și nu ating marginile.
+  * **Frunzele lasă lumina să treacă:**
+    * în contra-lumină (soarele dincolo de o coroană, un felinar dincolo de un gard viu) frunzele se aprind verde-gălbui, în loc să rămână la fel de închise ca văzute din față;
+    * clorofila absoarbe mult roșu și albastru și lasă verdele (frunzele au vârful verde la ~550 nm), așa că lumina care trece are culoarea frunzei, puțin mai galbenă;
+    * e lumina soarelui așa cum ajunge la frunză, cu umbrele deja puse: coroanele strălucesc pe margini și prin goluri, nu în interiorul umbrit;
+    * acele de brad și de pin lasă să treacă mult mai puțin;
+    * măsurat pe strada din poza 1, la 16:00, privind spre soare: frunzișul din cadru e în medie cu ~3–4 niveluri mai luminos (din 255).
+  * **Testat în joc** (randare software, 960×540, calitatea Medie): pozele înainte/după pentru iarbă și frunze, săritura pe DN1 văzută din spatele mașinii, măsurătorile de mai sus. Cât costă pe o placă video reală n-am putut măsura.
+  * **Surse:**
+    * [Gausman & Allen 1973, Plant Physiology](https://pmc.ncbi.nlm.nih.gov/articles/PMC366438/): parametrii optici ai frunzelor la 30 de specii („550 nm (green reflectance peak), 650 nm (chlorophyll absorption band)”);
+    * [Woolley 1971, Plant Physiology](https://pmc.ncbi.nlm.nih.gov/articles/PMC396745/): reflectanța și transmitanța măsurate ale frunzelor;
+    * spline-ul monoton: Fritsch & Carlson, *Monotone Piecewise Cubic Interpolation*, SIAM J. Numer. Anal. 17 (1980).
 * **Ploaia în rafale mai realistă, urme în noroi și ceață (V92)** (`src/rain.js`, `src/main.js`, `src/player.js`, `src/snowtrail.js`, `src/materials.js`, `src/geo/terrain.js`, `src/lighting.js`):
   * **Stropii picăturilor, ca în filmările de mare viteză:**
     * **coroana:** picătura care atinge solul ridică o foiță subțire de apă, în inel, de 1,4–3,8 cm (cu o treime mai mare pe apă). Are buza „mărgelată”, din care se rup picăturile, și dispare în ~30 ms. Văzută de sus e o elipsă, din lateral o bandă, mai luminoasă pe margini, unde foița se vede din profil;

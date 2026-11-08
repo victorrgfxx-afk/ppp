@@ -538,11 +538,16 @@ export function buildCar(modelKey, paint, plateKey) {
     }
   };
   let wSpin = NaN, wSteer = NaN;
-  const setWheels = (spinA, steerA) => {
-    if (spinA === wSpin && steerA === wSteer) return;
+  const wDrop = [0, 0, 0, 0];
+  // (drops: each wheel's place on its spring, up (+) or down (-) from where it rests, m - V93: vehicle.js)
+  const setWheels = (spinA, steerA, drops = null) => {
+    let moved = false;
+    for (let i = 0; i < 4; i++) { const d = drops ? drops[i] : 0; if (d !== wDrop[i]) { wDrop[i] = d; moved = true; } }
+    if (spinA === wSpin && steerA === wSteer && !moved) return;
     wSpin = spinA; wSteer = steerA;
     wheels.forEach((w, i) => {
       w.spin.rotation.x = spinA; if (w.front) w.pivot.rotation.y = -steerA;
+      w.pivot.position.y = m.r + (wDrop[i] ?? 0);
       w.pivot.updateMatrix(); w.spin.updateMatrix();
       wp.multiplyMatrices(w.pivot.matrix, w.spin.matrix);
       put(tires, i, wp); put(rims, i, wm.multiplyMatrices(wp, w.rimAt)); put(inners, i, wm.multiplyMatrices(wp, w.innerAt));
@@ -586,7 +591,7 @@ export function buildCar(modelKey, paint, plateKey) {
   // (a car's materials are its own: rain.js leaves its lenses and badges alone inside the car you are in)
   group.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.userData.car = true; });
   return {
-    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers,
+    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers, blob,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,
     half: { w: m.W / 2 + 0.05, l: m.L / 2 },
   };
