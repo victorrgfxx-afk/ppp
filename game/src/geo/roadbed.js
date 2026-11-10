@@ -376,17 +376,21 @@ export function snapJunctions(plans, only = null) {
         if (ys > -Infinity) S[i] = Math.min(S[i], ys - 0.03);
       }
     }
-    // the rest of the road eased onto the junction's level over 10 m (no step where the snapping ends)
+    // the rest of the road eased onto the junction's level (no step where the snapping ends): over 10 m, more for a
+    // greater shift (at most ~4.5 % of added slope, 30 m), and smoothly - (V94) the ease was a straight ramp: a break
+    // of slope where it began and where it met the junction, under the wheels of a car on springs
     if (!got.some(Boolean)) continue;
     const L = new Float64Array(P.length);
     for (let k = 1; k < P.length; k++) L[k] = L[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]);
     for (let k = 0; k < P.length; k++) {
-      if (got[k]) continue;
-      let best = 0, bd = 10;
-      for (let q = k - 1; q >= 0 && L[k] - L[q] < 10; q--) if (got[q]) { if (L[k] - L[q] < bd) { bd = L[k] - L[q]; best = shift[q]; } break; }
-      for (let q = k + 1; q < P.length && L[q] - L[k] < 10; q++) if (got[q]) { if (L[q] - L[k] < bd) { bd = L[q] - L[k]; best = shift[q]; } break; }
+      if (got[k]) { pl.Yc[k] += shift[k]; continue; }
+      let best = 0, bd = 30;
+      for (let q = k - 1; q >= 0 && L[k] - L[q] < 30; q--) if (got[q]) { if (L[k] - L[q] < bd) { bd = L[k] - L[q]; best = shift[q]; } break; }
+      for (let q = k + 1; q < P.length && L[q] - L[k] < 30; q++) if (got[q]) { if (L[q] - L[k] < bd) { bd = L[q] - L[k]; best = shift[q]; } break; }
       if (!best) continue;
-      const d = best * (1 - bd / 10);
+      const De = Math.min(30, Math.max(10, Math.abs(best) / 0.03)), u = bd / De;
+      if (u >= 1) continue;
+      const d = best * (1 - u) * (1 - u) * (1 + 2 * u);
       for (let j = 0; j <= n; j++) Y[k * (n + 1) + j] += d;
       S[2 * k] += d; S[2 * k + 1] += d; pl.Yc[k] += d;
     }
@@ -675,10 +679,32 @@ export function conformTerrain(plans, levels = { near: [], world: [] }) {
       else side ? set(L.S, 2 * kk + 1) : set(L.Y, kk * nn + pl.n);                       // right shoulder: inner, outer
     }
   }
+  // (V94) along the road each strip's lift is the smooth line over what its vertices need (the most within 5 m,
+  // graded): it was each vertex's own - up to 40 cm at one, nothing at the next, 3.5 m on
+  const env = (get, set, m, Sk) => {
+    const need = new Float32Array(m); let any = false;
+    for (let k = 0; k < m; k++) { need[k] = get(k); if (need[k] > 0) any = true; }
+    if (!any) return;
+    const mx = new Float32Array(m);
+    for (let k = 0, j0 = 0, j1 = 0; k < m; k++) {
+      while (Sk[j0] < Sk[k] - 5) j0++;
+      while (j1 < m - 1 && Sk[j1 + 1] <= Sk[k] + 5) j1++;
+      let v = 0; for (let j = j0; j <= j1; j++) if (need[j] > v) v = need[j];
+      mx[k] = v;
+    }
+    for (let k = 0, j0 = 0; k < m; k++) {
+      while (Sk[j0] < Sk[k] - 5) j0++;
+      let sw = 0, sv = 0;
+      for (let j = j0; j < m && Sk[j] <= Sk[k] + 5; j++) { const u = (Sk[j] - Sk[k]) / 3, wg = Math.exp(-u * u); sw += wg; sv += wg * mx[j]; }
+      const v = Math.max(need[k], sv / sw);
+      if (v > 1e-4) { set(k, Math.min(0.4, v + 0.005)); if (need[k] > 0) lifted++; }
+    }
+  };
   for (const [pl, L] of lifts) {
-    const { Y, S, P, n } = pl, nn = n + 1;
-    for (let i = 0; i < Y.length; i++) if (L.Y[i] > 0) { Y[i] += Math.min(0.4, L.Y[i] + 0.005); lifted++; }
-    for (let i = 0; i < S.length; i++) if (L.S[i] > 0) S[i] += Math.min(0.4, L.S[i] + 0.005);
+    const { Y, S, P, n } = pl, nn = n + 1, m = P.length, Sk = new Float64Array(m);
+    for (let k = 1; k < m; k++) Sk[k] = Sk[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]);
+    for (let j = 0; j < nn; j++) env((k) => L.Y[k * nn + j], (k, v) => { Y[k * nn + j] += v; }, m, Sk);
+    for (const sd of [0, 1]) env((k) => L.S[2 * k + sd], (k, v) => { S[2 * k + sd] += v; }, m, Sk);
     for (let k = 0; k < P.length; k++) { if (pl.shL) S[2 * k] = Math.min(S[2 * k], Y[k * nn] + 0.3); if (pl.shR) S[2 * k + 1] = Math.min(S[2 * k + 1], Y[k * nn + n] + 0.3); }
   }
   log.lifted = lifted;

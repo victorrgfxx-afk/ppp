@@ -123,58 +123,211 @@ const SHOULDERED = ['trunk', 'primary', 'secondary', 'tertiary', 'unclassified',
 // The long profile graded: the elevation model's 25 m cells (and the 10 m grid beyond 3 km) leave steps of half a metre a
 // few metres apart on a hillside - 40 % for a few metres on a county road - and the ribbon followed them. A road is
 // graded: its axis heights are averaged over R metres (a Gaussian), kept within cap of the ground (roadbed.js moves the
-// ground to it), as mapped at its ends and junctions (other roads meet it there) and where the ground is hand-built
-// (underpasses, fine zones; the change fades in over 10 m). The footpaths and steps follow the ground. [R, cap] by class:
+// ground to it). The footpaths and steps follow the ground. [R, cap] by class:
 const SMOOTH = { trunk: [25, 1.2], trunk_link: [25, 1.2], primary: [25, 1.2], primary_link: [20, 1.0], secondary: [20, 1.0], secondary_link: [20, 1.0],
   tertiary: [20, 1.0], tertiary_link: [15, 0.8], unclassified: [12, 0.6], residential: [12, 0.6], living_street: [8, 0.4], service: [8, 0.4], pedestrian: [8, 0.4], track: [8, 0.3] };
-function smoothProfile(P, Y, R, cap, nearBuilding, junction) {
-  const n = P.length;
-  if (n < 3) return;
-  const S = new Float64Array(n);
-  for (let k = 1; k < n; k++) S[k] = S[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]);
-  const L = S[n - 1], Y0 = Float32Array.from(Y);
-  // the fade: from the ends, the junctions and the hand-built ground
-  const f = new Float32Array(n);
-  let lastKeep = -Infinity;
-  for (let k = 0; k < n; k++) {
-    const [x, z] = P[k];
-    if (nearUnderpass(x, z) || (GEO.fine && fineAt(x, z)) || (junction && junction(x, z))) lastKeep = S[k];
-    f[k] = Math.min(1, S[k] / 8, (L - S[k]) / 8, (S[k] - lastKeep) / 10);
-  }
-  lastKeep = Infinity;
-  for (let k = n - 1; k >= 0; k--) {
-    const [x, z] = P[k];
-    if (nearUnderpass(x, z) || (GEO.fine && fineAt(x, z)) || (junction && junction(x, z))) lastKeep = S[k];
-    f[k] = Math.max(0, Math.min(f[k], (lastKeep - S[k]) / 10));
-  }
-  // up at most cap, down half of it (a cut is the ground's to give way, a fill is the road's own bank); by the houses
-  // (15 m) a street keeps to their level: 25 cm up, 10 cm down
-  const hi = new Float32Array(n), lo = new Float32Array(n);
-  for (let k = 0; k < n; k++) { const b = nearBuilding && nearBuilding(P[k][0], P[k][1], 15); hi[k] = b ? Math.min(cap, 0.25) : cap; lo[k] = b ? Math.min(cap / 2, 0.1) : cap / 2; }
-  const Ys = new Float32Array(n);
-  for (let it = 0; it < 2; it++) {
-    let j0 = 0;
-    for (let k = 0; k < n; k++) {
-      while (S[j0] < S[k] - R) j0++;
-      let sw = 0, sy = 0;
-      for (let j = j0; j < n && S[j] <= S[k] + R; j++) {
-        const ds = (S[Math.min(n - 1, j + 1)] - S[Math.max(0, j - 1)]) / 2 || 1e-3, u = (S[j] - S[k]) / (R / 2), wg = ds * Math.exp(-u * u);
-        sw += wg; sy += wg * Y[j];
-      }
-      Ys[k] = sy / sw;
+// (V94) Graded as a network. Until now every way was graded by itself and brought back to the raw ground at both its
+// ends, at every vertex it shares with another way and by the houses (25 cm up, 10 cm down) - so the elevation model's
+// steps stood in the asphalt wherever a way ends (DN1 is 13 ways in 4.4 km: a hump of 0.8 m in 5 m at one of their
+// joints), at every side street and through the villages: a car on springs (vehicle.js, V93) left the ground on them
+// at 100 km/h. Now:
+//  * a way's end that runs straight on into another way (within 40 deg, a class apart at most) is no end: both are
+//    graded over each other's ground there (the same samples: the same level and slope from either side);
+//  * at a vertex ways share, the level is the through road's own graded one (the greatest road through it, or the
+//    pair that runs on through it; a deck's or a hand-set road's as they are): the others are eased onto it;
+//  * a way is brought to a given level (a junction's, the raw ground's at a dead end, an underpass, a hand-built
+//    zone) by an offset that fades out smoothly over 10-45 m (no break of slope at either end of it; at most ~3 %);
+//  * the cap is against the ground itself lightly graded (its steps are not copied into the road where the cap
+//    holds it), and soft (no corner where it takes hold); by the houses 50 cm up, 30 cm down;
+//  * the average is a local line fitted through the ground (no bias on a slope at an end).
+// The junctions' cross-sections are still snapped together by roadbed.js.
+const vkey = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
+// the ground's level along a line: a Gaussian-weighted line fitted round each position q[i] through the samples (s, y)
+// (sorted by s; the weights as before: the span a sample stands for times exp(-(ds / (R / 2))^2))
+function gradeAt(s, y, R, q, out) {
+  const n = s.length, h = R / 2;
+  let j0 = 0;
+  for (let i = 0; i < q.length; i++) {
+    while (j0 < n - 1 && s[j0] < q[i] - R) j0++;
+    let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (let j = j0; j < n && s[j] <= q[i] + R; j++) {
+      const ds = (s[Math.min(n - 1, j + 1)] - s[Math.max(0, j - 1)]) / 2 || 1e-3, x = s[j] - q[i], u = x / h, wg = ds * Math.exp(-u * u);
+      sw += wg; sx += wg * x; sy += wg * y[j]; sxx += wg * x * x; sxy += wg * x * y[j];
     }
-    for (let k = 0; k < n; k++) Y[k] = Math.max(Y0[k] - lo[k], Math.min(Y0[k] + hi[k], Y0[k] + (Ys[k] - Y0[k]) * f[k]));
+    const det = sw * sxx - sx * sx;
+    out[i] = sw <= 0 ? y[Math.min(n - 1, j0)] : det > 1e-6 * sw * sw ? (sxx * sy - sx * sxy) / det : sy / sw;
   }
+  return out;
+}
+const fade1 = (u) => u >= 1 ? 0 : (1 - u) * (1 - u) * (1 + 2 * u);         // 1 -> 0, level at both ends
+function gradeProfiles(plans, use, fit) {
+  const T = [];
+  for (const pl of plans) {
+    const n = pl.P.length, S = new Float64Array(n), r = pl.r, sm = SMOOTH[r.c];
+    for (let k = 1; k < n; k++) S[k] = S[k - 1] + Math.hypot(pl.P[k][0] - pl.P[k - 1][0], pl.P[k][1] - pl.P[k - 1][1]);
+    const fixed = !!(pl.flat || r.tuned || r.step);                        // a deck, a road a landmark set: as they are
+    const hp = r.handPts;
+    // (as the ground is there: an underpass, a hand-built zone, a vertex a landmark placed)
+    const keep = new Uint8Array(n);
+    if (!fixed) for (let k = 0; k < n; k++) { const [x, z] = pl.P[k]; if (nearUnderpass(x, z) || (GEO.fine && fineAt(x, z)) || (hp && hp.some(([hx, hz]) => Math.abs(hx - x) < 3 && Math.abs(hz - z) < 3))) keep[k] = 1; }
+    T.push({ pl, n, S, L: S[n - 1], Y0: Float32Array.from(pl.Yc), B: null, fixed, graded: !fixed && !!sm && n >= 3, R: sm ? sm[0] : 0, cap: sm ? sm[1] : 0, keep, mate: [null, null], V: null });
+  }
+  // ---- who meets at the vertices the ways share
+  const at = new Map();
+  for (const t of T) for (let k = 0; k < t.n; k++) {
+    const key = t.pl.keys[k];
+    if ((use.get(key) || 0) < 2) continue;
+    let a = at.get(key); if (!a) at.set(key, a = []);
+    a.push({ t, k, end: k === 0 || k === t.n - 1 });
+  }
+  // ---- the ends that run straight on into another way's end
+  const out = (t, k) => { const P = t.pl.P, a = P[k === 0 ? 1 : t.n - 2], b = P[k], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / L, (b[1] - a[1]) / L]; };
+  for (const list of at.values()) {
+    const ends = list.filter(e => e.end && e.t.graded);
+    if (ends.length < 2) continue;
+    const best = ends.map((e, i) => {
+      const d = out(e.t, e.k); let bj = -1, bc = 0.766;
+      ends.forEach((f, j) => { if (j === i || Math.abs(f.t.pl.rank - e.t.pl.rank) > 1.01) return; const g = out(f.t, f.k), c = -(d[0] * g[0] + d[1] * g[1]); if (c > bc) { bc = c; bj = j; } });
+      return bj;
+    });
+    ends.forEach((e, i) => { const j = best[i]; if (j >= 0 && best[j] === i) e.t.mate[e.k === 0 ? 0 : 1] = ends[j]; });
+  }
+  // ---- each graded way's own level: over its ground and its mates' beyond its ends
+  for (const t of T) {
+    if (!t.graded) { t.B = t.Y0; continue; }
+    const { n, S, Y0, R, L } = t, pre = [], post = [];
+    const walk = (m, d0, list, depth) => {
+      const tb = m.t, e = m.k, st = e === 0 ? 1 : -1;
+      let d = d0;
+      for (let j = e + st; j >= 0 && j < tb.n; j += st) { d = d0 + Math.abs(tb.S[j] - tb.S[e]); if (d > R) return; list.push([d, tb.Y0[j]]); }
+      const far = tb.mate[e === 0 ? 1 : 0];
+      if (far && depth < 6) walk(far, d, list, depth + 1);
+    };
+    if (t.mate[0]) walk(t.mate[0], 0, pre, 0);
+    if (t.mate[1]) walk(t.mate[1], 0, post, 0);
+    const m = pre.length + n + post.length, s = new Float64Array(m), y = new Float64Array(m);
+    let o = 0;
+    for (let i = pre.length - 1; i >= 0; i--) { s[o] = -pre[i][0]; y[o++] = pre[i][1]; }
+    for (let k = 0; k < n; k++) { s[o] = S[k]; y[o++] = Y0[k]; }
+    for (const [d, v] of post) { s[o] = L + d; y[o++] = v; }
+    const Ys = gradeAt(s, y, R, S, new Float64Array(n)), Gs = gradeAt(s, y, Math.max(6, R * 0.4), S, new Float64Array(n));
+    // the cap, with soft corners (8 cm: no break of slope where it takes hold): up at most cap over the ground lightly
+    // graded, down half of it; by the houses (15 m) 50 cm up, 30 cm down (their plinths hold the ground: roadbed.js)
+    const soft = (v) => 0.08 * Math.log1p(Math.exp(Math.max(-40, Math.min(40, v / 0.08))));
+    const B = t.B = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      const nb = fit.near && fit.near(t.pl.P[k][0], t.pl.P[k][1], 15);
+      const lo = Gs[k] - (nb ? Math.min(t.cap / 2, 0.3) : t.cap / 2), hi = Gs[k] + (nb ? Math.min(t.cap, 0.5) : t.cap);
+      B[k] = lo + soft(Ys[k] - lo) - soft(Ys[k] - hi);
+    }
+  }
+  // ---- whose level a shared vertex takes: a fixed plan's; the ground's where it is kept; else the greatest road
+  // through it (a way passing, or a pair running on through it); the ground's where nothing runs through
+  const own = new Map();
+  for (const [key, list] of at) {
+    const fx = list.filter(e => e.t.fixed).sort((a, b) => b.t.pl.rank - a.t.pl.rank)[0];
+    if (fx) { own.set(key, { kind: 0, a: fx, w: fx.t.pl.w }); continue; }
+    const top = list.slice().sort((a, b) => b.t.pl.rank - a.t.pl.rank)[0];
+    if (list.some(e => e.t.keep[e.k])) { own.set(key, { kind: 3, a: top, w: 0 }); continue; }
+    let o = null, rk = -1;
+    for (const e of list) {
+      if (!e.end && e.t.pl.rank > rk) { o = { kind: 1, a: e, w: e.t.pl.w }; rk = e.t.pl.rank; }
+      const m = e.end ? e.t.mate[e.k === 0 ? 0 : 1] : null;
+      if (m && Math.max(e.t.pl.rank, m.t.pl.rank) > rk + 1e-9) { o = { kind: 2, a: e, b: m, w: Math.max(e.t.pl.w, m.t.pl.w) }; rk = Math.max(e.t.pl.rank, m.t.pl.rank); }
+    }
+    own.set(key, o ?? { kind: 3, a: top, w: 0 });
+  }
+  for (const t of T) t.V = t.fixed ? t.Y0 : Float32Array.from(t.B);              // (the levels as they stand)
+  const H = new Map();
+  const levels = () => { for (const [key, o] of own) H.set(key, o.kind === 2 ? (o.a.t.V[o.a.k] + o.b.t.V[o.b.k]) / 2 : o.kind === 3 ? o.a.t.Y0[o.a.k] : o.a.t.V[o.a.k]); };
+  // ---- the levels a way must meet, as stretches of it [k0, k1, level (null: the ground's own), landing]: a junction
+  // another road gives the level of, a pair's joint, a dead end, a kept zone. The way keeps its own slope and is moved
+  // up or down to the level by an offset that fades out over D metres (12-45: by how far apart the levels are),
+  // smoothly (no break of slope where the fade begins nor where it ends). (A level landing where a way ends on a
+  // main road - the last flag - is left out: on a slope its blend was a fill or a cut of up to a metre that the
+  // ground by the houses could not follow.)
+  const meet = (t, last) => {
+    const { n, S, B, Y0 } = t, Z = [];
+    let k = 0;
+    while (k < n) {
+      if (t.keep[k]) { let k1 = k; while (k1 + 1 < n && t.keep[k1 + 1]) k1++; Z.push([k, k1, null, false]); k = k1 + 1; continue; }
+      const key = t.pl.keys[k], o = (use.get(key) || 0) > 1 ? own.get(key) : null;
+      if (o) {
+        const mine = (o.kind === 1 && o.a.t === t && o.a.k === k) || (o.kind === 2 && ((o.a.t === t && o.a.k === k) || (o.b.t === t && o.b.k === k)));
+        if (!(mine && o.kind === 1 && !last)) {
+          const landing = false;        // (tried: on a slope a landing's blend is a fill or a cut the ground by the houses cannot follow)
+          let k0 = k, k1 = k;
+          if (landing) {
+            const a = Math.min(3, o.w / 2);
+            while (k0 > 0 && S[k] - S[k0 - 1] <= a && !t.keep[k0 - 1]) k0--;
+            while (k1 + 1 < n && S[k1 + 1] - S[k] <= a && !t.keep[k1 + 1]) k1++;
+          }
+          // (levels over 2.5 m apart are not one junction - a path's vertex on a deck's span, a mapping slip: as the ground is)
+          if (Math.abs(H.get(key) - B[k]) > 2.5) Z.push([k, k, null, false]);
+          else Z.push([k0, k1, H.get(key), landing]);
+        }
+      } else if (k === 0 || k === n - 1) Z.push([k, k, null, false]);           // (a dead end, a cut end: as the ground is)
+      k++;
+    }
+    const V = new Float32Array(n);
+    if (!Z.length) { V.set(B); return V; }
+    const Dmin = t.graded ? 12 : 6;
+    const lv = (z, kk) => z[2] === null ? Y0[kk] : z[2];
+    const D = Z.map(z => {
+      const d = Math.max(Math.abs(lv(z, z[0]) - B[z[0]]), Math.abs(lv(z, z[1]) - B[z[1]]));
+      let g = 0;
+      if (z[3]) {                                                                // (how steep it comes: over the 10 m before)
+        const e = z[0] === 0 ? z[1] : z[0], dir = z[0] === 0 ? 1 : -1;
+        let q = e; while (q + dir >= 0 && q + dir < n && Math.abs(S[q] - S[e]) < 10) q += dir;
+        if (q !== e) g = Math.abs(B[q] - B[e]) / Math.abs(S[q] - S[e]);
+      }
+      return Math.min(45, Math.max(Dmin, d / 0.03, 150 * g));
+    });
+    let z0 = 0;
+    for (let kk = 0; kk < n; kk++) {
+      const sk = S[kk];
+      while (z0 < Z.length - 1 && S[Z[z0][1]] + D[z0] < sk) z0++;
+      let den = 0, num = 0;
+      for (let i = z0; i < Z.length; i++) {
+        const z = Z[i], a = S[z[0]], b = S[z[1]];
+        if (a - D[i] > sk) { if (a - 45 > sk) break; continue; }
+        const d = sk < a ? a - sk : sk > b ? sk - b : 0, wz = fade1(d / D[i]);
+        if (wz <= 0) continue;
+        // (beyond the stretch: a landing's level; else the way's own level moved by what the stretch's end is off it)
+        const e = sk < a ? z[0] : z[1];
+        den += wz; num += wz * (d === 0 ? lv(z, kk) : z[3] ? z[2] : B[kk] + lv(z, e) - B[e]);
+      }
+      if (den <= 1e-9) { V[kk] = B[kk]; continue; }
+      const e = den >= 1 ? 1 : den * (2 - den);
+      V[kk] = (1 - e) * B[kk] + e * num / den;
+    }
+    return V;
+  };
+  // (the levels settle in a few rounds: a way eased at one junction changes what it gives the next one a little; the
+  // last round holds every vertex at the level reached)
+  levels();
+  for (let it = 0; it < 4; it++) {
+    const next = T.map(t => t.fixed ? null : meet(t, it === 3));
+    T.forEach((t, i) => { if (next[i]) t.V = next[i]; });
+    if (it < 3) levels();
+  }
+  let most = 0;
+  for (const t of T) {
+    if (t.fixed) continue;
+    for (let k = 0; k < t.n; k++) { most = Math.max(most, Math.abs(t.V[k] - t.Y0[k])); t.pl.Yc[k] = t.V[k]; }
+  }
+  if (globalThis.__GRADE_DEBUG) GEO.gradeDebug = { T, own, H, at };
+  GEO.roadbedLog = { ...(GEO.roadbedLog || {}), graded: T.filter(t => t.graded).length, mates: T.reduce((a, t) => a + (t.mate[0] ? 1 : 0) + (t.mate[1] ? 1 : 0), 0), gradedMost: +most.toFixed(2) };
 }
 
 // fit(P, N, hl, hr): the ribbon kept clear of the buildings (roadbed.js), { P, N } moved / narrowed
 export function planRoads(fit = null) {
   const plans = [], bridges = [];
-  // the junctions (vertices shared by ways): a graded profile keeps to the ground there (both roads meet at it)
-  const use = new Map(), vk = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
-  for (const r of GEO.roads) for (let i = 0; i < r.p.length; i += 2) { const k = vk(r.p[i], r.p[i + 1]); use.set(k, (use.get(k) || 0) + 1); }
+  // the junctions (vertices shared by ways)
+  const use = new Map();
+  for (const r of GEO.roads) for (let i = 0; i < r.p.length; i += 2) { const k = vkey(r.p[i], r.p[i + 1]); use.set(k, (use.get(k) || 0) + 1); }
   fit = fit || {};
-  fit.junction = (x, z) => (use.get(vk(x, z)) || 0) > 1;
+  fit.junction = (x, z) => (use.get(vkey(x, z)) || 0) > 1;
   for (const r of GEO.roads) {
     if (r.tu || r.own) continue;                       // tunnels; stretches rebuilt by a landmark
     const P = pairs(r.p);
@@ -189,6 +342,8 @@ export function planRoads(fit = null) {
   }
   GEO.bridges = bridges;
   const out = plans.filter(Boolean);
+  gradeProfiles(out, use, fit);
+  for (const pl of out) { pl.finish(); pl.finish = null; if (!globalThis.__GRADE_DEBUG) pl.keys = null; }
   out.forEach((pl, i) => { pl.i = i; });
   return out;
 }
@@ -199,6 +354,7 @@ function planRibbon(r, P0, bridges, fit) {
   const dy = r.dy ?? (() => 0.035);                       // r.dy(x, z): a ribbon kept under a neighbour's asphalt (breaza.js)
   let P = ribbonPath(P0, r.br ? 5 : r.step ?? 3.5, r.br ? null : (x, z) => heightAt(x, z) + dy(x, z));   // (r.step: a finer ribbon)
   if (P.length < 2) return null;
+  const keys = P.map(([x, z]) => vkey(x, z));              // (the mapped vertices, before the buildings move any: gradeProfiles)
   let N = normals(P);
   const flat = !!(custom || r.br);
   const major = MAJOR.includes(r.c);
@@ -228,28 +384,47 @@ function planRibbon(r, P0, bridges, fit) {
   } else yc = (k) => heightAt(P[k][0], P[k][1]) + dy(P[k][0], P[k][1]);
   const Yc = new Float32Array(P.length);
   for (let k = 0; k < P.length; k++) Yc[k] = yc(k);
-  const sm = SMOOTH[r.c];
-  if (sm && !flat && !r.tuned && !r.hand && !r.step) {
-    const hp = r.handPts, keep = hp ? (x, z) => fit.junction(x, z) || hp.some(([hx, hz]) => Math.abs(hx - x) < 3 && Math.abs(hz - z) < 3) : fit.junction;
-    smoothProfile(P, Yc, sm[0], sm[1], fit.near, keep);
-  }
   if (r.br && !custom) bridges.push({ P, w: w / 2 + 0.5, y: [...Yc] });
-  // across, the asphalt follows the ground where it comes up to 30 cm over the axis's level at that side's edge (a 5 m
-  // terrain cell reaching into the road no longer covers its edge; that ground is what the wheels roll on anyway); where
-  // the edge meets a higher bank that side stays flat (and roadbed.js cuts the bank back from it)
-  const over = (k, off) => { const [x, z] = P[k], [nx, nz] = N[k], xo = x + nx * off, zo = z + nz * off; return heightAt(xo, zo) + dy(xo, zo) - Yc[k]; };
-  const sideOk = flat ? null : P.map((p, k) => nearUnderpass(p[0], p[1]) ? [false, false] : [over(k, -w / 2) <= 0.3, over(k, w / 2) <= 0.3]);
-  const sf = flat ? (k) => Yc[k] : (k, off) => sideOk[k][off < 0 ? 0 : 1] ? Yc[k] + Math.min(0.3, Math.max(0, over(k, off))) : Yc[k];
-  // the heights at the strips' edges (O) and at the shoulders' outer edges (S: left, right)
   const n = flat ? 1 : Math.max(2, Math.min(4, Math.ceil(w / 2)));
   const O = []; for (let j = 0; j <= n; j++) O.push(-w / 2 + w * j / n);
-  const Y = new Float32Array(P.length * (n + 1)), S = new Float32Array(P.length * 2).fill(NaN);
-  for (let k = 0; k < P.length; k++) {
-    for (let j = 0; j <= n; j++) Y[k * (n + 1) + j] = sf(k, O[j]);
-    if (shL) S[2 * k] = sf(k, -w / 2 - shL) - 0.02;
-    if (shR) S[2 * k + 1] = sf(k, w / 2 + shR) - 0.02;
-  }
-  return { r, P, N, w, n, O, Y, S, Yc, shL, shR, surf, flat, custom, bridge: !!r.br, major, rank: (RANK[r.c] ?? 1) + Math.min(0.9, w / 40) };
+  const pl = { r, P, N, w, n, O, Y: null, S: null, Yc, shL, shR, surf, flat, custom, bridge: !!r.br, major, rank: (RANK[r.c] ?? 1) + Math.min(0.9, w / 40), keys };
+  // the cross-sections, once the axis is graded (gradeProfiles):
+  // across, the asphalt follows the ground where it comes up to 30 cm over the axis's level at that side's edge (a 5 m
+  // terrain cell reaching into the road no longer covers its edge); where the edge meets a higher bank that side stays
+  // flat (and roadbed.js cuts the bank back from it). (V94) How much each strip's edge comes up is graded along the
+  // road as the axis is (a Gaussian over ~half its radius): it was the raw ground's from one vertex to the next - up to
+  // 30 cm every 3.5 m under the wheels of a car in its lane, and on the axis itself wherever the ground stood over it
+  pl.finish = () => {
+    const over = (k, off) => { const [x, z] = P[k], [nx, nz] = N[k], xo = x + nx * off, zo = z + nz * off; return heightAt(xo, zo) + dy(xo, zo) - Yc[k]; };
+    const sideOk = flat ? null : P.map((p, k) => nearUnderpass(p[0], p[1]) ? [false, false] : [over(k, -w / 2) <= 0.3, over(k, w / 2) <= 0.3]);
+    const up = flat ? () => 0 : (k, off) => sideOk[k][off < 0 ? 0 : 1] ? Math.min(0.3, Math.max(0, over(k, off))) : 0;
+    const Y = pl.Y = new Float32Array(P.length * (n + 1)), S = pl.S = new Float32Array(P.length * 2).fill(NaN);
+    const offs = [...O]; if (shL) offs.push(-w / 2 - shL); if (shR) offs.push(w / 2 + shR);
+    const sm = SMOOTH[r.c], smooth = !!sm && !flat && !r.tuned && !r.step && P.length >= 3;
+    const Sk = new Float64Array(P.length);
+    for (let k = 1; k < P.length; k++) Sk[k] = Sk[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]);
+    const U = new Float64Array(P.length), G = new Float64Array(P.length);
+    offs.forEach((off, q) => {
+      for (let k = 0; k < P.length; k++) U[k] = up(k, off);
+      if (smooth) {
+        // (the plain weighted mean: a raise is never negative; as the ground is in an underpass)
+        const R = Math.max(6, sm[0] / 2), h = R / 2;
+        let j0 = 0;
+        for (let k = 0; k < P.length; k++) {
+          if (nearUnderpass(P[k][0], P[k][1])) { G[k] = U[k]; continue; }
+          while (Sk[j0] < Sk[k] - R) j0++;
+          let sw2 = 0, sy = 0;
+          for (let j = j0; j < P.length && Sk[j] <= Sk[k] + R; j++) { const ds = (Sk[Math.min(P.length - 1, j + 1)] - Sk[Math.max(0, j - 1)]) / 2 || 1e-3, u = (Sk[j] - Sk[k]) / h, wg = ds * Math.exp(-u * u); sw2 += wg; sy += wg * U[j]; }
+          G[k] = sy / sw2;
+        }
+      } else G.set(U);
+      for (let k = 0; k < P.length; k++) {
+        if (q <= n) Y[k * (n + 1) + q] = Yc[k] + G[k];
+        else S[2 * k + (off < 0 ? 0 : 1)] = Yc[k] + G[k] - 0.02;
+      }
+    });
+  };
+  return pl;
 }
 
 // a plan's surface height at vertex k, off metres across (the strips' edges interpolated); its shoulders'
