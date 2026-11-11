@@ -49,6 +49,8 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | E | lângă focul de tabără de la sonde (lângă Fiatul roșu): îl aprinzi / îl stingi | – |
 | V | cu Glock-ul: lovitură cu pistolul / Tac-Stance (mai jos) | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
+| U | – | autotunerul (pe loc): laptopul citește, modifică și scrie ECU-ul mașinii — Stage 1 (V94) |
+| E / F | pe scara verandei, lângă câine: iei autotunerul (laptopul și interfața OBD) | – |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
 | T / O | vremea (senin, parțial noros, înnorat, ceață, ploaie torențială, ploaie în rafale, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
@@ -777,6 +779,106 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * zgomotul rafalelor folosește un hash fără funcții trigonometrice;
     * iarba folosește o singură octavă de rafală.
     * cât scade FPS-ul pe o placă video reală n-am putut măsura aici: testele rulează cu randare software.
+* **Autotuner: Stage 1 la orice mașină, de pe laptop (V94)** (`src/tuner.js`, `src/tunerdata.js`, `src/vehicle.js`, `src/main.js`):
+  * **Unde e:** pe treapta de jos a scării de la ușa verandei, lângă câinele roșcat: un laptop deschis, cu ecranul aprins, interfața OBD, cablul USB și cablul lung cu mufa de 16 pini, încolăcit. Te uiți la el și apeși **E** (dacă te uiți la câine, E îl mângâie pe el). Rămâne al tău și după ce reîncarci jocul.
+  * **Cum îl folosești:** la volanul oricărei mașini, pe loc, apeși **U** (pe telefon: butonul „Tuner”). Motorul se oprește, contactul rămâne pus, iar laptopul pornește cu ecranul lui de încărcare (driverul interfeței, protocoalele, tensiunea la mufă). Apoi, în ordine:
+    1. **Identifici ECU-ul**: motorul mașinii, puterea și cuplul de serie, tipul de ECU, VIN-ul, versiunea de software.
+    2. **Citești ECU-ul**: o copie a fișierului original rămâne salvată pe laptop (bară de progres, adrese și octeți care curg).
+    3. **Editorul de hărți**: hărțile motorului ca tabele colorate (rânduri: sarcină, coloane: turație). Butonul „Presetare Stage 1” le ridică pe toate împreună; le poți schimba și de mână (alegi celule, + / −). În dreapta, curbele de putere și cuplu, de serie și cu fișierul tău, și avertismentele (fum, detonație, turbină la limită, avarie).
+    4. **Scrii în ECU**: ștergere, scriere, verificare. Cât durează scrierea, laptopul nu se poate închide.
+    5. **Revii la original** oricând: se scrie înapoi fișierul citit la început.
+  * **Ca la o mașină adevărată:** farurile aprinse blochează citirea și scrierea până le stingi (consumatorii trag tensiunea bateriei în jos, iar o scriere întreruptă lasă ECU-ul fără program); tensiunea se vede tot timpul; originalul se păstrează înainte de orice modificare.
+  * **Ce e real — cifrele fiecărui motor.** Puterea și cuplul de serie și cele de după Stage 1 sunt cele listate de vânzătorii de fișiere de tuning pentru motorul respectiv (sunt cifrele lor, nu măsurători pe stand făcute de noi):
+
+    | Mașina din joc | Motorul | Serie | Stage 1 | Câștig |
+    |---|---|---|---|---|
+    | BMW Seria 3 (E90) | 320d 2.0 turbodiesel (N47) | 177 CP · 350 Nm | 209 CP · 419 Nm | +18 % · +20 % |
+    | BMW Seria 1 | 118d 2.0 turbodiesel (N47) | 143 · 300 | 183 · 400 | +28 % · +33 % |
+    | Peugeot 508 (cele parcate) | 2.0 HDi 163 | 163 · 340 | 191 · 400 | +17 % · +18 % |
+    | Ford Focus | 1.6 TDCi 109 | 109 · 240 | 141 · 315 | +29 % · +31 % |
+    | Ford Kuga / SUV | 2.0 TDCi 140 | 140 · 320 | 175 · 400 | +25 % · +25 % |
+    | VW Golf IV | 1.9 TDI 90 (ALH) | 90 · 210 | 122 · 267 | +36 % · +27 % |
+    | VW Transporter | T5 2.0 TDI 140 | 140 · 340 | 180 · 410 | +29 % · +21 % |
+    | Mercedes argintiu | A 180 CDI (W169) | 109 · 250 | 139 · 310 | +28 % · +24 % |
+    | Renault Kangoo | 1.5 dCi 90 | 90 · 200 | 108 · 243 | +20 % · +22 % |
+    | Fiat Doblò Cargo | 1.3 Multijet 90 | 90 · 200 | 112 · 247 | +24 % · +24 % |
+    | Dacia Sandero | 0.9 TCe 90 (benzină turbo) | 90 · 140 | 107 · 175 | +19 % · +25 % |
+    | Opel Corsa C | 1.2 16V (benzină aspirat) | 75 · 110 | 82 · 125 | +9 % · +14 % |
+    | Dacia Logan | 1.4 MPI (benzină aspirat) | 75 · 112 | 82 · 122 | +9 % · +9 % |
+    | Mercedes-Maybach GLS 600 | 4.0 V8 biturbo (M177) | 557 · 730 | ~613 · ~803 | ~+10 % (estimare) |
+    | ATV 4x4 (500 cc) | 495 cm³ monocilindru | 38 · 39 | ~41 · ~42 | ~+7 % (estimare) |
+    | Peugeot 508 · 500 km/h | preparatul din joc (1400 W/kg) | ~2855 CP la 1500 kg | ~3141 CP | ~+10 % (estimare) |
+
+    * Cifrele se încadrează în regula generală din ghidurile de tuning: turbodiesel ~20–35 % putere și ~25–40 % cuplu, benzină turbo ~15–35 %, benzină aspirat ~5–15 %.
+    * „Stage 1” înseamnă doar software, cu piesele de serie. Nu există un standard al termenului.
+    * Unde scrie „estimare”, nu am găsit o cifră publicată pentru motorul acela: am luat capătul de jos al regulii (turbo benzină ~10 %, aspirat ~7 %).
+    * Tipul de ECU afișat e cel din listele vânzătorilor; unde listele nu se potrivesc între ele, laptopul nu afișează niciun tip.
+    * VIN-ul și versiunea de software sunt inventate (codul de producător al mărcii, plus caractere generate din numele mașinii).
+  * **Ce e model — hărțile.** Un fișier real are mii de hărți, altele la fiecare ECU. Aici fiecare fel de motor le are pe cele din care se face un Stage 1, construite din curba de cuplu a mașinii, astfel încât cu hărțile de serie modelul dă exact cifrele de serie:
+    * **diesel:** dorința șoferului, limitatoarele de cuplu pe trepte, presiunea turbo, limitatorul de fum, presiunea de rampă, avansul injecției, limita de presiune;
+    * **benzină turbo:** dorința șoferului, limitatoarele de cuplu, presiunea turbo, avansul aprinderii, lambda la sarcină mare, limita de presiune;
+    * **benzină aspirat:** clapeta la pedală, limitatoarele de cuplu, avansul aprinderii, lambda;
+    * mașinile cu limitator electronic de viteză (Maybach 250 km/h, Peugeot-ul de 500 km/h) au și harta lui.
+  * **Modelul de motor** dă cuplul la sarcină plină, pe fiecare coloană de turație:
+    * diesel: aerul pe cursă urmează presiunea (cm³ × mbar × 0,00101 mg; turbina de serie dă cel mult +30 % la mijlocul turațiilor și +14 % la capăt); limitatorul de fum dă cantitatea permisă pentru aerul acela; se injectează minimul dintre ea și ce cer dorința șoferului și limitatoarele (0,734 mg pe Nm și pe cursă, la toți cilindrii: randament 40 %, 42,8 MJ/kg); sub λ 1,3 motorina arde mai prost, sub 1,15 face fum, nu cuplu;
+    * benzină turbo: cuplul urmează aerul (presiunea), avansul (0,9 % pe grad până la limita de detonație, care se apropie când crește presiunea) și lambda (optim lângă 0,875);
+    * benzină aspirat: clapeta, avansul și lambda;
+    * de aceea o singură hartă ridicată face ce ar face și pe mașină. Verificat pe 320d: limitatorul și dorința șoferului +20 % → 199 CP · 364 Nm (îl ține limitatorul de fum); doar presiunea sau doar fumul → nimic; fum fără aer → avertisment de fum; presiune peste limita de protecție → avarie, puterea tăiată; totul +60 % → 226 CP · 475 Nm, cu turbina la limită și fum.
+    * presetarea Stage 1 ridică hărțile împreună până la cifrele din tabel (verificat pentru toate cele 16 motoare: abatere de cel mult 0,5 CP și 1 Nm, fără avertismente).
+  * **Ce face în joc:** tracțiunea crește cu media dintre câștigul de cuplu și cel de putere; viteza maximă cu rădăcina cubică a câștigului de putere (rezistența aerului crește cu cubul vitezei); limitatorul electronic se mută unde spune harta lui, cel mult până unde ajunge puterea. HUD-ul arată „· Stage 1” lângă numele mașinii. Reglajele rămân după reîncărcare. Măsurat în joc, de pe loc, cu accelerația la podea, pe DN1:
+
+    | Mașina | 0–100 km/h serie → Stage 1 | viteza după 30 s |
+    |---|---|---|
+    | BMW 320d | 7,9 → 6,3 s | 134 → 145 km/h |
+    | Dacia Sandero 0.9 TCe | 11,4 → 8,6 s | 117 → 129 |
+    | Opel Corsa 1.2 | 15,2 → 12,7 s | 108 → 113 |
+    | VW Golf IV 1.9 TDI | 11,4 → 7,6 s | 117 → 133 |
+    | VW Transporter | 11,4 → 8,2 s | 117 → 131 |
+    | Peugeot 508 2.0 HDi | 11,0 → 8,7 s | 119 → 129 |
+    | Dacia Logan 1.4 | 11,0 → 9,6 s | 119 → 124 |
+    | Maybach GLS 600 | 4,9 → 4,5 s (0–200: 18,7 → 16,7 s) | limitator 250 → 289 km/h, cu harta lui ridicată |
+
+  * **Limite, spuse cinstit:**
+    * curbele din grafic sunt calculate din hărți, nu măsurate pe stand;
+    * în joc 0–100 scade mai mult decât pe o mașină reală (acolo pornirea e limitată de aderență și se pierde timp la schimbarea treptelor, lucruri care aici nu sunt modelate); tracțiunea în treaptă crește cât cuplul, ca în realitate;
+    * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
+    * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
+  * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Fizica mașinilor, stabilizată (V94)** (`src/vehicle.js`, `src/geo/roads.js`, `src/geo/roadbed.js`, `src/main.js`):
+  * **Ce era:** cu suspensia din V93, pe DN1 la 130 km/h ținuți (4,4 km, pe banda ei), mașina zbura de 14 ori, se apleca până la 21° înainte și 24° în lateral și primea șocuri de zeci de g. Cauza nu era doar suspensia: profilul drumurilor păstra treptele modelului de teren.
+  * **Drumurile, nivelate ca o rețea** (`roads.js`, `roadbed.js`):
+    * capătul unui drum care continuă în altul se nivelează peste îmbinare (înainte fiecare bucată revenea la terenul brut la ambele capete: o cocoașă de 0,8 m pe DN1);
+    * o intersecție ia nivelul drumului principal, iar celelalte coboară sau urcă lin spre ea;
+    * ridicarea marginilor după teren, racordările de la intersecții și ridicările peste terenul „ținut” de case sunt netede în lungul drumului;
+    * drumurile cărora un reper le-a setat lățimea sau acostamentele (30 % din DN1) nu erau nivelate deloc: aveau trepte de 0,6 m pe 6 m. Acum sunt, ținute mai aproape de teren (cel mult 0,5 m).
+    * Rupturi de pantă pe kilometru, măsurate pe bandă (sub −3 % / −6 % / −10 %): DN1 9,4 / 4,4 / 1,6 → 1,7 / 0,35 / 0,09; drum județean 16,8 / 6,7 / 3,0 → 5,4 / 0,8 / 0,03; comunal 15,2 / 6,0 / 1,8 → 4,0 / 0,3 / 0,02; străzi 24,3 / 9,3 / 3,2 → 15,7 / 3,2 / 0,6.
+    * Prețul, din auditul drumurilor: asfalt cu teren peste el 2331 → 2592 m² (din 4,12 km²), margini de drum cu terenul la peste 12 cm sub ele 79,9 → 86,6 km. Clădirile atinse de drumuri au rămas 29.
+  * **Suspensia** (`vehicle.js`):
+    * are ceasul ei: pași de cel mult 1/240 s, oricât ar dura cadrul, cu solul de sub roți dus uniform de la un pas la altul (la 20 de cadre pe secundă tampoanele, de zece ori mai tari decât arcul, nu mai erau stabile);
+    * amortizoarele sunt mai moi la comprimare decât la destindere (~1 : 2,5) și cedează la viteze mari (cel mult 1,2, respectiv 2 × sarcina roții);
+    * tampoanele sunt progresive și dau înapoi sub jumătate din ce au luat; o roată împinge cu cel mult 8 × sarcina ei;
+    * dincolo de tampoane colțul mașinii e ținut pe sol și oprit acolo, nu aruncat: de la o treaptă prea înaltă ia cel mult 2 m/s;
+    * în aer rotirea se stinge puțin (1,2 pe secundă; aerul singur ar da ~0,15 la 130 km/h: e un ajutor, ales);
+    * Peugeot-ul rapid e apăsat de aripi cu pătratul vitezei (1,6 g la 500 km/h), sarcină dusă de suspensie la înălțimea de mers;
+    * mașina nu se mai dă peste cap: la ~30° față de solul de sub ea nu se mai rotește în sensul acela (modelul nu are plafon pe care să aterizeze);
+    * o mașină prinsă între două obstacole mai apropiate decât lățimea ei (doi copaci, un gard și un zid) stă la mijloc: înainte era aruncată 0,9 m de la unul la altul în fiecare cadru (defect vechi de coliziune);
+    * din interior, ochii șoferului stau pe un scaun: ce e mai lent de ~3 Hz ajunge întreg, o izbitură ajunge înmuiată.
+  * **Măsurat**, aceeași cursă pe DN1 (4,4 km, pe bandă), Peugeot-ul:
+
+    | | V93 | V94 |
+    |---|---|---|
+    | 130 km/h: zboruri | 14 | 0 |
+    | 130 km/h: aplecare înainte / lateral (max) | 21° / 24° | 2,8° / 1,7° |
+    | 130 km/h: săltare (max) | – | 6 cm |
+    | 250 km/h: zboruri | – | 1 (0,72 s, 64 cm, la 227 km/h) |
+    | 250 km/h: înclinare laterală (max) | – | 5,1° |
+
+    * la 20, 60 și 144 de cadre pe secundă rezultatele sunt aceleași (130 km/h: 0 zboruri, aplecare 1,8–2,8°, săltare 6–7 cm);
+    * 5 mașini lăsate să cadă de la 0,5 și 1,5 m, la 20–144 cadre pe secundă: aceeași săritură înapoi (0–13 cm), în repaus după 1,1–2,6 s, niciun rezultat stricat;
+    * peste câmp, la 80–300 km/h, din 6 locuri, cu și fără obstacole: niciun rezultat stricat, toate mașinile ajung în repaus;
+    * cele 118 mașini parcate: 5 s, nicio mișcare.
+  * **Culmea de pe DN1, acum** (cocoașa din date a dispărut, culmea reală a rămas): la 130 km/h mașina rămâne pe roți; la 170 km/h zboară 0,3 s (10 cm); la 200 km/h 0,6 s (29 cm); la 250 km/h 0,75 s (91 cm), cu aterizare dură. Tabelul din V93 de mai jos descrie cocoașa de dinainte.
+  * **Ce rămâne:** peste ~200 km/h mașina tot zboară pe culmile adevărate și aterizează dur (suspensia de serie are 13–19 cm de cursă); la câteva îmbinări de drumuri banda are trepte de ~6 cm; pe drumurile mici rămân rupturi de pantă.
 * **Suspensie reală: mașina nu mai e lipită de asfalt (V93)** (`src/vehicle.js`, `src/cars.js`, `src/atv.js`, `src/audio.js`, `src/main.js`):
   * **Ce era:** mașina era pusă în fiecare cadru exact la înălțimea solului de sub roți, fără viteză verticală, deci lipită de drum la orice viteză. Măsurat pe o culme de pe DN1: la 100, 150, 200 și 300 km/h rămânea la ±12 cm de sol.
   * **Acum fiecare roată are arc și amortizor**, iar caroseria e un corp rigid care urcă, coboară, se apleacă înainte-înapoi și în lateral, cu inerția unei mașini de ~1,6 t (rază de girație ~0,48 din ampatament la tangaj, ~0,38 din ecartament la ruliu):
@@ -1441,6 +1543,8 @@ src/hero.js           casa din poze (fațadă, prispă, verandă, foișor, poart
 src/world.js          stradă, vecini, stâlpi, fire, mașini parcate, vegetație
 src/cars.js           caroserii parametrice   src/vehicle.js  fizica mașinii
 src/maybach.js        Mercedes-Maybach GLS 600   src/doblo.js  Fiat Doblò Cargo (dubița de la sonde)
+src/tuner.js          autotunerul: laptopul și interfața OBD de pe scară, ecranele laptopului (pornire, citire, editor de hărți, scriere)
+src/tunerdata.js      motoarele mașinilor (serie și Stage 1), hărțile lor și modelul de motor care le transformă în putere și cuplu
 src/interior.js       interioarele mașinilor: bord, ceasuri cu ace, volan, scaune, uși, căptușeală, parbrizul văzut din scaun
 src/mirror.js         oglinzile: retrovizoarea și oglinzile laterale arată ce e în spate (randate din ochiul oglindit)
 src/driver.js         tu la volan: mâinile pe volan, brațele, picioarele pe pedale

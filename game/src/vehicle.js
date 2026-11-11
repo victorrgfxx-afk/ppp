@@ -210,7 +210,7 @@ export class Vehicle {
     const Hs = this.hyper;
     if (Hs && Math.abs(vF) > 12) {
       // steering angle for the grip available at this speed (tyres + downforce), so full lock = the limit
-      const q = Math.min(1, (vF * vF) / (Hs.limit * Hs.limit));
+      const va = Hs.vAero ?? Hs.limit, q = Math.min(1, (vF * vF) / (va * va));   // (vAero: the speed its wings were set for, when a tune moved its limiter)
       maxSteer = Math.atan((Hs.lat + Hs.latAero * q) * this.wheelbase / (vF * vF));
       // progressive, rate-limited steering: a tap gives a small correction, holding builds to the limit
       const target = steerIn * maxSteer;
@@ -255,14 +255,14 @@ export class Vehicle {
       const f = (kmh - up[g - 1]) / (up[g] - up[g - 1]);
       const [r0, r1] = this.hyper.rpm ?? [3000, 8000];
       const target = kmh < 3 ? 900 + (ctl && ctl.throttle > 0 ? 2600 : 0) : r0 + (r1 - r0) * Math.min(1, f);
-      this.rpm = damp(this.rpm, target, 10, dt);
+      this.rpm = damp(this.rpm, this.engineOff ? 0 : target, 10, dt);
     } else {
       const up = [0, 22, 45, 70, 98];
       let g = 1; for (let i = 0; i < up.length; i++) if (kmh > up[i]) g = i + 1;
       this.gear = g;
       const wheelRpm = Math.abs(vF) / (2 * Math.PI * this.m.r) * 60;
       const target = Math.max(850, wheelRpm * GEARS[g - 1] * 3.9 + (ctl && ctl.throttle > 0 ? 900 : 0));
-      this.rpm = damp(this.rpm, Math.min(6800, target), 8, dt);
+      this.rpm = damp(this.rpm, this.engineOff ? 0 : Math.min(6800, target), 8, dt);   // (engineOff: the ignition on, the engine stopped - tuner.js)
     }
 
     this.resolveStatic();
@@ -310,7 +310,7 @@ export class Vehicle {
     const gp = S.gp ??= g4.slice(), gd = this._gd ??= [0, 0, 0, 0], Fm = this._Fm ??= [0, 0, 0, 0];
     for (let i = 0; i < 4; i++) { gd[i] = Math.max(-25, Math.min(25, (g4[i] - gp[i]) / dt)); Fm[i] = 0; }   // (how fast the ground under it rises)
     // the wings' push (per unit of the car's mass), by the square of its speed
-    const Hy = this.hyper, aero = Hy?.latAero ? Hy.latAero * Math.min(1, (this.vx * this.vx + this.vz * this.vz) / (Hy.limit * Hy.limit)) : 0;
+    const Hy = this.hyper, va = Hy ? Hy.vAero ?? Hy.limit : 1, aero = Hy?.latAero ? Hy.latAero * Math.min(1, (this.vx * this.vx + this.vz * this.vz) / (va * va)) : 0;
     const n = Math.max(1, Math.ceil(dt / SUB - 1e-6)), h = dt / n, air = Math.exp(-AIR * h);
     let touching = 0, hit = 0, crash = 0;
     for (let j = 1; j <= n; j++) {

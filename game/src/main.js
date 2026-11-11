@@ -38,6 +38,7 @@ import { Driver } from './driver.js';
 import { prepareHands, prepareArms } from './hand.js';
 import { Share } from './share.js';
 import { Campfire } from './campfire.js';
+import { Tuner } from './tuner.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { TWIND } from './treewind.js';
@@ -630,6 +631,12 @@ async function main() {
   }
   // multiplayer (alpha): the friend in this world (net.js: the room; remote.js: their figure, their car, their name)
   const mp = new Net(), others = new RemotePlayers(scene, vehicles);
+  // (V94) the autotuner on the veranda's steps, and the tunes the cars were left with (tuner.js)
+  const tuner = new Tuner({ scene, world, audio, store, vehicles, onClose: () => { if (started && !paused) { input.enabled = true; if (!matchMedia('(pointer: coarse)').matches) input.requestLock(); } if (tuner.wrote) hud.toast(tuner.wrote, 6); } });
+  let tunerStop = 0;
+  const tunerBtn = () => { const b = document.querySelector('#touch [data-key="KeyU"]'); if (b) b.style.display = tuner.owned ? '' : 'none'; };   // (its touch button once you have it)
+  tunerBtn();
+  const openTuner = () => { input.enabled = false; input.keys.clear(); if (document.pointerLockElement) document.exitPointerLock(); tuner.openFor(active); };
   flashlight = new Flashlight(scene);
   headlights = new Headlights(scene);
   // the forest scene of the user's two clips, live in the clearing of the wood by the cross (+z of its stage points back
@@ -956,9 +963,9 @@ async function main() {
     if (document.pointerLockElement) document.exitPointerLock();
   };
   document.addEventListener('pointerlockchange', () => {
-    if (!document.pointerLockElement && started && !paused && !matchMedia('(pointer: coarse)').matches && !input.mouse.dragging) pause();
+    if (!document.pointerLockElement && started && !paused && !tuner.open && !matchMedia('(pointer: coarse)').matches && !input.mouse.dragging) pause();
   });
-  addEventListener('keydown', (e) => { if (e.code === 'Escape' && started && !paused) pause(); });
+  addEventListener('keydown', (e) => { if (e.code === 'Escape' && started && !paused) { if (tuner.open) tuner.close(); else pause(); } });   // (Esc shuts the laptop first)
   // photo 24: the cross on the hill, seen from ~11 m south-south-east, looking north-north-west (sun behind the camera),
   // ~20 deg off the arms' normal (the right arm looks 21% longer)
   const crossLm = geoWorld.landmarks?.find(l => l.type === 'cross');
@@ -1212,7 +1219,7 @@ async function main() {
     return best;
   };
   const enterCar = (v) => {
-    mode = 'car'; active = v;
+    mode = 'car'; active = v; tunerStop = 0;
     noSignal = noSignalZone(v.x, v.z); signalT = 0;                      // (the navigation starts up where you are)
     if ((night > 0.5 || storm > 0.3) && !v.lightsOn) v.setLights(true);   // (headlights on at night and in a gale)
     audio.door();
@@ -1417,9 +1424,12 @@ async function main() {
         const near = dog || player.noclip ? null : nearestCar();
         const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
         const gunP = player.noclip ? null : glock?.pickup(camera, input);
+        let tunP = null;
         if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte. Modul shooter: Fugi de două ori - sprint tactic, Jos din fugă - alunecare (de două ori: pe spate), Tac - Tac-Stance, Lovește, Inspect. Poligonul e pe pajiștea de lângă cruce'
           : 'Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte. Modul shooter: Shift de două ori - sprint tactic, C din fugă - alunecare (de două ori: pe spate), V cu clic dreapta (sau Z) - Tac-Stance, V - lovitură, I - inspectezi. Poligonul e pe pajiștea de lângă cruce', 9);
         else if (gunP) prompt = gunP;
+        else if ((tunP = player.noclip ? null : tuner.pickup(camera, input, dog)) === '') tunerBtn(), hud.toast('Ai luat autotunerul. Urcă la volanul oricărei mașini, oprește-o și apasă U' + (matchMedia('(pointer: coarse)').matches ? ' (butonul Tuner)' : '') + ': laptopul îi citește ECU-ul, îi modifici hărțile și i le scrii înapoi', 8);
+        else if (tunP) prompt = tunP;
         else if (player.sup && player.sup.up < 0) prompt = matchMedia('(pointer: coarse)').matches ? 'Sari / Jos — te ridici' : 'Space / C — te ridici';
         else if (dog) {
           prompt = 'E — mângâie câinele';
@@ -1437,7 +1447,12 @@ async function main() {
         }
       } else {
         const ax = input.axis();
-        const ctl = { throttle: -ax.y, steer: ax.x, handbrake: input.down('Space') };
+        const ctl = tuner.open ? { throttle: 0, steer: 0, handbrake: true } : { throttle: -ax.y, steer: ax.x, handbrake: input.down('Space') };
+        // (V94) the autotuner, from the driver's seat of a car standing still
+        // (its prompt for the first seconds of a stop, not at every red light for as long as it lasts)
+        tunerStop = active && Math.abs(active.speed) < 0.5 ? tunerStop + dt : 0;
+        if (tuner.owned && active && !tuner.open && tunerStop > 0) { if (tunerStop < 7) prompt = 'U — autotuner: citește și modifică ECU-ul'; if (input.hit('KeyU')) openTuner(); }
+        else if (input.hit('KeyU') && !tuner.open) hud.toast(tuner.owned ? 'Oprește mașina ca să conectezi autotunerul' : 'Nu ai autotunerul: e pe scara casei, lângă câine', 3);
         if (input.hit('KeyF') || input.hit('KeyE')) exitCar();
         if (input.hit('KeyL')) active?.setLights(!active.lightsOn);
         if (input.hit('KeyV')) { camMode = camMode === 'chase' ? 'cockpit' : 'chase'; store.set('camMode', camMode); }
@@ -1456,6 +1471,7 @@ async function main() {
       }
       // the pistol in your hands (on foot only: put away in a car, while riding or flying)
       glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value });
+      tuner.update(dt);
       range?.update(dt, camera);
       // parked cars (and cars pushed by collisions) settle
       for (const v of vehicles) if (v !== active && !v.remote) v.update(dt, null);   // (a friend's car moves as they drive it: remote.js)
@@ -1619,7 +1635,7 @@ async function main() {
     const yaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
     const dHome = Math.hypot(pos.x - 6, pos.z - 0);
     hud.update(dt, {
-      prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active?.name ?? '',
+      prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active ? active.name + (active.tune ? ' · ' + active.tune.label : '') : '',
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active || v === riding })),
       friends: others.list(mp, pos),
@@ -1637,7 +1653,7 @@ async function main() {
       let nt = 0; for (const b of near) if (b.tag === 'tree') nt++;
       leafy = Math.min(1, nt / 18);
     }
-    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car', rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
+    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -1833,7 +1849,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { tuner, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {
