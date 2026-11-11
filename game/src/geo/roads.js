@@ -160,17 +160,21 @@ function gradeAt(s, y, R, q, out) {
   return out;
 }
 const fade1 = (u) => u >= 1 ? 0 : (1 - u) * (1 - u) * (1 + 2 * u);         // 1 -> 0, level at both ends
+// (a road whose heights are a landmark's own: a finer ribbon, an offset under a neighbour's asphalt, one it built or traced)
+const handProfile = (r) => !!(r.step || r.dy || r.own || r.traced);
 function gradeProfiles(plans, use, fit) {
   const T = [];
   for (const pl of plans) {
     const n = pl.P.length, S = new Float64Array(n), r = pl.r, sm = SMOOTH[r.c];
     for (let k = 1; k < n; k++) S[k] = S[k - 1] + Math.hypot(pl.P[k][0] - pl.P[k - 1][0], pl.P[k][1] - pl.P[k - 1][1]);
-    const fixed = !!(pl.flat || r.tuned || r.step);                        // a deck, a road a landmark set: as they are
+    const fixed = !!(pl.flat || handProfile(r));                           // a deck, a road whose heights a landmark set: as they are
     const hp = r.handPts;
     // (as the ground is there: an underpass, a hand-built zone, a vertex a landmark placed)
     const keep = new Uint8Array(n);
     if (!fixed) for (let k = 0; k < n; k++) { const [x, z] = pl.P[k]; if (nearUnderpass(x, z) || (GEO.fine && fineAt(x, z)) || (hp && hp.some(([hx, hz]) => Math.abs(hx - x) < 3 && Math.abs(hz - z) < 3))) keep[k] = 1; }
-    T.push({ pl, n, S, L: S[n - 1], Y0: Float32Array.from(pl.Yc), B: null, fixed, graded: !fixed && !!sm && n >= 3, R: sm ? sm[0] : 0, cap: sm ? sm[1] : 0, keep, mate: [null, null], V: null });
+    // (a road a landmark gave its cross-section - r.tuned: DN1 by the trout farm, 30 % of the trunk road - is graded as
+    // the others, held closer to its ground: what stands along it was set out on that ground)
+    T.push({ pl, n, S, L: S[n - 1], Y0: Float32Array.from(pl.Yc), B: null, fixed, graded: !fixed && !!sm && n >= 3, R: sm ? sm[0] : 0, cap: sm ? (r.tuned ? Math.min(sm[1], 0.5) : sm[1]) : 0, keep, mate: [null, null], V: null });
   }
   // ---- who meets at the vertices the ways share
   const at = new Map();
@@ -316,7 +320,6 @@ function gradeProfiles(plans, use, fit) {
     if (t.fixed) continue;
     for (let k = 0; k < t.n; k++) { most = Math.max(most, Math.abs(t.V[k] - t.Y0[k])); t.pl.Yc[k] = t.V[k]; }
   }
-  if (globalThis.__GRADE_DEBUG) GEO.gradeDebug = { T, own, H, at };
   GEO.roadbedLog = { ...(GEO.roadbedLog || {}), graded: T.filter(t => t.graded).length, mates: T.reduce((a, t) => a + (t.mate[0] ? 1 : 0) + (t.mate[1] ? 1 : 0), 0), gradedMost: +most.toFixed(2) };
 }
 
@@ -343,7 +346,7 @@ export function planRoads(fit = null) {
   GEO.bridges = bridges;
   const out = plans.filter(Boolean);
   gradeProfiles(out, use, fit);
-  for (const pl of out) { pl.finish(); pl.finish = null; if (!globalThis.__GRADE_DEBUG) pl.keys = null; }
+  for (const pl of out) { pl.finish(); pl.finish = null; pl.keys = null; }
   out.forEach((pl, i) => { pl.i = i; });
   return out;
 }
@@ -400,7 +403,7 @@ function planRibbon(r, P0, bridges, fit) {
     const up = flat ? () => 0 : (k, off) => sideOk[k][off < 0 ? 0 : 1] ? Math.min(0.3, Math.max(0, over(k, off))) : 0;
     const Y = pl.Y = new Float32Array(P.length * (n + 1)), S = pl.S = new Float32Array(P.length * 2).fill(NaN);
     const offs = [...O]; if (shL) offs.push(-w / 2 - shL); if (shR) offs.push(w / 2 + shR);
-    const sm = SMOOTH[r.c], smooth = !!sm && !flat && !r.tuned && !r.step && P.length >= 3;
+    const sm = SMOOTH[r.c], smooth = !!sm && !flat && !handProfile(r) && P.length >= 3;
     const Sk = new Float64Array(P.length);
     for (let k = 1; k < P.length; k++) Sk[k] = Sk[k - 1] + Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]);
     const U = new Float64Array(P.length), G = new Float64Array(P.length);

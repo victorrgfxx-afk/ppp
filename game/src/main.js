@@ -668,6 +668,9 @@ async function main() {
   let photoFov = null;      // zoomed photo views keep the lens' field of view until you walk away
   const orbit = { yaw: 0, pitch: 0.18, idle: 0 };
   const cockpitLook = { yaw: 0, pitch: 0 };
+  // (V94) the driver's seat: the eyes ride the car's body through a seat and a spine - what is slower than ~3 Hz (the
+  // car's own bounce, a hill, a flight) reaches them whole, a sharp jolt (a landing, a ledge) softened
+  const seat = { car: null, y: 0, vy: 0, p: 0, vp: 0, uy: 0, up: 0 };
   let paused = true, started = false, hornOn = false;
   let riding = null;       // a friend's car you ride in as the passenger (multiplayer)
   const rideLook = { yaw: 0, pitch: 0 };
@@ -1491,10 +1494,24 @@ async function main() {
         cockpitLook.pitch = clamp(cockpitLook.pitch - m.y * sens(), -0.8, 0.6);
         if (!m.x && !m.y) cockpitLook.yaw = damp(cockpitLook.yaw, 0, 0.8, dt);
         camera.position.copy(active.headPos());
+        {
+          const uy = active.car.group.position.y, up = active.car.group.rotation.x;
+          if (seat.car !== active || Math.abs(seat.y - uy) > 1) { seat.car = active; seat.y = seat.uy = uy; seat.p = seat.up = up; seat.vy = seat.vp = 0; }
+          if (dt > 0) {
+            const n = Math.max(1, Math.ceil(dt * 120)), h = dt / n, w2 = 19 * 19, c = 2 * 0.8 * 19, duy = (uy - seat.uy) / dt, dup = (up - seat.up) / dt;
+            for (let i = 1; i <= n; i++) {
+              seat.vy += (w2 * (seat.uy + (uy - seat.uy) * i / n - seat.y) + c * (duy - seat.vy)) * h; seat.y += seat.vy * h;
+              seat.vp += (w2 * (seat.up + (up - seat.up) * i / n - seat.p) + c * (dup - seat.vp)) * h; seat.p += seat.vp * h;
+            }
+            seat.uy = uy; seat.up = up;
+            seat.y = clamp(seat.y, uy - 0.1, uy + 0.1); seat.p = clamp(seat.p, up - 0.08, up + 0.08);
+          }
+          camera.position.y += seat.y - uy;
+        }
         active.car.glass.opacity = 0.12;
         if (active.car.rider) active.car.rider.visible = false;
         // (on an ATV the rider watches the trail just ahead: the bars in the lower edge of the view)
-        camera.rotation.set(cockpitLook.pitch - (active.m.atv ? 0.28 : 0.06) + active.pitch + active.car.group.rotation.x, active.h + cockpitLook.yaw, -active.roll * 0.6, 'YXZ');
+        camera.rotation.set(cockpitLook.pitch - (active.m.atv ? 0.28 : 0.06) + active.pitch + seat.p, active.h + cockpitLook.yaw, -active.roll * 0.6, 'YXZ');
         fov = fov0;                                              // (the driver's own eyes)
       }
     } else {

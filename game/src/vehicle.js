@@ -40,6 +40,20 @@ HYPER.cd = (HYPER.P / HYPER.top - 0.15) / (HYPER.top * HYPER.top);
 // wheel's travel below / above where it rests, m)
 export const SUSP = { f: 1.4, zeta: 0.35, droop: 0.11, bump: 0.08 };
 const SUSP_HYPER = { f: 1.9, zeta: 0.45, droop: 0.07, bump: 0.06 }, SUSP_OFFROAD = { f: 1.6, zeta: 0.4, droop: 0.15, bump: 0.12 };
+// (V94) made steady. The springs have their own clock: the body is stepped at most 1/240 s at a time whatever the frame
+// rate (SUB), the ground under each wheel carried evenly from where it was a step ago to where it is now - at 20 frames a
+// second the bump stops, ten times a spring's stiffness, were past what one step of 1/20 s can hold. The dampers are a
+// car's: softer as the wheel comes up than as it goes back down (rebound ~2.5 times bump, the same damping on the
+// whole), and blowing off - they hold at most 1.2 (bump) and 2 (rebound) times the wheel's share of the car. The bump
+// stops are progressive (rubber: soft at the touch, hard at the end), give back under half of what they took, with a
+// hydraulic stop's push against the closing; a wheel pushes with at most 8 times its share (G4: a quarter of g). Past the
+// stops (STOP) the body is held off the ground corner by corner, stopped dead there instead of thrown: off a ledge too
+// high for its travel a corner takes on at most LIFT m/s. In the air a car turns on as it left the ground, the air
+// damping it only slightly (~0.15 /s at 130 km/h for a body 4.6 m long): AIR is a steadying hand beyond that, chosen.
+// The fast car's wings press it down as the square of its speed (its tune's latAero: 1.6 g at 500 km/h, as a
+// track-day hypercar's ~1 t at 275 km/h on 1.4 t), carried by its springs at the height it rides (an active
+// suspension's work): over a crest it stays down up to the speed where v^2 / R > g + the wings' push
+const SUB = 1 / 240, G4 = 9.81 / 4, STOP = 0.07, LIFT = 2, AIR = 1.2;
 const smooth01 = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
 
 export class Vehicle {
@@ -62,7 +76,9 @@ export class Vehicle {
     // the springs (SUSP): per wheel, a quarter of the car's stiffness and damping, per unit of its mass
     const sp = { ...SUSP, ...(this.hyper === HYPER ? SUSP_HYPER : {}), ...(this.m.offroad ? SUSP_OFFROAD : {}), ...(opts.susp ?? {}) }, w = 2 * Math.PI * sp.f;
     const hw = this.m.W / 2 - 0.15, zf = this.m.axles[0] - this.m.L / 2, zr = this.m.axles[1] - this.m.L / 2;
-    this.sp = { ...sp, k: w * w / 4, c: 2 * sp.zeta * w / 4, s0: 9.81 / (w * w), kb: 2.5 * w * w, cb: 0.5 * w,
+    const cw = 2 * sp.zeta * w / 4;
+    this.sp = { ...sp, k: w * w / 4, s0: 9.81 / (w * w), cB: cw * 0.57, cR: cw * 1.43, dB: 1.2 * G4, dR: 2 * G4,
+      kb: 2.5 * w * w, cS: 0.5 * w, dS: 4 * G4, Fmax: 8 * G4,
       rp2: (0.48 * this.wheelbase) ** 2, rr2: (0.38 * 2 * hw) ** 2, spots: [[-hw, zf], [hw, zf], [-hw, zr], [hw, zr]] };
     this.vs = null; this.landing = 0;
     this.box = new Box(x, z, car.half.w, car.half.l, heading, -1, 1.6, 'car');
@@ -92,6 +108,7 @@ export class Vehicle {
     return k;
   }
   place(dt) {
+    if (this.remote && this.vs) this.vs.awake = false;       // (a friend's car: where they drive it, on the ground)
     const g = this.car.group, fit = this.groundFit(), S = this.vs?.awake ? this.vs : null;
     this.slope = fit.pitch;
     // on its springs (suspend), or at rest on the ground
@@ -289,35 +306,64 @@ export class Vehicle {
         g4[i] = best;
       }
     } else { g4[0] = fit.fl; g4[1] = fit.fr; g4[2] = fit.rl; g4[3] = fit.rr; }
-    let Fy = 0, Mt = 0, Mp = 0, touching = 0, worst = 0, hit = 0;
-    const sth = Math.sin(S.th), cth = Math.cos(S.th), sph = Math.sin(S.ph), cph = Math.cos(S.ph);
-    for (let i = 0; i < 4; i++) {
-      const [lx, lz] = P.spots[i];
-      const e = S.y - lz * sth + lx * sph - g4[i];                             // (the chassis over this wheel, above its rest)
-      const gd = S.gp ? Math.max(-25, Math.min(25, (g4[i] - S.gp[i]) / dt)) : 0;   // (how fast the ground under it rises)
-      const ed = S.gp ? S.vy - lz * cth * S.wth + lx * cph * S.wph - gd : 0;
-      let F = 0;
-      if (e < P.droop) {
-        // (a damper's valves blow off at speed: it pushes or holds at most ~1.2 times the wheel's share of the car)
-        F = P.k * (P.s0 - e) - Math.max(-3, Math.min(3, P.c * ed));
-        if (e < -P.bump) F += P.kb * (-P.bump - e) - P.cb * Math.min(0, ed);   // (on the bump stop)
-        F = Math.max(0, F);
-        touching++;
-        if (S.air > 0.12 && ed < hit) hit = ed;                                // (the landing: how fast it came down on it)
+    // (just woken: the ground where it stands)
+    const gp = S.gp ??= g4.slice(), gd = this._gd ??= [0, 0, 0, 0], Fm = this._Fm ??= [0, 0, 0, 0];
+    for (let i = 0; i < 4; i++) { gd[i] = Math.max(-25, Math.min(25, (g4[i] - gp[i]) / dt)); Fm[i] = 0; }   // (how fast the ground under it rises)
+    // the wings' push (per unit of the car's mass), by the square of its speed
+    const Hy = this.hyper, aero = Hy?.latAero ? Hy.latAero * Math.min(1, (this.vx * this.vx + this.vz * this.vz) / (Hy.limit * Hy.limit)) : 0;
+    const n = Math.max(1, Math.ceil(dt / SUB - 1e-6)), h = dt / n, air = Math.exp(-AIR * h);
+    let touching = 0, hit = 0, crash = 0;
+    for (let j = 1; j <= n; j++) {
+      const u = j / n;
+      let sth = Math.sin(S.th), cth = Math.cos(S.th), sph = Math.sin(S.ph), cph = Math.cos(S.ph), Fy = 0, Mt = 0, Mp = 0;
+      touching = 0;
+      for (let i = 0; i < 4; i++) {
+        const lx = P.spots[i][0], lz = P.spots[i][1];
+        const e = S.y - lz * sth + lx * sph - (gp[i] + (g4[i] - gp[i]) * u);       // (the chassis over this wheel, above its rest)
+        const ed = S.vy - lz * cth * S.wth + lx * cph * S.wph - gd[i];
+        let F = 0;
+        if (e < P.droop) {
+          // the spring (and the wings' load, carried while the wheel is down), the damper
+          F = P.k * (P.s0 - e) + aero * 0.25 * (1 - e / P.droop);
+          F -= ed < 0 ? P.dB * Math.tanh(P.cB * ed / P.dB) : P.dR * Math.tanh(P.cR * ed / P.dR);
+          const x = -P.bump - e;
+          if (x > 0) F += P.kb * x * (1 + x / 0.035) * (ed <= -0.2 ? 1 : ed >= 0.2 ? 0.45 : 1 - 0.55 * (ed + 0.2) / 0.4) + Math.min(P.dS, -P.cS * Math.min(0, ed));   // (on the bump stop)
+          F = Math.max(0, Math.min(P.Fmax, F));
+          touching++;
+          if (S.air > 0.12 && ed < hit) hit = ed;                                // (the landing: how fast it came down on it)
+        }
+        Fm[i] += F; Fy += F; Mt -= F * lz; Mp += F * lx;
+        if (j === n) { S.e[i] = e; S.drop[i] = -Math.max(-P.bump - 0.02, Math.min(P.droop, e)); }
       }
-      S.e[i] = e; S.load[i] = F / 2.4525;                                       // (a quarter of g: its share at rest)
-      S.drop[i] = -Math.max(-P.bump - 0.02, Math.min(P.droop, e));
-      Fy += F; Mt -= F * lz; Mp += F * lx;
-      worst = Math.min(worst, e + P.bump + 0.07);
+      S.air = touching ? 0 : S.air + h;
+      // gravity, the wings, the springs' push and their turning moments over the car's inertia (semi-implicit Euler)
+      S.vy += (Fy - 9.81 - aero) * h; S.wth += Mt / P.rp2 * h; S.wph += Mp / P.rr2 * h;
+      if (!touching) { S.wth *= air; S.wph *= air; }
+      S.y += S.vy * h; S.th += S.wth * h; S.ph += S.wph * h;
+      // (past its stops a corner would go into the ground: held on it, moved up with it, the blow taken there)
+      for (let pass = 0; pass < 2; pass++) {
+        sth = Math.sin(S.th); cth = Math.cos(S.th); sph = Math.sin(S.ph); cph = Math.cos(S.ph);
+        let any = false;
+        for (let i = 0; i < 4; i++) {
+          const lx = P.spots[i][0], lz = P.spots[i][1];
+          const pen = gp[i] + (g4[i] - gp[i]) * u - P.bump - STOP - (S.y - lz * sth + lx * sph);
+          if (pen <= 0) continue;
+          any = true;
+          const jt = -lz * cth, jp = lx * cph, wi = 1 / (1 + jt * jt / P.rp2 + jp * jp / P.rr2), dq = pen * wi;
+          S.y += dq; S.th += dq * jt / P.rp2; S.ph += dq * jp / P.rr2;
+          const va = S.vy + jt * S.wth + jp * S.wph, want = Math.min(gd[i], LIFT);
+          if (va < want) { const l = (want - va) * wi; S.vy += l; S.wth += l * jt / P.rp2; S.wph += l * jp / P.rr2; crash = Math.max(crash, want - va); }
+        }
+        if (!any) break;
+      }
     }
-    (S.gp ??= [0, 0, 0, 0]).splice(0, 4, ...g4);
-    S.air = touching ? 0 : S.air + dt;
-    if (hit < -1) this.landing = Math.max(this.landing, -hit);
-    // gravity, the springs' push and their turning moments over the car's inertia (semi-implicit Euler: steady at 60 fps)
-    S.vy += (Fy - 9.81) * dt; S.wth += Mt / P.rp2 * dt; S.wph += Mp / P.rr2 * dt;
-    S.y += S.vy * dt; S.th += S.wth * dt; S.ph += S.wph * dt;
-    // (beyond its bump stops the body would go into the ground: a crash landing - held on it, the blow taken)
-    if (worst < 0) { S.y -= worst; if (S.vy < 0) S.vy *= 0.2; S.wth *= 0.5; S.wph *= 0.5; }
+    for (let i = 0; i < 4; i++) { S.load[i] = Fm[i] / n / G4; gp[i] = g4[i]; }   // (1: its share of the car at rest)
+    // (the model has no roof to land on: a car here does not go over - past ~30 deg from the ground under it, it turns
+    // no further that way; its angle is left as it is: the ground may have turned under it, at a bank's edge)
+    if ((S.th - fit.pitch) * S.wth > 0 && Math.abs(S.th - fit.pitch) > 0.52) S.wth = 0;
+    if ((S.ph - fit.roll) * S.wph > 0 && Math.abs(S.ph - fit.roll) > 0.52) S.wph = 0;
+    this.landing = Math.max(this.landing, hit < -1 ? -hit : 0, crash > 1 ? crash : 0);
+    this.crashed = crash;
     // (asleep again once it has stood still on its wheels for a second, the car not driven: back to the plane)
     if (!driven && !moving && touching === 4 && Math.abs(S.vy) < 0.03 && Math.abs(S.wth) < 0.03 && Math.abs(S.wph) < 0.03) { S.still += dt; if (S.still > 1) S.awake = false; }
     else S.still = 0;
@@ -336,6 +382,7 @@ export class Vehicle {
     this.impact = 0;
     for (let it = 0; it < 3; it++) {
       let any = false;
+      const sx = this.x, sz = this.z;
       this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
       for (const b of list) {
         if (b === this.box || b.y1 < gy + 0.45 || b.y0 > gy + 2.2 || b.ghost || b.sapling) continue;   // curbs and decks overhead don't count; a car rides over the young spruces
@@ -371,6 +418,9 @@ export class Vehicle {
         }
       }
       if (!any) break;
+      // (V94) wedged between two things that each push it into the other (two trunks, a fence and a wall, closer than
+      // it is wide): held midway between them - it was thrown from one to the other every frame, 0.9 m at a time
+      if (it === 2) { this.x = (this.x + sx) / 2; this.z = (this.z + sz) / 2; }
     }
     this.z = clamp(this.z, W.Z_MIN, W.Z_MAX);
     this.x = clamp(this.x, W.X_MIN, W.X_MAX);
