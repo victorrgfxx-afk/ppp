@@ -863,6 +863,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * mașina nu se mai dă peste cap: la ~30° față de solul de sub ea nu se mai rotește în sensul acela (modelul nu are plafon pe care să aterizeze);
     * o mașină prinsă între două obstacole mai apropiate decât lățimea ei (doi copaci, un gard și un zid) stă la mijloc: înainte era aruncată 0,9 m de la unul la altul în fiecare cadru (defect vechi de coliziune);
     * din interior, ochii șoferului stau pe un scaun: ce e mai lent de ~3 Hz ajunge întreg, o izbitură ajunge înmuiată.
+    * **V94.1:** tocmai acest filtru strica urcarea în mașini cu camera din interior (o ciocnire de nume în cod: vezi „Test automat”). Reparat și acoperit de un test cu taste reale, în ambele camere.
   * **Măsurat**, aceeași cursă pe DN1 (4,4 km, pe bandă), Peugeot-ul:
 
     | | V93 | V94 |
@@ -1582,3 +1583,11 @@ node tools/smoke-test.mjs shots high
 ```
 
 Încarcă jocul, verifică erorile din consolă, face capturi din cele 10 unghiuri ale pozelor și conduce BMW‑ul câțiva metri.
+
+```bash
+node tools/cars-test.mjs                                    # PORT=8765 implicit; CHROME=calea către un Chromium
+eslint --no-config-lookup -c tools/eslint.config.mjs src
+```
+
+* `cars-test.mjs` (V94.1) urcă în mașini ca un jucător: pe jos, la ușa șoferului, cu tasta F reală, în ambele camere (V), câteva cadre, un pic de accelerație, apoi coboară. Orice eroare aruncată de un cadru pică testul.
+* Lintul caută un nume folosit înainte de declararea lui din aceeași funcție și nume nedeclarate. Asta era greșeala din V94: filtrul pentru ochii șoferului folosea `seat`, iar mai jos în aceeași funcție exista deja o `const seat`. În camera din interior fiecare cadru dădea eroare, tastele apăsate nu se mai „consumau”, așa că F te urca și, în cadrul următor, te cobora la loc. Testele din V94 rulaseră doar cu camera din spate.
