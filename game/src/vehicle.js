@@ -3,6 +3,7 @@ import { Box, boxBox } from './collision.js';
 import { clamp, damp } from './util.js';
 import { W } from './config.js';
 import { DAYLIGHT } from './cars.js';
+import { torque0 } from './tunerdata.js';
 
 // Arcade-realistic car: bicycle-model steering, tyre grip with handbrake drift,
 // 5-speed gearbox for the engine sound, per-wheel ground sampling for pitch/roll.
@@ -20,7 +21,16 @@ const ALL_GRIP = [1, 1, 1], _grips = [1, 1, 1];
 // grip of the road under the tyres, relative to dry asphalt (main.js: ~0.3 on snow): on snow the longitudinal and
 // lateral acceleration stay within mu * g (the hyper tune's 1.43 g of traction scaled the same way)
 // sink: how deep the snow lies under the wheels off the roads (m): it holds the car back; wind: a gale's push (m/s)
-export const TRACTION = { mu: 1, sink: 0, wind: null };
+export const TRACTION = { mu: 1, sink: 0, wind: null, wet: 0 };
+// (V95) what is under the tyres: [grip dry, grip wet - both relative to dry asphalt (mu ~0.85) - rolling resistance dry,
+// wet]. From the usual tables of tyre-road friction (README, V95): asphalt 0.8-0.9 dry and 0.5-0.7 wet, concrete the same
+// dry and 0.6-0.8 wet, rolled gravel 0.4-0.7 dry and 0.3-0.5 wet, an earth road 0.68 dry and ~0.55 wet, grass 0.35
+// (wet grass, setts and paving blocks: taken between their neighbours, no figure found). TRACTION.wet: how wet the
+// ground is (0-1, main.js); snow goes over all of it (TRACTION.mu)
+export const SURF = {
+  asphalt: [1, 0.71, 0.013, 0.014], concrete: [1, 0.8, 0.013, 0.014], paving: [0.9, 0.66, 0.016, 0.017], cobble: [0.82, 0.58, 0.02, 0.021],
+  gravel: [0.68, 0.5, 0.022, 0.026], dirt: [0.8, 0.6, 0.03, 0.05], grass: [0.41, 0.3, 0.06, 0.08],
+};
 
 const HYPER = { P: 1400, A0: 14, top: 580 / 3.6, limit: 500 / 3.6, brake: 14, shifts: [0, 70, 125, 185, 250, 320, 390, 450, 505],
   // cornering: 3.2 g of mechanical grip plus aero downforce growing with v^2 (+1.6 g at 500 km/h);
@@ -54,6 +64,7 @@ const SUSP_HYPER = { f: 1.9, zeta: 0.45, droop: 0.07, bump: 0.06 }, SUSP_OFFROAD
 // track-day hypercar's ~1 t at 275 km/h on 1.4 t), carried by its springs at the height it rides (an active
 // suspension's work): over a crest it stays down up to the speed where v^2 / R > g + the wings' push
 const SUB = 1 / 240, G4 = 9.81 / 4, STOP = 0.07, LIFT = 2, AIR = 1.2;
+const ratio0 = (E, g) => E.G[g - 1];
 const smooth01 = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
 
 export class Vehicle {
@@ -80,7 +91,7 @@ export class Vehicle {
     this.sp = { ...sp, k: w * w / 4, s0: 9.81 / (w * w), cB: cw * 0.57, cR: cw * 1.43, dB: 1.2 * G4, dR: 2 * G4,
       kb: 2.5 * w * w, cS: 0.5 * w, dS: 4 * G4, Fmax: 8 * G4,
       rp2: (0.48 * this.wheelbase) ** 2, rr2: (0.38 * 2 * hw) ** 2, spots: [[-hw, zf], [hw, zf], [-hw, zr], [hw, zr]] };
-    this.vs = null; this.landing = 0;
+    this.vs = null; this.landing = 0; this.eng = null; this.shiftT = 0; this.reverse = false; this.skid = 0; this.spinK = 0; this.surf = 'asphalt';
     this.box = new Box(x, z, car.half.w, car.half.l, heading, -1, 1.6, 'car');
     this.box.vehicle = this;
     world.addDynamic(this.box);
@@ -133,8 +144,34 @@ export class Vehicle {
       if (this.m.steerRatio) this.car.steer.rotation.y = -this.steer * this.m.steerRatio; else this.car.steer.rotation.z = this.steer * 7;
       if (!this.car.steer.matrixAutoUpdate && this.car.steer.rotation.z !== this.car.steer.userData.rz) { this.car.steer.userData.rz = this.car.steer.rotation.z; this.car.steer.updateMatrix(); }
     }
-    this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.update();
+    // (V95) its collision box at its own height: it stood at the home street's level (y -1..1.6) wherever the car was -
+    // on the hills and in the valleys, 54 of the 119 cars let other cars and people on foot straight through them
+    this.box.x = this.x; this.box.z = this.z; this.box.rot = this.h; this.box.y0 = y - 1; this.box.y1 = y + 1.6; this.box.update();
     void dt;
+  }
+  // (V95) the engine and the gearbox of a car with a known engine (tunerdata.js: its torque curve, its mass, its top
+  // speed, which wheels drive). The gears: a typical 5- or 6-speed set, the top one such that the car's real top speed
+  // falls at 97 % of the revs of its peak power (as on the cars checked: 320d 6th, Golf TDI 5th, Corsa 1.2 5th); the
+  // air's drag such that the engine's power there, less 10 % lost on the way to the wheels and the tyres' rolling,
+  // just holds that speed. So nothing is fitted to the acceleration figures: they come out of the torque curve
+  setEngine(sp) {
+    if (!sp || !sp.m || !sp.v) { this.eng = null; return; }
+    const r = this.m.r, m = sp.m + 75, six = sp.gb === 6;
+    const rel = six ? [6.0, 3.35, 2.1, 1.5, 1.2, 1] : sp.type === 'td' ? [4.95, 2.8, 1.8, 1.28, 1] : [4.3, 2.45, 1.62, 1.26, 1];
+    const vTop = sp.v / 3.6, nTop = 0.97 * sp.nP, top = nTop / (vTop / (2 * Math.PI * r) * 60), eta = 0.9;
+    const pTop = torque0(sp, nTop) * nTop / 9549 * 1000;
+    const fs = sp.drv === 'r' ? 0.5 : sp.drv === 'a' ? 0.57 : 0.61, hl = 0.2;                 // (front axle's share of the weight; centre of mass height / wheelbase)
+    this.eng = { sp, m, G: rel.map(k => k * top), eta, cda: 2 * (eta * pTop - 0.013 * m * 9.81 * vTop) / (1.2 * vTop ** 3), red: sp.red, drv: sp.drv ?? 'f', fs, hl,
+      idle: sp.type === 'td' ? 800 : 850, launch: sp.type === 'td' ? 1900 : sp.type === 'tp' ? 2600 : 3200, eco: sp.type === 'td' ? 2000 : 2500, lug: sp.type === 'td' ? 1150 : 1350,
+      shift: 0.3, gain: null, lat: sp.lat ?? 0.85 };
+    this.gear = 1;
+  }
+  // its engine's torque (Nm) at n rpm, with the file written into its ECU (tuner.js: gain per rev column)
+  torqueAt(n) {
+    const E = this.eng, g = E.gain;
+    let k = 1;
+    if (g) { const c = g.cols, q = g.g; if (n <= c[0]) k = q[0]; else if (n >= c[c.length - 1]) k = q[q.length - 1]; else for (let i = 1; i < c.length; i++) if (n <= c[i]) { k = q[i - 1] + (q[i] - q[i - 1]) * (n - c[i - 1]) / (c[i] - c[i - 1]); break; } }
+    return torque0(E.sp, Math.min(n, E.red * 1.02)) * k;
   }
   setLights(on) {
     this.lightsOn = on;
@@ -159,94 +196,118 @@ export class Vehicle {
     const rtX = Math.cos(this.h), rtZ = -Math.sin(this.h);
     let vF = this.vx * fwdX + this.vz * fwdZ;
     let vR = this.vx * rtX + this.vz * rtZ;
-    let accel = 0, hand = false, steerIn = 0;
-    this.brake = 0;
-    if (ctl) {
-      steerIn = ctl.steer;
-      hand = ctl.handbrake;
-      const t = ctl.throttle;
-      const Hy = this.hyper;
-      if (t > 0 && Hy) {
-        if (vF < -0.5) { accel = Hy.brake; this.brake = 1; }
-        else accel = t * Math.min(Hy.A0, Hy.P / Math.max(1, vF));
-      } else if (t < 0 && Hy && vF > 0.5) { accel = -Hy.brake; this.brake = 1; }
-      else if (t > 0) {
-        if (vF < -0.5) { accel = 9; this.brake = 1; }
-        else {
-          const k = 1 - Math.pow(Math.max(0, vF) / this.vmax, 2);
-          const gearBoost = [1.25, 1.0, 0.85, 0.72, 0.62][this.gear - 1];
-          accel = 4.2 * this.power * t * k * gearBoost;
-        }
-      } else if (t < 0) {
-        if (vF > 0.5) { accel = -9.5; this.brake = 1; }
-        else accel = vF > -7 ? -3.2 : 0;
-      }
-      this.throttle = t;
-    } else {
-      this.throttle = 0;
-      hand = true;
+    let accel = 0, hand = false, steerIn = 0, t = 0;
+    this.brake = 0; this.spinK = 0; this.kI = 1;
+    const Hy = this.hyper, E = Hy ? null : this.eng;
+    if (ctl) { steerIn = ctl.steer; hand = ctl.handbrake; t = ctl.throttle; this.throttle = t; }
+    else { this.throttle = 0; hand = true; }
+    // (V95) what is under the tyres (looked up every half metre of the way): its grip, dry or wet, and how hard it is
+    // to roll on; the snow over it; an ATV's knobby tyres bite into loose ground and snow
+    if (ctl || Math.abs(vF) > 0.05 || Math.abs(vR) > 0.05) {
+      const c = this._sf ??= { x: NaN, z: NaN };
+      if (Math.abs(this.x - c.x) + Math.abs(this.z - c.z) > 0.5) { c.x = this.x; c.z = this.z; this.surf = this.world.surfaceAt ? this.world.surfaceAt(this.x, this.z, this.gy) : 'asphalt'; }
     }
-    // the tyres cannot push or brake harder than the road lets them (snow: wheelspin, long stops); an ATV's knobby
-    // tyres and four driven wheels bite into it (snowGrip: the share of the grip the snow takes away)
-    const mu = this.m.snowGrip ? 1 - (1 - TRACTION.mu) * this.m.snowGrip : TRACTION.mu;
-    if (mu < 0.999) { const aMax = (this.hyper ? this.hyper.aMax ?? 14 : 10) * mu; accel = clamp(accel, -aMax, aMax); }
+    const sf = SURF[this.surf] ?? SURF.asphalt, wet = TRACTION.wet ?? 0;
+    let muS = sf[0] + (sf[1] - sf[0]) * wet;
+    if (this.m.offroad && muS < 0.95) muS = Math.min(1, muS * 1.3);
+    const mu = Math.min(muS, this.m.snowGrip ? 1 - (1 - TRACTION.mu) * this.m.snowGrip : TRACTION.mu), crr = sf[2] + (sf[3] - sf[2]) * wet;
+    this.mu = mu;
     // (V93) the wheels drive and brake by the load on them (suspend): light over a crest, nothing in the air
     const [kAll, kFront, kRear] = this.grips();
-    accel *= kAll;
-    // rolling resistance + aero drag + engine braking (the air's drag in the air too)
-    const cd = this.hyper ? this.hyper.cd : 0.0012;
-    const drag = cd * vF * Math.abs(vF) + kAll * Math.sign(vF) * ((ctl && ctl.throttle ? 0.15 : 0.55) + 2.5 * (this.m.float ?? 1) * Math.min(1, TRACTION.sink / 0.3));
-    if (Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle) && kAll > 0.5) { vF *= Math.exp(-6 * dt); }
-    else vF -= drag * dt;
-    if (hand) vF *= Math.exp(-(ctl ? 1.2 : 5) * kRear * dt);
-    vF += accel * dt;
-    // off-road: the hill pulls it back going up and on going down (cars keep their road manners)
-    // (V93: held by its handbrake where it stands, up to ~37 deg - it crept down the hill of the cross, 7 mm a second)
-    if (this.m.offroad && this.slope && !(hand && Math.abs(vF) < 0.5 && Math.abs(Math.sin(this.slope)) < 0.6)) vF -= 9.81 * Math.sin(this.slope) * dt * kAll;
-    if (this.hyper) vF = Math.min(vF, this.hyper.limit);
+    let aGrip = 10 * mu;                                                   // (what its tyres can pull or brake with here, m/s^2)
+    if (Hy) {
+      aGrip = (Hy.aMax ?? 14) * mu;
+      if (t > 0) { if (vF < -0.5) { accel = Hy.brake; this.brake = 1; } else accel = t * Math.min(Hy.A0, Hy.P / Math.max(1, vF)); }
+      else if (t < 0) { if (vF > 0.5) { accel = -Hy.brake; this.brake = 1; } else accel = vF > -7 ? -3.2 : 0; }
+      accel = clamp(accel, -aGrip, aGrip) * kAll;
+    } else if (E && ctl) accel = this.powertrain(dt, t, vF, mu, kAll, kFront, kRear);
+    else if (ctl) {
+      // (a vehicle without an engine of its own here - the ATV's belt drive: a pull that fades toward its top speed)
+      if (t > 0) { if (vF < -0.5) { accel = 9; this.brake = 1; } else accel = 4.2 * this.power * t * (1 - Math.pow(Math.max(0, vF) / this.vmax, 2)) * [1.25, 1.0, 0.85, 0.72, 0.62][this.gear - 1]; }
+      else if (t < 0) { if (vF > 0.5) { accel = -9.5; this.brake = 1; } else accel = vF > -7 ? -3.2 : 0; }
+      accel = clamp(accel, -aGrip, aGrip) * kAll;
+    }
+    // what holds it back: the air (in the air too), the tyres' rolling on what is under them, deep snow - these two at
+    // most 85 % of what its driven wheels can push with there (it crawls on: on a front-drive car's tyres 30 cm of snow
+    // would hold it for good)
+    const sink = 2.5 * (this.m.float ?? 1) * Math.min(1, TRACTION.sink / 0.3);
+    const roll = Math.min(E ? crr * 9.81 + sink : (ctl && ctl.throttle ? 0.15 : 0.55) + (crr - 0.013) * 9.81 + sink, 0.85 * (E ? this.traction(mu) : aGrip));
+    const drag = (E ? 0.6 * E.cda / E.m : Hy ? Hy.cd : 0.0012) * vF * Math.abs(vF) + kAll * Math.sign(vF) * roll;
+    // (V95) the hill: every car is pulled back going up it and on going down it (only the ATV was, before)
+    const hill = this.slope ? -9.81 * Math.sin(this.slope) * kAll : 0;
+    // standing, nothing asked of it: held where it is, on a hill too (to ~37 deg)
+    const held = Math.abs(vF) < 0.3 && (!ctl || !ctl.throttle) && kAll > 0.5 && Math.abs(hill) < 5.9;
+    if (held) vF *= Math.exp(-6 * dt);
+    else vF += (accel - drag + hill) * this.kI * dt;                      // (kI: the engine's own turning mass rides on the gear - powertrain)
+    // the handbrake: the rear wheels locked - what their tyres' sliding gives (~0.35 g; it took 3.7 g off a car at
+    // 108 km/h before V95), holding a standing car against less than that. A parked car: in gear and braked
+    if (hand) { const d = (ctl ? 3.4 * mu : 4.5 + 2 * Math.abs(vF)) * kRear * dt; vF = Math.abs(vF) <= d ? 0 : vF - Math.sign(vF) * d; }
+    if (Hy) vF = Math.min(vF, Hy.limit);
 
     // steering (less lock at speed)
     let maxSteer = 0.58 / (1 + (vF * vF) / 220);
-    const Hs = this.hyper;
+    const Hs = this.hyper, va = Hs ? Hs.vAero ?? Hs.limit : 1, aeroQ = Hs ? Math.min(1, (vF * vF) / (va * va)) : 0;   // (vAero: the speed its wings were set for, when a tune moved its limiter)
+    // (V95) the tyres' side grip here (m/s^2): the car's own on dry asphalt (in g: ~0.85 for a family car - its data
+    // sheet's; the fast car's 3.2 and its wings') times what is under them, less what braking or pulling already asks of
+    // them (the friction circle: of the most the tyres give either way). Before, an ordinary car cornered at 2.5-4.4 g
+    const latFull = (Hs ? Hs.lat + Hs.latAero * aeroQ : (E?.lat ?? this.m.lat ?? 0.85) * 9.81) * mu;
+    const used = Math.min(1, Math.abs(accel) / (Math.max(aGrip, latFull) * Math.max(0.05, kAll) + 1e-6)), latMax = latFull * Math.sqrt(1 - 0.75 * used * used);
     if (Hs && Math.abs(vF) > 12) {
       // steering angle for the grip available at this speed (tyres + downforce), so full lock = the limit
-      const va = Hs.vAero ?? Hs.limit, q = Math.min(1, (vF * vF) / (va * va));   // (vAero: the speed its wings were set for, when a tune moved its limiter)
-      maxSteer = Math.atan((Hs.lat + Hs.latAero * q) * this.wheelbase / (vF * vF));
+      maxSteer = Math.atan(latMax * this.wheelbase / (vF * vF));
       // progressive, rate-limited steering: a tap gives a small correction, holding builds to the limit
       const target = steerIn * maxSteer;
       const building = Math.abs(target) > Math.abs(this.steer) && (this.steer === 0 || Math.sign(target) === Math.sign(this.steer));
       const tIn = Hs.steerIn * (0.45 + 0.55 * Math.min(1, Math.abs(vF) / 83));   // quicker at town speeds, calmer at 300+
       const rate = maxSteer / (building ? tIn : Hs.steerOut);
       this.steer += clamp(target - this.steer, -rate * dt, rate * dt);
-    } else this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
-    // on a slippery road the car turns only as tightly as the tyres hold (lateral mu * g): it runs wide
+    } else {
+      // (an ordinary car's wheel: turned at most a little past what its tyres hold at this speed - with the keys, full
+      // lock is the limit of grip and a trace of squeal)
+      if (!Hs && vF * vF > 9) maxSteer = Math.min(maxSteer, Math.atan(1.12 * latMax * this.wheelbase / (vF * vF)));
+      this.steer = damp(this.steer, steerIn * maxSteer, 6, dt);
+    }
+    // the car turns only as tightly as its tyres hold: asked for more (the brakes put on in a bend, the asphalt
+    // ending), it runs wide and scrubs speed off
     let yawRate = -vF * Math.tan(this.steer) / this.wheelbase * kFront;    // (front wheels off the ground steer nothing)
-    if (mu < 0.999 && Math.abs(vF) > 1) { const lim = 9.81 * mu * 1.05 / Math.abs(vF); yawRate = clamp(yawRate, -lim, lim); }
-    const slip = hand && Math.abs(vF) > 4 ? 1.55 : 1;
-    this.h += yawRate * dt * slip;
-    // tyre scrub: cornering hard costs a little speed
+    let over = 0;
+    if (Math.abs(vF) > 1) {
+      const lim = latMax * Math.max(0.05, kAll) / Math.abs(vF);
+      if (Math.abs(yawRate) > lim) { over = Math.min(1.5, Math.abs(yawRate) / lim - 1); yawRate = Math.sign(yawRate) * lim; }
+    }
+    // (V95) the handbrake in a bend: the rear tyres slide - the car turns further than its way does (the tail out; its
+    // way turned 1.55 times tighter than the tyres hold, before)
+    const hPath = this.h + yawRate * dt;
+    this.h += yawRate * dt * (hand && ctl && Math.abs(vF) > 4 ? 1.55 : 1);
+    // tyre scrub: cornering hard costs a little speed; past the limit, more
     if (Hs) vF -= Math.sign(vF) * Math.abs(vF * yawRate) * Hs.scrub * dt * kFront;
+    if (over > 0) vF -= Math.sign(vF) * Math.min(2.5, over * 2.2) * mu * dt;
 
-    // lateral grip (handbrake lets the rear slide)
-    const grip = (hand && Math.abs(vF) > 3 ? 1.4 : 11) * (0.25 + 0.75 * mu) * kAll;
-    vR *= Math.exp(-grip * dt);
+    // sideways (the handbrake lets the rear slide): the tyres bring a slide back with at most their grip (a car going
+    // sideways at 20 km/h takes ~0.7 s over it; it was stopped in 0.2 s, at over 5 g)
+    const gRate = (hand && Math.abs(vF) > 3 ? 1.4 : 11) * (0.25 + 0.75 * mu) * kAll;
+    vR -= Math.sign(vR) * Math.min(Math.abs(vR) * (1 - Math.exp(-gRate * dt)), latFull * kAll * dt);
     this.lastLat = vR;
-    const nfX = -Math.sin(this.h), nfZ = -Math.cos(this.h);
-    const nrX = Math.cos(this.h), nrZ = -Math.sin(this.h);
+    // (how hard the tyres are sliding, 0-1: past their side grip, the driven wheels spinning, the rear ones locked by
+    // the handbrake, the whole car sideways - the squeal, the marks, the smoke: main.js)
+    const sk = Math.max(Math.min(1, over * 1.6), this.spinK, hand && ctl && Math.abs(vF) > 3 ? 1 : 0, Math.min(1, Math.max(0, Math.abs(vR) - 1.2) / 4)) * (kAll > 0.2 ? 1 : 0);
+    this.skid += (sk - this.skid) * Math.min(1, dt * (sk > this.skid ? 14 : 6));
+    const nfX = -Math.sin(hPath), nfZ = -Math.cos(hPath);
+    const nrX = Math.cos(hPath), nrZ = -Math.sin(hPath);
     this.vx = nfX * vF + nrX * vR;
     this.vz = nfZ * vF + nrZ * vR;
     this.x += this.vx * dt;
     this.z += this.vz * dt;
 
     // body dynamics (springy pitch/roll)
-    const longA = accel - (hand ? vF * 1.2 : 0);
+    const longA = accel - (hand ? Math.sign(vF) * 3 : 0);
     const latA = vF * yawRate;
     const tp = clamp(longA * 0.006, -0.05, 0.05), tr = clamp(-latA * (Hs ? Hs.roll ?? 0.0016 : 0.0065), -0.06, 0.06);   // stiff, low hyper car
     this.pitchV += ((tp - this.pitch) * 60 - this.pitchV * 9) * dt; this.pitch += this.pitchV * dt;
     this.rollV += ((tr - this.roll) * 50 - this.rollV * 8) * dt; this.roll += this.rollV * dt;
     this.spin -= (vF / this.m.r) * dt;
 
-    // gearbox & rpm
+    // gearbox & rpm (a car with its own engine: powertrain)
     const kmh = Math.abs(vF) * 3.6;
     if (this.hyper) {
       const up = this.hyper.shifts;
@@ -256,14 +317,16 @@ export class Vehicle {
       const [r0, r1] = this.hyper.rpm ?? [3000, 8000];
       const target = kmh < 3 ? 900 + (ctl && ctl.throttle > 0 ? 2600 : 0) : r0 + (r1 - r0) * Math.min(1, f);
       this.rpm = damp(this.rpm, this.engineOff ? 0 : target, 10, dt);
-    } else {
+      this.reverse = vF < -0.5;
+    } else if (!E) {
       const up = [0, 22, 45, 70, 98];
       let g = 1; for (let i = 0; i < up.length; i++) if (kmh > up[i]) g = i + 1;
       this.gear = g;
       const wheelRpm = Math.abs(vF) / (2 * Math.PI * this.m.r) * 60;
       const target = Math.max(850, wheelRpm * GEARS[g - 1] * 3.9 + (ctl && ctl.throttle > 0 ? 900 : 0));
       this.rpm = damp(this.rpm, this.engineOff ? 0 : Math.min(6800, target), 8, dt);   // (engineOff: the ignition on, the engine stopped - tuner.js)
-    }
+      this.reverse = vF < -0.5;
+    } else if (!ctl) { this.gear = 1; this.reverse = false; this.rpm = damp(this.rpm, this.engineOff ? 0 : E.idle, 8, dt); }
 
     this.resolveStatic();
     this.suspend(dt, !!ctl);
@@ -271,6 +334,56 @@ export class Vehicle {
     const tl = this.car.lights.tailMat;
     tl.emissiveIntensity = this.brake ? 3.0 : (this.lightsOn ? 0.9 : 0.12 * DAYLIGHT.k);
     this.place(dt);
+  }
+  // (V95) the engine, the clutch and the gearbox for one step: the acceleration they give at the wheels (m/s^2).
+  // The gearbox changes by itself: up at the revs the right foot asks for (2000-2500 going gently, 94 % of the limiter
+  // flat out), down when the revs fall too low or the foot goes down (kickdown, several gears at once); a change takes
+  // 0.3 s with no pull. Pulling away, the clutch slips with the engine held near its launch revs. The driven wheels
+  // push at most what their tyres hold with the weight that is on them as the car squats (front-drive
+  // mu g fs / (1 + mu h/L), rear-drive mu g (1 - fs) / (1 - mu h/L), all four ~mu g): past it they spin (spinK). Off
+  // the throttle in gear the engine holds the car back (~9 % of its peak torque, more with revs). The brakes: all
+  // four wheels at their grip (~1 g dry: 100-0 km/h in ~39 m), anti-lock
+  powertrain(dt, t, vF, mu, kAll, kFront, kRear) {
+    const E = this.eng, r = this.m.r, N = E.G.length, wr = Math.abs(vF) / (2 * Math.PI * r) * 60;
+    let g = Math.min(N, Math.max(1, this.gear | 0)), thr = 0, rev = false;
+    if (t > 0 && vF >= -0.5) thr = t;
+    else if (t < 0 && vF <= 0.5) { thr = -t; rev = true; }
+    else if (t !== 0) this.brake = 1;
+    this.reverse = rev || vF < -0.5;
+    if (this.shiftT > 0) this.shiftT -= dt;
+    else if (!rev) {
+      const upAt = E.eco + (0.94 * E.red - E.eco) * Math.pow(thr, 1.5), dnAt = E.lug + (0.6 * E.red - E.lug) * thr * thr;
+      // (flat out past its power peak, the next gear pulls harder: a six-speed car reaches its top speed in sixth)
+      const n0 = wr * E.G[g - 1];
+      if (g < N && (n0 > upAt || (thr > 0.6 && n0 > E.sp.nP && this.torqueAt(wr * E.G[g]) * E.G[g] > this.torqueAt(n0) * ratio0(E, g) * 1.01))) { g++; this.shiftT = E.shift; }
+      else { let k = g; while (k > 1 && wr * E.G[k - 1] < dnAt && wr * E.G[k - 2] < upAt * 0.92) k--; if (k !== g) { g = k; this.shiftT = E.shift * 0.7; } }
+    } else g = 1;
+    this.gear = g;
+    const ratio = E.G[g - 1], nW = wr * ratio;                           // (the engine's revs with the clutch home)
+    const nE = Math.max(nW, thr > 0 && g === 1 ? E.idle + (E.launch - E.idle) * thr : E.idle);
+    let Tq = 0;
+    if (this.shiftT > 0 || this.engineOff) Tq = 0;
+    else if (thr > 0) Tq = nE > E.red ? 0 : this.torqueAt(nE) * thr;
+    else if (nW > E.idle + 150) Tq = -0.09 * E.sp.nm * (0.4 + nE / E.red);
+    const F = Tq * ratio * E.eta / r / E.m;                              // (at the wheels, per kg of the car)
+    // the engine's own turning mass rides on the gear (a flywheel of ~0.2 kg m^2: in first, a third of the car again)
+    const kI = 1 / (1.03 + 0.0016 * ratio * ratio);
+    const aTrac = this.traction(mu) * (E.drv === 'f' ? kFront : E.drv === 'r' ? kRear : kAll);
+    let a;
+    if (F > 0) {
+      if (F * kI > aTrac) { this.spinK = Math.min(1, (F * kI - aTrac) / Math.max(0.5, aTrac) * 2); a = aTrac; } else { a = F; this.kI = kI; }
+      if (rev) a = -a;
+    } else a = -Math.sign(vF) * Math.min(-F, aTrac);                      // (off the throttle: the engine holds it back)
+    if (this.brake) a = clamp(a - Math.sign(vF) * 10 * mu * Math.abs(t) * kAll, -10.4 * mu, 10.4 * mu);
+    // (the rev counter: the wheels spinning take the engine up with them)
+    const nShow = this.shiftT > 0 ? Math.max(E.idle, nW) : nE + Math.max(0, 0.92 * E.red - nE) * 0.6 * this.spinK;
+    this.rpm = damp(this.rpm, this.engineOff ? 0 : nShow, this.shiftT > 0 ? 9 : 18, dt);
+    return a;
+  }
+  // what its driven wheels can push with (m/s^2) on a grip of mu: the weight on them as the car squats
+  traction(mu) {
+    const E = this.eng, mg = 9.81 * mu;
+    return E.drv === 'f' ? mg * E.fs / (1 + mu * E.hl) : E.drv === 'r' ? mg * (1 - E.fs) / (1 - mu * E.hl) : mg * 0.97;
   }
   // (V93) the springs: one step of the car's rise and fall, pitch and roll over its 4 wheels (update's sub-steps), and
   // the loads the wheels carry. A parked car sleeps on the ground (the plane through its wheels: place) until it is

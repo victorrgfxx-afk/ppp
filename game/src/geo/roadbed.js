@@ -299,6 +299,14 @@ export function roadSurfaceAt(x, z, ref) {
   roadsAt(x, z, (pl, k, t, o, y) => { if (!pl.flat && (ref === undefined || y <= ref + 0.6) && (best === null || y > best)) best = y; });
   return best;
 }
+// (V95) what a wheel at (x, z) rolls on: the road's surface there (asphalt, concrete, paving, cobble, gravel, dirt; its
+// shoulders with it), null off the roads. With ref (the wheel's height): the road within 1.5 m of it - not the one
+// under a bridge, nor the one over it
+export function roadSurfAt(x, z, ref) {
+  let s = null, by = -Infinity;
+  roadsAt(x, z, (pl, k, t, o, y) => { if ((ref === undefined || Math.abs(y - ref) < 1.5) && y > by) { by = y; s = pl.surf; } });
+  return s;
+}
 // is (x, z) on a road (pad metres round it; negative: that far inside)?
 export function onRoad(x, z, pad = 0) {
   let hit = false;

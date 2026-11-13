@@ -113,7 +113,7 @@ export class HUD {
     this.el.speed.classList.toggle('on', !!st.driving);
     if (st.driving) {
       this.el.speedVal.textContent = Math.round(Math.abs(st.kmh));
-      this.el.gear.textContent = st.kmh < -1 ? 'R' : st.gear;
+      this.el.gear.textContent = st.gear === 'R' || st.kmh < -1 ? 'R' : st.gear;
       this.el.carName.textContent = st.carName;
     }
     this.el.loc.textContent = st.location;

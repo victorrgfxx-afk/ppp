@@ -26,25 +26,29 @@ export const PS = 7023.5;                    // P [PS] = T [Nm] x n [rpm] / 7023
 // nT: where the torque peaks (from, to rpm), nP: where the power does, red: the limiter; cc, cyl; ecu: as the sellers list
 // it (blank where they do not agree); vlim: an electronic speed limiter (km/h); est: no seller's figure for this
 // engine - the Stage 1 taken from the general rule (a turbo petrol's ~10 %, an aspirated engine's ~7 %); pump: a
-// distributor pump, no common rail
+// distributor pump, no common rail.
+// (V95) the car round the engine, for its engine and gearbox in the game (vehicle.js): m its kerb weight (kg), v its top
+// speed (km/h), drv its driven wheels (f, r, a: all), gb its gears, t100 the factory's 0-100 km/h (s: not used by the
+// model - what the tests compare its answer with), lat its side grip on dry asphalt (g: typical of its kind on a
+// skidpad - a sports saloon ~0.9, a family hatchback ~0.82, a van ~0.72 - not a measurement of that car)
 export const SPECS = [
-  { re: /BMW Seria 3/, make: 'BMW', wmi: 'WBA', label: '320d · 2.0 turbodiesel (N47)', type: 'td', hp: 177, nm: 350, s1: [209, 419], nT: [1750, 3000], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17CP02' },
-  { re: /BMW Seria 1/, make: 'BMW', wmi: 'WBA', label: '118d · 2.0 turbodiesel (N47)', type: 'td', hp: 143, nm: 300, s1: [183, 400], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17C41' },
-  { re: /Opel Corsa/, make: 'Opel', wmi: 'W0L', label: '1.2 16V · benzină aspirat (Z12XE)', type: 'na', hp: 75, nm: 110, s1: [82, 125], nT: [4000, 4000], nP: 5600, red: 6400, cc: 1199, cyl: 4, ecu: 'Bosch ME1.5.5' },
-  { re: /Dacia Logan/, make: 'Dacia', wmi: 'UU1', label: '1.4 MPI · benzină aspirat', type: 'na', hp: 75, nm: 112, s1: [82, 122], nT: [3000, 3000], nP: 5500, red: 6200, cc: 1390, cyl: 4, ecu: '' },
-  { re: /Dacia Sandero/, make: 'Dacia', wmi: 'UU1', label: '0.9 TCe 90 · benzină turbo', type: 'tp', hp: 90, nm: 140, s1: [107, 175], nT: [2250, 3500], nP: 5250, red: 6200, cc: 898, cyl: 3, ecu: 'Valeo V50' },
-  { re: /Ford Focus/, make: 'Ford', wmi: 'WF0', label: '1.6 TDCi 109 · turbodiesel (G8DA)', type: 'td', hp: 109, nm: 240, s1: [141, 315], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1560, cyl: 4, ecu: 'Bosch EDC16C34' },
-  { re: /VW Golf/, make: 'Volkswagen', wmi: 'WVW', label: '1.9 TDI 90 · turbodiesel (ALH)', type: 'td', hp: 90, nm: 210, s1: [122, 267], nT: [1900, 2400], nP: 4000, red: 4600, cc: 1896, cyl: 4, ecu: 'Bosch EDC15V', pump: true },
-  { re: /Ford Kuga|^SUV/, make: 'Ford', wmi: 'WF0', label: '2.0 TDCi 140 · turbodiesel (UFDA)', type: 'td', hp: 140, nm: 320, s1: [175, 400], nT: [1750, 2750], nP: 3750, red: 4600, cc: 1997, cyl: 4, ecu: 'Delphi DCM3.5' },
-  { re: /Mercedes argintiu/, make: 'Mercedes-Benz', wmi: 'WDD', label: 'A 180 CDI · 2.0 turbodiesel (W169)', type: 'td', hp: 109, nm: 250, s1: [139, 310], nT: [1600, 2600], nP: 4200, red: 4800, cc: 1991, cyl: 4, ecu: '' },
-  { re: /Renault Kangoo/, make: 'Renault', wmi: 'VF1', label: '1.5 dCi 90 · turbodiesel (K9K)', type: 'td', hp: 90, nm: 200, s1: [108, 243], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1461, cyl: 4, ecu: 'Delphi DCM3.4' },
-  { re: /VW Transporter/, make: 'Volkswagen', wmi: 'WV1', label: 'T5 2.0 TDI 140 · turbodiesel (CAAC)', type: 'td', hp: 140, nm: 340, s1: [180, 410], nT: [1750, 2500], nP: 3500, red: 4500, cc: 1968, cyl: 4, ecu: 'Bosch EDC17CP20' },
-  { re: /Fiat Dobl/, make: 'Fiat', wmi: 'ZFA', label: '1.3 Multijet 90 · turbodiesel', type: 'td', hp: 90, nm: 200, s1: [112, 247], nT: [1500, 2500], nP: 4000, red: 4800, cc: 1248, cyl: 4, ecu: 'Marelli MJ8DF' },
-  { re: /^Peugeot 508$/, make: 'Peugeot', wmi: 'VF3', label: '2.0 HDi 163 · turbodiesel (DW10)', type: 'td', hp: 163, nm: 340, s1: [191, 400], nT: [2000, 3000], nP: 3750, red: 4750, cc: 1997, cyl: 4, ecu: '' },
+  { re: /BMW Seria 3/, make: 'BMW', wmi: 'WBA', label: '320d · 2.0 turbodiesel (N47)', type: 'td', hp: 177, nm: 350, s1: [209, 419], nT: [1750, 3000], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17CP02', m: 1430, v: 228, drv: 'r', gb: 6, lat: 0.9, t100: 7.9 },
+  { re: /BMW Seria 1/, make: 'BMW', wmi: 'WBA', label: '118d · 2.0 turbodiesel (N47)', type: 'td', hp: 143, nm: 300, s1: [183, 400], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17C41', m: 1320, v: 210, drv: 'r', gb: 6, lat: 0.88, t100: 9.0 },
+  { re: /Opel Corsa/, make: 'Opel', wmi: 'W0L', label: '1.2 16V · benzină aspirat (Z12XE)', type: 'na', hp: 75, nm: 110, s1: [82, 125], nT: [4000, 4000], nP: 5600, red: 6400, cc: 1199, cyl: 4, ecu: 'Bosch ME1.5.5', m: 910, v: 170, drv: 'f', gb: 5, lat: 0.8, t100: 13.0 },
+  { re: /Dacia Logan/, make: 'Dacia', wmi: 'UU1', label: '1.4 MPI · benzină aspirat', type: 'na', hp: 75, nm: 112, s1: [82, 122], nT: [3000, 3000], nP: 5500, red: 6200, cc: 1390, cyl: 4, ecu: '', m: 975, v: 162, drv: 'f', gb: 5, lat: 0.78, t100: 13.0 },
+  { re: /Dacia Sandero/, make: 'Dacia', wmi: 'UU1', label: '0.9 TCe 90 · benzină turbo', type: 'tp', hp: 90, nm: 140, s1: [107, 175], nT: [2250, 3500], nP: 5250, red: 6200, cc: 898, cyl: 3, ecu: 'Valeo V50', m: 980, v: 175, drv: 'f', gb: 5, lat: 0.8, t100: 11.1 },
+  { re: /Ford Focus/, make: 'Ford', wmi: 'WF0', label: '1.6 TDCi 109 · turbodiesel (G8DA)', type: 'td', hp: 109, nm: 240, s1: [141, 315], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1560, cyl: 4, ecu: 'Bosch EDC16C34', m: 1265, v: 188, drv: 'f', gb: 5, lat: 0.86, t100: 10.9 },
+  { re: /VW Golf/, make: 'Volkswagen', wmi: 'WVW', label: '1.9 TDI 90 · turbodiesel (ALH)', type: 'td', hp: 90, nm: 210, s1: [122, 267], nT: [1900, 2400], nP: 4000, red: 4600, cc: 1896, cyl: 4, ecu: 'Bosch EDC15V', pump: true, m: 1200, v: 180, drv: 'f', gb: 5, lat: 0.82, t100: 12.0 },
+  { re: /Ford Kuga|^SUV/, make: 'Ford', wmi: 'WF0', label: '2.0 TDCi 140 · turbodiesel (UFDA)', type: 'td', hp: 140, nm: 320, s1: [175, 400], nT: [1750, 2750], nP: 3750, red: 4600, cc: 1997, cyl: 4, ecu: 'Delphi DCM3.5', m: 1590, v: 188, drv: 'a', gb: 6, lat: 0.8, t100: 10.6 },
+  { re: /Mercedes argintiu/, make: 'Mercedes-Benz', wmi: 'WDD', label: 'A 180 CDI · 2.0 turbodiesel (W169)', type: 'td', hp: 109, nm: 250, s1: [139, 310], nT: [1600, 2600], nP: 4200, red: 4800, cc: 1991, cyl: 4, ecu: '', m: 1280, v: 186, drv: 'f', gb: 6, lat: 0.8, t100: 10.8 },
+  { re: /Renault Kangoo/, make: 'Renault', wmi: 'VF1', label: '1.5 dCi 90 · turbodiesel (K9K)', type: 'td', hp: 90, nm: 200, s1: [108, 243], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1461, cyl: 4, ecu: 'Delphi DCM3.4', m: 1294, v: 158, drv: 'f', gb: 5, lat: 0.75, t100: 15.0 },
+  { re: /VW Transporter/, make: 'Volkswagen', wmi: 'WV1', label: 'T5 2.0 TDI 140 · turbodiesel (CAAC)', type: 'td', hp: 140, nm: 340, s1: [180, 410], nT: [1750, 2500], nP: 3500, red: 4500, cc: 1968, cyl: 4, ecu: 'Bosch EDC17CP20', m: 1850, v: 170, drv: 'f', gb: 6, lat: 0.72, t100: 12.3 },
+  { re: /Fiat Dobl/, make: 'Fiat', wmi: 'ZFA', label: '1.3 Multijet 90 · turbodiesel', type: 'td', hp: 90, nm: 200, s1: [112, 247], nT: [1500, 2500], nP: 4000, red: 4800, cc: 1248, cyl: 4, ecu: 'Marelli MJ8DF', m: 1245, v: 156, drv: 'f', gb: 5, lat: 0.74, t100: 14.9 },
+  { re: /^Peugeot 508$/, make: 'Peugeot', wmi: 'VF3', label: '2.0 HDi 163 · turbodiesel (DW10)', type: 'td', hp: 163, nm: 340, s1: [191, 400], nT: [2000, 3000], nP: 3750, red: 4750, cc: 1997, cyl: 4, ecu: '', m: 1540, v: 223, drv: 'f', gb: 6, lat: 0.86, t100: 8.9 },
   { re: /Maybach/, make: 'Mercedes-Maybach', wmi: '4JG', label: 'GLS 600 · 4.0 V8 biturbo (M177)', type: 'tp', hp: 557, nm: 730, s1: [613, 803], nT: [2500, 5000], nP: 6250, red: 7000, cc: 3982, cyl: 8, ecu: '', vlim: 250, est: true },
   { re: /ATV/, make: 'ATV', wmi: '', label: '495 cm³ · monocilindru, injecție', type: 'na', hp: 38, nm: 39, s1: [40.7, 41.7], nT: [5750, 5750], nP: 7000, red: 7800, cc: 495, cyl: 1, ecu: '', est: true },
 ];
-const GENERIC = { make: 'Auto', wmi: '', label: '1.5 turbodiesel', type: 'td', hp: 90, nm: 200, s1: [110, 245], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1461, cyl: 4, ecu: '', est: true };
+const GENERIC = { make: 'Auto', wmi: '', label: '1.5 turbodiesel', type: 'td', hp: 90, nm: 200, s1: [110, 245], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1461, cyl: 4, ecu: '', est: true, m: 1300, v: 170, drv: 'f', gb: 5, lat: 0.82 };
 
 // the car's data: its engine's (by its name), or - a car the game itself tuned (v.hyper: the user's Peugeot at 1400 W/kg)
 // - what its own tune makes at an assumed 1500 kg, a Stage 1 on it taken at the low end of a turbo petrol's (+10 %)

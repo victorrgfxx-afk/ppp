@@ -25,6 +25,8 @@ import { buildMaybach, MAYBACH_TUNE } from './maybach.js';
 import { DOBLO_OPTS } from './doblo.js';
 import { keepClear } from './geo/trees.js';
 import { Vehicle, TRACTION } from './vehicle.js';
+import { specFor } from './tunerdata.js';
+import { roadSurfAt } from './geo/roadbed.js';
 import { FirDetail } from './geo/firs.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
@@ -400,6 +402,12 @@ async function main() {
   const world = new CollisionWorld();
   world.terrainFn = geoGround;
   world.streetZ = [GEO.meta.street.z0, GEO.meta.street.z1];
+  // (V95) what the tyres roll on at (x, z): the home street's asphalt, its pavers to the east and its grass verge to the
+  // west; out in the world a road's own surface (as mapped), or open ground - grass
+  world.surfaceAt = (x, z, ref) => {
+    if (z > world.streetZ[0] && z < world.streetZ[1] && x > W.WEST_FENCE - 0.4 && x < W.EAST_FENCE + 0.4) return Math.abs(x) < W.ROAD_HALF + 0.5 ? 'asphalt' : x > 0 ? 'paving' : 'grass';
+    return roadSurfAt(x, z, ref) ?? 'grass';
+  };
   const geoWorld = buildGeoWorld(scene, world, Q, renderer, gt, (label, ms) => console.log('[geo]', label, Math.round(ms), 'ms'));
   for (const m of geoWorld.far) farScene.add(m);
   FAR.uH0.value = GEO.meta.origin.h0;
@@ -416,6 +424,7 @@ async function main() {
     scene.add(car.group);
     const v = new Vehicle(car, world, x, z, h, opts);
     if (opts?.name) v.name = opts.name;   // the photographed make when the body is a stand-in
+    v.setEngine(v.hyper || v.m.offroad ? null : specFor(v));   // (V95: its own engine and gearbox, by its data sheet)
     vehicles.push(v);
     return v;
   };
@@ -509,7 +518,12 @@ async function main() {
       const px = x + dz * off, pz = z - dx * off, h = Math.atan2(-dx, -dz);
       if (bridgeHeight(px, pz) !== null || nearView(px, pz)) continue;   // not on or under a bridge, not in a photo
       const probe = new world.Box(px, pz, 1.05, 2.4, h), gy = world.groundHeight(px, pz);
-      if (world.query(px, pz, 4, []).some(b => b.y1 > gy + 0.45 && b.y0 < gy + 2.2 && boxBox(probe, b))) continue;
+      const hits = world.query(px, pz, 4, []).filter(b => b.y1 > gy + 0.45 && b.y0 < gy + 2.2 && boxBox(probe, b));
+      // (V95) a place another parked car already has: left empty (the cars' boxes stood at the home street's height, so
+      // on the hills this test did not see them: 4 pairs stood one in another). Its draws are still taken: every other
+      // car stays where it was
+      if (hits.length && hits.every(b => b.vehicle)) { rr(); rr(); rr(); placed++; continue; }
+      if (hits.length) continue;
       const v = park(models[placed % models.length], paintMaterial(paints[Math.floor(rr() * paints.length)], { metallic: rr() * 0.8, rough: 0.3, dusty: rr() * 0.4 }), plates[placed % 3], px, pz, h, {});
       v.update(0.016, null);
       placed++;
@@ -1635,7 +1649,7 @@ async function main() {
     const yaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
     const dHome = Math.hypot(pos.x - 6, pos.z - 0);
     hud.update(dt, {
-      prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active?.gear ?? 1, carName: active ? active.name + (active.tune ? ' · ' + active.tune.label : '') : '',
+      prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active ? (active.reverse ? 'R' : active.gear) : 1, carName: active ? active.name + (active.tune ? ' · ' + active.tune.label : '') : '',
       x: pos.x, z: pos.z, yaw,
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active || v === riding })),
       friends: others.list(mp, pos),
@@ -1686,6 +1700,7 @@ async function main() {
     SNOW.uSnowLight.value = rainLight;
     TRACTION.mu = 1 - 0.68 * Math.min(1, SNOW.uSnow.value * 1.4);   // ~0.3 on snow (packed snow 0.2-0.3, dry asphalt 0.8-1)
     TRACTION.sink = offRoad ? dep.value : 0;                            // (deep snow off the roads holds the wheels back)
+    TRACTION.wet = RAIN.uWet.value;                                     // (V95: wet ground holds less - vehicle.js, SURF)
     // a gale pushes the car and you, less in the lee of what stands upwind (shelter, above)
     if (storm > 0.05) {
       if ((frameNo % 3) === 0) {
@@ -1849,7 +1864,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { tuner, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { tuner, TRACTION, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

@@ -14,7 +14,7 @@ import { mergeByMaterial } from './cars.js';
 export const ATV_MODEL = {
   name: 'ATV 4x4 (500 cc)', L: 2.15, W: 1.18, axles: [0.4, 1.69], r: 0.3175, tireW: 0.23,
   pillars: [1.0, 1.6], belt: [[0, 0.9], [2.15, 0.9]], seat: { z: 0.04, eye: 1.58 }, steerRatio: 1.15,
-  snowGrip: 0.45, float: 0.35, offroad: true, chase: [4.3, 1.15], headY: 0.72, roofH: 1.12, atv: true,
+  snowGrip: 0.45, float: 0.35, offroad: true, lat: 0.62, chase: [4.3, 1.15], headY: 0.72, roofH: 1.12, atv: true,
 };
 
 const pose = (x, y, z, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));

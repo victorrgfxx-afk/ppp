@@ -88,6 +88,6 @@ export class Walker {
     this.root.rotation.set(0, this.h, 0);
     this.body.rotation.x = -this.fall * 1.45;
     this.body.position.y += this.fall * 0.12;
-    this.box.x = this.x; this.box.z = this.z; this.box.y1 = this.down > 0 ? 0.3 : 2; this.box.update();
+    this.box.x = this.x; this.box.z = this.z; this.box.y0 = y - 1; this.box.y1 = y + (this.down > 0 ? 0.3 : 2); this.box.update();   // (V95: at the height he walks at)
   }
 }

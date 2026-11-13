@@ -229,6 +229,9 @@ export class Tuner {
     const sp = this.spec(v), st = this.stockOf(v), maps = saved ? this.mapsFrom(v, saved) : st, ev = evaluate(sp, maps, st), g = gameTune(sp, ev);
     const s0 = v.stock ??= { power: v.power, vmax: v.vmax, hyper: v.hyper };
     const same = !saved || maps.every((m, k) => m.v.every((r, i) => r.every((x, j) => Math.abs(x - st[k].v[i][j]) < 1e-9)));
+    // (V95) a car with its own engine in the game (vehicle.js): the file's torque, rev column by rev column, is what its
+    // engine now gives - its pull in every gear and its top speed follow from it
+    if (v.eng) v.eng.gain = same ? null : { cols: ev.cols, g: ev.gain };
     if (same) { v.power = s0.power; v.vmax = s0.vmax; v.hyper = s0.hyper; v.tune = null; return ev; }
     if (s0.hyper) {
       // (a car on the hyper model: its power to weight, its pull where the tyres still hold, its limiter where the map
