@@ -844,6 +844,68 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Fizica mașinilor refăcută pe date reale, efecte la condus, drumuri fără fisuri (V95)** (`src/vehicle.js`, `src/tunerdata.js`, `src/wheelfx.js`, `src/geo/roads.js`, `src/geo/roadbed.js`, `src/main.js`, `src/audio.js`, `src/tuner.js`, `src/npc.js`, `src/player.js`, `src/hud.js`):
+  * **Erorile găsite (audit automat) și ce era:**
+    * **coliziunile stăteau la nivelul străzii de acasă** (y −1…1,6 m) oriunde ar fi fost mașina: pe dealuri și în văi 54 din 119 mașini lăsau celelalte mașini și oamenii să treacă prin ele. Acum cutia urmează mașina (și pietonul). 4 mașini parcate la întâmplare stăteau una în alta (testul de parcare nu le vedea): scoase, rămân 115;
+    * **în viraj o mașină obișnuită ținea 2,5–4,4 g** (nicio limită de aderență pe uscat); acum 0,72–0,9 g, cât ține clasa ei;
+    * **frâna de mână frâna proporțional cu viteza**: ~3,7 g la 108 km/h. Acum e puntea spate blocată (~0,38 g) și coada iese în viraj;
+    * **panta trăgea doar ATV-ul**; acum toate mașinile (în urcare, în coborâre), iar oprită pe pantă mașina stă pe loc;
+    * **suprafața nu conta** (doar zăpada), iar prima versiune a citirii ei nu rula deloc (o comparație cu NaN: totul era „asfalt”; prins de test);
+    * **toate mașinile accelerau la fel** (aceeași formulă, câte un coeficient), schimbau treptele după viteză și motorul nu urca niciodată în turație;
+    * **la 875 de îmbinări de drumuri** asfaltul avea o fisură (o pană deschisă pe exteriorul curbei: linie neagră peste asfalt și marcaje, terenul de dedesubt la vedere) în care cădeau roțile — 201 mai adânci de 10 cm, cea mai adâncă 1,32 m;
+    * **ieșind din mașină sub un pod** ajungeai sus, pe pod; o mașină de pe pod se putea „lua” de dedesubt;
+    * **la ciocniri toate mașinile cântăreau la fel** (o Corsa arunca o dubă cât o arunca duba pe ea).
+  * **Motor și cutie de viteze pentru fiecare mașină** (`vehicle.js`, `tunerdata.js`): curba de cuplu a motorului ei (cea folosită de autotuner), 5 sau 6 trepte, masa, roțile motoare. Treapta de sus e aleasă astfel încât viteza maximă reală să cadă la 97% din turația puterii maxime; rezistența aerului, astfel încât puterea motorului să țină exact acea viteză. **Accelerația nu e potrivită pe nimic**: iese din cuplu, trepte, masă și aderență. Ambreiajul patinează la plecare, roțile motoare trag cât le ține greutatea de pe ele (față / spate / 4×4), cutia schimbă singură după cât apeși (2000–2500 rpm ușor, ~94% din limitator la podea, kickdown peste mai multe trepte), motorul frânează când ridici piciorul, marșarier („R” în bord). Frânele: ~1 g pe uscat, cu ABS.
+  * **Măsurat** pe un teren plat de test, la 120 de cadre pe secundă (tabelul complet: 0–100 km/h, viteză maximă; fabrică = fișa tehnică):
+
+    | mașina | 0–100 fabrică | 0–100 joc | v. max fabrică | v. max joc |
+    |---|---|---|---|---|
+    | BMW 320d (E90) | 7,9 s | 7,98 s | 228 | 227,8 |
+    | BMW 118d | 9,0 s | 8,93 s | 210 | 209,8 |
+    | Ford Kuga 2.0 TDCi 4×4 | 10,6 s | 10,52 s | 188 | 187,9 |
+    | Ford Focus 1.6 TDCi | 10,9 s | 11,1 s | 188 | 187,8 |
+    | Mercedes A 180 CDI | 10,8 s | 11,26 s | 186 | 185,9 |
+    | Dacia Sandero 0.9 TCe | 11,1 s | 11,79 s | 175 | 174,9 |
+    | VW Golf IV 1.9 TDI 90 | 12,0 s | 12,56 s | 180 | 179,7 |
+    | VW T5 2.0 TDI 140 | 12,3 s | 12,55 s | 170 | 169,9 |
+    | Opel Corsa C 1.2 | 13,0 s | 13,14 s | 170 | 169,9 |
+    | Dacia Logan 1.4 MPI | 13,0 s | 14,58 s | 162 | 161,9 |
+    | Renault Kangoo 1.5 dCi 90 | 15,0 s | 13,9 s | 158 | 157,9 |
+    | Fiat Doblò 1.3 Multijet 90 | 14,9 s | 13,32 s | 156 | 156,0 |
+    | Peugeot 508 2.0 HDi 163 | 8,6 s | 9,07 s | 225 | 223,5 |
+
+    * 10 din 13 sunt la ±0,7 s de cifra de fabrică; Logan-ul iese mai lent cu 1,6 s, Doblò și Kangoo mai rapide cu 1,1–1,6 s (curba de cuplu și treptele sunt modelate, nu ale lor exacte);
+    * frânare 100–0 km/h pe asfalt uscat: 37 m la toate; doar cu frâna de mână: ~100 m; viraj: 0,72–0,9 g după clasă (berlină sport 0,9, compactă 0,82, dubă 0,72, ATV 0,62 — valori tipice clasei, nu măsurători ale fiecărui model);
+    * Peugeot-ul tău (500 km/h) și Maybach-ul își păstrează modelele lor (2,02 s / 4,93 s până la 100), ATV-ul tracțiunea lui pe curea.
+  * **Suprafața de sub roți** (asfalt, beton, pavele, piatră cubică, pietriș, pământ, iarbă; uscat sau ud — ploaia udă drumul treptat): aderența și rezistența la rulare ale fiecăreia. Golf-ul, frânare 100–0 / viraj:
+
+    | | uscat | ud |
+    |---|---|---|
+    | asfalt | 37 m / 0,82 g | 52 m / 0,58 g |
+    | beton | 37 m / 0,82 g | 46 m / 0,66 g |
+    | pavele / piatră cubică | 41 / 45 m | – |
+    | pietriș | 54 m / 0,56 g | 71 m / 0,41 g |
+    | pământ | 46 m / 0,65 g | 58 m / 0,49 g |
+    | iarbă | 79 m / 0,33 g | 97 m / 0,23 g |
+
+    * pe zăpadă (aderență ~0,3): 110 m; BMW-ul cu tracțiune spate ajunge la 100 km/h în 19,5 s, Kuga 4×4 în 12,2 s;
+    * ATV-ul cu anvelope de teren pierde mai puțin pe pietriș și iarbă.
+  * **Panta**, pe cele mai abrupte bucăți de drum din hartă (până la 25%, piatră cubică): oprită, mașina stă (și parcată); pleacă în rampă; lăsată liber, coboară; frâna de mână o oprește.
+  * **Ciocniri:** lovitura se împarte după mase (Corsa de 985 kg în T5-ul de 1925 kg la 50 km/h: duba pleacă cu 30 km/h; invers, Corsa cu 57). În 58 de încercări (zid subțire și gros, 30–500 km/h, 10–144 cadre/s; mașină în mașină la 50–300 km/h) nimic nu trece prin zid și energia nu crește niciodată.
+  * **Același rezultat la orice FPS:** Golf-ul la 20, 30, 60, 144 și 240 de cadre pe secundă: 0–100 în 12,55–12,65 s, frânare 36,9–37,5 m.
+  * **Drumurile:** unde două drumuri din hartă se continuă unul pe altul (966 de îmbinări), capetele lor au acum aceeași secțiune transversală (pe bisectoarea cotului, cu lățimea păstrată); capătul unui pod rămâne cum a fost construit, drumul de acces se aliniază la el. Fisuri: 875 → 183 (cele rămase, mai ales pe poteci, au cel mult 6 cm). Pe DN1, la 130 km/h, Golf-ul: aplecare maximă 7,5° → 1,8°, ruliu 5,2° → 1,5°.
+  * **Podurile:** cobori din mașină la nivelul ei (sub pod rămâi sub pod); o mașină de pe pod nu mai poate fi „luată” de dedesubt (testat la 4 poduri).
+  * **Efecte la condus** (`wheelfx.js`):
+    * urme negre de cauciuc pe drumurile pavate, de lățimea anvelopei, roată cu roată (spatele la frâna de mână, roțile motoare când patinează, fața când împinge în afara virajului, toate când mașina merge într-o parte); mai slabe pe ud; dispar după ~3 minute;
+    * fum de cauciuc acolo; praf pe drumurile de pietriș și pământ (doar pe uscat), bulgări de pământ pe iarbă, praf la aterizări dure;
+    * sunetul anvelopelor urmează cât alunecă: un viraj la limită scârțâie ușor, frâna de mână și patinarea urlă; pe pietriș și pământ un hârșâit, pe ud un șuierat, pe zăpadă nimic.
+    * Testat cu tastele reale: pe DN1, frână de mână la 81 km/h: 174 de segmente de urmă, fum, mașina rotită 45°; pe pietriș la 42 km/h: 244 de nori de praf.
+  * **Teste de anduranță** (toate fără valori invalide):
+    * 3 trasee (DN1 4,4 km, drum secundar 1,85 km, terțiar 2,28 km), 4 mașini, 30–200 km/h: toate cursele terminate; la viteze legale niciun zbor (singurul, scurt, la 90 km/h pe terțiar, e la o îmbinare de mai jos);
+    * pe jos: 36 de plimbări de 8 s din puncte la întâmplare (mers, alergat, sărituri, întoarceri; 17.280 de cadre): niciodată sub pământ, niciun salt, niciodată blocat;
+    * autotunerul pe noul motor: Stage 1 la 320d: 0–100 7,98 → 7,03 s, v. max 228 → 243 km/h; Golf 12,56 → 9,69 s; Corsa 13,14 → 11,69 s; Sandero 11,79 → 9,62 s; înapoi la original: exact cifrele de serie.
+  * **Ce rămâne:** la 12 îmbinări dintre străzile construite de mână (repere potrivite după poze) și drumurile obișnuite nivelul diferă cu peste 10 cm (o parte sunt scări și poteci); de pildă la capătul Str. Uzinei spre intersecție, o treaptă de ~14 cm. Le las așa: sunt reglate după poze.
+  * **Surse:** coeficienți de frecare anvelopă–drum: [Engineering ToolBox](https://www.engineeringtoolbox.com/friction-coefficients-d_778.html), [HPWizard](https://hpwizard.com/tire-friction-coefficient.html), [Engineers Edge](https://www.engineersedge.com/mechanics_machines/tire_traction_breakaway_13634.htm) (pavele, piatră cubică și iarbă udă: interpolate, n-am găsit cifre); fișele tehnice (masă, viteză maximă, 0–100): [auto-data.net](https://www.auto-data.net/en/peugeot-508-i-phase-i-2010-2.0-hdi-163hp-fap-17653) (Peugeot 508 2.0 HDi 163: 1480 kg, 225 km/h, 8,6 s) și, pentru celelalte, [auto-data.net](https://www.auto-data.net) și [cars-data.com](https://www.cars-data.com) (agregatoare, nu broșurile producătorilor).
 * **Fizica mașinilor, stabilizată (V94)** (`src/vehicle.js`, `src/geo/roads.js`, `src/geo/roadbed.js`, `src/main.js`):
   * **Ce era:** cu suspensia din V93, pe DN1 la 130 km/h ținuți (4,4 km, pe banda ei), mașina zbura de 14 ori, se apleca până la 21° înainte și 24° în lateral și primea șocuri de zeci de g. Cauza nu era doar suspensia: profilul drumurilor păstra treptele modelului de teren.
   * **Drumurile, nivelate ca o rețea** (`roads.js`, `roadbed.js`):
@@ -1589,5 +1651,5 @@ node tools/cars-test.mjs                                    # PORT=8765 implicit
 eslint --no-config-lookup -c tools/eslint.config.mjs src
 ```
 
-* `cars-test.mjs` (V94.1) urcă în mașini ca un jucător: pe jos, la ușa șoferului, cu tasta F reală, în ambele camere (V), câteva cadre, un pic de accelerație, apoi coboară. Orice eroare aruncată de un cadru pică testul.
+* `cars-test.mjs` (V94.1) urcă în mașini ca un jucător: pe jos, la ușa șoferului, cu tasta F reală, în ambele camere (V), câteva cadre, un pic de accelerație, apoi coboară. Orice eroare aruncată de un cadru pică testul. (V95) Include și BMW-ul 320d (motor și cutie proprii); fiecare rulare pornește de unde a fost parcată mașina (320d stă la 56 cm de un stâlp: prima rulare îl împingea până la el, iar a doua nu mai avea loc să plece).
 * Lintul caută un nume folosit înainte de declararea lui din aceeași funcție și nume nedeclarate. Asta era greșeala din V94: filtrul pentru ochii șoferului folosea `seat`, iar mai jos în aceeași funcție exista deja o `const seat`. În camera din interior fiecare cadru dădea eroare, tastele apăsate nu se mai „consumau”, așa că F te urca și, în cadrul următor, te cobora la loc. Testele din V94 rulaseră doar cu camera din spate.

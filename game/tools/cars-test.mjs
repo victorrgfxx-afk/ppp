@@ -2,7 +2,8 @@
 // to a Chromium, else the installed Chrome). On foot at the driver's door of several cars, the real F key, both cameras
 // (the real V key), a few frames in each, a push on W, out again with F. Any error a frame throws fails the test: in
 // V94 the interior camera threw on every frame (a name used before its declaration further down the same function) -
-// the first tests had only run the chase camera.
+// the first tests had only run the chase camera. (V95) Each run starts from where the car was parked: the 320d stands
+// 56 cm from a post, and the first run's push on W took it there.
 import { chromium } from 'playwright-core';
 const port = process.env.PORT || 8765;
 const browser = await chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : { channel: 'chrome' }), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
@@ -20,11 +21,11 @@ const tap = async (key, n = 2) => { await page.keyboard.down(key); await frames(
 await page.evaluate(() => window.__game.begin());
 await frames(3);
 let failed = 0;
-for (const re of ['Peugeot 508 · 500', 'Dacia Sandero', 'ATV', 'Maybach']) {
+for (const re of ['Peugeot 508 · 500', 'Dacia Sandero', 'BMW Seria 3', 'ATV', 'Maybach']) {   // (V95: the Sandero and the 320d on their own engines)
   for (const cam of ['chase', 'cockpit']) {
     const e0 = errors.length;
     await resume();
-    const name = await page.evaluate((re) => { const g = window.__game; if (g.mode === 'car') g.exitCar(true); const v = g.vehicles.find(q => q.name.includes(re)); if (!v) return null; const d = v.doorPos(-1); g.player.setPose(d.x, d.z, v.h, 0); return v.name; }, re);
+    const name = await page.evaluate((re) => { const g = window.__game; if (g.mode === 'car') g.exitCar(true); const v = g.vehicles.find(q => q.name.includes(re)); if (!v) return null; const p0 = v.__p0 ??= { x: v.x, z: v.z, h: v.h }; v.x = p0.x; v.z = p0.z; v.h = p0.h; v.vx = v.vz = 0; v.vs = null; v._ground = null; v.update(0.016, null); const d = v.doorPos(-1); g.player.setPose(d.x, d.z, v.h, 0); return v.name; }, re);
     if (!name) { console.log('FAIL', re, 'no such car'); failed++; continue; }
     await frames(2);
     const prompt = await page.textContent('#prompt');
