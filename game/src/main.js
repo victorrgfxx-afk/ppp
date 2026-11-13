@@ -1667,7 +1667,7 @@ async function main() {
       let nt = 0; for (const b of near) if (b.tag === 'tree') nt++;
       leafy = Math.min(1, nt / 18);
     }
-    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
+    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, skid: active?.skid ?? 0, loose: !!active && (active.surf === 'gravel' || active.surf === 'dirt' || active.surf === 'grass'), wet: RAIN.uWet.value, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {

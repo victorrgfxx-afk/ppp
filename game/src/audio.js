@@ -88,6 +88,7 @@ export class Audio {
     const sq = ctx.createBufferSource(); sq.buffer = this.noise; sq.loop = true;
     const sf = ctx.createBiquadFilter(); sf.type = 'bandpass'; sf.frequency.value = 2400; sf.Q.value = 6;
     this.squeal = ctx.createGain(); this.squeal.gain.value = 0;
+    this.squealF = sf;
     sq.connect(sf).connect(this.squeal).connect(this.master); sq.start();
     // the campfire (campfire.js): the soft roar of its flames under the crackle (update: the pops)
     const fn = ctx.createBufferSource(); fn.buffer = this.noise; fn.loop = true; fn.playbackRate.value = 0.6;
@@ -465,7 +466,13 @@ export class Audio {
     this.horn2.gain.setTargetAtTime(fr?.horn ? 0.12 * k2 : 0, now, 0.01);
     if (st.driving) {
       this.drive(e, now, st.rpm, st.throttle, 1);
-      this.squeal.gain.setTargetAtTime(Math.max(0, Math.min(0.25, (Math.abs(st.slip) - 2.5) * 0.05)) * (1 - 0.85 * this.snowCover), now, 0.05);   // (no squeal on snow)
+      // (V95) the tyres: sliding sideways, or past their grip (st.skid, 0-1: a bend taken at the limit sings faintly, the
+      // handbrake and spinning wheels howl). On gravel, earth and grass they scrabble - a low rush, no squeal; on a wet
+      // road they hiss; none on snow
+      const sk = Math.max((Math.abs(st.slip) - 2.5) * 0.05, ((st.skid ?? 0) - 0.12) * 0.3, 0), loose = st.loose ? 1 : 0;
+      this.squealF.frequency.setTargetAtTime(loose ? 650 : 2400 - 500 * (st.wet ?? 0), now, 0.1);
+      this.squealF.Q.setTargetAtTime(loose ? 0.8 : 6 - 4 * (st.wet ?? 0), now, 0.1);
+      this.squeal.gain.setTargetAtTime(Math.min(0.25, sk) * (1 - 0.85 * this.snowCover) * (loose ? 0.6 : 1 - 0.6 * (st.wet ?? 0)), now, 0.05);
       this.horn.gain.setTargetAtTime(st.horn ? 0.12 : 0, now, 0.01);
     } else {
       e.out.gain.setTargetAtTime(0, now, 0.2);

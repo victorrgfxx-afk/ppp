@@ -100,6 +100,8 @@ export class Vehicle {
     this.place(0);
   }
   get speed() { return -(this.vx * Math.sin(this.h) + this.vz * Math.cos(this.h)); }
+  // (kg, with its driver: its data sheet's, or its model's - a car of no known make 1.4 t)
+  get mass() { return this.eng?.m ?? this.m.mass ?? (this.hyper ? 1575 : 1400); }
   // the ground under the 4 wheels (fl, fr, rl, rr) and the plane through them: where a car at rest stands
   groundFit() {
     const s = Math.sin(this.h), c = Math.cos(this.h);
@@ -204,7 +206,7 @@ export class Vehicle {
     // (V95) what is under the tyres (looked up every half metre of the way): its grip, dry or wet, and how hard it is
     // to roll on; the snow over it; an ATV's knobby tyres bite into loose ground and snow
     if (ctl || Math.abs(vF) > 0.05 || Math.abs(vR) > 0.05) {
-      const c = this._sf ??= { x: NaN, z: NaN };
+      const c = this._sf ??= { x: 1e9, z: 1e9 };
       if (Math.abs(this.x - c.x) + Math.abs(this.z - c.z) > 0.5) { c.x = this.x; c.z = this.z; this.surf = this.world.surfaceAt ? this.world.surfaceAt(this.x, this.z, this.gy) : 'asphalt'; }
     }
     const sf = SURF[this.surf] ?? SURF.asphalt, wet = TRACTION.wet ?? 0;
@@ -504,16 +506,18 @@ export class Vehicle {
         if (b.npc) { b.npc.hit(this, p); continue; }
         any = true;
         if (b.vehicle) {
-          // push both cars (equal mass), exchange normal velocity
-          const o = b.vehicle;
-          this.x += p.x * 0.5; this.z += p.z * 0.5;
-          o.x -= p.x * 0.5; o.z -= p.z * 0.5;
+          // push both cars apart and share the blow by their masses ((V95) they were all taken as equal: a Corsa threw
+          // a van as far as the van threw it): the heavier one moves less and keeps more of its speed; the blow is
+          // mostly spent in the metal (restitution 0.2 - what two equal cars had)
+          const o = b.vehicle, m1 = this.mass, m2 = o.mass, k1 = m2 / (m1 + m2), k2 = 1 - k1;
+          this.x += p.x * k1; this.z += p.z * k1;
+          o.x -= p.x * k2; o.z -= p.z * k2;
           const rvx = this.vx - o.vx, rvz = this.vz - o.vz;
           const vn = rvx * p.nx + rvz * p.nz;
           if (vn < 0) {
-            const j = -vn * 0.6;
-            this.vx += p.nx * j; this.vz += p.nz * j;
-            o.vx -= p.nx * j; o.vz -= p.nz * j;
+            const j = -vn * 1.2;
+            this.vx += p.nx * j * k1; this.vz += p.nz * j * k1;
+            o.vx -= p.nx * j * k2; o.vz -= p.nz * j * k2;
             this.impact = Math.max(this.impact, -vn);
           }
           o.box.x = o.x; o.box.z = o.z; o.box.update();
