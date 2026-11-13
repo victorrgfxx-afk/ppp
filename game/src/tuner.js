@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { specFor, stockMaps, stagePreset, stageFig, kitParts, clutchNm, evaluate, gameTune, cloneMaps, vinFor, WARN } from './tunerdata.js';
+import { specFor, stockMaps, stagePreset, stageFig, kitParts, clutchNm, evaluate, gameTune, cloneMaps, vinFor, WARN, VMAX_OFF } from './tunerdata.js';
 
 // (V94) The autotuner: a laptop and an OBD flashing interface left on the veranda's steps by the dog. Taken (E), it is
 // used from the driver's seat of any car standing still (U): the laptop starts, finds the interface, identifies the
@@ -12,6 +12,9 @@ import { specFor, stockMaps, stagePreset, stageFig, kitParts, clutchNm, evaluate
 // downpipe and an intake; then a hybrid turbo, injectors, a stronger clutch). The laptop's "Kit de piese" fits them (in
 // the game at once; in a workshop hours or days), the editor's presets make the file for the kit fitted, and the same
 // file on fewer parts gives what those parts allow - with the engine model's warnings.
+// (V97) The speed limiter: on a car whose ECU limits its speed (the Maybach at 250 km/h, the user's Peugeot at 500) the
+// editor takes it out or puts it back - "Vmax off": then the car goes as fast as its power, the air and its gears let
+// it. The other cars have none: their top speed is the air's and the gearbox's, and the laptop says so.
 
 const SPOT = { x: 5.615, z: 3.86 };          // on the lower of the two steps to the veranda's door (hero.js)
 const T_BOOT = 3.4, T_ID = 2.6, T_READ = 9, T_WRITE = 13, T_MOUNT = 7;
@@ -186,6 +189,7 @@ table.tn-t{border-collapse:separate;border-spacing:2px;font:12px/1 ui-monospace,
 .tn-card.kit.on{border-color:var(--a)}
 .tn-parts{margin:0 0 6px;padding-left:18px;display:grid;gap:3px}
 .tn-note .est,.tn-card .est{color:var(--w)}
+.tn-vmax{display:grid;gap:3px;padding:9px 11px} .tn-vmax span{color:var(--m);font-size:12px}
 @media (max-width:860px){.tn-ed{grid-template-columns:minmax(0,1fr) 244px}.tn-maps{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.tn-menu{grid-template-columns:minmax(200px,1fr) 1.4fr}.tn-chips .tn-chip.opt{display:none}}
 @media (max-width:620px){.tn-ed{grid-template-columns:1fr;grid-auto-rows:min-content}.tn-menu{grid-template-columns:1fr}.tn-kits{grid-template-columns:1fr}}
 @media (max-height:480px){.tn-lap{border-width:5px;border-bottom-width:7px;height:calc(100vh - 12px)}.tn-deck{height:6px}.tn-main{padding:8px}.tn-dyno canvas{height:118px}#tuner .tn-maps button{padding:4px 8px}#tuner button.tile{min-height:0;padding:8px 11px}.tn-t td{padding:5px 4px}.tn-card{padding:9px}}
@@ -246,13 +250,15 @@ export class Tuner {
     if (s0.hyper) {
       // (a car on the hyper model: its power to weight, its pull where the tyres still hold, its limiter where the map
       // puts it - at most where that power meets the air's drag)
-      const H = s0.hyper, top = H.top * g.kV, lim = g.vlim != null ? Math.min(top, g.vlim / 3.6) : H.limit;
+      const H = s0.hyper, top = H.top * g.kV, lim = g.vlim === 'off' ? top : g.vlim != null ? Math.min(top, g.vlim / 3.6) : H.limit;
       v.hyper = { ...H, P: H.P * g.kP, A0: Math.min(Math.max(H.A0, H.aMax ?? H.A0), H.A0 * ev.kNm), limit: lim, vAero: H.vAero ?? H.limit };
     } else { v.power = s0.power * g.kA; v.vmax = s0.vmax * g.kV; }
     // (the label: the stage whose preset the file was made from - "retușat" when changed by hand after it, "fără kit" when
     // its parts are not fitted; a file of before V96, Stage 1 when it gains)
-    const k = rec.stage;
-    const label = k ? 'Stage ' + k + (rec.hand ? ' · retușat' : '') + (hw < k ? ' · fără kit' : '') : k === 0 ? 'modificat' : ev.kHp >= 1.02 && ev.kNm >= 1.02 ? 'Stage 1' : 'modificat';
+    const k = rec.stage, off = ev.vlim === 'off', onlyV = maps.every((m, kk) => m.id === 'vmax' || m.v.every((r, i) => r.every((x, j) => Math.abs(x - st[kk].v[i][j]) < 1e-9)));
+    let label = k ? 'Stage ' + k + (rec.hand ? ' · retușat' : '') + (hw < k ? ' · fără kit' : '') : k === 0 && !onlyV ? 'modificat' : ev.kHp >= 1.02 && ev.kNm >= 1.02 ? 'Stage 1' : onlyV ? '' : 'modificat';
+    if (off) label = label ? label + ' · fără limitator' : 'fără limitator';
+    if (!label) label = 'modificat';
     v.tune = { hp: ev.hp, nm: ev.nm, kA: g.kA, kV: g.kV, label, stage: k ?? null, kit: hw };
     return ev;
   }
@@ -337,11 +343,21 @@ export class Tuner {
     else if (a === 'stage') {
       const k = +d.k, hw = this.kitOf(v);
       if (hw < k) { this.msg = 'Presetarea Stage ' + k + ' cere kitul ei de piese: Meniu › Kit de piese.'; this.render(); return; }
+      const vm0 = this.maps.find(q => q.id === 'vmax');
       this.maps = stagePreset(this.sp, this.stock, k, hw); this.fileStage = k; this.fileHand = false;
+      const vm1 = this.maps.find(q => q.id === 'vmax'); if (vm0 && vm1) vm1.v = vm0.v.map(r => r.slice());   // (the limiter as it was set)
       this.msg = 'Presetarea Stage ' + k + ' e în hărți: celulele schimbate au chenar alb. Poți umbla tu la ele, apoi «Scrie în ECU».'; this.render();
     }
     else if (a === 'ori') { this.maps = cloneMaps(this.stock); this.fileStage = null; this.fileHand = false; this.msg = 'Hărțile sunt din nou cele originale.'; this.render(); }
     else if (a === 'parts') this.go('parts');
+    else if (a === 'vmax') {
+      const vm = this.maps.find(q => q.id === 'vmax'), s0 = this.stock.find(q => q.id === 'vmax');
+      if (!vm) return;
+      const out = d.on !== '1';
+      vm.v = [[out ? VMAX_OFF : s0.v[0][0]]];
+      this.msg = out ? 'Limitatorul de viteză e scos din fișier: după scriere mașina merge cât o lasă puterea, aerul și treptele cutiei. În realitate, anvelopele au un indice de viteză (W = 270, Y = 300 km/h) peste care nu sunt făcute să meargă.' : 'Limitatorul e pus la loc: ' + s0.v[0][0] + ' km/h, ca de la fabrică.';
+      this.render();
+    }
     else if (a === 'mount') { const k = +d.k; if (k !== this.kitOf(v)) this.start('mount', T_MOUNT, { to: k, from: this.kitOf(v) }); }
     else if (a === 'selfull') { const m = this.map(), n = m.v.length; this.sel.clear(); for (let i = Math.max(0, n - 3); i < n; i++) for (let j = 0; j < m.v[i].length; j++) this.sel.add(i + ',' + j); this.paintSel(); }
     else if (a === 'selall') { const m = this.map(); this.sel.clear(); m.v.forEach((r, i) => r.forEach((x, j) => this.sel.add(i + ',' + j))); this.paintSel(); }
@@ -461,7 +477,7 @@ export class Tuner {
       foot = 'Se încarcă …';
     } else if (this.view === 'menu') {
       const tuned = !!v.tune, read = this.rec.read;
-      M.innerHTML = `<div class="tn-menu"><div class="tn-card"><h3>Vehicul conectat</h3><div class="tn-kv"><span>Mașina</span><b>${esc(v.name)}</b>${this.identified ? `<span>Motor</span><b>${esc(sp.label)}</b><span>Serie</span><b>${fmt(sp.hp)} CP · ${fmt(sp.nm)} Nm</b><span>ECU</span><b>${esc(sp.ecu || 'neidentificat după tip')}</b><span>VIN</span><b>${this.ids.vin}</b>` : '<span>ECU</span><b>neidentificat încă</b>'}<span>Fișier original</span><b>${read ? 'salvat pe laptop' : 'necitit'}</b><span>În ECU acum</span><b>${tuned ? `${esc(v.tune.label)} · ${fmt(v.tune.hp)} CP · ${fmt(v.tune.nm)} Nm` : 'original'}</b><span>Piese</span><b>${this.kitOf(v) > 1 ? 'kit Stage ' + this.kitOf(v) : 'de serie'}</b></div><div class="tn-note">Ordinea de lucru: identifici ECU-ul, îi citești fișierul (originalul rămâne salvat), îl modifici în editor, apoi îl scrii înapoi.</div></div>
+      M.innerHTML = `<div class="tn-menu"><div class="tn-card"><h3>Vehicul conectat</h3><div class="tn-kv"><span>Mașina</span><b>${esc(v.name)}</b>${this.identified ? `<span>Motor</span><b>${esc(sp.label)}</b><span>Serie</span><b>${fmt(sp.hp)} CP · ${fmt(sp.nm)} Nm</b><span>ECU</span><b>${esc(sp.ecu || 'neidentificat după tip')}</b><span>VIN</span><b>${this.ids.vin}</b>` : '<span>ECU</span><b>neidentificat încă</b>'}<span>Fișier original</span><b>${read ? 'salvat pe laptop' : 'necitit'}</b><span>În ECU acum</span><b>${tuned ? `${esc(v.tune.label)} · ${fmt(v.tune.hp)} CP · ${fmt(v.tune.nm)} Nm` : 'original'}</b><span>Piese</span><b>${this.kitOf(v) > 1 ? 'kit Stage ' + this.kitOf(v) : 'de serie'}</b>${sp.vlim ? `<span>Limitator</span><b>${v.tune && /fără limitator/.test(v.tune.label) ? 'scos' : fmt(sp.vlim) + ' km/h'}</b>` : ''}</div><div class="tn-note">Ordinea de lucru: identifici ECU-ul, îi citești fișierul (originalul rămâne salvat), îl modifici în editor, apoi îl scrii înapoi.</div></div>
         <div class="tn-tiles">
         <button class="tile" data-act="id"><em>1</em><b>Identifică ECU-ul</b><span>marcă, motor, VIN, versiune software</span></button>
         <button class="tile" data-act="read" ${this.identified ? '' : 'disabled'}><em>2</em><b>Citește ECU-ul</b><span>${read ? 'citit: originalul e salvat (poți reciti)' : 'copie a fișierului original, pe laptop'}</span></button>
@@ -493,8 +509,8 @@ export class Tuner {
       M.innerHTML = `<div class="tn-job"><h2>Citire reușită</h2><div class="sub">Fișierul original e salvat: ORI_${this.ids.vin.slice(-6)}.bin · 2 048 kB · suma de control corectă</div><div class="tn-row"><button class="pri" data-act="edit">Deschide în editorul de hărți</button><button data-act="menu">Meniu</button></div></div>`;
     } else if (this.view === 'done') {
       const { ev, before } = this.result, tuned = !!v.tune, t = v.tune;
-      const top = v.hyper ? Math.round(v.hyper.limit * 3.6) : null;
-      M.innerHTML = `<div class="tn-job"><h2>${tuned ? 'Scriere reușită — ' + esc(t.label) : 'Scriere reușită — mașina e din nou originală'}</h2><div class="sub">Verificarea a trecut. Contactul se ia 10 secunde, apoi pornești motorul.</div><div class="tn-card"><div class="tn-res"><span></span><b>înainte</b><b>acum</b><span>Putere</span><b>${fmt(before.hp)} CP</b><b class="${ev.hp > before.hp + 0.5 ? 'up' : ev.hp < before.hp - 0.5 ? 'dn' : ''}">${fmt(ev.hp)} CP</b><span>Cuplu</span><b>${fmt(before.nm)} Nm</b><b class="${ev.nm > before.nm + 0.5 ? 'up' : ev.nm < before.nm - 0.5 ? 'dn' : ''}">${fmt(ev.nm)} Nm</b>${tuned ? `<span>Față de serie</span><b></b><b class="up">${ev.kHp >= 1 ? '+' : ''}${fmt((ev.kHp - 1) * 100, 1)} % CP · ${ev.kNm >= 1 ? '+' : ''}${fmt((ev.kNm - 1) * 100, 1)} % Nm</b><span>În joc</span><b></b><b>accelerație ×${fmt(t.kA, 2)}${top ? ' · limitator ' + top + ' km/h' : ' · viteză maximă ×' + fmt(t.kV, 2)}</b>` : ''}</div></div>${ev.warn.length ? `<div class="tn-warn" style="margin-top:10px">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : ''}<div class="tn-row"><button class="pri" data-act="close">Închide laptopul și pornește</button><button data-act="menu">Meniu</button></div></div>`;
+      const top = v.hyper ? (ev.vlim === 'off' ? 'fără limitator (max. ~' + Math.round(v.hyper.limit * 3.6) + ' km/h)' : 'limitator ' + Math.round(v.hyper.limit * 3.6) + ' km/h') : null;
+      M.innerHTML = `<div class="tn-job"><h2>${tuned ? 'Scriere reușită — ' + esc(t.label) : 'Scriere reușită — mașina e din nou originală'}</h2><div class="sub">Verificarea a trecut. Contactul se ia 10 secunde, apoi pornești motorul.</div><div class="tn-card"><div class="tn-res"><span></span><b>înainte</b><b>acum</b><span>Putere</span><b>${fmt(before.hp)} CP</b><b class="${ev.hp > before.hp + 0.5 ? 'up' : ev.hp < before.hp - 0.5 ? 'dn' : ''}">${fmt(ev.hp)} CP</b><span>Cuplu</span><b>${fmt(before.nm)} Nm</b><b class="${ev.nm > before.nm + 0.5 ? 'up' : ev.nm < before.nm - 0.5 ? 'dn' : ''}">${fmt(ev.nm)} Nm</b>${tuned ? `<span>Față de serie</span><b></b><b class="up">${ev.kHp >= 1 ? '+' : ''}${fmt((ev.kHp - 1) * 100, 1)} % CP · ${ev.kNm >= 1 ? '+' : ''}${fmt((ev.kNm - 1) * 100, 1)} % Nm</b><span>În joc</span><b></b><b>accelerație ×${fmt(t.kA, 2)}${top ? ' · ' + top : ' · viteză maximă ×' + fmt(t.kV, 2)}</b>` : ''}</div></div>${ev.warn.length ? `<div class="tn-warn" style="margin-top:10px">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : ''}<div class="tn-row"><button class="pri" data-act="close">Închide laptopul și pornește</button><button data-act="menu">Meniu</button></div></div>`;
     } else if (this.view === 'edit') { this.renderEdit(); foot = 'Editor · ' + sp.label + ' · + / − schimbă celulele alese'; }
     const x = this.root.querySelector('.tn-top [data-act="close"]'); if (x && this.view !== 'job') x.disabled = false;
     this.$foot.innerHTML = `<span>${esc(foot)}</span><span style="margin-left:auto">${esc(v.name)}</span>`;
@@ -505,9 +521,10 @@ export class Tuner {
     // the cells coloured by their value across the map (a heat map), the changed ones framed
     let lo = Infinity, hi = -Infinity; m.v.forEach(r => r.forEach(x => { lo = Math.min(lo, x); hi = Math.max(hi, x); })); s0.v.forEach(r => r.forEach(x => { lo = Math.min(lo, x); hi = Math.max(hi, x); }));
     const col = (x) => { const u = hi > lo ? (x - lo) / (hi - lo) : 0.5; return `hsl(${Math.round(205 - 185 * u)} 62% ${Math.round(46 + 14 * u)}%)`; };
-    const rows = m.v.map((r, i) => `<tr><th>${esc(m.rows[i])}</th>${r.map((x, j) => `<td data-c="${i},${j}" class="${Math.abs(x - s0.v[i][j]) > 1e-9 ? 'ch' : ''}${this.sel.has(i + ',' + j) ? ' sel' : ''}" style="background:${col(x)}" title="serie: ${num(s0.v[i][j], m.dec)}">${num(x, m.dec)}</td>`).join('')}</tr>`).join('');
+    const cell = (x) => m.id === 'vmax' && x >= VMAX_OFF ? 'scos' : num(x, m.dec);
+    const rows = m.v.map((r, i) => `<tr><th>${esc(m.rows[i])}</th>${r.map((x, j) => `<td data-c="${i},${j}" class="${Math.abs(x - s0.v[i][j]) > 1e-9 ? 'ch' : ''}${this.sel.has(i + ',' + j) ? ' sel' : ''}" style="background:${col(x)}" title="serie: ${num(s0.v[i][j], m.dec)}">${cell(x)}</td>`).join('')}</tr>`).join('');
     const diff = (q) => { const o = this.stock.find(k => k.id === q.id); return q.v.some((r, i) => r.some((x, j) => Math.abs(x - o.v[i][j]) > 1e-9)); };
-    const d = (a, b, u) => { const k = (a / b - 1) * 100, c = k > 0.05 ? 'up' : k < -0.05 ? 'dn' : ''; return `<b class="${c}">${fmt(a)} ${u}</b><b class="${c}">${k >= 0 ? '+' : ''}${fmt(k, 1)} %</b>`; };
+    const d = (a, b, u) => { const k0 = (a / b - 1) * 100, k = Math.abs(k0) < 0.05 ? 0 : k0, c = k > 0.05 ? 'up' : k < -0.05 ? 'dn' : ''; return `<b class="${c}">${fmt(a)} ${u}</b><b class="${c}">${k >= 0 ? '+' : ''}${fmt(k, 1)} %</b>`; };
     const g = gameTune(sp, ev), dirty = this.changed(this.maps, this.ecu);
     this.$main.innerHTML = `<div class="tn-ed">
       <div class="tn-maps">${this.maps.map(q => `<button data-act="map" data-id="${q.id}" class="${q.id === m.id ? 'on' : ''}">${esc(q.name)}${diff(q) ? '<i>modif.</i>' : ''}</button>`).join('')}</div>
@@ -521,9 +538,20 @@ export class Tuner {
         ${ev.warn.length ? `<div class="tn-warn">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : `<div class="tn-okl">${this.changed(this.maps, this.stock) ? '✓ În limitele pieselor montate (' + (hw > 1 ? 'kit Stage ' + hw : 'de serie') + ')' : 'Fișierul e cel original'}</div>`}
         <div class="tn-row" style="margin-top:0">${[1, 2, 3].map(k => `<button data-act="stage" data-k="${k}" ${hw < k ? 'disabled title="Cere kitul Stage ' + k + ': Meniu › Kit de piese"' : ''}>Stage ${k}</button>`).join('')}<button data-act="ori">Original</button></div>
         <div class="tn-row" style="margin-top:0"><button class="pri" data-act="towrite" ${dirty ? '' : 'disabled'}>Scrie în ECU</button><button data-act="menu">Meniu</button></div>
+        ${this.vmaxRow(ev)}
         <div class="tn-note">${[1, 2, 3].map(k => { const [hp, nm, est] = stageFig(sp, k); return 'Stage ' + k + ': ' + fmt(hp) + ' CP · ' + fmt(nm) + ' Nm' + (est ? ' (estimare)' : ' (listat)'); }).join(' · ')}. ${hw < 3 ? 'Stage ' + (hw + 1) + ' cere kitul lui de piese (Meniu › Kit de piese). ' : ''}Curbele sunt calculate din hărți, nu măsurate pe stand.</div>
       </div></div>`;
     this.paintSel(); this.dyno(ev);
+  }
+  // the speed limiter's line in the editor: its state and the button that takes it out or puts it back
+  vmaxRow(ev) {
+    const vm = this.maps.find(q => q.id === 'vmax'), s0 = this.stock.find(q => q.id === 'vmax');
+    if (!vm) {
+      const top = this.sp.v ?? (this.v.vmax ? Math.round(this.v.vmax * 3.6) : null);
+      return `<div class="tn-card tn-vmax"><b>Limitator de viteză</b><span>Mașina asta nu are limitator electronic: viteza maximă${top ? ' (' + fmt(top) + ' km/h de serie)' : ''} e dată de putere, de aer și de treptele cutiei. Mai multă putere (Stage 1–3) o ridică.</span></div>`;
+    }
+    const out = ev.vlim === 'off';
+    return `<div class="tn-card tn-vmax"><b>Limitator de viteză: ${out ? 'scos' : fmt(vm.v[0][0]) + ' km/h' + (vm.v[0][0] === s0.v[0][0] ? ' (de serie)' : '')}</b><span>${out ? 'Mașina merge cât o lasă puterea, aerul și treptele cutiei.' : 'Taie puterea la viteza asta, oricât ai apăsa.'}</span><div class="tn-row" style="margin-top:6px">${out ? `<button data-act="vmax" data-on="1">Pune limitatorul la loc (${fmt(s0.v[0][0])} km/h)</button>` : '<button data-act="vmax" data-on="0">Scoate limitatorul de viteză</button>'}</div></div>`;
   }
   dyno(ev) {
     const c = this.root.querySelector('.tn-dyno canvas'); if (!c) return;

@@ -21,6 +21,8 @@
 // without air gives smoke. The Stage 1 preset raises them together to the seller's figures for that engine.
 
 export const PS = 7023.5;                    // P [PS] = T [Nm] x n [rpm] / 7023.5
+// (V97) the speed limiter's value for "taken out" (Vmax off): the car goes as fast as its power, the air and its gears let it
+export const VMAX_OFF = 999;
 
 // type: td turbodiesel, tp turbo petrol, na aspirated petrol. hp (PS), nm: series; s1: [hp, Nm] after Stage 1 (as listed);
 // nT: where the torque peaks (from, to rpm), nP: where the power does, red: the limiter; cc, cyl; ecu: as the sellers list
@@ -238,7 +240,7 @@ export function evaluate(sp, maps, stock = stockMaps(sp), hw = 1) {
     nm = Math.max(nm, t1); hp = Math.max(hp, p1); nm0 = Math.max(nm0, t0); hp0 = Math.max(hp0, p0);
   }
   const vm = byId(maps, 'vmax');
-  return { cols: C, torque: Tq, gain: g, info, pts, nm, hp, nm0, hp0, kNm: nm / nm0, kHp: hp / hp0, vlim: vm ? vm.v[0][0] : null, warn: [...warn] };
+  return { cols: C, torque: Tq, gain: g, info, pts, nm, hp, nm0, hp0, kNm: nm / nm0, kHp: hp / hp0, vlim: vm ? (vm.v[0][0] >= VMAX_OFF ? 'off' : vm.v[0][0]) : null, warn: [...warn] };
 }
 export const WARN = {
   turbo: 'Presiunea cerută depășește ce poate livra turbina montată: aerul rămâne la limita ei (Stage 2: intercooler și downpipe; Stage 3: turbină hibridă)',
