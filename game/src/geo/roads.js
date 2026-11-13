@@ -345,10 +345,58 @@ export function planRoads(fit = null) {
   }
   GEO.bridges = bridges;
   const out = plans.filter(Boolean);
+  const joined = joinEnds(out);
   gradeProfiles(out, use, fit);
+  GEO.roadbedLog = { ...(GEO.roadbedLog || {}), joined };
   for (const pl of out) { pl.finish(); pl.finish = null; pl.keys = null; }
   out.forEach((pl, i) => { pl.i = i; });
   return out;
+}
+
+// (V95) Where a way runs straight on into another (two mapped ways sharing their end vertex), both end cross-sections
+// are set square to the road through the joint. Each stood square to its own last stretch: wherever the road bends
+// at the joint - nearly everywhere, by a fraction of a degree - the two ribbons left a wedge open on the outside of
+// the bend (a dark crack across the asphalt, the edge line broken, the ground under the road showing: up to 1.3 m down
+// - and the wheels' ground with it) and overlapped on the inside. The ends that drifted apart (a building's fit moved
+// one) are brought back together. The pairs: as in gradeProfiles (each other's straightest way on, within 40 deg, of
+// the same rank)
+function joinEnds(plans) {
+  const at = new Map();
+  for (const pl of plans) for (const k of [0, pl.P.length - 1]) { const key = pl.keys[k]; let a = at.get(key); if (!a) at.set(key, a = []); a.push({ pl, k }); }
+  const out = (pl, k) => { const P = pl.P, a = P[k === 0 ? 1 : P.length - 2], b = P[k], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / L, (b[1] - a[1]) / L]; };
+  let joined = 0;
+  for (const ends of at.values()) {
+    if (ends.length < 2) continue;
+    const best = ends.map((e, i) => {
+      const d = out(e.pl, e.k); let bj = -1, bc = 0.766;
+      ends.forEach((f, j) => { if (j === i || f.pl === e.pl || Math.abs(f.pl.rank - e.pl.rank) > 1.01) return; const g = out(f.pl, f.k), c = -(d[0] * g[0] + d[1] * g[1]); if (c > bc) { bc = c; bj = j; } });
+      return bj;
+    });
+    ends.forEach((e, i) => {
+      const j = best[i];
+      if (j < i || best[j] !== i) return;
+      const f = ends[j], pa = e.pl.P[e.k], pb = f.pl.P[f.k], gap = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]);
+      if (gap > 0.6 || (e.pl.flat && f.pl.flat)) return;
+      // (a bridge's deck stays as it was built: the road onto it takes its end)
+      const fixed = e.pl.flat ? e : f.pl.flat ? f : null;
+      if (gap > 1e-6) {
+        const [mx, mz] = fixed ? fixed.pl.P[fixed.k] : [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2];
+        if (e !== fixed) e.pl.P[e.k] = [mx, mz];
+        if (f !== fixed) f.pl.P[f.k] = [mx, mz];
+      }
+      const dA = out(e.pl, e.k), dB = out(f.pl, f.k);
+      let ux = dA[0] - dB[0], uz = dA[1] - dB[1];
+      if (fixed) { const d = fixed === e ? dA : dB; ux = fixed === e ? d[0] : -d[0]; uz = fixed === e ? d[1] : -d[1]; }   // (square to the deck's own end)
+      const L = Math.hypot(ux, uz) || 1; ux /= L; uz /= L;                 // (the road through the joint)
+      for (const [g, d] of [[e, dA], [f, dB]]) {
+        if (g === fixed) continue;
+        const sg = g.k === 0 ? -1 : 1, c = (d[0] * ux + d[1] * uz) * sg, t = c >= 0 ? 1 : -1, m = 1 / Math.max(0.5, Math.abs(c));   // (turned the way this plan runs; a miter: its width kept)
+        g.pl.N[g.k] = [-uz * t * m, ux * t * m];
+      }
+      joined++;
+    });
+  }
+  return joined;
 }
 
 function planRibbon(r, P0, bridges, fit) {
