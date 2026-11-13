@@ -146,14 +146,14 @@ export class WheelFX {
         } else W.on = false;
         // ---- what it throws up
         let rate = 0, col = null, a = 0, s1 = 2, life = 1.4, rise = 0.6;
-        if (paved && k > 0.5 && wet < 0.5) { rate = (k - 0.5) * 2 * 46 * paved * (1 - wet); col = SMOKE; a = 0.085; s1 = 2.3; life = 1.5; rise = 0.9; }
+        if (paved && k > 0.5 && wet < 0.5) { rate = (k - 0.5) * 2 * 38 * paved * (1 - wet); col = SMOKE; a = 0.13; s1 = 1.45; life = 1.6; rise = 1.1; }
         else if (loose && wet < 0.35) { rate = loose[3] * ((car.surf === 'grass' ? 0 : Math.min(1, Math.max(0, sp - 4) / 22) * 16) + k * 34 * Math.min(1, sp / 6 + (car.spinK ?? 0))); col = loose; a = 0.075 * (1 - wet * 2); s1 = car.surf === 'grass' ? 1 : 2.8; life = car.surf === 'grass' ? 0.7 : 2.2; rise = 0.35; }
         if (rate > 0 && onGround) {
           this.acc[i] += rate * dt;
           while (this.acc[i] >= 1) {
             this.acc[i] -= 1;
             this.puff(wx + (Math.random() - 0.5) * 0.3, gy + 0.08 + Math.random() * 0.12, wz + (Math.random() - 0.5) * 0.3,
-              car.vx * 0.22 + (Math.random() - 0.5) * 1.2, rise * (0.5 + Math.random()), car.vz * 0.22 + (Math.random() - 0.5) * 1.2, col, a * (0.7 + 0.6 * Math.random()), 0.35, s1 * (0.8 + 0.5 * Math.random()), life * (0.7 + 0.6 * Math.random()));
+              car.vx * 0.12 + (Math.random() - 0.5) * 0.9, rise * (0.5 + Math.random()), car.vz * 0.12 + (Math.random() - 0.5) * 0.9, col, a * (0.7 + 0.6 * Math.random()), 0.28, s1 * (0.8 + 0.5 * Math.random()), life * (0.7 + 0.6 * Math.random()));
           }
         } else this.acc[i] = 0;
       }

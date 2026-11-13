@@ -359,7 +359,8 @@ export class Vehicle {
     this.reverse = rev || vF < -0.5;
     if (this.shiftT > 0) this.shiftT -= dt;
     else if (!rev) {
-      const upAt = E.eco + (0.94 * E.red - E.eco) * Math.pow(thr, 1.5), dnAt = E.lug + (0.6 * E.red - E.lug) * thr * thr;
+      // (the foot lifted right off: the gear is kept - the engine holds the car back)
+      const upAt = thr < 0.05 ? 0.94 * E.red : E.eco + (0.94 * E.red - E.eco) * Math.pow(thr, 1.5), dnAt = E.lug + (0.6 * E.red - E.lug) * thr * thr;
       // (flat out past its power peak, the next gear pulls harder: a six-speed car reaches its top speed in sixth)
       const n0 = wr * E.G[g - 1];
       if (g < N && (n0 > upAt || (thr > 0.6 && n0 > E.sp.nP && this.torqueAt(wr * E.G[g]) * E.G[g] > this.torqueAt(n0) * ratio0(E, g) * 1.01))) { g++; this.shiftT = E.shift; }

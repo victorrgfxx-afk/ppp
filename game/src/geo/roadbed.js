@@ -276,15 +276,24 @@ function local(pl, k, x, z) {
   return LOC;
 }
 const LOC = [0, 0];
+const END_REACH = 0.45;
 // cb(plan, k, t, o, y) for every road (with its shoulders if sh) over (x, z); pad widens them (negative: deep inside)
-export function roadsAt(x, z, cb, sh = true, pad = 0) {
+// (V95) reach: a plan's own two ends taken that many metres further on (the surface asked for by wheels and feet:
+// where two mapped ways meet end to end their ribbons stop a few cm apart, or open a wedge on the outside of a bend,
+// and the surface fell through to the ground under the road there - 875 cracks 3-30 cm wide and up to 1.3 m deep
+// across the carriageways, each a jolt in the suspension)
+export function roadsAt(x, z, cb, sh = true, pad = 0, reach = 0) {
   if (!IDX) return;
   const e = IDX.cells.get(Math.floor((z + IORG) / ICELL) * ISPAN + Math.floor((x + IORG) / ICELL));
   if (!e) return;
   for (let q = 0; q < e.length; q += 2) {
     const pl = IDX.plans[e[q]], k = e[q + 1];
     const [t, o] = local(pl, k, x, z);
-    if (t < -1e-3 || t > 1.001) continue;
+    if (t < -1e-3 || t > 1.001) {
+      if (!reach || !(k === 0 && t < 0) && !(k === pl.P.length - 2 && t > 1)) continue;
+      const A = pl.P[k], B = pl.P[k + 1];
+      if ((t < 0 ? -t : t - 1) * Math.hypot(B[0] - A[0], B[1] - A[1]) > reach) continue;
+    }
     const lo = -pl.w / 2 - (sh ? pl.shL : 0) - pad, hi = pl.w / 2 + (sh ? pl.shR : 0) + pad;
     if (o < lo || o > hi) continue;
     const oc = Math.max(-pl.w / 2 - pl.shL, Math.min(pl.w / 2 + pl.shR, o)), tc = Math.max(0, Math.min(1, t));
@@ -296,7 +305,7 @@ export function roadsAt(x, z, cb, sh = true, pad = 0) {
 // comes from) the highest at most 0.6 m over it - a road under a bridge stays the road under it
 export function roadSurfaceAt(x, z, ref) {
   let best = null;
-  roadsAt(x, z, (pl, k, t, o, y) => { if (!pl.flat && (ref === undefined || y <= ref + 0.6) && (best === null || y > best)) best = y; });
+  roadsAt(x, z, (pl, k, t, o, y) => { if (!pl.flat && (ref === undefined || y <= ref + 0.6) && (best === null || y > best)) best = y; }, true, 0, END_REACH);
   return best;
 }
 // (V95) what a wheel at (x, z) rolls on: the road's surface there (asphalt, concrete, paving, cobble, gravel, dirt; its
@@ -304,7 +313,7 @@ export function roadSurfaceAt(x, z, ref) {
 // under a bridge, nor the one over it
 export function roadSurfAt(x, z, ref) {
   let s = null, by = -Infinity;
-  roadsAt(x, z, (pl, k, t, o, y) => { if ((ref === undefined || Math.abs(y - ref) < 1.5) && y > by) { by = y; s = pl.surf; } });
+  roadsAt(x, z, (pl, k, t, o, y) => { if ((ref === undefined || Math.abs(y - ref) < 1.5) && y > by) { by = y; s = pl.surf; } }, true, 0, END_REACH);
   return s;
 }
 // is (x, z) on a road (pad metres round it; negative: that far inside)?
