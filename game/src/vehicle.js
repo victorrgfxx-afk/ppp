@@ -221,6 +221,7 @@ export class Vehicle {
       aGrip = (Hy.aMax ?? 14) * mu;
       if (t > 0) { if (vF < -0.5) { accel = Hy.brake; this.brake = 1; } else accel = t * Math.min(Hy.A0, Hy.P / Math.max(1, vF)); }
       else if (t < 0) { if (vF > 0.5) { accel = -Hy.brake; this.brake = 1; } else accel = vF > -7 ? -3.2 : 0; }
+      if (t > 0.9 && vF >= 0 && vF < 22 && Hy.P / Math.max(1, vF) > aGrip * 1.3) this.spinK = 0.75 * (1 - vF / 22) * kAll;   // (flat out from rest its tyres are at their limit: a little smoke)
       accel = clamp(accel, -aGrip, aGrip) * kAll;
     } else if (E && ctl) accel = this.powertrain(dt, t, vF, mu, kAll, kFront, kRear);
     else if (ctl) {
@@ -292,8 +293,12 @@ export class Vehicle {
     this.lastLat = vR;
     // (how hard the tyres are sliding, 0-1: past their side grip, the driven wheels spinning, the rear ones locked by
     // the handbrake, the whole car sideways - the squeal, the marks, the smoke: main.js)
-    const sk = Math.max(Math.min(1, over * 1.6), this.spinK, hand && ctl && Math.abs(vF) > 3 ? 1 : 0, Math.min(1, Math.max(0, Math.abs(vR) - 1.2) / 4)) * (kAll > 0.2 ? 1 : 0);
+    const kOver = Math.min(1, over * 1.6), kHand = hand && ctl && Math.abs(vF) > 3 ? 1 : 0, kSide = Math.min(1, Math.max(0, Math.abs(vR) - 1.2) / 4);
+    const sk = Math.max(kOver, this.spinK, kHand, kSide) * (kAll > 0.2 ? 1 : 0);
     this.skid += (sk - this.skid) * Math.min(1, dt * (sk > this.skid ? 14 : 6));
+    // (and wheel by wheel - fl, fr, rl, rr: the front ones pushed wide, the driven ones spinning, the rear ones locked)
+    const s4 = this.sk4 ??= [0, 0, 0, 0], kf = Math.max(kSide, kOver, !E || E.drv !== 'r' ? this.spinK : 0), kr = Math.max(kSide, kHand, !E || E.drv !== 'f' ? this.spinK : 0);
+    s4[0] = s4[1] = kf; s4[2] = s4[3] = kr;
     const nfX = -Math.sin(hPath), nfZ = -Math.cos(hPath);
     const nrX = Math.cos(hPath), nrZ = -Math.sin(hPath);
     this.vx = nfX * vF + nrX * vR;

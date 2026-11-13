@@ -26,6 +26,7 @@ import { DOBLO_OPTS } from './doblo.js';
 import { keepClear } from './geo/trees.js';
 import { Vehicle, TRACTION } from './vehicle.js';
 import { specFor } from './tunerdata.js';
+import { WheelFX } from './wheelfx.js';
 import { roadSurfAt } from './geo/roadbed.js';
 import { FirDetail } from './geo/firs.js';
 import { Player } from './player.js';
@@ -736,6 +737,7 @@ async function main() {
   // rain: every lit material learns to get wet (before compiling, so switching to rain recompiles nothing)
   wetScene(scene);
   const rainFX = new RainFX(scene, qKey === 'low' ? 1600 : qKey === 'medium' ? 2800 : 4000), rainOcc = new RainOcclusion(), spray = new Spray(scene, TEX.noise), snowFX = new SnowFX(scene);
+  const wheelFX = new WheelFX(scene, TEX.noise, world);                // (V95: skid marks, tyre smoke, a dirt road's dust)
   // left out of the rain's height map: the sky, the falling rain and snow, and the far forests' canopy shell (a lid at
   // crown height over the whole stand, roads through the wood included; near the camera the real trees stand in for it)
   // the lying snow: a blanket over the ground near the camera, shaped from the height maps and the roads (rain.js)
@@ -761,7 +763,7 @@ async function main() {
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
   const fogGlow = new FogGlow(scene);                 // (V92: the lamps' halos in a fog)
-  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh]);
+  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, wheelFX.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
@@ -805,6 +807,7 @@ async function main() {
   if (blizzard > 0) { SNOW.uSnowDepth.value = 0.2; SNOW.uSnowPlaster.value = 0.7; }                     // (and a blizzard already blowing)
   else if (snowCover > 0) SNOW.uSnowPlaster.value = 0.5;                                               // (the trunks white on one side)
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
+  let fxClock = 0;                                                      // (the wheel effects' own clock: wheelfx.js)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
   let fogLamps = [];                                                    // (in a fog, the 12 nearest within ~120 m: their halos)
@@ -1224,6 +1227,7 @@ async function main() {
     let best = null, bd = 2.6;
     for (const v of vehicles) {
       if (v.remote) continue;                               // (a friend drives it: J rides along)
+      if (Math.abs(v.car.group.position.y - player.pos.y) > 2.5) continue;   // (V95: not the one on the bridge overhead, nor the one under it)
       for (const side of [-1, 1]) {
         const d = v.doorPos(side);
         const dist = Math.hypot(d.x - player.pos.x, d.z - player.pos.z);
@@ -1244,13 +1248,16 @@ async function main() {
   const exitCar = (force = false) => {
     if (!active) return;
     if (!force && Math.abs(active.speed) > 3) { hud.toast('Oprește mașina ca să cobori'); return; }
+    // (V95) out at the car's own level: under a bridge you were put on its deck, getting out (the ground asked for
+    // without a height is the highest there)
+    const yCar = active.car.group.position.y + 1;
     for (const side of [-1, 1]) {
       const d = active.doorPos(side);
-      player.setPose(d.x, d.z, active.h, 0);
+      player.setPose(d.x, d.z, active.h, 0, yCar);
       player.collide();
       if (Math.hypot(player.pos.x - d.x, player.pos.z - d.z) < 0.3) break;
     }
-    player.pos.y = world.groundHeight(player.pos.x, player.pos.z);
+    player.pos.y = world.groundHeight(player.pos.x, player.pos.z, yCar);
     audio.door();
     active.vx *= 0.2; active.vz *= 0.2;
     active.car.glass.opacity = 0.86;
@@ -1480,7 +1487,7 @@ async function main() {
         active?.car.cabin?.update(active, true, active.lightsOn || night > 0.5 ? 1 : 0, noSignal);
         if (active && active.impact > 2.5) { audio.crash(active.impact); shake = Math.min(0.35, active.impact * 0.03); }
         // (V93) back on the ground after a jump: the thump and the jolt, by how fast it came down
-        if (active && active.landing > 1.2) { audio.carLand(active.landing); shake = Math.max(shake, Math.min(0.3, active.landing * 0.035)); }
+        if (active && active.landing > 1.2) { wheelFX.land(active, active.landing, { wet: RAIN.uWet.value, snow: SNOW.uSnow.value }); audio.carLand(active.landing); shake = Math.max(shake, Math.min(0.3, active.landing * 0.035)); }
         if (active) active.landing = 0;
       }
       // the pistol in your hands (on foot only: put away in a car, while riding or flying)
@@ -1769,6 +1776,8 @@ async function main() {
     firs.update(dt, camera.position, firBodies);
     // the wheels throw up spray on a wet road, powder off a snowy one
     spray.update(dt, mode === 'car' && active ? active : null, mode === 'car' && active ? active.car.group.position.y : 0, Math.max(RAIN.uWet.value, SNOW.uSnow.value > 0.4 ? 0.85 : 0), rainLight + flash * 0.6, camera.position);
+    // (V95) and the marks, the smoke and the dust of tyres that slide, a dirt road's dust (wheelfx.js)
+    wheelFX.update(dt, mode === 'car' && active ? active : null, { wet: RAIN.uWet.value, snow: SNOW.uSnow.value, light: rainLight + flash * 0.6, cam: camera.position, t: fxClock += dt });
     // reflections in wet ground only when there is any (or a still puddle near: the oil wells' pad)
     if (post.ssr) post.ssr.enabled = (RAIN.uWet.value > 0.01 || geoWorld.mirrorNear(camera.position)) && !window.__game?.noSSR;
     {
@@ -1864,7 +1873,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { tuner, TRACTION, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

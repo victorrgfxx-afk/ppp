@@ -27,8 +27,9 @@ export class Player {
     this.t = 0; this.shiftT = -1; this.tac = false; this.tacWant = false; this.tacFuel = TAC_S; this.sl = null; this.sup = null;
     this.slK = 0; this.supK = 0; this.running = false; this.runWas = false; this.armed = false; this.gunBusy = false;
   }
-  setPose(x, z, yaw, pitch = 0) {
-    this.pos.set(x, this.world.groundHeight(x, z), z);
+  // (ref: the height to stand near - under a bridge, the ground below it)
+  setPose(x, z, yaw, pitch = 0, ref) {
+    this.pos.set(x, this.world.groundHeight(x, z, ref), z);
     this.vel.set(0, 0, 0);
     this.sl = null; this.sup = null; this.tacWant = false; this.tac = false;
     this.yaw = yaw; this.pitch = pitch;
