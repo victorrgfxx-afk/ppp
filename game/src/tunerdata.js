@@ -27,18 +27,20 @@ export const PS = 7023.5;                    // P [PS] = T [Nm] x n [rpm] / 7023
 // it (blank where they do not agree); vlim: an electronic speed limiter (km/h); est: no seller's figure for this
 // engine - the Stage 1 taken from the general rule (a turbo petrol's ~10 %, an aspirated engine's ~7 %); pump: a
 // distributor pump, no common rail.
+// (V96) s2, s3: [hp, Nm] after Stage 2 and Stage 3 where a seller lists them (README, V96); where not, stageFig works them
+// out by the rule those listings follow, and says so (an estimate).
 // (V95) the car round the engine, for its engine and gearbox in the game (vehicle.js): m its kerb weight (kg), v its top
 // speed (km/h), drv its driven wheels (f, r, a: all), gb its gears, t100 the factory's 0-100 km/h (s: not used by the
 // model - what the tests compare its answer with), lat its side grip on dry asphalt (g: typical of its kind on a
 // skidpad - a sports saloon ~0.9, a family hatchback ~0.82, a van ~0.72 - not a measurement of that car)
 export const SPECS = [
-  { re: /BMW Seria 3/, make: 'BMW', wmi: 'WBA', label: '320d · 2.0 turbodiesel (N47)', type: 'td', hp: 177, nm: 350, s1: [209, 419], nT: [1750, 3000], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17CP02', m: 1430, v: 228, drv: 'r', gb: 6, lat: 0.9, t100: 7.9 },
+  { re: /BMW Seria 3/, make: 'BMW', wmi: 'WBA', label: '320d · 2.0 turbodiesel (N47)', type: 'td', hp: 177, nm: 350, s1: [209, 419], s2: [222, 442], nT: [1750, 3000], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17CP02', m: 1430, v: 228, drv: 'r', gb: 6, lat: 0.9, t100: 7.9 },
   { re: /BMW Seria 1/, make: 'BMW', wmi: 'WBA', label: '118d · 2.0 turbodiesel (N47)', type: 'td', hp: 143, nm: 300, s1: [183, 400], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1995, cyl: 4, ecu: 'Bosch EDC17C41', m: 1320, v: 210, drv: 'r', gb: 6, lat: 0.88, t100: 9.0 },
   { re: /Opel Corsa/, make: 'Opel', wmi: 'W0L', label: '1.2 16V · benzină aspirat (Z12XE)', type: 'na', hp: 75, nm: 110, s1: [82, 125], nT: [4000, 4000], nP: 5600, red: 6400, cc: 1199, cyl: 4, ecu: 'Bosch ME1.5.5', m: 910, v: 170, drv: 'f', gb: 5, lat: 0.8, t100: 13.0 },
   { re: /Dacia Logan/, make: 'Dacia', wmi: 'UU1', label: '1.4 MPI · benzină aspirat', type: 'na', hp: 75, nm: 112, s1: [82, 122], nT: [3000, 3000], nP: 5500, red: 6200, cc: 1390, cyl: 4, ecu: '', m: 975, v: 162, drv: 'f', gb: 5, lat: 0.78, t100: 13.0 },
   { re: /Dacia Sandero/, make: 'Dacia', wmi: 'UU1', label: '0.9 TCe 90 · benzină turbo', type: 'tp', hp: 90, nm: 140, s1: [107, 175], nT: [2250, 3500], nP: 5250, red: 6200, cc: 898, cyl: 3, ecu: 'Valeo V50', m: 980, v: 175, drv: 'f', gb: 5, lat: 0.8, t100: 11.1 },
   { re: /Ford Focus/, make: 'Ford', wmi: 'WF0', label: '1.6 TDCi 109 · turbodiesel (G8DA)', type: 'td', hp: 109, nm: 240, s1: [141, 315], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1560, cyl: 4, ecu: 'Bosch EDC16C34', m: 1265, v: 188, drv: 'f', gb: 5, lat: 0.86, t100: 10.9 },
-  { re: /VW Golf/, make: 'Volkswagen', wmi: 'WVW', label: '1.9 TDI 90 · turbodiesel (ALH)', type: 'td', hp: 90, nm: 210, s1: [122, 267], nT: [1900, 2400], nP: 4000, red: 4600, cc: 1896, cyl: 4, ecu: 'Bosch EDC15V', pump: true, m: 1200, v: 180, drv: 'f', gb: 5, lat: 0.82, t100: 12.0 },
+  { re: /VW Golf/, make: 'Volkswagen', wmi: 'WVW', label: '1.9 TDI 90 · turbodiesel (ALH)', type: 'td', hp: 90, nm: 210, s1: [122, 267], s2: [125, 280], s3: [150, 320], nT: [1900, 2400], nP: 4000, red: 4600, cc: 1896, cyl: 4, ecu: 'Bosch EDC15V', pump: true, m: 1200, v: 180, drv: 'f', gb: 5, lat: 0.82, t100: 12.0 },
   { re: /Ford Kuga|^SUV/, make: 'Ford', wmi: 'WF0', label: '2.0 TDCi 140 · turbodiesel (UFDA)', type: 'td', hp: 140, nm: 320, s1: [175, 400], nT: [1750, 2750], nP: 3750, red: 4600, cc: 1997, cyl: 4, ecu: 'Delphi DCM3.5', m: 1590, v: 188, drv: 'a', gb: 6, lat: 0.8, t100: 10.6 },
   { re: /Mercedes argintiu/, make: 'Mercedes-Benz', wmi: 'WDD', label: 'A 180 CDI · 2.0 turbodiesel (W169)', type: 'td', hp: 109, nm: 250, s1: [139, 310], nT: [1600, 2600], nP: 4200, red: 4800, cc: 1991, cyl: 4, ecu: '', m: 1280, v: 186, drv: 'f', gb: 6, lat: 0.8, t100: 10.8 },
   { re: /Renault Kangoo/, make: 'Renault', wmi: 'VF1', label: '1.5 dCi 90 · turbodiesel (K9K)', type: 'td', hp: 90, nm: 200, s1: [108, 243], nT: [1750, 2500], nP: 4000, red: 4750, cc: 1461, cyl: 4, ecu: 'Delphi DCM3.4', m: 1294, v: 158, drv: 'f', gb: 5, lat: 0.75, t100: 15.0 },
@@ -83,6 +85,59 @@ const ign0 = (sp, n) => (sp.type === 'na' ? 14 : 5) + (sp.type === 'na' ? 16 : 1
 const thr0 = (sp, n) => 90 + 6 * sstep((n - 0.3 * sp.red) / (0.5 * sp.red));                    // (% of full air at full pedal, series)
 // (what the series turbo can give over its series air: 30 % in the middle of the revs, less toward its flow limit at the top)
 const airMax = (sp, n) => 1.3 - (sp.type === 'tp' ? 0.08 : 0.16) * sstep((n - sp.nT[1]) / (sp.nP - sp.nT[1]));
+// (V96) The parts a stage fits, and what they change in the model above.
+//  Stage 2: an intercooler with more core (a cooler, denser charge) and a free-flowing downpipe (less back-pressure: the
+//   series turbo turns faster at the top of the revs) - its reach over its series air +6 % low down to +14 % at the top;
+//   on a turbo petrol 1.5 deg more before it knocks (the cooler charge). An aspirated engine: a 4-1 manifold, a free
+//   exhaust, an intake - +3 % of air low down to +9 % at the top.
+//  Stage 3: the Stage 2 parts and a hybrid turbo (the series housings, a bigger compressor wheel: up to ~+80 % of air at
+//   the top, on boost a little later low down), injectors for the quantity (a petrol's fuel pump too), a stronger clutch.
+//   An aspirated engine: sports camshafts and a ported head - 3 % less air low down, +20 % at the top.
+// On the series parts a Stage 2 or 3 file asks for more than they give: the model holds the engine at their limits and
+// says why (WARN).
+const hwTop = (sp, n) => sstep((n - sp.nT[1]) / Math.max(1, sp.nP - sp.nT[1]));
+export function airCap(sp, n, hw = 1) {
+  const a = airMax(sp, n);
+  if (hw <= 1) return a;
+  const a2 = a * (1.06 + 0.08 * hwTop(sp, n));
+  if (hw === 2) return a2;
+  return Math.max(a2, 1.04 * (1.22 + 0.58 * sstep((n - 0.85 * sp.nT[0]) / Math.max(1, sp.nP - 0.85 * sp.nT[0]))));
+}
+export const veHw = (sp, n, hw = 1) => hw >= 3 ? 0.97 + 0.23 * sstep((n - 0.4 * sp.red) / (0.5 * sp.red)) : hw === 2 ? 1.03 + 0.06 * sstep((n - 0.45 * sp.red) / (0.45 * sp.red)) : 1;
+const injCap = (hw) => hw >= 3 ? 1.85 : 1.4;              // (a diesel's injected quantity at most, over the series full-load maximum)
+const fuelCap = (hw) => hw >= 3 ? 1.9 : 1.38;             // (a turbo petrol's fuel flow at most, over series)
+const knock0 = (hw) => hw >= 2 ? 3.5 : 2;                 // (a turbo petrol's degrees of advance to spare, on series boost)
+// (the clutch: ~40 % over the series torque, as made; the stronger one of a kit ~90 %)
+export const clutchNm = (sp, hw = 1) => sp.nm * (hw >= 3 ? 1.9 : 1.42);
+// a stage's figures: [hp, Nm, an estimate?]. Listed where a seller lists them; else, as the listings that have them go -
+// Stage 2 about 6 % of power and 5 % of torque over Stage 1 (320d and the Golf IV TDIs: +4 to 7 %, +3 to 6 %), Stage 3 on
+// a hybrid turbo +55 % of power and +45 % of torque over series (the Golf IV TDIs listed: +50 to 70 %, +42 to 45 %);
+// an aspirated engine: its Stage 1 with the air its parts add where its power and its torque peak (manifold, exhaust,
+// intake: +5 to 9 %; camshafts and head: +7 to 20 %)
+export function stageFig(sp, k) {
+  if (k <= 1) return [sp.s1[0], sp.s1[1], !!sp.est];
+  const S = k === 2 ? sp.s2 : sp.s3;
+  if (S) return [S[0], S[1], false];
+  const r = (x) => Math.round(x);
+  if (sp.type === 'na') {
+    // (its Stage 1 curves with the parts' air at each rpm: camshafts move the torque's peak up the revs)
+    const st = stockMaps(sp), ev1 = sp._ev1 ??= evaluate(sp, stagePreset(sp, st, 1, 1), st, 1);
+    let hp = 0, nm = 0;
+    for (const [n, , t1] of ev1.pts) { const t = t1 * veHw(sp, n, k); nm = Math.max(nm, t); hp = Math.max(hp, t * n / PS); }
+    return [r(hp), r(nm), true];
+  }
+  if (sp.own) return k === 2 ? [r(sp.hp * 1.2), r(sp.nm * 1.18), true] : [r(sp.hp * 1.35), r(sp.nm * 1.3), true];
+  const s2 = sp.s2 ?? [r(sp.s1[0] * 1.06), r(sp.s1[1] * 1.05)];
+  if (k === 2) return [s2[0], s2[1], true];
+  return [Math.max(s2[0] + 5, r(sp.hp * 1.55)), Math.max(s2[1] + 10, r(sp.nm * 1.45)), true];
+}
+// the parts of a stage's kit, as the laptop lists them
+export function kitParts(sp, hw) {
+  if (hw <= 1) return [];
+  const two = sp.type === 'na' ? ['Galerie de evacuare 4-1 (inox)', 'Evacuare sport', 'Admisie sport'] : ['Intercooler frontal mărit', sp.type === 'td' ? 'Downpipe sport cu filtru de particule omologat' : 'Downpipe sport cu catalizator omologat', 'Admisie sport (filtru și furtune)'];
+  if (hw === 2) return two;
+  return two.concat(sp.type === 'na' ? ['Arbori cu came sport', 'Chiulasă prelucrată (canale lustruite)', 'Injectoare mai mari'] : ['Turbină hibridă (rotor de compresor mărit)', sp.type === 'td' ? (sp.pump ? 'Duze de injector mărite, pompă reglată' : 'Injectoare mărite') : 'Injectoare și pompă de benzină mărite', 'Ambreiaj întărit cu volantă']);
+}
 // (a diesel's burn by its lambda: all of the fuel above 1.3, a little less well down to 1.15, and below that more fuel
 // makes smoke, not torque)
 const etaLamD = (l) => l >= 1.15 ? 1 - 0.35 * Math.max(0, 1.3 - l) : 0.9475 * Math.pow(l / 1.15, 1.3);
@@ -128,22 +183,26 @@ const top = (m) => m.v[m.v.length - 1];                       // (the full-load 
 const lerpRow = (xs, ys, x) => { if (x <= xs[0]) return ys[0]; for (let i = 1; i < xs.length; i++) if (x <= xs[i]) return ys[i - 1] + (ys[i] - ys[i - 1]) * (x - xs[i - 1]) / (xs[i] - xs[i - 1]); return ys[ys.length - 1]; };
 
 // ---- the engine run through a set of maps: per rev column, the torque at full load, and what is wrong with it
-export function evaluate(sp, maps, stock = stockMaps(sp)) {
+export function evaluate(sp, maps, stock = stockMaps(sp), hw = 1) {
   const C = revAxis(sp), ccCyl = sp.cc / sp.cyl, warn = new Set(), Tq = [], info = [];
+  const iq0 = Math.max(...C.map(n => torque0(sp, n))) * FUEL / sp.cyl, cNm = clutchNm(sp, hw);   // (the series full-load quantity; the clutch)
   const wish = byId(maps, 'wish'), tlim = byId(maps, 'tlim'), boost = byId(maps, 'boost'), sv = byId(maps, 'svbl');
   const tl = (j) => (tlim.v[0][j] + tlim.v[1][j] + tlim.v[2][j]) / 2.95;       // (the gears' limiters, as the car goes up through them)
   for (let j = 0; j < C.length; j++) {
     const n = C[j], T0 = torque0(sp, n);
     let T, note = {};
     if (sp.type === 'td') {
-      const b0 = top(byId(stock, 'boost'))[j], b = top(boost)[j], air0 = ccCyl * AIRCC * b0, cap = air0 * airMax(sp, n);
+      const b0 = top(byId(stock, 'boost'))[j], b = top(boost)[j], air0 = ccCyl * AIRCC * b0, cap = air0 * airCap(sp, n, hw);
       let air = ccCyl * AIRCC * b;
       if (air > cap * 1.005) { air = cap; warn.add('turbo'); }
       const sm = byId(maps, 'smoke'), allowed = lerpRow(sm.air, sm.v.map(r => r[j]), air);
-      const req = Math.min(top(wish)[j], tl(j)) * FUEL / sp.cyl, iq = Math.min(req, allowed), lam = air / (14.5 * iq);
+      const req = Math.min(top(wish)[j], tl(j)) * FUEL / sp.cyl;
+      let iq = Math.min(req, allowed);
+      if (iq > iq0 * injCap(hw) * 1.005) { iq = iq0 * injCap(hw); warn.add('inj'); }
+      const lam = air / (14.5 * iq);
       if (lam < 1.15) warn.add('smoke');
       const rm = byId(maps, 'rail'), rl = rm ? top(rm)[j] / top(byId(stock, 'rail'))[j] : 1, ds = top(byId(maps, 'soi'))[j] - top(byId(stock, 'soi'))[j];
-      if (rl > 1.12) warn.add('rail');
+      if (rl > (hw >= 3 ? 1.22 : 1.12)) warn.add('rail');
       if (ds > 3) warn.add('soi');
       T = iq * sp.cyl / FUEL * etaLamD(lam) / etaLamD(lam0d(sp, n)) * Math.max(0.97, Math.min(1.02, 1 + 0.2 * (rl - 1))) * Math.max(0.98, Math.min(1.012, 1 + 0.004 * ds));
       if (b > sv.v[0][j] + 1) { T *= 0.6; warn.add('limp'); }
@@ -153,10 +212,12 @@ export function evaluate(sp, maps, stock = stockMaps(sp)) {
       if (sp.type === 'tp') {
         const b0 = top(byId(stock, 'boost'))[j]; bNow = top(boost)[j];
         a = bNow / b0;
-        if (a > airMax(sp, n) * 1.005) { a = airMax(sp, n); warn.add('turbo'); }
-      } else a = Math.min(100, top(wish)[j]) / thr0(sp, n);
+        if (a > airCap(sp, n, hw) * 1.005) { a = airCap(sp, n, hw); warn.add('turbo'); }
+      } else a = Math.min(100, top(wish)[j]) / thr0(sp, n) * veHw(sp, n, hw);
       const dI = top(byId(maps, 'ign'))[j] - top(byId(stock, 'ign'))[j], lam = top(byId(maps, 'lam'))[j], l0 = lam0p(sp, n);
-      const m = sp.type === 'na' ? 5 : 2 - 14 * (a - 1);          // (degrees to the knock limit on the fuel in the tank)
+      // (the fuel it needs for that air at that lambda, over series: past what the injectors and the pump give, it runs lean)
+      if (sp.type === 'tp' && a * l0 / lam > fuelCap(hw) * 1.005) { a = fuelCap(hw) * lam / l0; warn.add('fuel'); }
+      const m = sp.type === 'na' ? 5 : knock0(hw) - 14 * (a - 1);          // (degrees to the knock limit on the fuel in the tank)
       if (dI > m + 0.6) warn.add('knock');
       if (lam > 0.925 && (sp.type === 'tp' ? a > 1.05 : true) && n > sp.nT[0]) warn.add('lean');
       const eI = 1 + (sp.type === 'na' ? 0.012 : 0.009) * Math.min(dI, m) - (dI > m ? 0.025 * (dI - m) : 0);
@@ -165,7 +226,7 @@ export function evaluate(sp, maps, stock = stockMaps(sp)) {
       if (sp.type === 'tp' && bNow > sv.v[0][j] + 1) { T *= 0.6; warn.add('limp'); }
       note = { boost: bNow, lam, ign: dI };
     }
-    if (T > T0 * 1.42 && T > sp.nm * 1.05) warn.add('clutch');
+    if (T > cNm * 1.005) warn.add('clutch');
     Tq.push(T); info.push(note);
   }
   // the curves, on a fine grid: the series one scaled by each column's gain
@@ -180,22 +241,24 @@ export function evaluate(sp, maps, stock = stockMaps(sp)) {
   return { cols: C, torque: Tq, gain: g, info, pts, nm, hp, nm0, hp0, kNm: nm / nm0, kHp: hp / hp0, vlim: vm ? vm.v[0][0] : null, warn: [...warn] };
 }
 export const WARN = {
-  turbo: 'Presiunea cerută depășește ce poate livra turbina de serie: aerul rămâne la limita ei',
+  turbo: 'Presiunea cerută depășește ce poate livra turbina montată: aerul rămâne la limita ei (Stage 2: intercooler și downpipe; Stage 3: turbină hibridă)',
+  inj: 'Injectoarele montate nu mai dau cantitatea cerută: durata de injecție e la capăt (Stage 3 are injectoare mărite)',
+  fuel: 'Injectoarele și pompa de benzină nu țin pasul cu aerul: amestecul se sărăcește (Stage 3 le are mărite)',
   smoke: 'Fum și temperatură mare a gazelor: prea mult combustibil pentru aerul admis (λ sub 1,15)',
   rail: 'Presiune de rampă peste 12 % față de serie: pompa și injectoarele sunt forțate',
   soi: 'Avans de injecție prea mare: zgomot de ardere, presiune de vârf în cilindru',
   limp: 'Presiunea țintă trece de limita de protecție: ECU-ul intră în avarie (putere tăiată)',
   knock: 'Detonație: avansul trece de limita benzinei din rezervor — ECU-ul îl retrage, puterea scade',
   lean: 'Amestec prea sărac la sarcină mare: temperatura gazelor crește',
-  clutch: 'Cuplu cu peste 40 % peste serie: ambreiajul și cutia nu mai sunt în limitele lor',
+  clutch: 'Cuplu peste ce duce ambreiajul montat: patinează la sarcină mare (kitul Stage 3 are ambreiaj întărit)',
 };
 
 // ---- the Stage 1 preset: the maps raised together to the seller's figures for this engine (torque gain kT where the
 // torque peaks, power gain kP where the power does, a turbo's own low revs gaining less). The recipe below is worked
 // for a gain per rev column, run through the model, and corrected by what the model answers until it gives the figures
 const part = (i, rows) => sstep((i / (rows - 1) - 0.45) / 0.4);   // (the full-load rows take all of a change, fading out below ~55 % load)
-function recipe(sp, stock, gv) {
-  const maps = cloneMaps(stock), C = revAxis(sp), ccCyl = sp.cc / sp.cyl;
+function recipe(sp, stock, gv, hw = 1) {
+  const maps = cloneMaps(stock), C = revAxis(sp), ccCyl = sp.cc / sp.cyl, iq0 = Math.max(...C.map(n => torque0(sp, n))) * FUEL / sp.cyl;
   const wish = byId(maps, 'wish'), tlim = byId(maps, 'tlim');
   C.forEach((n, j) => {
     const g = gv[j], T0 = torque0(sp, n);
@@ -204,8 +267,8 @@ function recipe(sp, stock, gv) {
     if (sp.type === 'td') {
       const boost = byId(maps, 'boost'), sm = byId(maps, 'smoke'), rail = byId(maps, 'rail'), soi = byId(maps, 'soi');
       // (the quantity for that torque, at most what the turbo's air burns clean - lambda 1.16)
-      const lamT = Math.max(1.2, lam0d(sp, n) - 0.07), b0 = top(boost)[j], cap = ccCyl * AIRCC * b0 * airMax(sp, n);
-      const iq = Math.min(T0 * g * FUEL / sp.cyl, cap / (14.5 * 1.16));
+      const lamT = Math.max(1.2, lam0d(sp, n) - 0.07), b0 = top(boost)[j], cap = ccCyl * AIRCC * b0 * airCap(sp, n, hw);
+      const iq = Math.min(T0 * g * FUEL / sp.cyl, cap / (14.5 * 1.16), iq0 * injCap(hw) * 0.998);
       const air = Math.min(14.5 * iq * lamT, cap), b = Math.max(b0, air / (ccCyl * AIRCC)), gq = iq * sp.cyl / FUEL / T0;
       for (let i = 0; i < 3; i++) tlim.v[i][j] *= gq * 1.004;
       wish.v.forEach((r, i) => { r[j] *= 1 + (gq - 1) * part(i, 8); });
@@ -213,21 +276,21 @@ function recipe(sp, stock, gv) {
       // (the smoke limiter: where the new air reaches, room for the new quantity and 3 % over)
       const need = iq * 1.03, have = lerpRow(sm.air, sm.v.map(q => q[j]), ccCyl * AIRCC * b);
       if (need > have) sm.v.forEach((r, i) => { r[j] *= 1 + (need / have - 1) * sstep((sm.air[i] / (ccCyl * AIRCC * b) - 0.6) / 0.3); });
-      if (rail) rail.v.forEach((r, i) => { r[j] *= 1 + Math.min(0.07, (g - 1) * 0.3) * part(i, 8); });
+      if (rail) rail.v.forEach((r, i) => { r[j] *= 1 + Math.min(hw >= 3 ? 0.16 : 0.07, (g - 1) * 0.3) * part(i, 8); });
       soi.v.forEach((r, i) => { r[j] += Math.min(1.5, (g - 1) * 6) * part(i, 8); });
     } else if (sp.type === 'tp') {
       const boost = byId(maps, 'boost'), ign = byId(maps, 'ign'), lam = byId(maps, 'lam');
       const l0 = top(lam)[j], l1 = Math.min(0.875, l0 + 0.03), eL = etaLamP(l1) / etaLamP(lam0p(sp, n));
       let a = g, dI = 0;
-      for (let it = 0; it < 4; it++) { dI = Math.min(1.5, 2 - 14 * (a - 1)); a = Math.min(airMax(sp, n), g * 1.01 / ((1 + 0.009 * dI) * eL)); }
+      for (let it = 0; it < 6; it++) { dI = Math.min(1.5, knock0(hw) - 14 * (a - 1)); a = Math.min(airCap(sp, n, hw), fuelCap(hw) * l1 / lam0p(sp, n) * 0.998, g * 1.01 / ((1 + 0.009 * dI) * eL)); }
       const b0 = top(boost)[j];
       boost.v.forEach((r, i) => { r[j] += b0 * (a - 1) * part(i, 8); });
       ign.v.forEach((r, i) => { r[j] += dI * part(i, 8); });
       lam.v.forEach((r, i) => { r[j] += (l1 - l0) * (i / 2); });
     } else {
       const ign = byId(maps, 'ign'), lam = byId(maps, 'lam');
-      const a = 100 / thr0(sp, n), l0 = top(lam)[j], l1 = 0.875, eL = etaLamP(l1) / etaLamP(lam0p(sp, n));
-      wish.v.forEach((r, i) => { r[j] = Math.min(100, r[j] * (1 + (a - 1) * part(i, 8))); });
+      const aT = 100 / thr0(sp, n), a = aT * veHw(sp, n, hw), l0 = top(lam)[j], l1 = 0.875, eL = etaLamP(l1) / etaLamP(lam0p(sp, n));
+      wish.v.forEach((r, i) => { r[j] = Math.min(100, r[j] * (1 + (aT - 1) * part(i, 8))); });   // (the throttle: wide open at full pedal; the parts add their air)
       const dI = Math.max(0, Math.min(5, (g * 1.006 / (a * eL) - 1) / 0.012));
       ign.v.forEach((r, i) => { r[j] += dI * part(i, 8); });
       lam.v.forEach((r, i) => { r[j] += (l1 - l0) * (i / 2); });
@@ -238,23 +301,26 @@ function recipe(sp, stock, gv) {
   for (const m of maps) m.v = m.v.map(r => r.map(x => +x.toFixed(m.dec + 1)));
   return maps;
 }
-export function stage1(sp, stock = stockMaps(sp)) {
-  const C = revAxis(sp), kT = sp.s1[1] / sp.nm, kP = sp.s1[0] / sp.hp;
+// (V96) Stage k's preset for an engine with kit hw: the same recipe, closed on that stage's figures (stageFig) with
+// the parts of its kit in the model. A hybrid turbo comes on boost later: Stage 3 gains less low down
+export function stagePreset(sp, stock = stockMaps(sp), k = 1, hw = k) {
+  const C = revAxis(sp), [hpT, nmT] = stageFig(sp, k), kT = nmT / sp.nm, kP = hpT / sp.hp, low = k >= 3 ? 0.22 : 0.35;
   const want = C.map(n => {
     const hi = kT + (kP - kT) * sstep((n - sp.nT[1]) / Math.max(1, sp.nP - sp.nT[1]));
-    return sp.type === 'na' ? hi : 1 + (hi - 1) * (0.35 + 0.65 * sstep((n - 900) / (sp.nT[0] - 900)));
+    return sp.type === 'na' ? hi : 1 + (hi - 1) * (low + (1 - low) * sstep((n - 900) / (sp.nT[0] - 900)));
   });
-  let gv = want.slice(), maps = recipe(sp, stock, gv);
-  for (let it = 0; it < 6; it++) {
-    const ev = evaluate(sp, maps, stock);
+  let gv = want.slice(), maps = recipe(sp, stock, gv, hw);
+  for (let it = 0; it < 8; it++) {
+    const ev = evaluate(sp, maps, stock, hw);
     // (each column to its own gain, then the whole to the peak figures: the power's peak may fall between columns)
     gv = gv.map((g, j) => 1 + (g - 1) * (want[j] - 1) / Math.max(1e-3, ev.gain[j] - 1));
     const fT = kT / ev.kNm, fP = kP / ev.kHp;
     if (it >= 2) gv = gv.map((g, j) => g * (C[j] <= sp.nT[1] ? fT : C[j] >= sp.nP ? fP : fT + (fP - fT) * (C[j] - sp.nT[1]) / (sp.nP - sp.nT[1])));
-    maps = recipe(sp, stock, gv);
+    maps = recipe(sp, stock, gv, hw);
   }
   return maps;
 }
+export const stage1 = (sp, stock = stockMaps(sp)) => stagePreset(sp, stock, 1, 1);
 
 // ---- what a set of maps does to the car in the game: its pull scaled by the mean of the torque's and the power's
 // gain, its top speed by the cube root of the power's (the air's drag grows with the cube of the speed), an electronic

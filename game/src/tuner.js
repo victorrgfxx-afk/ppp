@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { specFor, stockMaps, stage1, evaluate, gameTune, cloneMaps, vinFor, WARN } from './tunerdata.js';
+import { specFor, stockMaps, stagePreset, stageFig, kitParts, clutchNm, evaluate, gameTune, cloneMaps, vinFor, WARN } from './tunerdata.js';
 
 // (V94) The autotuner: a laptop and an OBD flashing interface left on the veranda's steps by the dog. Taken (E), it is
 // used from the driver's seat of any car standing still (U): the laptop starts, finds the interface, identifies the
@@ -8,9 +8,13 @@ import { specFor, stockMaps, stage1, evaluate, gameTune, cloneMaps, vinFor, WARN
 // changes the maps, the engine model (tunerdata.js) answering with the power and torque they give - and writes it
 // back. What is written drives the car: its pull, its top speed, its limiter. As on a real car: ignition on, engine
 // stopped, the lights off, the battery watched, the original always kept to be written back.
+// (V96) Stage 2 and Stage 3: a stage past the first is a file made for parts - its kit (tunerdata.js: an intercooler, a
+// downpipe and an intake; then a hybrid turbo, injectors, a stronger clutch). The laptop's "Kit de piese" fits them (in
+// the game at once; in a workshop hours or days), the editor's presets make the file for the kit fitted, and the same
+// file on fewer parts gives what those parts allow - with the engine model's warnings.
 
 const SPOT = { x: 5.615, z: 3.86 };          // on the lower of the two steps to the veranda's door (hero.js)
-const T_BOOT = 3.4, T_ID = 2.6, T_READ = 9, T_WRITE = 13;
+const T_BOOT = 3.4, T_ID = 2.6, T_READ = 9, T_WRITE = 13, T_MOUNT = 7;
 const fmt = (x, d = 0) => x.toLocaleString('ro-RO', { minimumFractionDigits: d, maximumFractionDigits: d });
 const num = (x, d = 0) => x.toLocaleString('ro-RO', { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: false });
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -178,8 +182,12 @@ table.tn-t{border-collapse:separate;border-spacing:2px;font:12px/1 ui-monospace,
 .tn-warn{color:var(--w);font-size:12px;display:grid;gap:4px}
 .tn-okl{color:var(--g);font-size:12px}
 .tn-big{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.tn-kits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:start}
+.tn-card.kit.on{border-color:var(--a)}
+.tn-parts{margin:0 0 6px;padding-left:18px;display:grid;gap:3px}
+.tn-note .est,.tn-card .est{color:var(--w)}
 @media (max-width:860px){.tn-ed{grid-template-columns:minmax(0,1fr) 244px}.tn-maps{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}.tn-menu{grid-template-columns:minmax(200px,1fr) 1.4fr}.tn-chips .tn-chip.opt{display:none}}
-@media (max-width:620px){.tn-ed{grid-template-columns:1fr;grid-auto-rows:min-content}.tn-menu{grid-template-columns:1fr}}
+@media (max-width:620px){.tn-ed{grid-template-columns:1fr;grid-auto-rows:min-content}.tn-menu{grid-template-columns:1fr}.tn-kits{grid-template-columns:1fr}}
 @media (max-height:480px){.tn-lap{border-width:5px;border-bottom-width:7px;height:calc(100vh - 12px)}.tn-deck{height:6px}.tn-main{padding:8px}.tn-dyno canvas{height:118px}#tuner .tn-maps button{padding:4px 8px}#tuner button.tile{min-height:0;padding:8px 11px}.tn-t td{padding:5px 4px}.tn-card{padding:9px}}
 `;
 const LOGO = '<svg viewBox="0 0 24 24"><path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z"/><path d="M7.6 14.2a4.6 4.6 0 0 1 8.8 0"/><path d="M12 13.4l3.1-3.3"/></svg>';
@@ -197,7 +205,7 @@ export class Tuner {
     // in the same order), and the tune it was left with
     const n = new Map();
     for (const v of this.vehicles) { const i = n.get(v.name) ?? 0; n.set(v.name, i + 1); v.tunerKey = v.name + '#' + i; }
-    for (const v of this.vehicles) { const rec = this.cars[v.tunerKey]; if (rec?.maps) this.applyMaps(v, rec.maps); }
+    for (const v of this.vehicles) { const rec = this.cars[v.tunerKey]; if (rec?.maps || (rec?.hw ?? 1) > 1) this.applyMaps(v, rec.maps ?? null); }
     this.root = null;
   }
   save() { this.store.set('tuner', { owned: this.owned, cars: this.cars }); }
@@ -225,9 +233,11 @@ export class Tuner {
   stockOf(v) { return v._tst ??= stockMaps(this.spec(v)); }
   // maps as saved ({ id: rows }) onto the series set
   mapsFrom(v, saved) { const m = cloneMaps(this.stockOf(v)); for (const q of m) if (saved?.[q.id] && saved[q.id].length === q.v.length) q.v = saved[q.id].map(r => r.slice()); return m; }
+  kitOf(v) { return this.cars[v.tunerKey]?.hw ?? 1; }
   applyMaps(v, saved) {
-    const sp = this.spec(v), st = this.stockOf(v), maps = saved ? this.mapsFrom(v, saved) : st, ev = evaluate(sp, maps, st), g = gameTune(sp, ev);
+    const sp = this.spec(v), st = this.stockOf(v), hw = this.kitOf(v), rec = this.cars[v.tunerKey] ?? {}, maps = saved ? this.mapsFrom(v, saved) : st, ev = evaluate(sp, maps, st, hw), g = gameTune(sp, ev);
     const s0 = v.stock ??= { power: v.power, vmax: v.vmax, hyper: v.hyper };
+    if (v.eng) v.eng.clutchNm = clutchNm(sp, hw);            // (the clutch the kit fitted: vehicle.js lets it slip past that)
     const same = !saved || maps.every((m, k) => m.v.every((r, i) => r.every((x, j) => Math.abs(x - st[k].v[i][j]) < 1e-9)));
     // (V95) a car with its own engine in the game (vehicle.js): the file's torque, rev column by rev column, is what its
     // engine now gives - its pull in every gear and its top speed follow from it
@@ -239,7 +249,11 @@ export class Tuner {
       const H = s0.hyper, top = H.top * g.kV, lim = g.vlim != null ? Math.min(top, g.vlim / 3.6) : H.limit;
       v.hyper = { ...H, P: H.P * g.kP, A0: Math.min(Math.max(H.A0, H.aMax ?? H.A0), H.A0 * ev.kNm), limit: lim, vAero: H.vAero ?? H.limit };
     } else { v.power = s0.power * g.kA; v.vmax = s0.vmax * g.kV; }
-    v.tune = { hp: ev.hp, nm: ev.nm, kA: g.kA, kV: g.kV, label: ev.kHp >= 1.02 && ev.kNm >= 1.02 ? 'Stage 1' : 'modificat' };
+    // (the label: the stage whose preset the file was made from - "retușat" when changed by hand after it, "fără kit" when
+    // its parts are not fitted; a file of before V96, Stage 1 when it gains)
+    const k = rec.stage;
+    const label = k ? 'Stage ' + k + (rec.hand ? ' · retușat' : '') + (hw < k ? ' · fără kit' : '') : k === 0 ? 'modificat' : ev.kHp >= 1.02 && ev.kNm >= 1.02 ? 'Stage 1' : 'modificat';
+    v.tune = { hp: ev.hp, nm: ev.nm, kA: g.kA, kV: g.kV, label, stage: k ?? null, kit: hw };
     return ev;
   }
 
@@ -279,6 +293,7 @@ export class Tuner {
     this.ecu = this.mapsFrom(v, this.rec.maps);              // (what is in the ECU now)
     this.maps = cloneMaps(this.ecu);                         // (the file being worked on)
     this.identified = !!this.rec.read; this.sel.clear(); this.mapId = 'tlim'; this.msg = '';      // (a car read before is known to the laptop)
+    this.fileStage = this.rec.stage ?? null; this.fileHand = !!this.rec.hand;
     this.open = true; v.engineOff = true; this.volt = 12.6; this.wrote = null;
     this.root.classList.add('on');
     this.$car.textContent = v.name;
@@ -319,13 +334,20 @@ export class Tuner {
     else if (a === 'dowrite') this.start('write', T_WRITE);
     else if (a === 'lights') { v.setLights(false); this.render(); }
     else if (a === 'map') { this.mapId = d.id; this.sel.clear(); this.render(); }
-    else if (a === 'stage1') { this.maps = stage1(this.sp, this.stock); this.msg = 'Presetarea Stage 1 e în hărți: celulele schimbate au chenar alb. Poți umbla tu la ele, apoi «Scrie în ECU».'; this.render(); }
-    else if (a === 'ori') { this.maps = cloneMaps(this.stock); this.msg = 'Hărțile sunt din nou cele originale.'; this.render(); }
+    else if (a === 'stage') {
+      const k = +d.k, hw = this.kitOf(v);
+      if (hw < k) { this.msg = 'Presetarea Stage ' + k + ' cere kitul ei de piese: Meniu › Kit de piese.'; this.render(); return; }
+      this.maps = stagePreset(this.sp, this.stock, k, hw); this.fileStage = k; this.fileHand = false;
+      this.msg = 'Presetarea Stage ' + k + ' e în hărți: celulele schimbate au chenar alb. Poți umbla tu la ele, apoi «Scrie în ECU».'; this.render();
+    }
+    else if (a === 'ori') { this.maps = cloneMaps(this.stock); this.fileStage = null; this.fileHand = false; this.msg = 'Hărțile sunt din nou cele originale.'; this.render(); }
+    else if (a === 'parts') this.go('parts');
+    else if (a === 'mount') { const k = +d.k; if (k !== this.kitOf(v)) this.start('mount', T_MOUNT, { to: k, from: this.kitOf(v) }); }
     else if (a === 'selfull') { const m = this.map(), n = m.v.length; this.sel.clear(); for (let i = Math.max(0, n - 3); i < n; i++) for (let j = 0; j < m.v[i].length; j++) this.sel.add(i + ',' + j); this.paintSel(); }
     else if (a === 'selall') { const m = this.map(); this.sel.clear(); m.v.forEach((r, i) => r.forEach((x, j) => this.sel.add(i + ',' + j))); this.paintSel(); }
     else if (a === 'selnone') { this.sel.clear(); this.paintSel(); }
     else if (a === 'nudge') this.nudge(+d.k);
-    else if (a === 'resetsel') { const m = this.map(), s0 = this.stock.find(q => q.id === m.id); for (const c of this.sel) { const [i, j] = c.split(',').map(Number); m.v[i][j] = s0.v[i][j]; } this.render(); }
+    else if (a === 'resetsel') { const m = this.map(), s0 = this.stock.find(q => q.id === m.id); for (const c of this.sel) { const [i, j] = c.split(',').map(Number); m.v[i][j] = s0.v[i][j]; } this.fileHand = true; this.render(); }
   }
   map() { return this.maps.find(m => m.id === this.mapId) ?? this.maps[0]; }
   // one step on the chosen cells: 1 % of each (or the map's own step: half a degree, 0.005 of lambda, 5 km/h)
@@ -338,7 +360,7 @@ export class Tuner {
       if (m.id === 'lam') x = Math.max(0.7, Math.min(1.05, x)); else if (m.id === 'vmax') x = Math.max(60, Math.min(900, x)); else if (m.id === 'wish' && this.sp.type === 'na') x = Math.max(0, Math.min(100, x)); else if (m.id !== 'soi' && m.id !== 'ign') x = Math.max(0, x);
       m.v[i][j] = +x.toFixed(m.dec + 1);
     }
-    this.msg = ''; this.render();
+    this.fileHand = true; this.msg = ''; this.render();
   }
   changed(a, b) { return a.some((m, k) => m.v.some((r, i) => r.some((x, j) => Math.abs(x - b[k].v[i][j]) > 1e-9))); }
 
@@ -369,6 +391,12 @@ export class Tuner {
       at(0.62, () => this.logLine(J, 'Protocoale: K-Line, CAN, UDS ............ OK', 'ok'));
       at(0.82, () => this.logLine(J, 'Tensiune la mufă: ' + fmt(this.volt, 1) + ' V ............... OK', 'ok'));
       at(0.96, () => this.logLine(J, 'Gata.'));
+    } else if (J.kind === 'mount') {
+      // (the parts off and on, in order: the old ones out, each new one in, the checks)
+      const sp2 = this.sp, out = J.from > 1 ? kitParts(sp2, J.from).filter(q => !kitParts(sp2, J.to).includes(q)) : [], put = kitParts(sp2, J.to).filter(q => !kitParts(sp2, J.from).includes(q));
+      const steps = [...out.map(q => ['Se demontează: ' + q, '']), ...put.map(q => ['Se montează: ' + q, 'ok']), ...(J.to === 1 ? [['Se pun la loc piesele de serie', 'ok']] : []), ['Strângere la cuplu, etanșări verificate, fără scurgeri', 'ok']];
+      const el = this.root.querySelector('[data-ph]'); if (el) el.textContent = J.to > 1 ? 'Montaj kit Stage ' + J.to : 'Piese de serie la loc';
+      steps.forEach((st2, i) => at(0.02 + 0.9 * i / steps.length, () => this.logLine(J, st2[0], st2[1])));
     } else if (J.kind === 'id') {
       const el = this.root.querySelector('[data-ph]'); if (el) el.textContent = 'Sesiune de diagnoză';
       at(0.05, () => this.logLine(J, 'Se deschide sesiunea de diagnoză …'));
@@ -393,11 +421,23 @@ export class Tuner {
     if (J.kind === 'boot') { this.booted = true; this.beep(990, 0.05, 0.08); this.go('menu'); }
     else if (J.kind === 'id') { this.identified = true; this.go('ident'); }
     else if (J.kind === 'read') { this.rec.read = true; this.save(); this.beep(990, 0.05, 0.08); this.msg = ''; this.go('readok'); }
+    else if (J.kind === 'mount') {
+      // (the same file in the ECU on the new parts: what they allow)
+      this.rec.hw = J.to; this.save();
+      this.applyMaps(v, this.rec.maps);
+      const k = this.rec.stage;
+      this.msg = J.to > 1 ? 'Kitul Stage ' + J.to + ' e montat. Fă acum fișierul pentru el: Editor › presetarea Stage ' + J.to + ', apoi «Scrie în ECU».' : 'Piesele de serie sunt la loc.';
+      if (k && k > J.to) this.msg += ' Atenție: în ECU e un fișier Stage ' + k + ', făcut pentru piese care nu mai sunt montate — scrie un fișier Stage ' + Math.max(1, J.to) + ' sau originalul.';
+      this.beep(990, 0.05, 0.08); this.go('parts');
+    }
     else if (J.kind === 'write') {
       const before = v.tune ? { hp: v.tune.hp, nm: v.tune.nm } : { hp: this.sp.hp, nm: this.sp.nm };
       const src = this.writing === 'ori' ? this.stock : this.maps;
       const saved = this.changed(src, this.stock) ? Object.fromEntries(src.map(m => [m.id, m.v.map(r => r.slice())])) : null;
-      this.rec.maps = saved; this.save();
+      this.rec.maps = saved;
+      // (which stage's preset it was made from: 0 by hand, none for the original)
+      if (!saved) { delete this.rec.stage; delete this.rec.hand; } else { this.rec.stage = this.fileStage ?? 0; this.rec.hand = !!this.fileHand && !!this.fileStage; }
+      this.save();
       this.result = { ev: this.applyMaps(v, saved), before };
       this.wrote = v.tune ? `${v.name}: ${v.tune.label} — ${fmt(v.tune.hp)} CP · ${fmt(v.tune.nm)} Nm (de la ${fmt(this.sp.hp)} CP · ${fmt(this.sp.nm)} Nm)` : v.name + ': din nou cu fișierul original';
       this.ecu = this.mapsFrom(v, saved); this.maps = cloneMaps(this.ecu);
@@ -409,7 +449,7 @@ export class Tuner {
   chips() {
     if (!this.$chips) return;
     const st = this.v.tune ? this.v.tune.label : 'original';
-    this.$chips.innerHTML = `<span class="tn-chip ok"><i></i>OBD</span><span class="tn-chip ok opt"><i></i>contact · motor oprit</span><span class="tn-chip ${this.volt < 12 ? 'bad' : this.volt < 12.3 ? 'warn' : 'ok'}"><i></i>${fmt(this.volt, 1)} V</span><span class="tn-chip ${this.v.tune ? 'warn' : ''} opt"><i></i>ECU: ${st}</span>`;
+    this.$chips.innerHTML = `<span class="tn-chip ok"><i></i>OBD</span><span class="tn-chip ok opt"><i></i>contact · motor oprit</span><span class="tn-chip ${this.volt < 12 ? 'bad' : this.volt < 12.3 ? 'warn' : 'ok'}"><i></i>${fmt(this.volt, 1)} V</span><span class="tn-chip ${this.v.tune ? 'warn' : ''} opt"><i></i>ECU: ${st}</span><span class="tn-chip ${this.kitOf(this.v) > 1 ? 'warn' : ''} opt"><i></i>piese: ${this.kitOf(this.v) > 1 ? 'kit Stage ' + this.kitOf(this.v) : 'serie'}</span>`;
   }
   render() {
     const v = this.v, sp = this.sp, J = this.job, M = this.$main;
@@ -421,40 +461,47 @@ export class Tuner {
       foot = 'Se încarcă …';
     } else if (this.view === 'menu') {
       const tuned = !!v.tune, read = this.rec.read;
-      M.innerHTML = `<div class="tn-menu"><div class="tn-card"><h3>Vehicul conectat</h3><div class="tn-kv"><span>Mașina</span><b>${esc(v.name)}</b>${this.identified ? `<span>Motor</span><b>${esc(sp.label)}</b><span>Serie</span><b>${fmt(sp.hp)} CP · ${fmt(sp.nm)} Nm</b><span>ECU</span><b>${esc(sp.ecu || 'neidentificat după tip')}</b><span>VIN</span><b>${this.ids.vin}</b>` : '<span>ECU</span><b>neidentificat încă</b>'}<span>Fișier original</span><b>${read ? 'salvat pe laptop' : 'necitit'}</b><span>În ECU acum</span><b>${tuned ? `modificat · ${fmt(v.tune.hp)} CP · ${fmt(v.tune.nm)} Nm` : 'original'}</b></div><div class="tn-note">Ordinea de lucru: identifici ECU-ul, îi citești fișierul (originalul rămâne salvat), îl modifici în editor, apoi îl scrii înapoi.</div></div>
+      M.innerHTML = `<div class="tn-menu"><div class="tn-card"><h3>Vehicul conectat</h3><div class="tn-kv"><span>Mașina</span><b>${esc(v.name)}</b>${this.identified ? `<span>Motor</span><b>${esc(sp.label)}</b><span>Serie</span><b>${fmt(sp.hp)} CP · ${fmt(sp.nm)} Nm</b><span>ECU</span><b>${esc(sp.ecu || 'neidentificat după tip')}</b><span>VIN</span><b>${this.ids.vin}</b>` : '<span>ECU</span><b>neidentificat încă</b>'}<span>Fișier original</span><b>${read ? 'salvat pe laptop' : 'necitit'}</b><span>În ECU acum</span><b>${tuned ? `${esc(v.tune.label)} · ${fmt(v.tune.hp)} CP · ${fmt(v.tune.nm)} Nm` : 'original'}</b><span>Piese</span><b>${this.kitOf(v) > 1 ? 'kit Stage ' + this.kitOf(v) : 'de serie'}</b></div><div class="tn-note">Ordinea de lucru: identifici ECU-ul, îi citești fișierul (originalul rămâne salvat), îl modifici în editor, apoi îl scrii înapoi.</div></div>
         <div class="tn-tiles">
         <button class="tile" data-act="id"><em>1</em><b>Identifică ECU-ul</b><span>marcă, motor, VIN, versiune software</span></button>
         <button class="tile" data-act="read" ${this.identified ? '' : 'disabled'}><em>2</em><b>Citește ECU-ul</b><span>${read ? 'citit: originalul e salvat (poți reciti)' : 'copie a fișierului original, pe laptop'}</span></button>
-        <button class="tile" data-act="edit" ${read ? '' : 'disabled'}><em>3</em><b>Editor de hărți</b><span>presetarea Stage 1 sau modificări de mână, cu puterea și cuplul rezultate</span></button>
+        <button class="tile" data-act="edit" ${read ? '' : 'disabled'}><em>3</em><b>Editor de hărți</b><span>presetările Stage 1, 2, 3 sau modificări de mână, cu puterea și cuplul rezultate</span></button>
         <button class="tile" data-act="towrite" ${read && this.changed(this.maps, this.ecu) ? '' : 'disabled'}><em>4</em><b>Scrie în ECU</b><span>${read && this.changed(this.maps, this.ecu) ? 'fișierul modificat e gata de scris' : 'nimic de scris: fișierul e cel din ECU'}</span></button>
+        <button class="tile" data-act="parts"><b>Kit de piese</b><span>${this.kitOf(v) > 1 ? 'montat: kitul Stage ' + this.kitOf(v) : 'piese de serie · Stage 2 și 3 cer kitul lor'}</span></button>
         <button class="tile" data-act="restore" ${tuned && read ? '' : 'disabled'}><b>Revino la original</b><span>scrie înapoi fișierul citit la început</span></button>
         <button class="tile" data-act="close"><b>Închide laptopul</b><span>pornești motorul și pleci (Esc)</span></button>
         </div></div>`;
       foot = this.identified ? sp.label : 'Niciun ECU identificat';
     } else if (this.view === 'job') {
-      const T = { id: ['Identificare ECU', 'Se întreabă ECU-ul cine este'], read: ['Citire ECU', 'Nu opri contactul și nu scoate mufa'], write: [this.writing === 'ori' ? 'Scriere — fișierul original' : 'Scriere — fișierul modificat', 'NU opri contactul, NU scoate mufa, NU închide laptopul'] }[J.kind];
-      M.innerHTML = `<div class="tn-job"><h2>${T[0]}</h2><div class="sub">${T[1]}</div><div class="tn-pct"><span data-ph>…</span><b data-pct>0 %</b></div><div class="tn-bar"><b></b></div>${J.kind === 'id' ? '<div class="tn-log"></div>' : '<div class="tn-hex"></div>'}</div>`;
+      const T = { mount: [J.to > 1 ? 'Kit Stage ' + J.to + ' — montaj' : 'Înapoi la piesele de serie', 'În joc se face pe loc; într-un atelier durează ore (Stage 2) sau zile (Stage 3)'], id: ['Identificare ECU', 'Se întreabă ECU-ul cine este'], read: ['Citire ECU', 'Nu opri contactul și nu scoate mufa'], write: [this.writing === 'ori' ? 'Scriere — fișierul original' : 'Scriere — fișierul modificat', 'NU opri contactul, NU scoate mufa, NU închide laptopul'] }[J.kind];
+      M.innerHTML = `<div class="tn-job"><h2>${T[0]}</h2><div class="sub">${T[1]}</div><div class="tn-pct"><span data-ph>…</span><b data-pct>0 %</b></div><div class="tn-bar"><b></b></div>${J.kind === 'id' || J.kind === 'mount' ? '<div class="tn-log"></div>' : '<div class="tn-hex"></div>'}</div>`;
       this.root.querySelector('[data-act="close"]').disabled = J.kind === 'write';
       foot = T[0] + ' …';
     } else if (this.view === 'ident') {
       M.innerHTML = `<div class="tn-job"><h2>ECU identificat</h2><div class="sub">Datele mașinii conectate</div><div class="tn-card"><div class="tn-kv"><span>Mașina</span><b>${esc(v.name)}</b><span>Motor</span><b>${esc(sp.label)}</b><span>Putere · cuplu de serie</span><b>${fmt(sp.hp)} CP · ${fmt(sp.nm)} Nm</b><span>ECU</span><b>${esc(sp.ecu || 'tip nelistat — se citește prin OBD')}</b><span>VIN</span><b>${this.ids.vin}</b><span>Software</span><b>${this.ids.sw}</b><span>Stare</span><b>${v.tune ? 'modificat' : 'original'}</b></div></div><div class="tn-row"><button class="pri" data-act="read">Citește ECU-ul</button><button data-act="menu">Meniu</button></div></div>`;
     } else if (this.view === 'preread' || this.view === 'prewrite') {
       const w = this.view === 'prewrite', list = this.checks(w), ok = list.every(c => c.ok);
-      const ev = w && this.writing === 'file' ? evaluate(sp, this.maps, this.stock) : null;
+      const ev = w && this.writing === 'file' ? evaluate(sp, this.maps, this.stock, this.kitOf(v)) : null;
       M.innerHTML = `<div class="tn-job"><h2>${w ? (this.writing === 'ori' ? 'Scrie înapoi fișierul original' : 'Scrie fișierul modificat în ECU') : 'Citește fișierul din ECU'}</h2><div class="sub">${w ? 'Scrierea durează; dacă se întrerupe, ECU-ul rămâne fără program. Verificările de dinainte:' : 'Se face o copie a programului din ECU. Originalul rămâne salvat pe laptop.'}</div>${ck(list)}${ev && ev.warn.length ? `<div class="tn-warn">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : ''}<div class="tn-row"><button class="pri" data-act="${w ? 'dowrite' : 'doread'}" ${ok ? '' : 'disabled'}>${w ? 'Scrie acum' : 'Citește acum'}</button><button data-act="${w && this.writing === 'file' ? 'edit' : 'menu'}">Înapoi</button></div></div>`;
+    } else if (this.view === 'parts') {
+      const hw = this.kitOf(v), fig = (k) => { const [hp, nm, est] = stageFig(sp, k); return `${fmt(hp)} CP · ${fmt(nm)} Nm${est ? ' <span class="est">(estimare)</span>' : ''}`; };
+      const card = (k, title, parts, note) => `<div class="tn-card kit${hw === k ? ' on' : ''}"><h3>${title}${hw === k ? ' · montat' : ''}</h3><ul class="tn-parts">${parts.map(q => '<li>' + esc(q) + '</li>').join('')}</ul><div class="tn-note">${note}</div><div class="tn-row"><button ${hw === k ? 'disabled' : 'class="pri"'} data-act="mount" data-k="${k}">${hw === k ? 'Montat' : k === 1 ? 'Pune la loc piesele de serie' : 'Montează kitul Stage ' + k}</button></div></div>`;
+      M.innerHTML = `<div class="tn-kits">${card(1, 'Piese de serie', ['Turbină, injectoare, intercooler, evacuare și ambreiaj de la fabrică'].slice(0, sp.type === 'na' ? 0 : 1).concat(sp.type === 'na' ? ['Galerie, evacuare, admisie și came de la fabrică'] : []), 'Stage 1: doar fișierul — ' + fig(1))}${card(2, 'Kit Stage 2', kitParts(sp, 2), 'Stage 2: fișierul făcut pentru aceste piese — ' + fig(2))}${card(3, 'Kit Stage 3', kitParts(sp, 3), 'Stage 3: fișierul făcut pentru aceste piese — ' + fig(3))}</div>
+        ${this.msg ? `<div class="tn-note">${esc(this.msg)}</div>` : ''}<div class="tn-note">În realitate, pe drum public piesele care schimbă evacuarea sau emisiile trebuie omologate (RAR); fără filtru de particule sau catalizator mașina nu trece inspecția.</div><div class="tn-row"><button data-act="menu">Meniu</button>${this.rec.read ? '<button data-act="edit">Editor de hărți</button>' : ''}</div>`;
+      foot = 'Kit de piese · ' + sp.label;
     } else if (this.view === 'readok') {
       M.innerHTML = `<div class="tn-job"><h2>Citire reușită</h2><div class="sub">Fișierul original e salvat: ORI_${this.ids.vin.slice(-6)}.bin · 2 048 kB · suma de control corectă</div><div class="tn-row"><button class="pri" data-act="edit">Deschide în editorul de hărți</button><button data-act="menu">Meniu</button></div></div>`;
     } else if (this.view === 'done') {
       const { ev, before } = this.result, tuned = !!v.tune, t = v.tune;
       const top = v.hyper ? Math.round(v.hyper.limit * 3.6) : null;
-      M.innerHTML = `<div class="tn-job"><h2>${tuned ? 'Scriere reușită — mașina are harta nouă' : 'Scriere reușită — mașina e din nou originală'}</h2><div class="sub">Verificarea a trecut. Contactul se ia 10 secunde, apoi pornești motorul.</div><div class="tn-card"><div class="tn-res"><span></span><b>înainte</b><b>acum</b><span>Putere</span><b>${fmt(before.hp)} CP</b><b class="${ev.hp > before.hp + 0.5 ? 'up' : ev.hp < before.hp - 0.5 ? 'dn' : ''}">${fmt(ev.hp)} CP</b><span>Cuplu</span><b>${fmt(before.nm)} Nm</b><b class="${ev.nm > before.nm + 0.5 ? 'up' : ev.nm < before.nm - 0.5 ? 'dn' : ''}">${fmt(ev.nm)} Nm</b>${tuned ? `<span>Față de serie</span><b></b><b class="up">${ev.kHp >= 1 ? '+' : ''}${fmt((ev.kHp - 1) * 100, 1)} % CP · ${ev.kNm >= 1 ? '+' : ''}${fmt((ev.kNm - 1) * 100, 1)} % Nm</b><span>În joc</span><b></b><b>accelerație ×${fmt(t.kA, 2)}${top ? ' · limitator ' + top + ' km/h' : ' · viteză maximă ×' + fmt(t.kV, 2)}</b>` : ''}</div></div>${ev.warn.length ? `<div class="tn-warn" style="margin-top:10px">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : ''}<div class="tn-row"><button class="pri" data-act="close">Închide laptopul și pornește</button><button data-act="menu">Meniu</button></div></div>`;
+      M.innerHTML = `<div class="tn-job"><h2>${tuned ? 'Scriere reușită — ' + esc(t.label) : 'Scriere reușită — mașina e din nou originală'}</h2><div class="sub">Verificarea a trecut. Contactul se ia 10 secunde, apoi pornești motorul.</div><div class="tn-card"><div class="tn-res"><span></span><b>înainte</b><b>acum</b><span>Putere</span><b>${fmt(before.hp)} CP</b><b class="${ev.hp > before.hp + 0.5 ? 'up' : ev.hp < before.hp - 0.5 ? 'dn' : ''}">${fmt(ev.hp)} CP</b><span>Cuplu</span><b>${fmt(before.nm)} Nm</b><b class="${ev.nm > before.nm + 0.5 ? 'up' : ev.nm < before.nm - 0.5 ? 'dn' : ''}">${fmt(ev.nm)} Nm</b>${tuned ? `<span>Față de serie</span><b></b><b class="up">${ev.kHp >= 1 ? '+' : ''}${fmt((ev.kHp - 1) * 100, 1)} % CP · ${ev.kNm >= 1 ? '+' : ''}${fmt((ev.kNm - 1) * 100, 1)} % Nm</b><span>În joc</span><b></b><b>accelerație ×${fmt(t.kA, 2)}${top ? ' · limitator ' + top + ' km/h' : ' · viteză maximă ×' + fmt(t.kV, 2)}</b>` : ''}</div></div>${ev.warn.length ? `<div class="tn-warn" style="margin-top:10px">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : ''}<div class="tn-row"><button class="pri" data-act="close">Închide laptopul și pornește</button><button data-act="menu">Meniu</button></div></div>`;
     } else if (this.view === 'edit') { this.renderEdit(); foot = 'Editor · ' + sp.label + ' · + / − schimbă celulele alese'; }
     const x = this.root.querySelector('.tn-top [data-act="close"]'); if (x && this.view !== 'job') x.disabled = false;
     this.$foot.innerHTML = `<span>${esc(foot)}</span><span style="margin-left:auto">${esc(v.name)}</span>`;
   }
 
   renderEdit() {
-    const sp = this.sp, m = this.map(), s0 = this.stock.find(q => q.id === m.id), ev = evaluate(sp, this.maps, this.stock);
+    const sp = this.sp, m = this.map(), s0 = this.stock.find(q => q.id === m.id), hw = this.kitOf(this.v), ev = evaluate(sp, this.maps, this.stock, hw);
     // the cells coloured by their value across the map (a heat map), the changed ones framed
     let lo = Infinity, hi = -Infinity; m.v.forEach(r => r.forEach(x => { lo = Math.min(lo, x); hi = Math.max(hi, x); })); s0.v.forEach(r => r.forEach(x => { lo = Math.min(lo, x); hi = Math.max(hi, x); }));
     const col = (x) => { const u = hi > lo ? (x - lo) / (hi - lo) : 0.5; return `hsl(${Math.round(205 - 185 * u)} 62% ${Math.round(46 + 14 * u)}%)`; };
@@ -471,10 +518,10 @@ export class Tuner {
       <div class="tn-side">
         <div class="tn-dyno"><canvas></canvas><div class="tn-leg"><span><i style="background:var(--a)"></i>putere (CP)</span><span><i style="background:var(--w)"></i>cuplu (Nm)</span><span><i style="background:#5d6875"></i>serie</span></div></div>
         <div class="tn-card"><div class="tn-res r4"><span></span><b>serie</b><b>fișier</b><b></b><span>Putere</span><b>${fmt(ev.hp0)} CP</b>${d(ev.hp, ev.hp0, 'CP')}<span>Cuplu</span><b>${fmt(ev.nm0)} Nm</b>${d(ev.nm, ev.nm0, 'Nm')}<span>În joc</span><b class="wide">accelerație ×${fmt(g.kA, 2)} · viteză max. ×${fmt(g.kV, 2)}</b></div></div>
-        ${ev.warn.length ? `<div class="tn-warn">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : `<div class="tn-okl">${this.changed(this.maps, this.stock) ? '✓ În limitele pieselor de serie' : 'Fișierul e cel original'}</div>`}
-        <div class="tn-row" style="margin-top:0"><button data-act="stage1">Presetare Stage 1</button><button data-act="ori">Original</button></div>
+        ${ev.warn.length ? `<div class="tn-warn">${ev.warn.map(k => '⚠ ' + esc(WARN[k])).join('<br>')}</div>` : `<div class="tn-okl">${this.changed(this.maps, this.stock) ? '✓ În limitele pieselor montate (' + (hw > 1 ? 'kit Stage ' + hw : 'de serie') + ')' : 'Fișierul e cel original'}</div>`}
+        <div class="tn-row" style="margin-top:0">${[1, 2, 3].map(k => `<button data-act="stage" data-k="${k}" ${hw < k ? 'disabled title="Cere kitul Stage ' + k + ': Meniu › Kit de piese"' : ''}>Stage ${k}</button>`).join('')}<button data-act="ori">Original</button></div>
         <div class="tn-row" style="margin-top:0"><button class="pri" data-act="towrite" ${dirty ? '' : 'disabled'}>Scrie în ECU</button><button data-act="menu">Meniu</button></div>
-        <div class="tn-note">${sp.est ? 'Pentru motorul acesta nu există o cifră de Stage 1 publicată: presetarea folosește regula generală (' + (sp.type === 'na' ? 'aspirat: ~7 %' : 'turbo benzină: ~10 %') + ').' : 'Presetarea duce motorul la ' + fmt(sp.s1[0]) + ' CP · ' + fmt(sp.s1[1]) + ' Nm, cifrele de Stage 1 listate pentru el.'} Curbele sunt calculate din hărți, nu măsurate pe stand.</div>
+        <div class="tn-note">${[1, 2, 3].map(k => { const [hp, nm, est] = stageFig(sp, k); return 'Stage ' + k + ': ' + fmt(hp) + ' CP · ' + fmt(nm) + ' Nm' + (est ? ' (estimare)' : ' (listat)'); }).join(' · ')}. ${hw < 3 ? 'Stage ' + (hw + 1) + ' cere kitul lui de piese (Meniu › Kit de piese). ' : ''}Curbele sunt calculate din hărți, nu măsurate pe stand.</div>
       </div></div>`;
     this.paintSel(); this.dyno(ev);
   }

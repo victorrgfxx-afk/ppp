@@ -165,7 +165,7 @@ export class Vehicle {
     const fs = sp.drv === 'r' ? 0.5 : sp.drv === 'a' ? 0.57 : 0.61, hl = 0.2;                 // (front axle's share of the weight; centre of mass height / wheelbase)
     this.eng = { sp, m, G: rel.map(k => k * top), eta, cda: 2 * (eta * pTop - 0.013 * m * 9.81 * vTop) / (1.2 * vTop ** 3), red: sp.red, drv: sp.drv ?? 'f', fs, hl,
       idle: sp.type === 'td' ? 800 : 850, launch: sp.type === 'td' ? 1900 : sp.type === 'tp' ? 2600 : 3200, eco: sp.type === 'td' ? 2000 : 2500, lug: sp.type === 'td' ? 1150 : 1350,
-      shift: 0.3, gain: null, lat: sp.lat ?? 0.85 };
+      shift: 0.3, gain: null, lat: sp.lat ?? 0.85, clutchNm: sp.nm * 1.42 };   // (V96: the clutch as made, ~40 % over the series torque - tuner.js fits a stronger one with Stage 3)
     this.gear = 1;
   }
   // its engine's torque (Nm) at n rpm, with the file written into its ECU (tuner.js: gain per rev column)
@@ -373,6 +373,10 @@ export class Vehicle {
     if (this.shiftT > 0 || this.engineOff) Tq = 0;
     else if (thr > 0) Tq = nE > E.red ? 0 : this.torqueAt(nE) * thr;
     else if (nW > E.idle + 150) Tq = -0.09 * E.sp.nm * (0.4 + nE / E.red);
+    // (V96) the clutch passes at most what it is made for: a file with more torque than it holds makes it slip under full
+    // load - the push stays at its limit and the revs flare (a Stage 3's torque needs the kit's stronger clutch)
+    this.clutchSlip = 0;
+    if (Tq > E.clutchNm && this.shiftT <= 0) { this.clutchSlip = Math.min(1, (Tq - E.clutchNm) / E.clutchNm * 4); Tq = E.clutchNm; }
     const F = Tq * ratio * E.eta / r / E.m;                              // (at the wheels, per kg of the car)
     // the engine's own turning mass rides on the gear (a flywheel of ~0.2 kg m^2: in first, a third of the car again)
     const kI = 1 / (1.03 + 0.0016 * ratio * ratio);
@@ -384,7 +388,7 @@ export class Vehicle {
     } else a = -Math.sign(vF) * Math.min(-F, aTrac);                      // (off the throttle: the engine holds it back)
     if (this.brake) a = clamp(a - Math.sign(vF) * 10 * mu * Math.abs(t) * kAll, -10.4 * mu, 10.4 * mu);
     // (the rev counter: the wheels spinning take the engine up with them)
-    const nShow = this.shiftT > 0 ? Math.max(E.idle, nW) : nE + Math.max(0, 0.92 * E.red - nE) * 0.6 * this.spinK;
+    const nShow = this.shiftT > 0 ? Math.max(E.idle, nW) : nE + Math.max(0, 0.92 * E.red - nE) * 0.6 * Math.max(this.spinK, this.clutchSlip);
     this.rpm = damp(this.rpm, this.engineOff ? 0 : nShow, this.shiftT > 0 ? 9 : 18, dt);
     return a;
   }

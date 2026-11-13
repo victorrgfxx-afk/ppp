@@ -49,7 +49,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | E | lângă focul de tabără de la sonde (lângă Fiatul roșu): îl aprinzi / îl stingi | – |
 | V | cu Glock-ul: lovitură cu pistolul / Tac-Stance (mai jos) | cameră spate ↔ interior (cockpit) |
 | L / H | – | faruri / claxon |
-| U | – | autotunerul (pe loc): laptopul citește, modifică și scrie ECU-ul mașinii — Stage 1 (V94) |
+| U | – | autotunerul (pe loc): laptopul citește, modifică și scrie ECU-ul mașinii — Stage 1 (V94), Stage 2 și 3 cu kitul lor de piese (V96) |
 | E / F | pe scara verandei, lângă câine: iei autotunerul (laptopul și interfața OBD) | – |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
@@ -844,6 +844,59 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Stage 2 și Stage 3 în autotuner (V96)** (`src/tunerdata.js`, `src/tuner.js`, `src/vehicle.js`):
+  * **Ce sunt, ca în realitate:** Stage 1 e doar fișierul. Stage 2 e un fișier făcut pentru piese care scot restricțiile: intercooler mai mare, downpipe, admisie. Stage 3 adaugă turbina mărită (hibridă), injectoarele pentru cantitatea în plus și un ambreiaj care duce cuplul. La un motor aspirat: galerie 4-1, evacuare, admisie, apoi arbori cu came și chiulasă prelucrată.
+  * **Cum le faci:** în laptop, *Meniu › Kit de piese › Montează kitul Stage 2 / Stage 3* (în joc se face pe loc; într-un atelier durează ore sau zile), apoi *Editor › Stage 2 / Stage 3 › Scrie în ECU*. Butonul unei etape e activ doar cu kitul ei montat. Kitul rămâne pe mașină și după reîncărcare; pe bord apare „Stage 2” sau „Stage 3”.
+  * **Ce schimbă piesele în modelul motorului:**
+    * kitul Stage 2 lasă turbina de serie să dea cu 6 % (jos) până la 14 % (sus) mai mult aer; la turbo benzină, 1,5° în plus până la detonație;
+    * turbina hibridă dă până la ~80 % mai mult aer sus și intră în presiune puțin mai târziu jos;
+    * injectoarele de serie dau cel mult 1,4× cantitatea de serie, cele mărite 1,85× (la benzină: 1,38× și 1,9×);
+    * ambreiajul de serie duce ~1,42× cuplul de serie, cel întărit ~1,9×. Peste limită patinează: împinge doar cât duce, iar turația urcă.
+  * **Același fișier pe mai puține piese** e ținut la limitele lor, cu avertismentele modelului (turbină, injectoare, fum, presiune pe rampă), iar eticheta arată „Stage 3 · fără kit”. De exemplu, Stage 3 pe 320d cu piese de serie dă 237 CP în loc de 273.
+  * **Cifrele etapelor.** „Listat” = publicat de vânzătorii de fișiere; „estimare” = calculat după regula care reiese din listările care au etapa respectivă:
+    * Stage 2 dă cam +6 % putere și +5 % cuplu peste Stage 1 (pe 320d și pe Golf IV TDI listate: +4…7 % și +3…6 %);
+    * Stage 3 dă cam +55 % putere și +45 % cuplu peste serie (pe Golf IV TDI listate: +50…70 % și +42…45 %);
+    * la motoarele aspirate, estimarea e Stage 1 plus aerul adus de piese.
+
+    | mașina | serie | Stage 1 | Stage 2 | Stage 3 |
+    |---|---|---|---|---|
+    | BMW 320d (N47) | 177 / 350 | 209 / 419 | 222 / 442 | 274 / 508 (est.) |
+    | BMW 118d (N47) | 143 / 300 | 183 / 400 | 194 / 420 (est.) | 222 / 435 (est.) |
+    | VW Golf IV 1.9 TDI (ALH) | 90 / 210 | 122 / 267 | 125 / 280 | 150 / 320 |
+    | Ford Focus 1.6 TDCi | 109 / 240 | 141 / 315 | 149 / 331 (est.) | 169 / 348 (est.) |
+    | Ford Kuga 2.0 TDCi | 140 / 320 | 175 / 400 | 186 / 420 (est.) | 217 / 464 (est.) |
+    | Mercedes A 180 CDI | 109 / 250 | 139 / 310 | 147 / 326 (est.) | 169 / 363 (est.) |
+    | Renault Kangoo 1.5 dCi | 90 / 200 | 108 / 243 | 114 / 255 (est.) | 140 / 290 (est.) |
+    | VW T5 2.0 TDI | 140 / 340 | 180 / 410 | 191 / 431 (est.) | 217 / 493 (est.) |
+    | Fiat Doblò 1.3 Multijet | 90 / 200 | 112 / 247 | 119 / 259 (est.) | 140 / 290 (est.) |
+    | Peugeot 508 2.0 HDi | 163 / 340 | 191 / 400 | 202 / 420 (est.) | 253 / 493 (est.) |
+    | Dacia Sandero 0.9 TCe | 90 / 140 | 107 / 175 | 113 / 184 (est.) | 140 / 203 (est.) |
+    | Opel Corsa C 1.2 | 75 / 110 | 82 / 125 | 89 / 130 (est.) | 98 / 133 (est.) |
+    | Dacia Logan 1.4 MPI | 75 / 112 | 82 / 122 | 89 / 126 (est.) | 98 / 126 (est.) |
+
+    (CP / Nm; toate presetările ajung la cifra lor în ±1,5 %; Maybach-ul, ATV-ul și Peugeot-ul tău de 500 km/h au toate etapele estimate.)
+  * **Măsurat în joc** (pe un teren plat de test, 0–100 km/h / viteză maximă):
+
+    | mașina | serie | Stage 1 | Stage 2 | Stage 3 |
+    |---|---|---|---|---|
+    | BMW 320d | 7,98 s / 227 | 7,03 s / 243 | 6,77 s / 248 | 6,11 s / 265 |
+    | Ford Kuga 4×4 | 10,52 s / 187 | 8,38 s / 204 | 7,93 s / 209 | 6,98 s / 219 |
+    | VW Golf IV TDI | 12,56 s / 179 | 9,69 s / 201 | 9,43 s / 203 | 8,33 s / 213 |
+    | Dacia Sandero TCe | 11,79 s / 175 | 9,63 s / 187 | 9,21 s / 191 | 8,17 s / 204 |
+    | Opel Corsa 1.2 | 13,14 s / 170 | 11,69 s / 177 | 10,98 s / 182 | 10,53 s / 188 |
+
+  * **Testat:**
+    * toate cele 15 motoare, Stage 1–3, fiecare cu kitul lui și fără;
+    * ambreiajul: 320d cu Stage 3 în treapta a 3-a de la 60 km/h. Cu ambreiajul întărit nu patinează; pe cel de serie (497 Nm) patinează puțin; pe unul de 350 Nm patinează de tot și accelerația scade de la 3,43 la 2,70 m/s²;
+    * laptopul, cu clicuri, pe Ford Kuga: identificare, citire, kit Stage 3, presetare Stage 3 (140 → 217 CP, 320 → 468 Nm), scriere. Pe bord apare „Ford Kuga · Stage 3”, iar după reîncărcarea jocului rămân Stage 3, kitul și ambreiajul întărit;
+    * ecranele, pe desktop și pe telefon.
+  * **Atenție, în realitate:** pe drum public, piesele care schimbă evacuarea sau emisiile trebuie omologate (RAR). Fără filtru de particule sau catalizator mașina nu trece inspecția, de aceea kitul din joc le păstrează.
+  * **Surse:**
+    * ce cuprinde fiecare etapă: [Viezu](https://viezu.com/blog/stage-tuning-and-ecu-remapping-explained/), [Vudu Performance](https://vuduperformance.com/blogs/drivers-information-hub/remap-stages-explained);
+    * cifrele listate: chiptuningreseller.com pentru [320d E90](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787) și [Golf IV 1.9 TDI 90](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057);
+    * regula pentru Stage 3: Golf IV 1.9 TDI [130 CP](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5061) și [150 CP](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5062);
+    * Stage 3 pe Golf ALH: [ghidul VP37](https://www.scribd.com/doc/254128942/VP37-ecu-Guide) (~150 CP / 320 Nm), confirmat de cifrele la roată ale [TuneZilla](https://store.ngpracing.com/products/tunezilla-ecu-software-tune-vw-mk4-alh-1-9l-tdi) (134 CP la roată, cu injectoare și ambreiaj).
+    * Pentru celelalte motoare, baza de date listează doar Stage 1.
 * **Fizica mașinilor refăcută pe date reale, efecte la condus, drumuri fără fisuri (V95)** (`src/vehicle.js`, `src/tunerdata.js`, `src/wheelfx.js`, `src/geo/roads.js`, `src/geo/roadbed.js`, `src/main.js`, `src/audio.js`, `src/tuner.js`, `src/npc.js`, `src/player.js`, `src/hud.js`):
   * **Erorile găsite (audit automat) și ce era:**
     * **coliziunile stăteau la nivelul străzii de acasă** (y −1…1,6 m) oriunde ar fi fost mașina: pe dealuri și în văi 54 din 119 mașini lăsau celelalte mașini și oamenii să treacă prin ele. Acum cutia urmează mașina (și pietonul). 4 mașini parcate la întâmplare stăteau una în alta (testul de parcare nu le vedea): scoase, rămân 115;
