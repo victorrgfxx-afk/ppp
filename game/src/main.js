@@ -36,6 +36,8 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { createComposer, lensSpan } from './post.js';
+import { installLampLight, LampLight, LAMP_I0, lampSpread } from './lamps.js';
+import { EYE, EYE_N, EyeState } from './eye.js';
 import { Net, clean } from './net.js';
 import { RemotePlayers, seatPos } from './remote.js';
 import { Mirrors } from './mirror.js';
@@ -133,6 +135,8 @@ const AIR_FOG = { x: 0, y: 0, z: 0, w: 0 };
 for (const k in THREE.ShaderLib) { const u = THREE.ShaderLib[k].uniforms; if (u.fogColor) { u.airSun = { value: AIR_SUN }; u.airCool = { value: AIR_COOL }; u.airFog = { value: AIR_FOG }; } }
 // one sun, several shadow maps (fine near, coarse far): patched into the light loop before any shader compiles
 installCascadedShadows();
+// (V101) the street lamps' light in the same loop (lamps.js)
+installLampLight();
 // Moment of the photos (late September, late morning): sun from the real SSE over Poiana Câmpina. The hour can be
 // changed in the menu (O); local summer time is UTC+3. The snow modes are on 1 February 2026 (UTC+2): a low sun, 26 deg
 // at 11:30, up from ~7:40 to 17:25, and that night's full moon (the "snow moon", 22:09 UTC) high over the snow.
@@ -245,6 +249,9 @@ async function main() {
   let weatherKey = WEATHER[store.get('weather', 'senin')] ? store.get('weather', 'senin') : 'senin';
   const mul = (a, b) => a.map((v, i) => v * b[i]);
   let rainTarget = 0, rainLight = 1, night = 0, horror = 0, moonInfo = null, baseHemi = 0, baseEnv = 0;
+  // (V101) the moon's light at the eye and its disk's brightness in the sky (eye.js); the day's ground light (for the
+  // snowy night's); a new hour or weather for the eye
+  let moonGlareE = 0, moonDiskL = 0, hemiDayG = [0.3, 0.3, 0.3], eyeFresh = true;
   let wetTarget = 0, fogMode = 0;                     // (V92: a fog's dampness on everything; the fog's patches and halos)
   // (the sun's - by night the moon's - light as the hour gives it, and how much of the disk the land lets through where
   // you are: the main loop)
@@ -339,7 +346,8 @@ async function main() {
     // glowed in colour, its shadows washed out): it is the ground's albedo (~0.2) times the light that reaches it.
     const moonSin = Math.max(0, Math.sin(moonInfo.el * Math.PI / 180)), moonKey = 0.48 * moonUp;
     const moonDir = moonKey * (overcast ? 0.06 : 1), skyAmb = moonKey * (overcast ? 0.3 : 0.22) * Math.max(moonSin, 0.3) + 0.004;
-    const dayGround = 0.35 + 0.65 * d, nightGround = 0.2 * (moonDir * moonSin + skyAmb) / Math.PI / 0.32;
+    // (V101: on snow ~0.8 of it comes back up - the bright snowy night - instead of the grass's ~0.2)
+    const dayGround = 0.35 + 0.65 * d, nightGround = (w.snow || w.snowCover ? 0.8 : 0.2) * (moonDir * moonSin + skyAmb) / Math.PI / 0.32;
     const gk = THREE.MathUtils.lerp(dayGround, nightGround, night);
     // Golden hour (V78): at a low sun under a clear sky only the horizon on the sun's side glows (the light the haze
     // scatters forward, the colour of the sunlight that crosses ~10 air masses); away from it the sky stays pale blue, a
@@ -358,11 +366,13 @@ async function main() {
     const su = sky.material.uniforms;
     su.uNight.value = night; su.uMoonDir.value.copy(moonInfo.dir); su.uMoonCol.value.set(0.9, 0.93, 1).multiplyScalar(moonUp * (fogMode ? 0 : 1));
     su.uHole.value = night * (overcast ? 1 : 0) * (fogMode ? 0 : 1);          // the moon looks through a gap above the hill
+    moonGlareE = fogMode ? 0 : moonKey; moonDiskL = 1.23 * moonUp * night;
+    eyeFresh = true;                                    // (a new hour or weather: the eye takes it as it is)
     if (night > 0.5) { sun.color.setRGB(1, 0.94, 0.86); sun.intensity = moonDir; }   // (sunlight off the moon, a little redder, ~4100 K: the blue of a moonlit night is the eye's - vision.js)
     else { sun.color.fromArray(mul(w.sunColor, L.color)); sun.intensity = w.sun * L.intensity; }
     sunBase = sun.intensity; sun.intensity *= sunOcc; occStale = true;
     sun.shadow.intensity = w.shadow;
-    hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night));
+    hemi.color.fromArray(mixA(w.hemiSky, [0.16, 0.2, 0.32], night)); hemi.groundColor.fromArray(mixA(w.hemiGround, [0.03, 0.03, 0.035], night)); hemiDayG = w.hemiGround;
     hemi.intensity = baseHemi = THREE.MathUtils.lerp(w.hemi * (0.35 + 0.65 * d), skyAmb * 0.55 / 0.2, night);   // (the image-based light gives the rest)
     fogColor.fromArray(mixA(mul(w.fog, warm).map(v => v * (0.45 + 0.55 * d)), N.fog, night)); scene.fog.color.copy(fogColor);   // (FogExp2 keeps its own copy)
     // the haze away from the sun as the sky's horizon there (fog chunk above, geo/terrain.js), its glow towards the sun
@@ -820,6 +830,37 @@ async function main() {
   let offRoad = false;                                                  // (in deep snow off the roads: slower going)
   let fxClock = 0;                                                      // (the wheel effects' own clock: wheelfx.js)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
+  // (V101) the nearest of them light everything round (lamps.js); the eye's own state (eye.js)
+  const lampLight = new LampLight(allLamps), eyeState = new EyeState();
+  EYE.on.value = store.get('eye', 'on') === 'off' ? 0 : 1;
+  const eyeLights = [], _eyeV = new THREE.Vector3(), _eyeLook = new THREE.Vector3();
+  const eyeTick = (dt) => {
+    const pe = post.eye, cp = camera.position;
+    pe.abs = vision?.abs ?? 26000;
+    if (eyeFresh) { pe.fresh = true; eyeFresh = false; }
+    // where the eye's focus rests when there is little to focus on: the dark, a white-out (Leibowitz & Owens)
+    // (in the dark - eye.js scales it by how dark it is where you look - and in a white-out)
+    pe.rest = THREE.MathUtils.smoothstep(night, 0.5, 1); pe.restW = Math.min(1.5, 1.5 * storm * SNOW.uSnowFall.value);
+    eyeLights.length = 0;
+    for (const l of lampLight.list) {
+      if (eyeLights.length >= EYE_N - 2) break;
+      const d = _eyeV.subVectors(l, cp).length();
+      if (d < 0.6) continue;
+      const sp = lampSpread((l.y - cp.y) / d);                   // (a lamp looks down: how much of it comes this way)
+      if (sp <= 0) continue;
+      const E = LAMP_I0 * lampLight.level * sp / (d * d);
+      if (E > 2e-3) eyeLights.push({ dir: _eyeV.clone().divideScalar(d), dist: d, E, color: [1, 0.78, 0.5], test: 0, disk: 3.2 * lampLight.level, radius: 0.2 / d });
+    }
+    if (moonGlareE > 0 && night > 0.3) eyeLights.push({ dir: moonInfo.dir, dist: 0, E: moonGlareE, color: [0.9, 0.93, 1], test: 1, disk: moonDiskL, radius: 0.0045 });
+    const su = sky.material.uniforms, sd = su.uDisk.value * su.uCumulus.value, c = su.uSunColor.value, cl = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z;
+    if (night < 0.5 && sd > 0.01 && cl > 1e-3) eyeLights.push({ dir: sunInfo.dir, dist: 0, E: sunBase, color: [c.x / cl, c.y / cl, c.z / cl], test: 1, disk: cl * 60 * sd, radius: 0.0045 });
+    pe.setLights(eyeLights);
+    // the squint, a flake in the eye, the tears: on foot, outdoors (the menu turns them off)
+    camera.getWorldDirection(_eyeLook);
+    const es = eyeState.update({ dt, storm, snow: SNOW.uSnowFall.value, gale: windSpeed, windDir: STORM.uWind.value, look: _eyeLook,
+      outdoors: mode !== 'car' && !riding, shelter, on: EYE.on.value > 0.5 });
+    pe.squint = es.squint; pe.tear = es.tear; pe.lid = es.lid; pe.wind = Math.min(1, windSpeed / 15);
+  };
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
   let fogLamps = [];                                                    // (in a fog, the 12 nearest within ~120 m: their halos)
   // the texture units (V85): a lit material gets every shadow-casting light's map besides its own textures, and past the
@@ -976,6 +1017,12 @@ async function main() {
   post.setTAA(aa === 'taa');
   // the enhanced field of view (as Modern Warfare 4's "Enhanced FOV"): the lens on or off, both menus alike
   post.setLens(efov === 'on', baseFov());
+  // (V101) the eye in a blizzard: the squint, a flake in the eye, the tears (eye.js) - both menus alike
+  for (const sfx of ['', '2']) {
+    const el = $('eye' + sfx); if (!el) continue;
+    el.value = EYE.on.value > 0.5 ? 'on' : 'off';
+    el.addEventListener('change', (e) => { EYE.on.value = e.target.value === 'off' ? 0 : 1; store.set('eye', e.target.value === 'off' ? 'off' : 'on'); for (const x of ['', '2']) if ($('eye' + x)) $('eye' + x).value = e.target.value; });
+  }
   for (const sfx of ['', '2']) {
     $('efov' + sfx)?.addEventListener('change', (e) => {
       efov = e.target.value === 'on' ? 'on' : 'off'; store.set('efov', efov); post.setLens(efov === 'on', baseFov()); fovUi();
@@ -1779,7 +1826,7 @@ async function main() {
     player.snowK = SNOW.uSnow.value; player.wetK = RAIN.uWet.value;        // (a slide: far on snow, further on wet grass)
     const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002;
     let occNew = false;
-    if (wetNow || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002) occNew = rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip, wetNow);
+    if (wetNow || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002 || lampLight.level > 0.01) occNew = rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip, wetNow);
     // the water running off everything (runoff.js): ~100 mm/h in a downpour, ~250 mm/h in a squall's bursts (a summer
     // thunderstorm's), its catchment taken ~3x the box around you (what runs in from further up the street); the
     // hollows fill as the ground soaks
@@ -1797,6 +1844,9 @@ async function main() {
     const flash = lightning.update(dt, (horror === 1 || squall) && (!paused || share.role !== 'solo')) * (horror === 1 ? 1 : 0.3 + 0.7 * night);
     sky.material.uniforms.uFlash.value = flash;
     hemi.intensity = baseHemi + flash * 2.2; scene.environmentIntensity = baseEnv + flash * 1.4;
+    // (V101) the ground's light at night as the snow lies: ~4x the grass's (0.8 of the moon's and the sky's light back
+    // up against 0.2), as it builds up
+    if (night > 0.001) { const gs = 1 + 3 * SNOW.uSnow.value, nk = night; hemi.groundColor.setRGB(hemiDayG[0] + (0.03 * gs - hemiDayG[0]) * nk, hemiDayG[1] + (0.03 * gs - hemiDayG[1]) * nk, hemiDayG[2] + (0.035 * gs - hemiDayG[2]) * nk); }
     moonBeam?.update(t, camera);
     if (forest.live && moonBeam?.on && (frameNo & 1)) moonBeam.light.shadow.needsUpdate = true;   // (they move in the moonlight)
     if (mode === 'car' && flashlight.on) flashlight.set(false);
@@ -1807,6 +1857,9 @@ async function main() {
     fogGlow.update(camera, fogLamps, M.lampGlass.emissiveIntensity / 4, scene.fog.near * AIR_FOG.x * Math.exp(-Math.max(0, camera.position.y) / scene.fog.far));
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
+    // (V101) the street lamps' light (lamps.js) and the eye (eye.js): its lights, its squint and its tears
+    lampLight.update(camera.position, M.lampGlass.emissiveIntensity / 4);
+    if (post.eye) eyeTick(dt);
     // the car you are in (at the wheel, or riding with the friend): no flakes, drops or leaves inside it (rain.js)
     const inCar = mode === 'car' && active ? active : riding;
     if (inCar) {
@@ -1933,7 +1986,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { lampLight, eyeState, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

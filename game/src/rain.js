@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { LAMP_OCC_GLSL, LAMP_I0 } from './lamps.js';
+import { EYE } from './eye.js';
 
 // Torrential rain: falling streaks, splashes, wet surfaces with puddles, water running down sloped roads and raindrop
 // rings, all stopped by whatever is on top. A top-down height map around the camera (the highest surface: crowns,
@@ -470,7 +472,9 @@ function injectWet(sh, kind, opaque, snowK, snowSkip, plasterK, glass = false, c
     vWetP = (modelMatrix * wetW).xyz; }`);
   const def = (kind === 'road' ? '#define WET_ROAD\n' : kind === 'leaf' ? '#define WET_LEAF\n' : kind === 'ground' ? '#define WET_GROUND\n' : '') + (opaque ? '#define WET_OUT\n' : '') + `#define MUD_K ${mudK.toFixed(2)}\n#define GRASS_K ${grassK.toFixed(2)}\n` +
     `#define SNOW_K ${snowK.toFixed(3)}\n#define PLASTER_K ${plasterK.toFixed(2)}\n` + (snowSkip ? '#define SNOW_SKIP\n' : '') + (glass ? '#define WET_GLASS\n' : '') + (cut ? '#define CABIN_CUT\n' : '');
-  sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + WET_PARS + GLINT_GLSL)
+  // (V101: the street lamps' light, lamps.js: shadowed by the height map, and sparkling on fresh snow)
+  const lampDef = '#define LAMP_OCC\n#define LAMP_GLINT(c, l) if (snowGlintK > 0.001) reflectedLight.directSpecular += (c) * (snowGlintK * 6.0 * snowGlint(vWetP, normal, (l), normalize(-vViewPosition)));\n';
+  sh.fragmentShader = f.replace('#include <common>', '#include <common>\n' + def + lampDef + WET_PARS + GLINT_GLSL + LAMP_OCC_GLSL)
     // (a leaf of a bush or a tree a car stands in: not inside the car you are in - as the rain and the snow are not)
     .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n#ifdef CABIN_CUT\n  if (inCar(vWetP)) discard;\n#endif')
     .replace('#include <normal_fragment_begin>', '#include <normal_fragment_begin>\nvec3 wetGeoN = inverseTransformDirection(normal, viewMatrix);')
@@ -983,8 +987,10 @@ void main() {
   for (int i = 0; i < 6; i++) {
     vec4 L = uLamps[i];
     if (L.w <= 0.0) continue;
-    vec3 q = L.xyz - p; float d2 = dot(q, q), cf = dot(normalize(q), vd);
-    vLamp += vec3(1.0, 0.78, 0.5) * L.w * (0.35 + 2.5 * pow(max(cf, 0.0), 8.0)) / (1.0 + d2 * 0.12) * (1.0 - smoothstep(30.0, 90.0, d2));
+    // (V101: lit as everything is by the lamp, lamps.js; a drop passes most of it on, throws it forward)
+    vec3 q = L.xyz - p; float d2 = max(dot(q, q), 0.3), dl = sqrt(d2), cf = dot(q / dl, vd), cg = q.y / dl;
+    float sp = (0.55 + 0.9 * (1.0 - cg * cg)) * smoothstep(0.1, 0.34, cg);
+    vLamp += vec3(1.0, 0.78, 0.5) * min(L.w * sp / d2, 60.0) * 0.012 * (0.35 + 2.5 * pow(max(cf, 0.0), 8.0));
   }
   gl_Position = projectionMatrix * viewMatrix * vec4(pos, 1.0);
 }`;
@@ -1251,7 +1257,7 @@ export class RainFX {
   update(camera, light, torch, beam, car = null, lamps = [], level = 0, rate = 40, night = 0) {
     this.group.visible = RAIN.uRain.value > 0.002;
     if (car?.on) { this.carL.value.set(car.pos.x, car.pos.y, car.pos.z, 1); this.carLDir.value.set(car.dir.x, car.dir.y, car.dir.z, 0.9); } else this.carL.value.w = 0;
-    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * 0.18); else v.w = 0; });
+    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * LAMP_I0); else v.w = 0; });
     this.rate.value = rate; this.pupil.value = 0.003 + 0.003 * night;
     this.px.value = camera.fov * Math.PI / 180 / Math.max(1, innerHeight);
     if (torch?.on) { this.torch.value.set(torch.pos.x, torch.pos.y, torch.pos.z, 1); this.torchDir.value.set(torch.dir.x, torch.dir.y, torch.dir.z, 0.93); } else this.torch.value.w = 0;
@@ -1289,13 +1295,15 @@ uniform vec2 uWind, uWindOff;        // the wind now (m/s, world x / z) and how 
 uniform vec3 uCam;
 uniform vec4 uTorch, uTorchDir, uCarL, uCarLDir;
 uniform vec4 uLamps[6];
-varying float vA, vLit;
+uniform sampler2D uEyeProbe;         // (V101, eye.js: the eye's focus in dioptres, its pupil in metres)
+uniform float uEyeProbeW;
+varying float vA, vLit, vEdge;
 varying vec3 vLamp;
 varying vec2 vC;
 ${OCC_GLSL}
 ${LEE_GLSL}
 void main() {
-  vC = corner; vA = 0.0; vLit = 0.0; vLamp = vec3(0.0);
+  vC = corner; vA = 0.0; vLit = 0.0; vLamp = vec3(0.0); vEdge = 0.35;
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
   if (aSeed.w > (uStormLayer > 0.5 ? uStorm : uSnowFall)) return;
   float sz = fract(aSeed.w * 7.31 + aSeed.x * 3.17);
@@ -1327,28 +1335,40 @@ void main() {
   float vl = length(vp);
   vec3 along = vl > 1e-3 ? vp / vl : vec3(0.0, 1.0, 0.0), side = normalize(cross(along, vd));
   float real = uSize * (0.6 + 0.8 * sz), s = max(real, dist * 0.0017);       // at least ~1.5 px across
-  float len = s + vl * 0.0125;
-  gl_Position = projectionMatrix * viewMatrix * vec4(p + side * corner.x * s + along * corner.y * len, 1.0);
-  vA = uOpacity * (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.35, 1.1, dist) * min(1.0, 1.5 * real / s) * mix(1.0, s / len, 0.6);
+  // the eye (V101, eye.js): nearer or further than where it is focused, a flake is out of focus by a blur circle of
+  // angular diameter b = A |1/z - 1/z0| (A the pupil): its disc spread over it, as bright in all (the same light)
+  vec4 eyeP = texture2D(uEyeProbe, vec2(0.5 / uEyeProbeW, 0.5));
+  float blurR = 0.5 * eyeP.g * abs(1.0 / max(dist, 0.05) - eyeP.r) * dist;
+  float sb = sqrt(s * s + blurR * blurR);
+  vEdge = 0.35 * clamp((s - blurR) / sb, 0.0, 1.0);
+  float len = sb + vl * 0.0125;
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + side * corner.x * sb + along * corner.y * len, 1.0);
+  vA = uOpacity * (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.12, 0.4, dist) * min(1.0, 1.5 * real / s) * mix(1.0, sb / len, 0.6) * (s * s) / (sb * sb);
   // lit by the torch, the headlights of the car you drive, the street lamps (the snow swirling in their light)
   vec3 tp = p - uTorch.xyz; float tl = length(tp);
   vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
   vec3 cp = p - uCarL.xyz; float cl = length(cp);
   vLit += 1.4 * uCarL.w * smoothstep(uCarLDir.w, uCarLDir.w + 0.05, dot(cp / max(cl, 1e-3), uCarLDir.xyz)) * (1.0 - smoothstep(3.0, 38.0, cl));
+  // (V101: the street lamps' light as it lights everything else, lamps.js - the spread of a road luminaire, 1/d^2 - and
+  // scattered on by the flake: a white flake's ~0.8 of it, much more of it forward, into the eye when the lamp is behind)
   for (int i = 0; i < 6; i++) {
     vec4 L = uLamps[i];
-    if (L.w > 0.0) { vec3 q = p - L.xyz; float d2 = dot(q, q); vLamp += vec3(1.0, 0.78, 0.5) * L.w * (q.y < 0.3 ? 1.0 : 0.3) / (1.0 + d2 * 0.12) * (1.0 - smoothstep(25.0, 64.0, d2)); }
+    if (L.w > 0.0) {
+      vec3 q = p - L.xyz; float d2 = max(dot(q, q), 0.3), dl = sqrt(d2), cg = -q.y / dl;
+      float sp = (0.55 + 0.9 * (1.0 - cg * cg)) * smoothstep(0.1, 0.34, cg);
+      vLamp += vec3(1.0, 0.78, 0.5) * min(L.w * sp / d2, 60.0) * 0.255 * (0.45 + 2.2 * pow(max(dot(q / dl, vd), 0.0), 6.0));
+    }
   }
 }`;
 const FLAKE_FRAG = /* glsl */`
 uniform vec3 uColor;
-varying float vA, vLit;
+varying float vA, vLit, vEdge;
 varying vec3 vLamp;
 varying vec2 vC;
 void main() {
-  float a = vA * (1.0 - smoothstep(0.35, 1.0, length(vC)));
+  float a = vA * (1.0 - smoothstep(vEdge, 1.0, length(vC)));
   if (a < 0.004) discard;
-  gl_FragColor = vec4(uColor + vec3(0.9, 0.92, 1.0) * vLit * 0.85 + vLamp * 0.5, min(a, 1.0));
+  gl_FragColor = vec4(uColor + vec3(0.9, 0.92, 1.0) * vLit * 0.85 + vLamp, min(a, 1.0));
 }`;
 // the snow the gale lifts off the ground: streamers racing along the surface, most of it below the knees, some to
 // head height, in wavy ribbons
@@ -1417,7 +1437,7 @@ export class SnowFX {
     this.torch = { value: new THREE.Vector4() }; this.torchDir = { value: new THREE.Vector4(0, 0, -1, 0.92) };
     this.carL = { value: new THREE.Vector4() }; this.carLDir = { value: new THREE.Vector4(0, 0, -1, 0.9) };
     this.lamps = { value: Array.from({ length: 6 }, () => new THREE.Vector4()) };
-    const common = { uSnowFall: SNOW.uSnowFall, uStorm: STORM.uStorm, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uCam: this.cam, uColor: this.color,
+    const common = { uEyeProbe: EYE.probe, uEyeProbeW: EYE.probeW, uSnowFall: SNOW.uSnowFall, uStorm: STORM.uStorm, uRainTime: RAIN.uRainTime, uOcc: RAIN.uOcc, uOccBox: RAIN.uOccBox, uOccOn: RAIN.uOccOn, uCam: this.cam, uColor: this.color,
       uWind: STORM.uWind, uWindOff: STORM.uWindOff, uTorch: this.torch, uTorchDir: this.torchDir, uCarL: this.carL, uCarLDir: this.carLDir, uLamps: this.lamps,
       uLee: SNOW.uLee, uLeeVP: SNOW.uLeeVP, uLeeOrg: SNOW.uLeeOrg, uLeeDir: SNOW.uLeeDir, uLeeOn: SNOW.uLeeOn, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize, uSnowCarY: SNOW.uSnowCarY,
       uSnowField: SNOW.uSnowField, uSnowDepth: SNOW.uSnowDepth };
@@ -1445,7 +1465,7 @@ export class SnowFX {
     this.drift.visible = STORM.uStorm.value > 0.02 && SNOW.uSnow.value > 0.3;
     if (torch?.on) { this.torch.value.set(torch.pos.x, torch.pos.y, torch.pos.z, 1); this.torchDir.value.set(torch.dir.x, torch.dir.y, torch.dir.z, 0.93); } else this.torch.value.w = 0;
     if (car?.on) { this.carL.value.set(car.pos.x, car.pos.y, car.pos.z, 1); this.carLDir.value.set(car.dir.x, car.dir.y, car.dir.z, 0.9); } else this.carL.value.w = 0;
-    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * 0.25); else v.w = 0; });
+    this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * LAMP_I0); else v.w = 0; });
     this.cam.value.copy(camera.position);
     this.color.value.setRGB(0.93, 0.95, 1).multiplyScalar(Math.max(0.06, light));
   }
@@ -1528,7 +1548,7 @@ const BLANKET_POS = /* glsl */`
 #endif`;
 
 function blanketMaterials(fine) {
-  const uni = { uSnowField: SNOW.uSnowField, uOccBox: RAIN.uOccBox, uSnowDepth: SNOW.uSnowDepth, uSnowLight: SNOW.uSnowLight, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize,
+  const uni = { uOcc: RAIN.uOcc, uOccOn: RAIN.uOccOn, uSnowField: SNOW.uSnowField, uOccBox: RAIN.uOccBox, uSnowDepth: SNOW.uSnowDepth, uSnowLight: SNOW.uSnowLight, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize,
     uTrail: SNOW.uTrail, uTrailBox: SNOW.uTrailBox, uSnowFine: SNOW.uSnowFine, uSnowPlaster: SNOW.uSnowPlaster, uSnowFall: SNOW.uSnowFall, uSnowWindDir: SNOW.uSnowWindDir };
   const def = (fine ? '#define SNOW_FINE\n' : '') + `#define SNOW_TE ${fine ? '0.03' : '0.06'}\n`;
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
@@ -1558,7 +1578,19 @@ float bnNoise(vec2 p) {
   return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 float fieldH(vec2 xz) { float d0, b = snowBase(xz, d0); return b + d0; }
-${GLINT_GLSL}`)
+// (V101: the street lamps' shadows on the lying snow, lamps.js: the height map of the tops of things)
+uniform sampler2D uOcc;
+uniform float uOccOn;
+float rainTop(vec2 xz) {
+  if (uOccOn < 0.5) return -1e5;
+  vec2 uv = vec2(0.5 + (xz.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (xz.y - uOccBox.y) / (2.0 * uOccBox.z));
+  if (any(lessThan(uv, vec2(0.004))) || any(greaterThan(uv, vec2(0.996)))) return -1e5;
+  return texture2D(uOcc, uv).r + uOccBox.w;
+}
+#define LAMP_OCC
+${LAMP_OCC_GLSL}
+${GLINT_GLSL}
+#define LAMP_GLINT(c, l) reflectedLight.directSpecular += (c) * (6.0 * (1.0 - sTr.r) * (1.0 - smoothstep(6.0, 18.0, length(vSnowP - cameraPosition))) * snowGlint(vSnowP, normal, (l), normalize(-vViewPosition)));`)
       // where it ends, per pixel from the snow's shape and the prints (not from the triangles)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
   snowBase(vSnowP.xz, sFd0);

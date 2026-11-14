@@ -140,6 +140,8 @@ export class SnowMission {
     // the opening lines: once as the mission begins (and again only after it has been off a while)
     if (want && this.armed && this.k > 0.5) { this.armed = false; this.intro(o); }
     if (!want && this.k < 0.05 && this.t - this.lastIntro > 90) this.armed = true;
+    // (V101: the mission over - the snow stopped, the day came - its lines go with it, half typed or not)
+    if (this.typing && !want && this.k < 0.3) { this.el.style.opacity = '0'; this.typing = null; }
     if (this.typing) {
       const ty = this.typing;
       if (ty.n < ty.text.length) {

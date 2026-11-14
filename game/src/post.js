@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -13,6 +12,7 @@ import { ShaftsPass } from './shafts.js';
 import { VisionPass } from './vision.js';
 import { TAAPass, TAAJitter } from './taa.js';
 import { HeatShader } from './campfire.js';
+import { EyePass } from './eye.js';
 
 // the depth the scene pass has just drawn (the composer's two buffers take turns: whichever it was this frame)
 // (hooks: passes further on that need the scene as the scene pass leaves it - its depth, its sky - take it here, before
@@ -523,14 +523,14 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // the rain on the windshield, from the driver's seat (windshield.js; off but in a car's cockpit in the rain)
   const shield = new WindshieldPass(tap);
   composer.addPass(shield);
+  // (V101) the naked eye's optics (eye.js): the glare of everything bright as the CIE's equation spreads it (on the
+  // frame itself where there is a bloom), the lights' glare, corona and halo, the pupil and the focus, the squint and
+  // the tears in a blizzard - before the retina's own response (vision.js). It replaces the thresholded bloom.
+  const eye = new EyePass(camera, tap, !!q.bloom);
+  composer.addPass(eye);
   // the eye at night: rods instead of cones below ~5 cd/m2 (vision.js; off by day)
   const vision = new VisionPass();
   composer.addPass(vision);
-  if (q.bloom) {
-    // only really bright things (sun glints, lamps) bloom: a bright overcast sky must not veil the view
-    bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.1, 0.4, 1.3);
-    composer.addPass(bloom);
-  }
   composer.addPass(new OutputPass());
   if (q.smaa) { smaa = new SMAAPass(); smaa.enabled = !taa; composer.addPass(smaa); }
   const cas = taa ? new ShaderPass(CASShader) : null;
@@ -563,5 +563,5 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   };
   // the anti-aliasing on or off (the menu): SMAA while TAA is off, the sharpening with TAA
   const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; if (cas) cas.enabled = on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, heat, cas, lens, setTAA, setSize, setLens, get scale() { return scale; } };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, get scale() { return scale; } };
 }
