@@ -12,6 +12,8 @@ import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
 import { Wildlife } from './wildlife.js';
 import { Birds } from './birds.js';
+import { Jets } from './jets.js';
+import { SnowMission } from './mission.js';
 import { ForestScene } from './forest.js';
 import { Hikers } from './hikers.js';
 import { laneAt, laneLength, CLIP } from './geo/urcus.js';
@@ -677,6 +679,10 @@ async function main() {
   // the animals of the woods and the birds (wildlife.js, birds.js)
   const wildlife = new Wildlife(scene, world, { audio, quality: Q.label });
   const birds = new Birds(scene, world, { audio });
+  // (V100) fighter jets now and then (jets.js); a snow night as a mission: its opening lines, its cold look, frost,
+  // your breath (mission.js)
+  const jets = new Jets(scene, { audio });
+  const mission = new SnowMission({ scene, post, audio, gun: glock?.model?.group, origin: GEO.meta.origin });
   // multiplayer: one game runs all of these for both of you, the other draws them as they are there (share.js)
   const share = new Share({ wildlife, birds, bear, walkers, lightning, forest, hikers, dogs, campfire });
   walkers.forEach((w, i) => { w.onHit = (car, push) => share.knocked(mp, i, car, push); });
@@ -1591,6 +1597,22 @@ async function main() {
       if (photoFov && Math.hypot(player.pos.x - photoFov.x, player.pos.z - photoFov.z) > 0.25) photoFov = null;
       fov = photoFov ? photoFov.fov + player.fovKick : fov0 * (1 + player.fovKick / 70) * (glock?.fovMul ?? 1);
     }
+    // (V100) the jets: heard from where they were, and close and low the shudder of their roar (or a boom's); the snow
+    // night's mission (its lines, its look, the frost, the breath)
+    {
+      const rh = renderer.domElement.height;
+      const jr = jets.update(paused ? 0 : dt, { cam: camera, light: 1 - night, cover: WEATHER[weatherKey].cover, rain: rainTarget, snow: snowFall, winter, paused, height: rh, snowHush: SNOW.uSnow.value });
+      if (jr > 0.01) {
+        const a = jr * jr;
+        camera.rotation.x += (vn1(t * 23) - 0.5) * 0.007 * a; camera.rotation.y += (vn1(t * 19 + 4) - 0.5) * 0.007 * a;
+        camera.position.y += (vn1(t * 31 + 9) - 0.5) * 0.014 * a;
+      }
+      const running = mode === 'foot' && !riding && (input.down('ShiftLeft') || input.down('ShiftRight') || !!input.touchRun);
+      mission.update(paused ? 0 : dt, { snow: snowFall, night, weather: weatherKey, date: new Date(Date.UTC(2026, 1, 1) + hour * 3600e3),
+        wind: Math.max(windSpeed, treeWind), windFrom: weatherKey === 'viscol' ? 45 : null, vis: WEATHER[weatherKey].vis ?? 10000,
+        cam: camera, outside: mode === 'foot' && !riding, running, winter, height: rh, windX: STORM.uWind.value.x, windZ: STORM.uWind.value.y,
+        light: flashlight?.on ? 0.6 : 0.1 + 0.8 * (1 - night) });
+    }
     if (shake > 0) {
       camera.position.x += (Math.random() - 0.5) * shake * 0.2;
       camera.position.y += (Math.random() - 0.5) * shake * 0.2;
@@ -1710,7 +1732,7 @@ async function main() {
       let nt = 0; for (const b of near) if (b.tag === 'tree') nt++;
       leafy = Math.min(1, nt / 18);
     }
-    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, skid: active?.skid ?? 0, loose: !!active && (active.surf === 'gravel' || active.surf === 'dirt' || active.surf === 'grass'), wet: RAIN.uWet.value, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
+    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, mission: mission.k, snowHush: SNOW.uSnow.value, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, skid: active?.skid ?? 0, loose: !!active && (active.surf === 'gravel' || active.surf === 'dirt' || active.surf === 'grass'), wet: RAIN.uWet.value, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -1911,7 +1933,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

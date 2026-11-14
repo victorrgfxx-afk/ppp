@@ -85,12 +85,16 @@ class FoliageSafeGTAO extends GTAOPass {
 
 // Photographic finish: slight lens vignette, fine film grain, gentle S-curve, a touch of CA.
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uGrain: { value: 0.035 }, uVig: { value: 0.28 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uGrain: { value: 0.035 }, uVig: { value: 0.28 },
+    uCold: { value: 0 }, uFrost: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uTime; uniform vec2 uRes; uniform float uGrain; uniform float uVig;
+    uniform float uCold, uFrost;          // (V100: a snow night's mission look, the frost at the view's edges: mission.js)
     varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+    float fn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
     void main(){
       vec2 c = vUv - 0.5;
       float r2 = dot(c, c);
@@ -101,8 +105,26 @@ const GradeShader = {
       col.b = texture2D(tDiffuse, vUv - off).b;
       // gentle contrast curve in display space
       col = mix(col, col*col*(3.0-2.0*col), 0.18);
-      // vignette
-      col *= 1.0 - uVig * smoothstep(0.12, 0.75, r2 * 1.6);
+      // (V100) a snow night's mission: cold and hard - the colour drained, the shadows to steel blue, the contrast up
+      if (uCold > 0.0) {
+        float l = dot(col, vec3(0.299, 0.587, 0.114));
+        vec3 cold = mix(vec3(l), col, 0.6) * mix(vec3(0.74, 0.9, 1.14), vec3(0.98, 1.0, 1.03), smoothstep(0.0, 0.55, l));
+        cold = (cold - 0.45) * 1.12 + 0.45;
+        col = mix(col, max(cold, 0.0), uCold);
+      }
+      // frost creeping in from the corners, as on a lens out in the wind: a ragged front of crystals, whitish, catching
+      // the light that falls on it
+      if (uFrost > 0.0) {
+        vec2 q = c * vec2(uRes.x / uRes.y, 1.0);
+        float n = 0.55 * fn(vUv * uRes / uRes.y * 7.0) + 0.3 * fn(vUv * uRes / uRes.y * 19.0 + 3.1) + 0.15 * fn(vUv * uRes / uRes.y * 47.0 + 7.7);
+        float edge = length(q * vec2(0.82, 1.12)) + 0.22 * (n - 0.5);
+        float grow = smoothstep(0.78 - 0.3 * uFrost, 0.98 - 0.22 * uFrost, edge) * uFrost;
+        float vein = 1.0 - abs(fn(vUv * uRes / uRes.y * 85.0 + n * 6.0) * 2.0 - 1.0);
+        float lum = dot(col, vec3(0.333));
+        col = mix(col, vec3(0.78, 0.86, 0.94) * (0.22 + 0.9 * max(lum, 0.12)) + 0.03, clamp(grow * (0.45 + 0.4 * vein), 0.0, 0.8));
+      }
+      // vignette (harder on a mission night)
+      col *= 1.0 - (uVig + 0.12 * uCold) * smoothstep(0.12, 0.75, r2 * 1.6);
       // grain (luma weighted)
       float g = h(vUv * uRes + fract(uTime * 13.7) * 91.0) - 0.5;
       col += g * uGrain * (0.6 + 0.4 * (1.0 - dot(col, vec3(0.333))));

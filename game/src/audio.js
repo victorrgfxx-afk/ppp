@@ -81,6 +81,7 @@ export class Audio {
     const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 120;
     const rg = ctx.createGain(); rg.gain.value = 0.03;
     rn.connect(rf).connect(rg).connect(this.master); rn.start();
+    this.villageGain = rg;
     // engine (yours, and a friend's car: multiplayer)
     this.eng = this.engine(ctx);
     this.eng2 = this.engine(ctx);
@@ -292,6 +293,56 @@ export class Audio {
     }
   }
   // thunder: a crack (close strikes) and a long rolling rumble, after the sound has travelled `delay` s
+  // (V100) a fighter jet (jets.js), heard from where its sound left it: the roar of the exhaust's mixing with the air
+  // (broadband, low), the tearing crackle over it, the fan's whine ahead of it; Doppler on all three (the sources'
+  // rate), the air's absorption as a low-pass, its bearing as left/right. One voice per jet of the pair, made on first use.
+  jetVoice() {
+    const ctx = this.ctx, out = ctx.createGain(); out.gain.value = 0;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2000; lp.Q.value = 0.5;
+    const n1 = ctx.createBufferSource(); n1.buffer = this.noise; n1.loop = true;
+    const f1 = ctx.createBiquadFilter(); f1.type = 'lowpass'; f1.frequency.value = 650;
+    const n2 = ctx.createBufferSource(); n2.buffer = this.noise; n2.loop = true; n2.playbackRate.value = 1.7;
+    const f2 = ctx.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 2600; f2.Q.value = 0.8;
+    const g2 = ctx.createGain(); g2.gain.value = 0.3;
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 3100;
+    const fo = ctx.createBiquadFilter(); fo.type = 'bandpass'; fo.frequency.value = 3100; fo.Q.value = 12;
+    const go = ctx.createGain(); go.gain.value = 0;
+    n1.connect(f1).connect(lp); n2.connect(f2).connect(g2).connect(lp); o.connect(fo).connect(go).connect(lp);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    lp.connect(out); if (pan) out.connect(pan).connect(this.master); else out.connect(this.master);
+    n1.start(); n2.start(); o.start();
+    return { out, lp, n1, n2, o, fo, go, g2, pan };
+  }
+  // p: { gain, cutoff (Hz), rate (Doppler), pan (-1..1), whine, crackle }
+  jet(i, p) {
+    if (!this.ctx) return;
+    this.jv ??= [];
+    if (!this.jv[i]) { if (!(p.gain > 0)) return; this.jv[i] = this.jetVoice(); }
+    const v = this.jv[i], now = this.ctx.currentTime, r = Math.max(0.5, Math.min(2, p.rate || 1));
+    v.out.gain.setTargetAtTime(Math.max(0, p.gain || 0), now, 0.04);
+    v.lp.frequency.setTargetAtTime(Math.max(60, Math.min(18000, p.cutoff || 500)), now, 0.05);
+    v.n1.playbackRate.setTargetAtTime(r, now, 0.05); v.n2.playbackRate.setTargetAtTime(1.7 * r, now, 0.05);
+    v.o.frequency.setTargetAtTime(3100 * r, now, 0.05); v.fo.frequency.setTargetAtTime(3100 * r, now, 0.05);
+    v.go.gain.setTargetAtTime(Math.max(0, p.whine || 0), now, 0.05); v.g2.gain.setTargetAtTime(Math.max(0, p.crackle || 0), now, 0.05);
+    v.pan?.pan.setTargetAtTime(Math.max(-1, Math.min(1, p.pan || 0)), now, 0.05);
+  }
+  // a sonic boom: the N-wave's two sharp fronts ~0.1 s apart (a fighter's length), then the house's rattle
+  boom() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    for (const dt of [0, 0.11]) {
+      const s = ctx.createBufferSource(); s.buffer = this.noise; s.playbackRate.value = 0.5;
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; f.Q.value = 0.7;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(1.3, t + dt + 0.004); g.gain.exponentialRampToValueAtTime(0.01, t + dt + 0.35);
+      s.connect(f).connect(g).connect(this.master); s.start(t + dt); s.stop(t + dt + 0.4);
+    }
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(48, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.6);
+    const og = ctx.createGain(); og.gain.setValueAtTime(0.9, t); og.gain.exponentialRampToValueAtTime(0.01, t + 0.7);
+    o.connect(og).connect(this.master); o.start(t); o.stop(t + 0.75);
+    this.burst({ f: 1800, q: 1.5, dur: 0.4, gain: 0.08, delay: 0.18 });            // (a window pane's rattle)
+  }
+  // a typewriter's key (the mission's opening lines: mission.js)
+  tick() { this.burst({ f: 2600 + Math.random() * 1400, q: 4, dur: 0.012, gain: 0.05 + Math.random() * 0.02 }); }
   thunder(delay, km) {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime + delay, near = Math.max(0, 1 - km / 3);
@@ -443,7 +494,8 @@ export class Audio {
     this.hissGain.gain.setTargetAtTime(storm * 0.035 * gust * (1 - 0.85 * lee), now, 0.3);
     const rain = st.rain ?? 0;
     this.snowCover = st.snowCover ?? 0;
-    this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0), now, 1.5);
+    this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0) + 0.04 * (st.mission ?? 0), now, 1.5);
+    this.villageGain.gain.setTargetAtTime(0.03 * (1 - 0.6 * (st.snowHush ?? 0)), now, 2);   // (V100: fresh snow swallows the echoes)
     this.howlF.frequency.setTargetAtTime(220 + 120 * Math.sin(this.t * 0.17) + 60 * Math.sin(this.t * 0.53), now, 0.8);
     this.rainGain.gain.setTargetAtTime(0.34 * rain * (0.55 + 0.45 * (st.rainOpen ?? 1)), now, 0.6);
     // the stream's bubbles: its pitch wanders quickly (each bubble rings at its own note), its level with the flow
