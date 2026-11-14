@@ -37,7 +37,7 @@ import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { createComposer, lensSpan } from './post.js';
 import { installLampLight, LampLight, LAMP_I0, lampSpread } from './lamps.js';
-import { EYE, EYE_N, EyeState } from './eye.js';
+import { EYE, EYE_N, EyeState, Glasses } from './eye.js';
 import { Net, clean } from './net.js';
 import { RemotePlayers, seatPos } from './remote.js';
 import { Mirrors } from './mirror.js';
@@ -833,6 +833,11 @@ async function main() {
   // (V101) the nearest of them light everything round (lamps.js); the eye's own state (eye.js)
   const lampLight = new LampLight(allLamps), eyeState = new EyeState();
   EYE.on.value = store.get('eye', 'on') === 'off' ? 0 : 1;
+  // (V102) the tactical glasses (Y): on unless taken off
+  const glasses = new Glasses();
+  glasses.want = store.get('glasses', 'on') !== 'off'; glasses.worn = glasses.want ? 1 : 0; EYE.glasses.value = glasses.worn;
+  const glassesUi = () => { for (const x of ['', '2']) if ($('glasses' + x)) $('glasses' + x).value = glasses.want ? 'on' : 'off'; };
+  const wearGlasses = (on) => { glasses.wear(on); store.set('glasses', on ? 'on' : 'off'); glassesUi(); };
   const eyeLights = [], _eyeV = new THREE.Vector3(), _eyeLook = new THREE.Vector3();
   const eyeTick = (dt) => {
     const pe = post.eye, cp = camera.position;
@@ -855,11 +860,16 @@ async function main() {
     const su = sky.material.uniforms, sd = su.uDisk.value * su.uCumulus.value, c = su.uSunColor.value, cl = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z;
     if (night < 0.5 && sd > 0.01 && cl > 1e-3) eyeLights.push({ dir: sunInfo.dir, dist: 0, E: sunBase, color: [c.x / cl, c.y / cl, c.z / cl], test: 1, disk: cl * 60 * sd, radius: 0.0045 });
     pe.setLights(eyeLights);
-    // the squint, a flake in the eye, the tears: on foot, outdoors (the menu turns them off)
     camera.getWorldDirection(_eyeLook);
+    // (V102) the glasses: the snow and the rain on them, their fog; then, without them, the squint and the tears
+    const inCar = mode === 'car' || !!riding;
+    glasses.update({ dt, snow: SNOW.uSnowFall.value, rain: RAIN.uRain.value, storm, gale: windSpeed, windDir: STORM.uWind.value, look: _eyeLook, vel: player.vel,
+      outdoors: !inCar, inCar, winter, breath: mission.puffLeft > 0, still: Math.hypot(player.vel.x, player.vel.z) < 1.2 });
+    EYE.glasses.value = glasses.worn;
+    pe.setGlasses(glasses, THREE.MathUtils.lerp(0.0025, 0.0065, night));
     const es = eyeState.update({ dt, storm, snow: SNOW.uSnowFall.value, gale: windSpeed, windDir: STORM.uWind.value, look: _eyeLook,
-      outdoors: mode !== 'car' && !riding, shelter, on: EYE.on.value > 0.5 });
-    pe.squint = es.squint; pe.tear = es.tear; pe.lid = es.lid; pe.wind = Math.min(1, windSpeed / 15);
+      outdoors: !inCar, shelter, on: EYE.on.value > 0.5, glasses: glasses.worn });
+    pe.squint = es.squint; pe.tear = es.tear; pe.wind = Math.min(1, windSpeed / 15);
   };
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
   let fogLamps = [];                                                    // (in a fog, the 12 nearest within ~120 m: their halos)
@@ -1017,7 +1027,13 @@ async function main() {
   post.setTAA(aa === 'taa');
   // the enhanced field of view (as Modern Warfare 4's "Enhanced FOV"): the lens on or off, both menus alike
   post.setLens(efov === 'on', baseFov());
-  // (V101) the eye in a blizzard: the squint, a flake in the eye, the tears (eye.js) - both menus alike
+  // (V102) the tactical glasses (eye.js) - both menus alike
+  for (const sfx of ['', '2']) {
+    const el = $('glasses' + sfx); if (!el) continue;
+    el.value = glasses.want ? 'on' : 'off';
+    el.addEventListener('change', (e) => wearGlasses(e.target.value !== 'off'));
+  }
+  // (V101) without glasses in a blizzard: the squint and the tears (eye.js) - both menus alike
   for (const sfx of ['', '2']) {
     const el = $('eye' + sfx); if (!el) continue;
     el.value = EYE.on.value > 0.5 ? 'on' : 'off';
@@ -1496,6 +1512,7 @@ async function main() {
     if (!paused) {
       if (input.hit('KeyK')) goToForest();
       if (input.hit('KeyP')) screenshot();
+      if (input.hit('KeyY')) { wearGlasses(!glasses.want); hud.toast(glasses.want ? 'Ochelari tactici puși (Y îi scoate)' : 'Ochelari tactici scoși (Y îi pune la loc, șterși)', 2.5); }
       if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
       // B: the wind - after the weather, or a speed of the Beaufort scale
@@ -1986,7 +2003,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { lampLight, eyeState, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

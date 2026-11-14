@@ -26,21 +26,60 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 //    little restless with the pupil's unrest (hippus); and the lenticular halo: a coloured ring of ~3 deg radius
 //    (yellow at 3.1 deg, each colour's radius in proportion to its wavelength, blue inside, red outside), from the
 //    lens's peripheral fibres acting as a circular grating - so only with a wide pupil, by night.
-//  * In a blizzard, facing the wind, you squint: the lids close in from above and below (seen blurred, with the
-//    lashes), and a light seen through the slit draws long vertical streaks (diffraction by the lids' edges and the
-//    lashes, which the wind keeps moving). A flake now and then flies into an eye (looking into the wind, or up into
-//    the falling snow): it shuts for an instant and waters; the tears blur and haze the view for a second or two. The
-//    cold wind alone makes the eyes water a little. (Ordinary blinks are not drawn: the brain suppresses them - one
-//    does not see one's own blinks, Volkmann, Riggs & Moore 1980.)
+//  * Without glasses, in a blizzard, facing the wind, you squint: the lids close in from above and below (seen
+//    blurred, with the lashes), and a light seen through the slit draws long vertical streaks (diffraction by the lids'
+//    edges and the lashes, which the wind keeps moving); the cold wind waters the eyes a little. No blinks are drawn
+//    (V102: not the reflex one either - the brain suppresses them, Volkmann, Riggs & Moore 1980).
+//  * (V102) Tactical glasses (a ballistic polycarbonate wrap-around, clear: ~89 % of the light through, which the eye
+//    adapts to; Y puts them on and takes them off). Everything on them is ~18 mm from the eye, far nearer than it can
+//    focus, so it is seen as the pupil's cone of rays crossing it: a drop of radius r covers a share (r / R)^2 of the
+//    rays (R = sqrt(r^2 + p^2), p the pupil's radius over 18 mm) over a soft disc of angular radius R - by day (a small
+//    pupil) a blurred spot, by night a faint wide veil through which a light behind it smears. The snow lands on them
+//    (more facing the wind and walking into it), as a flake that melts into a drop in a few seconds and dries in
+//    about half a minute; the rain as drops. A smear on the lens lights up round a bright light. Breath fogs their
+//    lower edge when you stand still in the cold, and getting into a warm car fogs them all over for a few seconds
+//    (warm moist air on a lens colder than its dew point); the top of the frame shows, far out of focus, at the top of
+//    a wide view. Put back on, they are wiped clean.
 
 export const EYE_N = 12;                      // point lights (glare) at most
 export const EYE = {
   probe: { value: null },                    // (2 + EYE_N) x 1: [focus D, pupil m, adapting cd/m2], then each light's visibility
   probeW: { value: 2 + EYE_N },
-  on: { value: 1 },                          // the menu: the eye's effects on (1) or off (0)
+  on: { value: 1 },                          // the menu: the squint and the tears without glasses (1) or not (0)
+  glasses: { value: 1 },                     // (V102) the glasses: worn (1) .. off (0), eased
 };
 
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
+export const LENS_N = 24;                     // (V102) drops and flakes on the glasses at most
+const LENS_EYE = 0.018;                       // (m: the lens from the eye)
+
+// ---- (V102) what lies on the glasses, as the eye sees it: per pixel the share of the pupil's rays a drop takes (r),
+// how it bends them (g, b: outwards from its middle) and how much of it is still ice (a)
+const LENS_FRAG = /* glsl */`
+uniform vec4 uDrop[${LENS_N}];     // xy: where it sits (uv), z: its radius seen from the eye (rad), w: how much of it is left
+uniform float uMelt[${LENS_N}];    // 0 a flake (ice) .. 1 water
+uniform float uN, uProbeW;
+uniform vec2 uTan;                  // tan of the half field of view (x, y)
+uniform sampler2D tProbe;
+varying vec2 vUv;
+void main() {
+  // (the pupil's radius as seen from the lens)
+  float uPupilR = 0.5 * max(texture2D(tProbe, vec2(0.5 / uProbeW, 0.5)).g, 0.002) / ${LENS_EYE.toFixed(3)};
+  float cov = 0.0, ice = 0.0;
+  vec2 bend = vec2(0.0);
+  for (int i = 0; i < ${LENS_N}; i++) {
+    if (float(i) >= uN) break;
+    vec4 d = uDrop[i];
+    vec2 q = (vUv - d.xy) * 2.0 * uTan;
+    float r = length(q), R = sqrt(d.z * d.z + uPupilR * uPupilR);
+    if (r > R) continue;
+    float a = d.w * (d.z * d.z) / (R * R) * (1.0 - smoothstep(0.3 * R, R, r));
+    cov += a * (1.0 - cov);
+    ice = max(ice, a * (1.0 - uMelt[i]));
+    bend += q / max(r, 1e-5) * a * smoothstep(0.0, R, r);
+  }
+  gl_FragColor = vec4(cov, bend, ice);
+}`;
 
 // ---- the probe: the eye's state, kept on the GPU (no read-back): focus, pupil, adaptation; the lights' visibility
 const PROBE_FRAG = /* glsl */`
@@ -156,8 +195,10 @@ void main() {
 
 // ---- the eye's picture: the veil, the lights' glare, the corona, the halo; the squint, the tears, the lids
 const COMP_FRAG = /* glsl */`
-uniform sampler2D tDiffuse, tVeil, tSoft, tProbe;
-uniform float uVeilOn, uScat, uP, uAgeK, uTime, uSquint, uTear, uLid, uAspect, uOn, uWind, uT;
+uniform sampler2D tDiffuse, tVeil, tSoft, tProbe, tLens, tBlur;
+uniform float uVeilOn, uScat, uP, uAgeK, uTime, uSquint, uTear, uAspect, uOn, uWind, uT;
+uniform float uGlasses, uFog, uFogB, uAbsC, uWetSig;   // (V102: the glasses)
+uniform float uSrcWet[${EYE_N}];       // (V102: how much of each light's way through the glasses a drop takes)
 uniform vec2 uTexel;
 uniform mat4 uProjInv;
 uniform vec4 uSrcDir[${EYE_N}];        // view space unit direction (w: its distance, for the probe)
@@ -223,6 +264,9 @@ void main() {
     vec3 R = vec3(610.0, 545.0, 465.0) / 575.0 * 3.1;
     vec3 ring = exp(-pow((vec3(th) - R) / 0.2, vec3(2.0)));
     e += sc.rgb * vis * kHalo * 0.9 * ring;
+    // (V102) a drop on the glasses in the light's way spreads what it takes over its own blurred disc
+    // (a drop is a strong little lens: what it takes is thrown wide, ~10-20 deg, and much of it misses the pupil)
+    if (uSrcWet[i] > 0.0) { float tr = radians(th); e += sc.rgb * vis * uSrcWet[i] * 0.25 * exp(-tr * tr / (2.0 * uWetSig * uWetSig)) / (6.2831853 * uWetSig * uWetSig); }
     // squinting: the slit of the lids and the lashes draw it out into long vertical streaks
     if (uSquint > 0.001) {
       float dx = abs(q.x) * 57.2958, dy = abs(q.y) * 57.2958 + 0.05;
@@ -233,17 +277,44 @@ void main() {
     glare += e;
   }
   col += glare;
-  // the lids: blurred, with the lashes, from above and below (a squint, an eye shutting for an instant)
+  // (V102) the glasses: what lies on them, far nearer than the eye can focus
+  if (uGlasses > 0.001) {
+    float pupilR = 0.5 * max(ep.g, 0.002) / ${LENS_EYE.toFixed(3)};      // (rad: the pupil seen from the lens)
+    vec4 lm = texture2D(tLens, vUv);
+    float cov = clamp(lm.r * uGlasses, 0.0, 1.0);
+    vec3 veilL = uVeilOn > 0.5 ? texture2D(tVeil, vUv).rgb : vec3(0.0);
+    float meanL = ep.b / max(uAbsC, 1e-6);
+    // through a drop the scene is bent and far out of focus; the water throws a bright light about
+    vec2 bt = 8.0 * uTexel, tu = uv - lm.gb * 0.04;
+    vec3 through = 0.25 * (texture2D(tBlur, tu + vec2(-bt.x, -bt.y)).rgb + texture2D(tBlur, tu + vec2(bt.x, -bt.y)).rgb + texture2D(tBlur, tu + vec2(-bt.x, bt.y)).rgb + texture2D(tBlur, tu + bt).rgb);
+    col = mix(col, through, min(0.9, cov * 1.25)) + veilL * cov * 3.0;
+    // a flake not yet melted: ice crystals, white, lit by the light round you
+    col = mix(col, mix(through, vec3(0.92, 0.95, 1.0) * meanL * 1.3, 0.5), clamp(lm.a * uGlasses * 0.75, 0.0, 0.75));
+    // fog: the breath on the lower edge, a warm car's air all over (a bright light blooms in it)
+    float fn = vnoise(vUv * vec2(9.0, 6.0)) * 0.6 + vnoise(vUv * vec2(23.0, 17.0) + 4.0) * 0.4;
+    float fog = clamp(uFog * (0.75 + 0.25 * fn) + uFogB * (1.0 - smoothstep(0.0, 0.42, vUv.y)) * (0.6 + 0.4 * fn), 0.0, 1.0) * uGlasses;
+    col = mix(col, mix(through, vec3(meanL), 0.35), fog * 0.85) + veilL * fog * 4.0 + glare * fog * 0.6;
+    // a smear on the lens lights up round a bright light
+    float sm = smoothstep(0.5, 0.85, vnoise(vUv * vec2(3.1, 2.3) + 7.7) * 0.65 + vnoise(vUv * vec2(11.0, 8.0) + 1.3) * 0.35);
+    col += (glare + veilL) * sm * 0.35 * uGlasses;
+    // the frame's top (36-45 deg up) and the side pieces (past 78 deg), blurred over the pupil's cone: a 3 mm rim takes
+    // all of a small pupil's rays, about half of a wide one's
+    float b = degrees(pupilR), rimK = 0.9 * min(1.0, 0.003 / max(ep.g, 0.002));
+    float el = degrees(asin(clamp(ray.y, -1.0, 1.0))), az = degrees(atan(abs(ray.x), -ray.z));
+    float rim = max(smoothstep(36.0 - b, 36.0 + b, el) - smoothstep(45.0 - b, 45.0 + b, el), smoothstep(78.0 - b, 78.0 + b, az));
+    col *= 1.0 - rimK * rim * uGlasses;
+  }
+  // the lids: blurred, with the lashes, from above and below (the squint)
   // (off the screen with the eyes open: their blurred edges come in as the lids close)
   float soft = 0.07;
-  float top = 1.0 + soft - (0.3 + soft) * uSquint - 0.55 * uLid, bot = -soft + (0.18 + soft) * uSquint + 0.53 * uLid;
+  float top = 1.0 + soft - (0.3 + soft) * uSquint, bot = -soft + (0.18 + soft) * uSquint;
   // (the lashes, a centimetre from the eye: far out of focus - soft dark smudges along the lid's edge, the wind moving them)
   float lash = vnoise(vec2(vUv.x * 26.0 + 0.6 * sin(uTime * 2.1) * uWind, 3.0)) * 0.65 + vnoise(vec2(vUv.x * 57.0 - 0.4 * sin(uTime * 3.3) * uWind, 7.0)) * 0.35;
   float T = (1.0 - smoothstep(top - soft, top + soft * 0.6, vUv.y)) * smoothstep(bot - soft * 0.4, bot + soft, vUv.y);
   float lashBand = smoothstep(top - 0.16, top - 0.02, vUv.y) * (1.0 - smoothstep(top - 0.02, top + 0.05, vUv.y))
                  + (1.0 - smoothstep(bot + 0.01, bot + 0.1, vUv.y)) * smoothstep(bot - 0.04, bot + 0.01, vUv.y) * 0.6;
-  T *= 1.0 - (0.22 + 0.2 * uSquint) * lashBand * smoothstep(0.3, 0.8, lash) * step(0.001, uSquint + uLid);
-  if (uSquint + uLid > 0.001) col *= T;
+  T *= 1.0 - (0.22 + 0.2 * uSquint) * lashBand * smoothstep(0.3, 0.8, lash);
+  if (uSquint > 0.001) col *= T;
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -262,7 +333,7 @@ export class EyePass extends Pass {
     this.camera = camera; this.tap = tap; this.veil = veil;
     this.age = 25; this.p = 0.5;                       // (an average young observer, brown eyes)
     this.levels = 6;
-    this.squint = 0; this.tear = 0; this.lid = 0; this.wind = 0; this.time = 0;
+    this.squint = 0; this.tear = 0; this.wind = 0; this.time = 0;
     this.abs = 26000; this.rest = 0; this.restW = 0;   // (main.js: cd/m2 per unit; the resting focus, D: the dark's, a white-out's)
     // (the frame's glare from what lies above the screen's white: ~1 after the exposure, before the tone curve's
     // shoulder - ACES shows ~0.8 there)
@@ -290,13 +361,22 @@ export class EyePass extends Pass {
     this.upQuad = new FullScreenQuad(this.upMat);
     this.down = []; this.up = []; this.w = new Array(this.levels + 1).fill(0); this.scat = 0;
     if (veil) for (let k = 1; k <= this.levels; k++) { this.down[k] = new THREE.WebGLRenderTarget(1, 1, rtOpts); this.up[k] = new THREE.WebGLRenderTarget(1, 1, rtOpts); }
-    this.soft = veil ? null : new THREE.WebGLRenderTarget(1, 1, rtOpts);
+    // the frame itself blurred (no threshold): half size for the tears, an eighth for what is on the glasses
+    this.soft = new THREE.WebGLRenderTarget(1, 1, rtOpts); this.softQ = new THREE.WebGLRenderTarget(1, 1, rtOpts); this.softE = new THREE.WebGLRenderTarget(1, 1, rtOpts);
     this.comp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
       uniforms: { tDiffuse: { value: null }, tVeil: { value: null }, tSoft: { value: null }, tProbe: EYE.probe, uVeilOn: { value: veil ? 1 : 0 }, uScat: { value: 0 },
-        uP: { value: this.p }, uAgeK: { value: ageK }, uTime: { value: 0 }, uSquint: { value: 0 }, uTear: { value: 0 }, uLid: { value: 0 }, uAspect: { value: 1 },
+        uP: { value: this.p }, uAgeK: { value: ageK }, uTime: { value: 0 }, uSquint: { value: 0 }, uTear: { value: 0 }, uAspect: { value: 1 },
+        tLens: { value: null }, tBlur: { value: null }, uGlasses: EYE.glasses, uFog: { value: 0 }, uFogB: { value: 0 }, uAbsC: { value: 1 }, uWetSig: { value: 0.1 },
+        uSrcWet: { value: new Float32Array(EYE_N) },
         uOn: EYE.on, uWind: { value: 0 }, uT: { value: 1 }, uTexel: { value: new THREE.Vector2() }, uProjInv: { value: new THREE.Matrix4() },
         uSrcDir: { value: this.srcDir }, uSrcInfo: { value: this.srcInfo }, uSrcCol: { value: this.srcCol } } });
     this.compQuad = new FullScreenQuad(this.comp);
+    // (V102) the glasses' map
+    this.dropV = Array.from({ length: LENS_N }, () => new THREE.Vector4());
+    this.lens = new THREE.WebGLRenderTarget(1, 1, rtOpts);
+    this.lensMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: LENS_FRAG, depthTest: false, depthWrite: false,
+      uniforms: { uDrop: { value: this.dropV }, uMelt: { value: new Float32Array(LENS_N) }, uN: { value: 0 }, uProbeW: EYE.probeW, uTan: { value: new THREE.Vector2(1, 1) }, tProbe: EYE.probe } });
+    this.lensQuad = new FullScreenQuad(this.lensMat);
     this.size = new THREE.Vector2(1, 1);
     this.fovKey = '';
   }
@@ -308,7 +388,10 @@ export class EyePass extends Pass {
       this.down[k].setSize(Math.max(1, Math.round(w / s)), Math.max(1, Math.round(h / s)));
       this.up[k].setSize(Math.max(1, Math.round(w / s)), Math.max(1, Math.round(h / s)));
     }
-    if (this.soft) this.soft.setSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
+    this.soft.setSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
+    this.softQ.setSize(Math.max(1, Math.round(w / 4)), Math.max(1, Math.round(h / 4)));
+    this.softE.setSize(Math.max(1, Math.round(w / 8)), Math.max(1, Math.round(h / 8)));
+    this.lens.setSize(Math.max(1, Math.round(w / 4)), Math.max(1, Math.round(h / 4)));
     this.comp.uniforms.uTexel.value.set(1 / w, 1 / h);
     this.fovKey = '';
   }
@@ -341,6 +424,26 @@ export class EyePass extends Pass {
       this.srcDir[i].set(d.x, d.y, d.z, l.dist);
       this.srcInfo[i].set(1, l.test, l.disk ?? 1, l.radius ?? 0.002);
       this.srcCol[i].set(l.color[0] * l.E, l.color[1] * l.E, l.color[2] * l.E, 1);
+    }
+  }
+
+  // (V102) the glasses as they are now (Glasses below): the drops for the lens map, the fog, and for each light how
+  // much of its way through the lens a drop takes (its smear); pupil: the eye's (m, an estimate on the CPU)
+  setGlasses(g, pupil) {
+    const lu = this.lensMat.uniforms, cu = this.comp.uniforms, n = Math.min(g.drops.length, LENS_N);
+    for (let i = 0; i < n; i++) { const d = g.drops[i]; this.dropV[i].set(d.u, d.v, d.r / LENS_EYE, d.amt); lu.uMelt.value[i] = d.melt; }
+    lu.uN.value = g.worn > 0 ? n : 0;
+    cu.uFog.value = g.fog; cu.uFogB.value = g.fogB;
+    const cam = this.camera, ty = Math.tan(cam.fov * Math.PI / 360) / cam.zoom, tx = ty * cam.aspect, pr = 0.5 * pupil / LENS_EYE;
+    cu.uWetSig.value = Math.max(0.2, 0.5 * Math.hypot(0.001 / LENS_EYE, pr));
+    for (let i = 0; i < EYE_N; i++) {
+      let w = 0;
+      if (n && this.srcCol[i].w > 0) {
+        const d = this.srcDir[i];
+        _p4.set(d.x * 1000, d.y * 1000, d.z * 1000, 1).applyMatrix4(cam.projectionMatrix);
+        if (_p4.w > 0) w = g.wetAt(_p4.x / _p4.w * 0.5 + 0.5, _p4.y / _p4.w * 0.5 + 0.5, pupil, tx, ty);
+      }
+      cu.uSrcWet.value[i] = Math.min(0.12, w) * g.worn;
     }
   }
 
@@ -379,61 +482,129 @@ export class EyePass extends Pass {
         um.tHere.value = this.down[k].texture; um.uW.value = this.w[k];
         renderer.setRenderTarget(this.up[k]); this.upQuad.render(renderer);
       }
-    } else {
+    }
+    // the frame blurred, without the threshold (the tears; through a drop or the fog on the glasses)
+    {
       const dm = this.downMat.uniforms;
-      dm.tSrc.value = readBuffer.texture; dm.uTexel.value.set(1 / readBuffer.width, 1 / readBuffer.height); dm.uFirst.value = 1; dm.uT.value = 0;
+      dm.uT.value = 0;
+      dm.tSrc.value = readBuffer.texture; dm.uTexel.value.set(1 / readBuffer.width, 1 / readBuffer.height); dm.uFirst.value = 1;
       renderer.setRenderTarget(this.soft); this.downQuad.render(renderer);
+      if (this.tear > 0.001 || EYE.glasses.value > 0.001) {
+        dm.uFirst.value = 0;
+        dm.tSrc.value = this.soft.texture; dm.uTexel.value.set(1 / this.soft.width, 1 / this.soft.height);
+        renderer.setRenderTarget(this.softQ); this.downQuad.render(renderer);
+        dm.tSrc.value = this.softQ.texture; dm.uTexel.value.set(1 / this.softQ.width, 1 / this.softQ.height);
+        renderer.setRenderTarget(this.softE); this.downQuad.render(renderer);
+      }
     }
     // the picture
     const cu = this.comp.uniforms;
     cu.tDiffuse.value = readBuffer.texture;
     cu.tVeil.value = this.veil ? this.up[1].texture : null;
-    cu.tSoft.value = this.veil ? this.down[1].texture : this.soft.texture;
+    cu.tSoft.value = this.soft.texture;
     cu.uScat.value = this.scat;
-    cu.uTime.value = this.time; cu.uSquint.value = this.squint; cu.uTear.value = this.tear; cu.uLid.value = this.lid; cu.uWind.value = this.wind;
+    cu.uTime.value = this.time; cu.uSquint.value = this.squint; cu.uTear.value = this.tear; cu.uWind.value = this.wind;
+    cu.uAbsC.value = this.abs;
+    // (V102) what lies on the glasses, at a quarter of the resolution (it is all far out of focus)
+    if (EYE.glasses.value > 0.001) {
+      const lu = this.lensMat.uniforms;
+      lu.uTan.value.set(Math.tan(cam.fov * Math.PI / 360) / cam.zoom * cam.aspect, Math.tan(cam.fov * Math.PI / 360) / cam.zoom);
+      renderer.setRenderTarget(this.lens); this.lensQuad.render(renderer);
+    }
+    cu.tLens.value = this.lens.texture;
+    cu.tBlur.value = this.softE.texture;
     cu.uProjInv.value.copy(cam.projectionMatrixInverse);
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.compQuad.render(renderer);
   }
 
   dispose() {
-    for (const r of [...this.probes, ...this.down.filter(Boolean), ...this.up.filter(Boolean), this.soft].filter(Boolean)) r.dispose();
-    for (const m of [this.probeMat, this.downMat, this.upMat, this.comp]) m.dispose();
+    for (const r of [...this.probes, ...this.down.filter(Boolean), ...this.up.filter(Boolean), this.soft, this.softQ, this.softE, this.lens].filter(Boolean)) r.dispose();
+    for (const m of [this.probeMat, this.downMat, this.upMat, this.comp, this.lensMat]) m.dispose();
   }
 }
-const _v = new THREE.Vector3();
+const _v = new THREE.Vector3(), _p4 = new THREE.Vector4();
 
-// The eye's own state through the game: squinting into a blizzard, a flake in the eye, watering in the cold wind.
+// The eye's own state through the game, without glasses: squinting into a blizzard, watering in the cold wind (no
+// blinks). With them on (glasses: 0-1) the wind and the snow are kept off the eyes.
 // ctx: { dt, storm (0-1), snow (0-1, falling), gale (m/s), windDir (Vector2, world x/z, where it blows to),
-//        look (Vector3, the view's direction), outdoors (bool), shelter (0-1), on (bool) }
+//        look (Vector3, the view's direction), outdoors (bool), shelter (0-1), on (bool), glasses (0-1) }
 export class EyeState {
-  constructor() { this.squint = 0; this.tear = 0; this.lid = 0; this.hitT = -1; this.cool = 0; this.hits = 0; }
+  constructor() { this.squint = 0; this.tear = 0; }
   update(c) {
-    const dt = Math.min(0.1, c.dt);
-    if (!c.on || !c.outdoors) { this.squint = Math.max(0, this.squint - dt * 2); this.tear = Math.max(0, this.tear - dt / 1.5); this.lid = 0; this.hitT = -1; return this; }
+    const dt = Math.min(0.1, c.dt), bare = 1 - (c.glasses ?? 0);
+    if (!c.on || !c.outdoors || bare < 0.01) { this.squint = Math.max(0, this.squint - dt * 2); this.tear = Math.max(0, this.tear - dt / 1.5); return this; }
     const wl = Math.hypot(c.windDir.x, c.windDir.y) || 1;
     // facing the wind: the view against where it comes from (1 straight into it)
     const facing = Math.max(0, -(c.look.x * c.windDir.x + c.look.z * c.windDir.y) / wl / (Math.hypot(c.look.x, c.look.z) || 1));
     const exposed = (1 - c.shelter) * Math.min(1, c.gale / 14);
-    const want = c.storm * c.snow * exposed * Math.min(1, facing * 1.6);
+    const want = bare * c.storm * c.snow * exposed * Math.min(1, facing * 1.6);
     this.squint += (want - this.squint) * (1 - Math.exp(-dt / (want > this.squint ? 0.35 : 0.8)));
-    // a flake in the eye: into the wind in a blizzard, or looking up into the falling snow (rarely)
-    const up = Math.max(0, c.look.y);
-    const rate = c.snow * (c.storm * exposed * facing * 0.05 + 0.02 * Math.max(0, up - 0.35) / 0.65);   // (per second)
-    this.cool = Math.max(0, this.cool - dt);
-    if (this.hitT < 0 && this.cool <= 0 && Math.random() < rate * dt) { this.hitT = 0; this.hits++; this.cool = 4; }
-    if (this.hitT >= 0) {
-      this.hitT += dt;
-      const t = this.hitT;
-      // it shuts in ~0.06 s, stays ~0.05 s, opens in ~0.22 s (a reflex blink, quicker than a voluntary one's 0.57 s:
-      // Kwon et al. 2013) - drawn only most of the way: the brain blanks out a blink (Volkmann et al. 1980)
-      this.lid = 0.8 * (t < 0.06 ? t / 0.06 : t < 0.11 ? 1 : t < 0.33 ? 1 - (t - 0.11) / 0.22 : 0);
-      if (t > 0.06) this.tear = Math.max(this.tear, 1);
-      if (t >= 0.33) this.hitT = -1;
-    } else this.lid = 0;
-    // the cold wind waters the eyes a little; the tears clear in a couple of seconds
-    const base = 0.22 * c.storm * c.snow * exposed * facing;
+    // the cold wind waters the eyes a little; it clears in a couple of seconds
+    const base = 0.22 * bare * c.storm * c.snow * exposed * facing;
     this.tear = this.tear > base ? Math.max(base, this.tear - dt / 1.6) : this.tear + (base - this.tear) * (1 - Math.exp(-dt / 3));
     return this;
+  }
+}
+
+// (V102) The tactical glasses: what lands on them and what fogs them, kept on the CPU (a few dozen at most) and drawn
+// by the eye's pass (LENS_FRAG). ctx: { dt, on (worn), snow, rain (0-1, falling), storm, gale (m/s), windDir, look,
+// vel (Vector3, your velocity), outdoors, inCar, winter, breath (a puff now), still (standing) }
+export class Glasses {
+  constructor() {
+    this.worn = 1; this.want = true;
+    this.drops = [];              // { u, v, r (m), melt (0 ice .. 1 water), amt (0-1), life (s), age (s) }
+    this.fog = 0; this.fogB = 0; this.wasCar = false;
+  }
+  // a drop or a flake: where it sits on the view, how big it is on the lens
+  add(kind) {
+    const d = { u: 0.04 + 0.92 * Math.random(), v: 0.08 + 0.88 * Math.random(), age: 0, amt: 1,
+      r: kind === 'rain' ? 0.0006 + 0.0007 * Math.random() : 0.0012 + 0.0012 * Math.random(),
+      melt: kind === 'rain' ? 1 : 0, life: 25 + 25 * Math.random() };
+    if (this.drops.length >= LENS_N) this.drops.shift();
+    this.drops.push(d);
+  }
+  update(c) {
+    const dt = Math.min(0.1, c.dt);
+    const target = this.want ? 1 : 0;
+    this.worn += Math.sign(target - this.worn) * Math.min(Math.abs(target - this.worn), dt / 0.35);
+    if (this.worn <= 0) return this;
+    // what flies at the lens: the snow and the rain falling, more into the wind and walking into it
+    const wl = Math.hypot(c.windDir.x, c.windDir.y) || 1, ll = Math.hypot(c.look.x, c.look.z) || 1;
+    const facing = Math.max(0, -(c.look.x * c.windDir.x + c.look.z * c.windDir.y) / wl / ll);
+    const ahead = Math.max(0, (c.vel.x * c.look.x + c.vel.z * c.look.z) / ll);
+    const flux = (c.outdoors && !c.inCar ? 1 : 0) * (0.25 + 0.6 * facing * Math.min(1, c.gale / 12) + 0.15 * Math.min(ahead, 4));
+    const rate = flux * (0.45 * c.snow * (1 + c.storm) + 1.2 * c.rain);            // (per second)
+    if (Math.random() < rate * dt) this.add(c.rain > c.snow ? 'rain' : 'snow');
+    // a flake melts into a drop in a few seconds (the lens is warmed by the face), a drop dries in ~half a minute
+    for (const d of this.drops) {
+      d.age += dt;
+      if (d.melt < 1) { d.melt = Math.min(1, d.melt + dt / 4); d.r = Math.max(d.r * (1 - dt * 0.12), 0.0005); }
+      d.amt = Math.min(1, d.age / 0.08) * (1 - Math.max(0, (d.age - d.life * 0.6) / (d.life * 0.4)));
+    }
+    this.drops = this.drops.filter(d => d.amt > 0.01 && d.age < d.life);
+    // fog: warm, moist air on a lens colder than its dew point - a warm car after the cold (it clears in ~10 s), your
+    // breath on the lower edge standing still in the cold (gone in a second or two)
+    if (c.inCar && !this.wasCar && c.winter) this.fog = Math.max(this.fog, 0.85);
+    this.wasCar = c.inCar;
+    this.fog *= Math.exp(-dt / 7);
+    if (c.breath && c.still && c.winter && c.outdoors) this.fogB = Math.min(0.45, this.fogB + dt * 0.8);
+    this.fogB *= Math.exp(-dt / 1.3);
+    return this;
+  }
+  // put back on: wiped clean
+  wear(on) { if (on && !this.want) { this.drops.length = 0; this.fog = 0; this.fogB = 0; } this.want = on; }
+  // how much of the rays towards a point of the view (u, v) a drop takes (as LENS_FRAG works it out), for a pupil p (m)
+  // and the view's half-angle tangents (tx, ty)
+  wetAt(u, v, p, tx, ty) {
+    const pr = 0.5 * p / LENS_EYE;
+    let cov = 0;
+    for (const d of this.drops) {
+      const rr = d.r / LENS_EYE, R = Math.hypot(rr, pr), qx = (u - d.u) * 2 * tx, qy = (v - d.v) * 2 * ty, r = Math.hypot(qx, qy);
+      if (r > R) continue;
+      const t = Math.min(1, Math.max(0, (r - 0.3 * R) / (0.7 * R)));
+      cov += d.amt * (rr * rr) / (R * R) * (1 - t * t * (3 - 2 * t)) * (1 - cov);
+    }
+    return cov;
   }
 }
