@@ -10,6 +10,12 @@ import * as THREE from 'three';
 const DIR_START = '#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )';
 const DIR_CASCADED = /* glsl */`#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )
 	DirectionalLight directionalLight;
+	// (V98) the clouds' shadows: of the sun's light only, on everything it lights, near and far (CLOUD_SH below)
+	float cloudK = 1.0;
+	if ( cloudSh.w > 0.0 ) {
+		mat3 cloudR = transpose( mat3( viewMatrix ) );
+		cloudK = cloudShade( cloudR * ( geometryPosition - viewMatrix[ 3 ].xyz ), cloudR * directionalLights[ 0 ].direction, length( geometryPosition ) );
+	}
 	#if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
 	#define CSM_SHADOW
 	DirectionalLightShadow directionalLightShadow;
@@ -32,6 +38,9 @@ const DIR_CASCADED = /* glsl */`#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct
 	for ( int i = 0; i < NUM_DIR_LIGHTS; i ++ ) {
 		directionalLight = directionalLights[ i ];
 		getDirectionalLightInfo( directionalLight, directLight );
+		#if UNROLLED_LOOP_INDEX == 0
+		directLight.color *= cloudK;
+		#endif
 		#if defined( USE_SHADOWMAP ) && ( UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS )
 		directLight.color *= receiveShadow ? csmShadow : 1.0;
 		#endif
@@ -41,12 +50,43 @@ const DIR_CASCADED = /* glsl */`#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct
 #endif
 `;
 
+// The clouds' shadows (V98). Under fair-weather cumulus the clouds' shadows lie on the land as patches some hundreds of
+// metres across that drift with the wind at the clouds' height - on the hills far off, the one sign of the sky over
+// them. Per pixel the sun's ray is followed up to a deck 1.5 km over the street and a cloud field is read there:
+// three octaves of value noise (850 m, ~390 m, ~170 m), cut at the weather's cover. A cumulus is optically thick: it
+// takes nearly all of the direct sun (85 % here, its thinner edges less), never the sky's light - so it is the sun's
+// light that is scaled in the light loop, and the shade already there stays as it was. World-anchored, it lies alike
+// on the street, the houses, the woods and the far hills, and drifts over them. No texture (the ground's shader is at
+// the 16 units WebGL guarantees): the field is computed. Faded out past 6-7.8 km (the far relief beyond is lit by
+// its own shader). x, y: how far the wind has carried the field (m); z: the noise level the clouds start at (from the
+// cover); w: how much of the sun a cloud takes (0: off - an overcast deck, the night, the lowest setting).
+export const CLOUD_SH = { x: 0, y: 0, z: 0.55, w: 0 };
+const CLOUD_GLSL = /* glsl */`
+uniform vec4 cloudSh;
+float cloudHash( vec2 p ) { vec3 q = fract( vec3( p.xyx ) * 0.1031 ); q += dot( q, q.yzx + 33.33 ); return fract( ( q.x + q.y ) * q.z ); }
+float cloudNoise( vec2 p ) {
+	vec2 i = floor( p ), f = fract( p ); f = f * f * ( 3.0 - 2.0 * f );
+	return mix( mix( cloudHash( i ), cloudHash( i + vec2( 1.0, 0.0 ) ), f.x ), mix( cloudHash( i + vec2( 0.0, 1.0 ) ), cloudHash( i + vec2( 1.0, 1.0 ) ), f.x ), f.y );
+}
+// w: the point (world), s: towards the sun, d: its distance from the eye
+float cloudShade( vec3 w, vec3 s, float d ) {
+	vec2 p = ( w.xz + s.xz * ( ( 1500.0 - w.y ) / max( s.y, 0.08 ) ) - cloudSh.xy ) / 850.0;
+	float n = 0.55 * cloudNoise( p ) + 0.3 * cloudNoise( p * 2.17 + 5.3 ) + 0.15 * cloudNoise( p * 4.93 + 11.1 );
+	return 1.0 - cloudSh.w * smoothstep( cloudSh.z - 0.045, cloudSh.z + 0.045, n ) * ( 1.0 - smoothstep( 6000.0, 7800.0, d ) );
+}`;
+// the noise level the clouds start at for a cover (0-1): about 0.8 of the cover in shade (thin clouds cast little)
+export const cloudLevel = (cover) => 0.66 - 0.27 * cover;
+
 // Must run before the first material is compiled. Returns false (and leaves three.js alone) if the chunk changed.
 export function installCascadedShadows() {
   const src = THREE.ShaderChunk.lights_fragment_begin;
   const a = src.indexOf(DIR_START), b = src.indexOf('#if ( NUM_RECT_AREA_LIGHTS > 0 )', a);
   if (a < 0 || b < 0) { console.warn('cascaded shadows: unknown lights_fragment_begin, using one shadow map'); return false; }
   THREE.ShaderChunk.lights_fragment_begin = src.slice(0, a) + DIR_CASCADED + src.slice(b);
+  THREE.ShaderChunk.lights_pars_begin += CLOUD_GLSL;
+  // one shared value in every lit built-in material (as the haze's, main.js: three copies plain objects by reference);
+  // a shader material of its own that has the light loop but not this value reads zeros: no clouds' shade
+  for (const k in THREE.ShaderLib) { const u = THREE.ShaderLib[k].uniforms; if (u.directionalLights) u.cloudSh = { value: CLOUD_SH }; }
   return true;
 }
 

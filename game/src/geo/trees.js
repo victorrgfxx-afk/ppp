@@ -9,6 +9,7 @@ import { broadTree } from './broadgen.js';
 import { treeOnRoad } from './roadbed.js';
 import { SEASON, autumnize } from '../season.js';
 import { DITHER, DITHER_GLSL } from '../taa.js';
+import { CLOUD_SH } from '../lighting.js';
 import { windTree, windShadows, windAuto, windStem } from '../treewind.js';
 
 // ~90 000 trees placed from the map (forests, orchards, riverside willows, yard trees where
@@ -246,8 +247,9 @@ function bakeImpostor(renderer, parts, t) {
   renderer.setClearColor(0x3d4a30, 0);
   renderer.clear();
   const aut = SEASON.uAutumn.value; SEASON.uAutumn.value = 0;        // (baked green: the billboards turn as the crowns do)
+  const cw = CLOUD_SH.w; CLOUD_SH.w = 0;                               // (and in full sun: no clouds' shade baked in, lighting.js)
   renderer.render(sc, cam);
-  SEASON.uAutumn.value = aut;
+  SEASON.uAutumn.value = aut; CLOUD_SH.w = cw;
   renderer.setRenderTarget(prevT);
   renderer.setClearColor(prevC, prevA);
   rt.texture.colorSpace = THREE.LinearSRGBColorSpace;

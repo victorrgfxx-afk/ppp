@@ -27,6 +27,37 @@ class DepthTap extends Pass {
 // whole scene is drawn once a frame instead of twice (measured: ~2300 draws and ~2-3.5 M triangles a frame saved on
 // high), and the leaves and grass count with their real cut-out shapes.
 class FoliageSafeGTAO extends GTAOPass {
+  // The AO fades out with distance. A 24-bit depth buffer (near 0.08 m) steps by z^2 / (near * 2^24): 3 cm at 200 m,
+  // 0.75 m at 1 km, 3 m at 2 km. Once a step is a fair part of the depth one pixel spans, the slope worked out from
+  // neighbouring pixels flips between flat and steep at every step and the AO draws the steps: dark contour bands
+  // across the far hills ("zebra" stripes). The AO's 0.55 m reach is under a pixel there anyway, so it is faded out by
+  // that ratio (it follows the zoom and the resolution: ~100-260 m at 1080p and 60 deg) and not computed past it -
+  // engines do the same (Unreal's AO has a fade-out distance "avoiding artifacts and AO effects on huge objects").
+  constructor(scene, camera, w, h) {
+    super(scene, camera, w, h);
+    const patch = (m, edits) => {
+      let fs = m.fragmentShader;
+      for (const [a, b] of edits) { if (!fs.includes(a)) throw new Error('GTAO: shader changed, cannot fade with distance'); fs = fs.replace(a, b); }
+      m.fragmentShader = fs;
+    };
+    // (the depth step over the depth a pixel spans: z^2 / (near 2^24) against z * 2 tan(fov/2) / height)
+    const steps = /* glsl */`
+      float aoStepRatio(float z) { return z * resolution.y / (2.0 * cameraNear * 16777216.0 * cameraProjectionMatrixInverse[1][1]); }`;
+    patch(this.gtaoMaterial, [
+      ['vec3 getViewPosition(', `${steps}\n\t\tvec3 getViewPosition(`],
+      ['vec3 viewPos = getViewPosition(vUv, depth);', `vec3 viewPos = getViewPosition(vUv, depth);
+			float aoFar = smoothstep(0.07, 0.18, aoStepRatio(-viewPos.z));
+			if (aoFar >= 1.0) { gl_FragColor = vec4(1.0); return; }`],
+      ['ao = pow(ao, scale);', 'ao = mix(pow(ao, scale), 1.0, aoFar);'],
+    ]);
+    // (the denoiser: nothing to smooth past it either)
+    this.pdMaterial.uniforms.cameraNear = { value: camera.near };
+    patch(this.pdMaterial, [
+      ['vec3 getViewPosition(', `uniform float cameraNear;${steps}\n\t\tvec3 getViewPosition(`],
+      ['vec3 viewPos = getViewPosition(vUv, depth);', `vec3 viewPos = getViewPosition(vUv, depth);
+			if (aoStepRatio(-viewPos.z) >= 0.18) { gl_FragColor = vec4(1.0); return; }`],
+    ]);
+  }
   // the scene pass has already rendered this frame's shadow maps: its normal pass must not render them all again
   render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
     if (this.tap?.tex && this.depthTexture !== this.tap.tex) {
@@ -34,6 +65,7 @@ class FoliageSafeGTAO extends GTAOPass {
       this.setGBuffer(this.tap.tex);
       if (first) { this.gtaoMaterial.needsUpdate = this.pdMaterial.needsUpdate = true; this.normalRenderTarget.dispose(); }
     }
+    this.pdMaterial.uniforms.cameraNear.value = this.camera.near;
     const sm = renderer.shadowMap, auto = sm.autoUpdate;
     sm.autoUpdate = false;
     super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
@@ -76,6 +108,33 @@ const GradeShader = {
       col += g * uGrain * (0.6 + 0.4 * (1.0 - dot(col, vec3(0.333))));
       gl_FragColor = vec4(col, 1.0);
     }`,
+};
+
+// The detail the anti-aliasing softens, given back: contrast adaptive sharpening (AMD FidelityFX CAS, MIT licence:
+// gpuopen.com/fidelityfx-cas). A 5-tap cross sharpens each pixel by how far its 3x3 neighbourhood is from clipping, so
+// fine texture (bark, asphalt, the far trees) gets crisper while edges that are already hard get no halo. In display
+// space, after the tone curve and before the grain (the grain is not sharpened); only with TAA (SMAA's edges are its own).
+const CASShader = {
+  uniforms: { tDiffuse: { value: null }, uTexel: { value: new THREE.Vector2(1, 1) }, uPeak: { value: -1 / 7.4 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader: /* glsl */`
+uniform sampler2D tDiffuse;
+uniform vec2 uTexel;
+uniform float uPeak;
+varying vec2 vUv;
+vec3 px(float x, float y) { return texture2D(tDiffuse, vUv + vec2(x, y) * uTexel).rgb; }
+void main() {
+  vec4 E = texture2D(tDiffuse, vUv);
+  vec3 a = px(-1.0, -1.0), b = px(0.0, -1.0), c = px(1.0, -1.0), d = px(-1.0, 0.0), e = E.rgb, f = px(1.0, 0.0), g = px(-1.0, 1.0), h = px(0.0, 1.0), i = px(1.0, 1.0);
+  // soft min and max (the cross plus the whole 3x3: twice the size)
+  float mn = min(min(min(d.g, e.g), min(f.g, b.g)), h.g), mx = max(max(max(d.g, e.g), max(f.g, b.g)), h.g);
+  mn += min(mn, min(min(a.g, c.g), min(g.g, i.g)));
+  mx += max(mx, max(max(a.g, c.g), max(g.g, i.g)));
+  // the smooth distance to the signal's limits over the smooth max: the amount (by the green, for every channel: no colour fringes)
+  float amp = sqrt(clamp(min(mn, 2.0 - mx) / max(mx, 1e-5), 0.0, 1.0));
+  float w = amp * uPeak;
+  gl_FragColor = vec4(clamp(((b + d + f + h) * w + e) / (1.0 + 4.0 * w), 0.0, 1.0), E.a);
+}`,
 };
 
 // Reflections in wet ground (rain.js): opaque wet materials write how much they mirror into the alpha of the scene
@@ -355,15 +414,18 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   }
   composer.addPass(new OutputPass());
   if (q.smaa) { smaa = new SMAAPass(); smaa.enabled = !taa; composer.addPass(smaa); }
+  const cas = taa ? new ShaderPass(CASShader) : null;
+  if (cas) { cas.uniforms.uTexel.value.set(1 / size.x, 1 / size.y); composer.addPass(cas); }
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   const setSize = (w, h) => {
     composer.setSize(w, h);
     const s = renderer.getDrawingBufferSize(new THREE.Vector2());
     grade.uniforms.uRes.value.set(s.x, s.y);
+    if (cas) cas.uniforms.uTexel.value.set(1 / s.x, 1 / s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  // the anti-aliasing on or off (the menu): SMAA while TAA is off
-  const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, heat, setTAA, setSize };
+  // the anti-aliasing on or off (the menu): SMAA while TAA is off, the sharpening with TAA
+  const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; if (cas) cas.enabled = on; };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, heat, cas, setTAA, setSize };
 }

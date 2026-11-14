@@ -3,7 +3,7 @@ import { QUALITY, defaultQuality, W, setProfile } from './config.js';
 import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
-import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth } from './lighting.js';
+import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth, CLOUD_SH, cloudLevel } from './lighting.js';
 import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray, FogGlow } from './rain.js';
 import { Runoff, EaveStreams } from './runoff.js';
 import { SnowTrail } from './snowtrail.js';
@@ -1397,11 +1397,18 @@ async function main() {
       TWIND.uTwSpeed.value = treeWind;
       TWIND.uTwDir.value.set(Math.cos(ang), Math.sin(ang));
       TWIND.uTwOff.value.addScaledVector(TWIND.uTwDir.value, treeWind * dt);
+      // the clouds' shadows drift with the wind at the clouds' height, a few times the breeze's (lighting.js CLOUD_SH)
+      const cloudV = 4 + 1.6 * treeWind;
+      CLOUD_SH.x += Math.cos(ang) * cloudV * dt; CLOUD_SH.y += Math.sin(ang) * cloudV * dt;
       TWIND.uTwCam.value.copy(camera.position);
       WIND.strength.value = clamp(0.4 + 0.24 * treeWind, 0.4, 3.4);      // (the grass, the weeds, the hedges: materials.js addWind)
       if (baseFog) scene.fog.near = baseFog * (1 + storm * (gust - 1) * 0.6);   // (white curtains with every gust)
     }
     sky.material.uniforms.uTime.value = t;
+    // the clouds' shadows: only separate cumulus in sunshine cast them (an overcast deck's light is all diffuse); not on
+    // the lowest setting (a computed cloud field in every lit pixel)
+    CLOUD_SH.z = cloudLevel(sky.material.uniforms.uCover.value);
+    CLOUD_SH.w = Q.label === 'Scăzută' ? 0 : 0.85 * sky.material.uniforms.uCumulus.value * THREE.MathUtils.smoothstep(sunDir.y, 0.03, 0.15);
 
     let prompt = '';
     if (!paused) {
