@@ -461,7 +461,7 @@ export class Campfire {
           u.uBase.value.set((b.x + 1) / 2, (b.y + 1) / 2); u.uTop.value.set((top.x + 1) / 2, (top.y + 1) / 2);
           u.uAspect.value = camera.aspect;
           // (the column ~0.5 m wide each side at the flames: its half width on the screen, in units of the height)
-          u.uHalfW.value = 0.5 / Math.max(0.5, d) / Math.tan(camera.fov * Math.PI / 360) / 2;
+          u.uHalfW.value = 0.5 / Math.max(0.5, d) / (Math.tan(camera.fov * Math.PI / 360) / camera.zoom) / 2;   // (as drawn: the enhanced FOV widens it, post.js)
           u.uStrength.value = 0.0028 * L * Math.min(1, (40 - d) / 25) * (1 - 0.5 * rain);      // (a few pixels)
           u.uTime.value = t;
         }

@@ -33,7 +33,7 @@ import { Player } from './player.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { HUD } from './hud.js';
-import { createComposer } from './post.js';
+import { createComposer, lensSpan } from './post.js';
 import { Net, clean } from './net.js';
 import { RemotePlayers, seatPos } from './remote.js';
 import { Mirrors } from './mirror.js';
@@ -711,8 +711,13 @@ async function main() {
     return { diag: Math.round(diag * 2) / 2, dist: coarse ? (small ? 32 : 40) : diag < 17 ? 50 : 65 };
   };
   let fovMode = store.get('fov', 'natural'), scr = { ...screenGuess(), ...store.get('screen', {}) };
+  let efov = store.get('efov', 'off');                   // (the enhanced field of view, V99: post.js LensPass)
+  // (V99) 'cod': Call of Duty's slider - the horizontal angle on a 16:9 screen (Modern Warfare 4: 95 by default, "Horizontal
+  // 95, Vertical 63", at most 135); the height follows it, a wider screen sees more to the sides (Hor+)
+  let codFov = Math.min(135, Math.max(60, store.get('codFov', 95)));
   const baseFov = () => {
     if (fovMode === 'joc') return 70;
+    if (fovMode === 'cod') return 2 * Math.atan(Math.tan(codFov * Math.PI / 360) * 9 / 16) * 180 / Math.PI;
     if (fovMode === 'binocular') return 2 * Math.atan(Math.tan(60 * Math.PI / 180) / (innerWidth / innerHeight)) * 180 / Math.PI;
     const mm = scr.diag * 25.4 / Math.hypot(screen.width, screen.height);                 // (one CSS pixel on this screen)
     return Math.min(100, 2 * Math.atan(innerHeight * mm / 2 / (scr.dist * 10)) * 180 / Math.PI);
@@ -833,6 +838,7 @@ async function main() {
   while (shadowMaps() + OWN_TEX > maxTex && cutShadow(maxTex + ' texture units')) { /* (one at a time) */ }
   shareInstancedDepth(scene);
   renderer.compile(scene, camera);
+  post.lens.aim(camera);
   post.composer.render(0);
   // from now on the scene's world matrices are updated once per frame, just before it is drawn (the passes that draw
   // it again in the same frame, like the ambient occlusion's, would only redo the same work)
@@ -901,10 +907,26 @@ async function main() {
       el.querySelector('option[value="natural"]').textContent = `Natural, ca ochiul (${fovLabel()})`;
       el.value = fovMode;
     }
+    // the enhanced field of view (post.js): how wide the view gets at the screen's edges with it
+    const tx = Math.tan(baseFov() * Math.PI / 360) * innerWidth / innerHeight, hz = 2 * Math.atan(tx) * 180 / Math.PI;
+    for (const id of ['efov', 'efov2']) {
+      const el = $(id); if (!el) continue;
+      el.querySelector('option[value="on"]').textContent = `Pornit (${Math.round(hz)}° → ${Math.round(lensSpan(tx))}° la margini)`;
+      el.value = efov;
+    }
     for (const sfx of ['', '2']) { if ($('scrDiag' + sfx)) { $('scrDiag' + sfx).value = scr.diag; $('scrDist' + sfx).value = scr.dist; $('scrRow' + sfx).style.display = fovMode === 'natural' ? '' : 'none'; } }
+    for (const sfx of ['', '2']) {
+      if (!$('codRow' + sfx)) continue;
+      $('codRow' + sfx).style.display = fovMode === 'cod' ? '' : 'none';
+      $('codFov' + sfx).value = codFov; $('codFovV' + sfx).textContent = codFov + '°';
+    }
   };
   for (const sfx of ['', '2']) {
-    $('fovMode' + sfx)?.addEventListener('change', (e) => { fovMode = e.target.value; store.set('fov', fovMode); fovUi(); });
+    $('fovMode' + sfx)?.addEventListener('change', (e) => { fovMode = e.target.value; store.set('fov', fovMode); fovUi(); if (efov === 'on') post.setLens(true, baseFov()); });
+    $('codFov' + sfx)?.addEventListener('input', (e) => {
+      const v = Math.round(parseFloat(e.target.value)); if (!(v >= 60 && v <= 135)) return;
+      codFov = v; store.set('codFov', codFov); fovUi(); if (efov === 'on') post.setLens(true, baseFov());
+    });
     for (const k of ['Diag', 'Dist']) $('scr' + k + sfx)?.addEventListener('change', (e) => {
       const v = parseFloat(e.target.value); if (!(v > 0)) return;
       scr = { ...scr, [k === 'Diag' ? 'diag' : 'dist']: v }; store.set('screen', { diag: scr.diag, dist: scr.dist }); fovUi();
@@ -946,6 +968,13 @@ async function main() {
     for (const el of [c, n]) el.addEventListener('keydown', (e) => e.stopPropagation());
   }
   post.setTAA(aa === 'taa');
+  // the enhanced field of view (as Modern Warfare 4's "Enhanced FOV"): the lens on or off, both menus alike
+  post.setLens(efov === 'on', baseFov());
+  for (const sfx of ['', '2']) {
+    $('efov' + sfx)?.addEventListener('change', (e) => {
+      efov = e.target.value === 'on' ? 'on' : 'off'; store.set('efov', efov); post.setLens(efov === 'on', baseFov()); fovUi();
+    });
+  }
   for (const sfx of ['', '2']) {
     const el = $('aa' + sfx); if (!el) continue;
     el.value = aa; el.disabled = !post.taa;
@@ -1863,6 +1892,7 @@ async function main() {
     // the mirrors show what is behind (mirror.js): from a seat in the car, one of them each frame
     // (one mirror every other frame, to 200 m: farther, a mirror shows the far relief and the sky)
     if (mirrors) { mirrors.attach(seat, !mirrors.off); if (frameNo & 1) mirrors.update(camera, 200); }
+    post.lens.aim(camera);
     post.composer.render(dt);
     perf.end();
     input.endFrame();
@@ -1871,6 +1901,7 @@ async function main() {
   function screenshot() {
     if (window.top !== window) { hud.toast('Captura de ecran (P) merge când rulezi jocul local'); return; }
     scene.updateMatrixWorld();
+    post.lens.aim(camera);
     post.composer.render(0);
     const a = document.createElement('a');
     a.href = renderer.domElement.toDataURL('image/png');

@@ -274,7 +274,7 @@ export class WindshieldPass extends Pass {
     u.uV.value.copy(_T).applyMatrix4(_MV).sub(O).normalize();
     u.uU.value.copy(_B).add(_X.set(1, 0, 0)).applyMatrix4(_MV).sub(O).normalize();
     u.uN.value.crossVectors(u.uU.value, u.uV.value).normalize();
-    const ty = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
+    const ty = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) / cam.zoom;      // (as drawn: the enhanced FOV widens it, post.js)
     u.uTan.value.set(ty * cam.aspect, ty);
   }
   keepMask(r, rb) {

@@ -313,12 +313,109 @@ class AerialBlurPass extends Pass {
     const u = this.comp.uniforms;
     u.tDiffuse.value = readBuffer.texture;
     for (let i = 0; i < 5; i++) u['tL' + i].value = this.rts[i].texture;
-    u.uRadPerPx.value = this.camera.fov * Math.PI / 180 / readBuffer.height;
+    u.uRadPerPx.value = 2 * Math.atan(1 / this.camera.projectionMatrix.elements[5]) / readBuffer.height;   // (as drawn: the lens widens it)
     this.quad.material = this.comp;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
   }
   dispose() { this.rts.forEach(r => r.dispose()); this.down.dispose(); this.comp.dispose(); this.quad.dispose(); }
+}
+
+// The enhanced field of view (V99), as Call of Duty: Modern Warfare 4's "Enhanced FOV" (PC): more of the world at the
+// screen's edges through a lens, the centre as it was. A flat (rectilinear) picture stretches the edges of a wide view -
+// at 110 deg a ball near the side is drawn 3 times as wide as in the middle. The Pannini projection (Sharpless, Postle &
+// German 2010; Unity's HDRP offers it as a post effect) is the view from behind the centre of a cylinder: the
+// verticals stay vertical and straight, the lines through the centre straight, the middle exactly as the flat picture's
+// (the same size at the same field of view), and the edges taken in, so the same screen holds a wider view without
+// the stretch. d (0 flat, 1 the classic Panini) is set per view, as strong as an overscan of at most LENS_M lets it
+// be: the scene is drawn wider (the camera's zoom 1/m) and this pass maps every screen pixel to where its direction lies
+// in that picture. The scene is drawn at `scale` times the screen's size (the menu's quality: up to 1.4) so the middle,
+// magnified m times, keeps its sharpness; Catmull-Rom where it is magnified, a 4-tap box where the edges are squeezed.
+const LENS_M = 1.4;
+const LENS = /* glsl */`
+uniform sampler2D tDiffuse;
+uniform vec2 uOut, uSrc, uTexel;   // the screen's and the drawn picture's half extents (tangents); the picture's texel
+uniform float uD, uPeak;
+varying vec2 vUv;
+vec3 catmullRom(vec2 uv) {
+  vec2 sp = uv / uTexel, tp = floor(sp - 0.5) + 0.5, f = sp - tp;
+  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f), w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
+  vec2 w12 = w1 + w2, t12 = (tp + w2 / w12) * uTexel, t0 = (tp - 1.0) * uTexel, t3 = (tp + 2.0) * uTexel;
+  vec3 r = texture2D(tDiffuse, vec2(t12.x, t0.y)).rgb * (w12.x * w0.y) + texture2D(tDiffuse, vec2(t0.x, t12.y)).rgb * (w0.x * w12.y)
+         + texture2D(tDiffuse, t12).rgb * (w12.x * w12.y) + texture2D(tDiffuse, vec2(t3.x, t12.y)).rgb * (w3.x * w12.y)
+         + texture2D(tDiffuse, vec2(t12.x, t3.y)).rgb * (w12.x * w3.y);
+  return r / (w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y);
+}
+void main() {
+  // the screen point on the Panini plane (tangents of the view's own field: the middle is the flat picture's)
+  vec2 p = (vUv * 2.0 - 1.0) * uOut;
+  // back to a direction (longitude from x, then the height): x = S sin(lon), y = S tan(lat), S = (d + 1) / (d + cos(lon))
+  float d = uD, k = p.x * p.x / ((d + 1.0) * (d + 1.0));
+  float cl = (-k * d + sqrt(max(k * k * d * d - (k + 1.0) * (k * d * d - 1.0), 0.0))) / (k + 1.0);
+  float sl = sign(p.x) * sqrt(max(1.0 - cl * cl, 0.0));
+  vec2 uv = vec2(sl, p.y * (d + cl) / (d + 1.0)) / cl / uSrc * 0.5 + 0.5;   // that direction in the drawn (flat) picture
+  vec2 ex = dFdx(uv), ey = dFdy(uv), fx = ex / uTexel, fy = ey / uTexel;   // (a screen pixel's footprint, in the picture's texels)
+  vec3 c;
+  if (max(dot(fx, fx), dot(fy, fy)) <= 1.0) {
+    // magnified (the middle): Catmull-Rom, and the softness of resampling taken back as the sharpening does it
+    // (CAS's cross, with the screen's own neighbours: one screen pixel away in the picture)
+    c = catmullRom(uv);
+    vec3 b = texture2D(tDiffuse, uv - ey).rgb, dd = texture2D(tDiffuse, uv - ex).rgb, f = texture2D(tDiffuse, uv + ex).rgb, h = texture2D(tDiffuse, uv + ey).rgb;
+    float mn = min(min(min(dd.g, c.g), min(f.g, b.g)), h.g), mx = max(max(max(dd.g, c.g), max(f.g, b.g)), h.g);
+    float w = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-5), 0.0, 1.0)) * uPeak;
+    c = ((b + dd + f + h) * w + c) / (1.0 + 4.0 * w);
+  } else c = 0.25 * (texture2D(tDiffuse, uv + 0.25 * (ex + ey)).rgb + texture2D(tDiffuse, uv - 0.25 * (ex + ey)).rgb
+                 + texture2D(tDiffuse, uv + 0.25 * (ex - ey)).rgb + texture2D(tDiffuse, uv - 0.25 * (ex - ey)).rgb);
+  gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`;
+// how far the edges' directions reach in the drawn picture, over the screen's (Panini of strength d, the view's
+// half-tangents tx across and ty up): across at the side, up at the corners
+function lensOverscan(tx, d) {
+  const k = tx * tx / ((d + 1) * (d + 1)), cl = (-k * d + Math.sqrt(Math.max(k * k * d * d - (k + 1) * (k * d * d - 1), 0))) / (k + 1);
+  if (cl < 0.05) return Infinity;              // (the edge's direction ~90 deg to the side: no flat picture holds it)
+  return Math.max(Math.sqrt(Math.max(1 - cl * cl, 0)) / cl / tx, (d + cl) / ((d + 1) * cl));
+}
+// the strongest Panini (d <= 1) whose overscan stays within m
+export function lensFit(tx, m = LENS_M) {
+  if (lensOverscan(tx, 1) <= m) return { d: 1, m: lensOverscan(tx, 1) };
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 24; i++) { const mid = 0.5 * (lo + hi); if (lensOverscan(tx, mid) <= m) lo = mid; else hi = mid; }
+  return { d: lo, m: lensOverscan(tx, lo) };
+}
+// the field of view across the screen with the lens (degrees), for the view's half-tangent across tx
+export function lensSpan(tx) {
+  const { d } = lensFit(tx), k = tx * tx / ((d + 1) * (d + 1));
+  const cl = (-k * d + Math.sqrt(Math.max(k * k * d * d - (k + 1) * (k * d * d - 1), 0))) / (k + 1);
+  return 2 * Math.acos(Math.min(1, cl)) * 180 / Math.PI;
+}
+class LensPass extends Pass {
+  constructor() {
+    super();
+    this.material = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, uOut: { value: new THREE.Vector2(1, 1) }, uSrc: { value: new THREE.Vector2(1, 1) },
+      uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 } }, vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
+    this.quad = new FullScreenQuad(this.material);
+    this.enabled = false;
+    this.scale = 1;                      // (how much larger than the screen the scene is drawn: createComposer)
+  }
+  setSize(w, h) { this.material.uniforms.uTexel.value.set(1 / w, 1 / h); }
+  // the camera drawn wider for this frame's view (its own field of view and aspect; zoom 1 when off)
+  aim(cam) {
+    const u = this.material.uniforms;
+    if (!this.enabled) { if (cam.zoom !== 1) { cam.zoom = 1; cam.updateProjectionMatrix(); } return; }
+    const ty = Math.tan(cam.fov * Math.PI / 360), tx = ty * cam.aspect, f = lensFit(tx);
+    u.uOut.value.set(tx, ty); u.uSrc.value.set(tx * f.m, ty * f.m); u.uD.value = f.d;
+    // (the sharpening back: as much as the middle is magnified - measured at 1.04x, -1/14 gives the detail of the
+    // view without the lens: Laplacian 0.0398 against 0.0403)
+    const mag = f.m / this.scale;
+    u.uPeak.value = -Math.min(1 / 6, mag * mag / 14);
+    if (Math.abs(cam.zoom - 1 / f.m) > 1e-6) { cam.zoom = 1 / f.m; cam.updateProjectionMatrix(); }
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    this.material.uniforms.tDiffuse.value = readBuffer.texture;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.quad.render(renderer);
+  }
+  dispose() { this.material.dispose(); this.quad.dispose(); }
 }
 
 // The far relief and the sky (terrain.js FAR): drawn first into the frame with a camera of their own (the street's
@@ -418,14 +515,31 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   if (cas) { cas.uniforms.uTexel.value.set(1 / size.x, 1 / size.y); composer.addPass(cas); }
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
+  // the enhanced field of view: the last pass, from the picture drawn wider (and larger) to the screen
+  const lens = new LensPass();
+  composer.addPass(lens);
+  // (how much larger than the screen the scene is drawn with the lens on: the middle keeps its sharpness up to this)
+  const lensMax = q.ao ? (q.pixelRatio >= 2 ? 1.4 : 1.25) : q.ssr ? 1.1 : 1;
+  const css = renderer.getSize(new THREE.Vector2());
+  let scale = 1, lastW = css.x, lastH = css.y;               // (the canvas's size in CSS pixels until the first resize)
   const setSize = (w, h) => {
-    composer.setSize(w, h);
-    const s = renderer.getDrawingBufferSize(new THREE.Vector2());
+    lastW = w; lastH = h;
+    composer.setSize(w * scale, h * scale);
+    const s = renderer.getDrawingBufferSize(new THREE.Vector2()).multiplyScalar(scale).round();
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (cas) cas.uniforms.uTexel.value.set(1 / s.x, 1 / s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
+  // on or off (the menu); the drawing size from the overscan of the view as it is now (its field of view and aspect)
+  const setLens = (on, fov = camera.fov) => {
+    lens.enabled = on;
+    const ty = Math.tan(fov * Math.PI / 360);
+    const k = on ? Math.min(lensMax, lensFit(ty * camera.aspect).m) : 1;
+    if (Math.abs(k - scale) > 1e-3) { scale = k; setSize(lastW, lastH); }
+    lens.scale = scale;
+    lens.aim(camera);
+  };
   // the anti-aliasing on or off (the menu): SMAA while TAA is off, the sharpening with TAA
   const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; if (cas) cas.enabled = on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, heat, cas, setTAA, setSize };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, taa, heat, cas, lens, setTAA, setSize, setLens, get scale() { return scale; } };
 }
