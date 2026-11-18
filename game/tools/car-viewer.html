@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Car viewer</title>
+<!-- One car on its own, as the game builds it (cars.js), in true orthographic side / front / rear / top views or a
+     3/4 view, at a known scale: tools/car-shots.mjs drives it to compare every body with photos of the real car.
+     Open it over the game's server: http://localhost:PORT/tools/car-viewer.html?car=bmw&view=side -->
+<script type="importmap">
+{ "imports": { "three": "../vendor/three/build/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+</script>
+<style>html, body { margin: 0; background: #7d8186; } canvas { display: block; }</style>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { loadTextures } from '../src/textures.js';
+import { buildMaterials } from '../src/materials.js';
+import { buildCar, paintMaterial, MODELS } from '../src/cars.js';
+import { buildMaybach } from '../src/maybach.js';
+import '../src/doblo.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+// (a studio for the reflections: a sky-to-ground gradient and two soft boxes)
+const studio = new THREE.Scene();
+const dome = new THREE.SphereGeometry(10, 32, 16), dc = [];
+for (let i = 0; i < dome.attributes.position.count; i++) { const y = dome.attributes.position.getY(i) / 10, c = new THREE.Color().lerpColors(new THREE.Color(0x2a2a2a), new THREE.Color(0xe8eef5), Math.max(0, Math.min(1, y * 1.4 + 0.45))); dc.push(c.r, c.g, c.b); }
+dome.setAttribute('color', new THREE.Float32BufferAttribute(dc, 3));
+studio.add(new THREE.Mesh(dome, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+for (const [x, y, z] of [[5, 6, 3], [-6, 5, -4]]) { const b = new THREE.Mesh(new THREE.PlaneGeometry(5, 3), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })); b.position.set(x, y, z); b.lookAt(0, 0, 0); studio.add(b); }
+scene.environment = pmrem.fromScene(studio, 0.03).texture;
+scene.add(new THREE.HemisphereLight(0xdfe6ee, 0x3a3a38, 0.6));
+const sun = new THREE.DirectionalLight(0xfff4e6, 1.6);
+sun.position.set(6, 9, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 1, far: 30 });
+scene.add(sun, sun.target);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.35 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+scene.add(ground);
+
+const cars = new Map();
+function carOf(key, paint) {
+  const id = key + ':' + paint;
+  if (!cars.has(id)) {
+    const c = key === 'maybach' ? buildMaybach() : buildCar(key, paintMaterial(paint, { metallic: 0.6, rough: 0.3 }), 'plateA');
+    c.group.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
+    scene.add(c.group);
+    cars.set(id, c);
+  }
+  return cars.get(id);
+}
+
+window.ready = (async () => {
+  await loadTextures('../assets/textures/', null, 4);
+  buildMaterials();
+  return Object.keys(MODELS);
+})();
+
+// view: 'side' (the right side: the nose to the right of the image), 'left', 'front', 'rear', 'top' (the nose up),
+// 'q34' / 'q34r' (3/4 from the front right / the rear left, perspective). Orthographic views: ppm pixels a metre, the
+// car's middle (s = L/2) in the middle of the image across, the ground at row h - ground px.
+// Returns a PNG data URL and the frame: where s = 0 and y = 0 fall in the image.
+window.view = async (key, view = 'side', o = {}) => {
+  await window.ready;
+  const { w = 1400, h = 600, ppm = 260, paint = 0x8d939a, groundPx = 70, glass = null, cabin = true, transparent = false } = o;
+  renderer.setSize(w, h, false);
+  for (const c of cars.values()) c.group.visible = false;
+  const car = carOf(key, paint), m = car.model;
+  car.group.visible = true;
+  car.cabin.group.visible = cabin;
+  if (glass !== null) car.glass.opacity = glass;
+  ground.visible = view !== 'top';
+  scene.background = transparent ? null : new THREE.Color(0x7d8186);
+  let cam;
+  const ortho = ['side', 'left', 'front', 'rear', 'top'].includes(view);
+  if (ortho) {
+    const hw = w / 2 / ppm, yb = groundPx / ppm;
+    cam = new THREE.OrthographicCamera(-hw, hw, h / ppm - yb, -yb, 0.1, 100);
+    const D = 20, cz = o.cs !== undefined ? o.cs - m.L / 2 : 0;      // (cs: the s the view is centred on)
+    if (view === 'side') { cam.position.set(D, 0, cz); cam.lookAt(0, 0, cz); }
+    else if (view === 'left') { cam.position.set(-D, 0, cz); cam.lookAt(0, 0, cz); }
+    else if (view === 'front') { cam.position.set(0, 0, -D); cam.lookAt(0, 0, 0); }
+    else if (view === 'rear') { cam.position.set(0, 0, D); cam.lookAt(0, 0, 0); }
+    else { cam = new THREE.OrthographicCamera(-hw, hw, h / 2 / ppm, -h / 2 / ppm, 0.1, 100); cam.up.set(0, 0, -1); cam.position.set(0, D, 0); cam.lookAt(0, 0, 0); }
+  } else {
+    cam = new THREE.PerspectiveCamera(o.fov ?? 28, w / h, 0.1, 100);
+    const a = view === 'q34r' ? Math.PI + 0.75 : o.az ?? 0.68, d = o.dist ?? m.L * 1.75;
+    cam.position.set(Math.sin(a) * d * (view === 'q34r' ? 1 : 1), o.camY ?? 1.75, -Math.cos(a) * d);
+    cam.lookAt(0, 0.7, 0);
+  }
+  scene.add(cam);
+  renderer.render(scene, cam);
+  scene.remove(cam);
+  return { url: renderer.domElement.toDataURL('image/png'), L: m.L, W: m.W, axles: m.axles, r: m.r, name: m.name };
+};
+window.models = () => Object.fromEntries(Object.entries(MODELS).map(([k, m]) => [k, { name: m.name, L: m.L, W: m.W, axles: m.axles, r: m.r }]));
+</script>
+</body>
+</html>

@@ -446,7 +446,7 @@ async function main() {
   // and a silver hatchback with its door open where it used to stand
   // the user's Peugeot 508 at the gate (photos 6-7), tuned on request: 500 km/h (limiter), 0-100 in 2.0 s
   park('p508', paintMaterial(0x6a6f75, { metallic: 0.8, rough: 0.3, dusty: 0.1 }), 'plate508', 1.58, 13.7, Math.PI, { hyper: true, name: 'Peugeot 508 · 500 km/h' });
-  park('hatch', paintMaterial(0xc4c7cb, { metallic: 0.85, rough: 0.28, dusty: 0.1 }), 'plateC', -1.9, 41.5, Math.PI, { name: 'Mercedes argintiu' });
+  park('aclass', paintMaterial(0xc4c7cb, { metallic: 0.85, rough: 0.28, dusty: 0.1 }), 'plateC', -1.9, 41.5, Math.PI, { name: 'Mercedes argintiu' });
   park('corsa', paintMaterial(0xa9adb1, { metallic: 0.85, rough: 0.35, dusty: 0.3 }), 'plateOpel', 1.55, -11.75, Math.PI, { power: 0.85, vmax: 48 });
   // photos 19-20 (newer than photo 1): the BMW 1 Series stands a few metres behind the Corsa, a silver sedan further on
   park('sedan', paintMaterial(0xbfc2c5, { metallic: 0.85, rough: 0.33 }), 'plateA', 1.75, -50, 0, {});
@@ -456,15 +456,15 @@ async function main() {
   // from the newer photos 17-19: Ford Focus + a dark hatch on the west side, BMW 1 Series facing north,
   // a dark-blue VW Golf IV by the brown board fence and a white Ford Kuga past the T junction
   // west side: parked half on the gravel shoulder, one behind the other (photos 18-20)
-  park('hatch', paintMaterial(0xe6e7e6, { metallic: 0.25, rough: 0.3, dusty: 0.2 }), 'plateFocus', -2.15, -31.9, Math.PI, { name: 'Ford Focus' });
+  park('focus', paintMaterial(0xe6e7e6, { metallic: 0.25, rough: 0.3, dusty: 0.2 }), 'plateFocus', -2.15, -31.9, Math.PI, { name: 'Ford Focus' });
   park('hatch', paintMaterial(0x34373c, { metallic: 0.6, rough: 0.3 }), 'plateC', -2.15, -37.2, Math.PI, {});
   park('sedan', paintMaterial(0xdadcdd, { metallic: 0.3, rough: 0.3 }), 'plateB', -2.1, -42.6, Math.PI, {});
-  park('hatch', paintMaterial(0x2a2d31, { metallic: 0.7, rough: 0.28, dusty: 0.15 }), 'plateBMW1', 1.72, -24.1, Math.PI, { power: 1.15, vmax: 58, name: 'BMW Seria 1' });
+  park('bmw1', paintMaterial(0x2a2d31, { metallic: 0.7, rough: 0.28, dusty: 0.15 }), 'plateBMW1', 1.72, -24.1, Math.PI, { power: 1.15, vmax: 58, name: 'BMW Seria 1' });
   park('hatch', paintMaterial(0x8e1c1f, { metallic: 0.5, rough: 0.3 }), 'plateA', 2.05, -109.5, Math.PI, {});   // red car by the STOP (photo 19)
-  park('hatch', paintMaterial(0x16213d, { metallic: 0.55, rough: 0.3, dusty: 0.2 }), 'plateB', -1.6, 48.4, Math.PI, { name: 'VW Golf IV' });
+  park('golf4', paintMaterial(0x16213d, { metallic: 0.55, rough: 0.3, dusty: 0.2 }), 'plateB', -1.6, 48.4, Math.PI, { name: 'VW Golf IV' });
   {
     const probe = new world.Box(0.9, -129.8, 1.05, 2.4, 0);
-    if (!world.query(0.9, -129.8, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) park('suv', paintMaterial(0xf1f1ef, { metallic: 0.3, rough: 0.3 }), 'plateA', 0.9, -129.8, 0, { name: 'Ford Kuga' });
+    if (!world.query(0.9, -129.8, 4, []).some(b => b.y1 > 0.45 && boxBox(probe, b))) park('kuga', paintMaterial(0xf1f1ef, { metallic: 0.3, rough: 0.3 }), 'plateA', 0.9, -129.8, 0, { name: 'Ford Kuga' });
   }
   // photo 33: the silver hatchback parked along the white wall of the sports ground on Strada Nicolae Grigorescu
   const grLm = geoWorld.landmarks?.find(l => l.type === 'grigorescu');

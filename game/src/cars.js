@@ -3,6 +3,8 @@ import { TEX } from './textures.js';
 import { M } from './materials.js';
 import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildCabin } from './interior.js';
+import { bodyOf, partGeo, rimGeo as rim3D, grow } from './carparts.js';
+import { REAL } from './carmodels.js';
 
 // Geometry pieces [geometry, material (or one per group), matrix?] -> one non-indexed geometry with a single group
 // (one draw call) per material, in the order the materials first appear. The same triangles as separate meshes.
@@ -114,6 +116,8 @@ export const MODELS = {
   },
 };
 
+Object.assign(MODELS, REAL);
+
 // a profile [[s, value], ...] at s: a monotone cubic through its points (Fritsch-Carlson), smooth (no kinks, so the
 // windscreen and its pillars run in clean lines) and never overshooting them (no bumps between two equal points)
 const SLOPES = new WeakMap();
@@ -161,32 +165,44 @@ export function profileAt(m, s) {
     const d = s - a;
     if (Math.abs(d) < R) yb = Math.max(yb, m.r + Math.sqrt(R * R - d * d) * 0.97);
   }
-  const d = Math.min(s, m.L - s), [f0, fl] = m.taper ?? [0.74, 0.55];       // (how the body narrows at the ends)
-  const f = f0 + (1 - f0) * Math.sqrt(Math.max(0, 1 - Math.pow(1 - Math.min(d / fl, 1), 2)));
+  let f;
+  if (m.plan) f = interp(m.plan, s);                                         // (V103: the real car's plan, traced)
+  else {
+    const d = Math.min(s, m.L - s), [f0, fl] = m.taper ?? [0.74, 0.55];     // (how the body narrows at the ends)
+    f = f0 + (1 - f0) * Math.sqrt(Math.max(0, 1 - Math.pow(1 - Math.min(d / fl, 1), 2)));
+  }
   const hw = m.W / 2 * f;
   return { belt, roof, yb, hw, cab: Math.min(1, (roof - belt) / 0.25) };
 }
 
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+// (V103) a model's own cross-section: how far in its sill tucks (k2 at d2 above the bottom), the height of its widest
+// line (f3 of the way up to the belt), its shoulder crease (k4 at m.shoulder's height, or d4 under the belt) and how far
+// in the door's top comes to meet the glass (k5)
+const SEC0 = { k1: 0.86, k2: 0.985, d2: 0.07, f3: 0.5, k4: 0.985, d4: 0.05, k5: 0.93, k6: 0.9, d7: 0.07 };
 export function section(m, s) {
   const { belt, roof, yb, hw, cab } = profileAt(m, s);
   const hwr = Math.min(m.hwrAt ? interp(m.hwrAt, s) : m.hwr, hw * 0.9);      // (a van: the glass leans in, the box does not)
-  const mid = (yb + belt) / 2;
+  const q = m.sec ?? SEC0, k = (n) => q[n] ?? SEC0[n];
+  const mid = yb + (belt - yb) * k('f3');
+  const yS = m.shoulder ? Math.min(belt - 0.012, Math.max(mid + 0.02, interp(m.shoulder, s))) : belt - k('d4');
   const R = [
-    [0, yb], [hw * 0.86, yb], [hw * 0.985, yb + 0.07], [hw * 1.0, mid], [hw * 0.985, belt - 0.05], [hw * 0.93, belt],
+    [0, yb], [hw * k('k1'), yb], [hw * k('k2'), Math.min(yb + k('d2'), mid - 0.01)], [hw * 1.0, Math.min(mid, yS - 0.01)], [hw * k('k4'), yS], [hw * k('k5'), belt],
   ];
   // cabin (blend with a flat hood/trunk top when cab -> 0)
   const lerp = (a, b, t) => a + (b - a) * t;
-  const wb = hw * 0.9;
-  R.push([lerp(hw * 0.8, wb, cab), belt + lerp(0.018, 0.035, cab)]);
+  const wb = hw * k('k6');
+  // (the bonnet's and the boot lid's crown over their edges: m.crown along s, else 4.6 cm)
+  const cr = m.crown ? interp(m.crown, s) : 0.046;
+  R.push([lerp(hw * 0.8, wb, cab), belt + lerp(cr * 0.39, 0.035, cab)]);
   // (along the windscreen the A pillar is a real one's ~7 cm between the glasses, not the roof edge's 13: the windscreen
   // reaching 95 % of the way out (not 84 %) and the door's glass coming up to 4.5 cm under its edge (not 7) - from the
   // seat ~6-8 degrees, as real ones are (ECE R125 allows 6 for both eyes); the top corners rounding into the roof's edge
   // over the last 14 cm)
   const aw = s > m.wind[0] && s < m.wind[1] + 0.01 ? 1 - smooth(m.wind[1] - 0.14, m.wind[1] + 0.01, s) : 0;
-  R.push([lerp(hw * 0.52, hwr * 1.02, cab), lerp(belt + 0.034, roof - 0.07 + 0.025 * aw, cab)]);
-  R.push([lerp(hw * 0.25, hwr * (0.84 + 0.11 * aw), cab), lerp(belt + 0.042, roof - 0.005, cab)]);
-  R.push([0, lerp(belt + 0.046, roof + 0.012, cab)]);
+  R.push([lerp(hw * 0.52, hwr * 1.02, cab), lerp(belt + cr * 0.74, roof - k('d7') + 0.025 * aw, cab)]);
+  R.push([lerp(hw * 0.25, hwr * (0.84 + 0.11 * aw), cab), lerp(belt + cr * 0.913, roof - 0.005, cab)]);
+  R.push([0, lerp(belt + cr, roof + 0.012, cab)]);
   return R;
 }
 
@@ -257,18 +273,97 @@ function wiperGeometry(m) {
   return g;
 }
 
+// (V103) the side windows as the real car has them: the greenhouse's band between the window line and the roof's edge
+// (R[6] to R[7] of the sections) cut by the outlines of its glass traced from side photos (m.dlo.glass: polygons of
+// [s, y]), round them the frames - black (m.dlo.black), chrome (m.dlo.chrome) or paint (m.dlo.frame). Cut in slabs
+// between every station and every corner of an outline, each slab split where the outlines' edges cross it (straight
+// within it), so the glass has the real car's corners - the slanted pillars, a quarter light, BMW's kink - not the
+// loft's 6 cm steps. Vertices are shared along the glass's edges (the cabin's seals follow them: interior.js).
+const pointIn = (poly, s, y) => {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [si, yi] = poly[i], [sj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && s < (sj - si) * (y - yi) / (yj - yi) + si) c = !c;
+  }
+  return c;
+};
+export const dloRange = (m) => {
+  const all = m.dlo.glass.flat();
+  return m.dlo.range ?? [Math.min(...all.map(p => p[0])) - 0.25, Math.max(...all.map(p => p[0])) + 0.25];
+};
+function greenhouseBand(m, stations, secs, pos, uvs, groups, ringOf) {
+  const [r0, r1] = dloRange(m), L = m.L;
+  // (the glass's surround, m.dlo.surround metres wide, black - or chrome: m.dlo.surroundChrome)
+  const ring = m.dlo.surround ? m.dlo.glass.map(g => grow(g, m.dlo.surround)) : [];
+  const polys = [['glass', m.dlo.glass], ['chrome', [...(m.dlo.chrome ?? []), ...(m.dlo.surroundChrome ? ring : [])]], ['trim', [...(m.dlo.black ?? []), ...(m.dlo.surroundChrome ? [] : ring)]]];
+  const frame = m.dlo.frame === 'black' ? 'trim' : m.dlo.frame === 'chrome' ? 'chrome' : 'body';
+  const brk = new Set(stations.filter(s => s > r0 && s < r1).map(s => +s.toFixed(5)));
+  brk.add(+r0.toFixed(5)); brk.add(+r1.toFixed(5));
+  for (const [, list] of polys) for (const pg of list) for (const [s] of pg) if (s > r0 && s < r1) brk.add(+s.toFixed(5));
+  const B = [...brk].sort((a, b) => a - b).filter((s, i, a) => i === 0 || s - a[i - 1] > 2e-4);
+  const bandAt = (s) => {
+    let lo = 0, hi = stations.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (stations[mid] <= s) lo = mid; else hi = mid; }
+    const t = (s - stations[lo]) / (stations[hi] - stations[lo] || 1), A = secs[lo], C = secs[hi];
+    const l = (i, c) => A[i][c] + (C[i][c] - A[i][c]) * t;
+    return { x6: l(6, 0), y6: l(6, 1), x7: l(7, 0), y7: l(7, 1) };
+  };
+  const edges = [];
+  for (const [cls, list] of polys) for (const pg of list) for (let i = 0; i < pg.length; i++) edges.push([pg[i], pg[(i + 1) % pg.length]]);
+  const base = pos.length / 3;
+  for (const side of [1, -1]) {
+    const ids = new Map();
+    const vid = (s, y, edge) => {
+      const k = s.toFixed(5) + ':' + y.toFixed(5);
+      let i = ids.get(k);
+      if (i === undefined) {
+        const b = bandAt(s), u = Math.max(0, Math.min(1, (y - b.y6) / (b.y7 - b.y6 || 1)));
+        i = pos.length / 3; ids.set(k, i);
+        pos.push(side * (b.x6 + (b.x7 - b.x6) * u), y, s - L / 2); uvs.push(s / L, y);
+        ringOf.push(edge === 'lo' ? (side > 0 ? 6 : 12) : edge === 'hi' ? (side > 0 ? 7 : 11) : -1);
+      }
+      return i;
+    };
+    for (let k = 0; k < B.length - 1; k++) {
+      const sa = B[k], sb = B[k + 1], sm = (sa + sb) / 2, ba = bandAt(sa), bb = bandAt(sb), bm = bandAt(sm);
+      const lines = [{ ya: ba.y6, yb: bb.y6, ym: bm.y6, e: 'lo' }];
+      for (const [p, q] of edges) {
+        if ((p[0] - sm) * (q[0] - sm) >= 0) continue;
+        const at = (s) => p[1] + (q[1] - p[1]) * (s - p[0]) / (q[0] - p[0]);
+        lines.push({ ya: Math.min(ba.y7, Math.max(ba.y6, at(sa))), yb: Math.min(bb.y7, Math.max(bb.y6, at(sb))), ym: Math.min(bm.y7, Math.max(bm.y6, at(sm))) });
+      }
+      lines.push({ ya: ba.y7, yb: bb.y7, ym: bm.y7, e: 'hi' });
+      lines.sort((a, b) => a.ym - b.ym || (a.e === 'lo' ? -1 : b.e === 'lo' ? 1 : a.e === 'hi' ? 1 : b.e === 'hi' ? -1 : 0));
+      for (let i = 0; i < lines.length - 1; i++) {
+        const lo = lines[i], hi = lines[i + 1];
+        if (hi.ym - lo.ym < 1e-5 && hi.ya - lo.ya < 1e-5 && hi.yb - lo.yb < 1e-5) continue;
+        const ym = (lo.ym + hi.ym) / 2;
+        let g = frame;
+        for (const [cls, list] of polys) if (list.some(pg => pointIn(pg, sm, ym))) { g = cls; break; }
+        const A = vid(sa, lo.ya, lo.e), Bv = vid(sa, hi.ya, hi.e), C = vid(sb, lo.yb, lo.e), D = vid(sb, hi.yb, hi.e);
+        const tri = side > 0 ? [A, Bv, C, Bv, D, C] : [A, C, Bv, Bv, C, D];
+        for (let t = 0; t < 6; t += 3) if (new Set(tri.slice(t, t + 3)).size === 3) groups[g].push(...tri.slice(t, t + 3));
+      }
+    }
+  }
+  return pos.length / 3 - base;
+}
+
 function carBodyGeometry(m) {
   const stations = stationsOf(m);
   const ring = 10 + 8;
-  const pos = [], uvs = [];
+  const pos = [], uvs = [], secs = [], ringOf = [];
   for (const s of stations) {
     const R = section(m, s);
+    secs.push(R);
     const z = s - m.L / 2;
     const full = [...R, ...R.slice(1, 9).reverse().map(([x, y]) => [-x, y])];
-    for (const [x, y] of full) { pos.push(x, y, z); uvs.push(s / m.L, y); }
+    for (const [k, [x, y]] of full.entries()) { pos.push(x, y, z); uvs.push(s / m.L, y); ringOf.push(k); }
   }
-  const groups = { body: [], glass: [], trim: [], under: [] };
+  const groups = { body: [], glass: [], trim: [], under: [], chrome: [] };
   const inR = (s, r) => s >= r[0] && s <= r[1];
+  const dlo = m.dlo ? dloRange(m) : null;
+  const sill = m.dlo ? (() => { const g = m.dlo.glass.flat(); return [Math.min(...g.map(p => p[0])), Math.max(...g.map(p => p[0]))]; })() : null;
   for (let j = 0; j < stations.length - 1; j++) {
     const s = (stations[j] + stations[j + 1]) / 2;
     const p = profileAt(m, s);
@@ -278,17 +373,26 @@ function carBodyGeometry(m) {
       // segment id relative to the right half (mirror left)
       const seg = i < 9 ? i : ring - 1 - i;          // 0..8
       let g = 'body';
-      if (seg === 0) g = 'under';
-      else if ((seg === 6) && p.cab > 0.5) {
+      // (the underside - but where the bottom climbs steeply at a bumper, its face is the bumper's: paint)
+      if (seg === 0) g = Math.abs(interp(m.bottom, stations[j + 1]) - interp(m.bottom, stations[j])) > 0.6 * (stations[j + 1] - stations[j]) ? 'body' : 'under';
+      else if (dlo && seg === 6 && stations[j] >= dlo[0] - 1e-6 && stations[j + 1] <= dlo[1] + 1e-6) continue;   // (greenhouseBand)
+      else if (dlo && seg === 5) { if (p.cab > 0.5 && inR(s, sill)) g = m.dlo.sill === 'paint' ? 'body' : m.dlo.sill ?? 'trim'; }
+      else if ((seg === 6) && p.cab > 0.5 && !dlo) {
         g = inR(s, m.side) ? 'glass' : m.pillarPaint ? 'body' : 'trim';
         for (const pl of m.pillars) if (Math.abs(s - pl) < 0.055 && (g === 'glass' || !m.pillarPaint)) g = 'trim';
       } else if (seg === 8 && p.cab > 0.3) {
         if (inR(s, m.wind) || inR(s, m.rear)) g = 'glass';      // seg 7 stays body => A/C pillars
-      } else if (seg === 5 && p.cab > 0.5 && inR(s, m.side)) g = 'trim';   // window seal line
+      } else if (seg === 5 && p.cab > 0.5 && inR(s, m.side) && !dlo) g = 'trim';   // window seal line
       groups[g].push(a, b, c, b, d, c);
     }
   }
-  const idx = [...groups.body, ...groups.glass, ...groups.trim, ...groups.under];
+  if (dlo) {
+    // (the band's ends must fall on stations: it replaces whole quads)
+    const st = stations.filter(s => s >= dlo[0] - 1e-6 && s <= dlo[1] + 1e-6);
+    m.dlo.range = [st[0], st[st.length - 1]];
+    greenhouseBand(m, stations, secs, pos, uvs, groups, ringOf);
+  }
+  const idx = [...groups.body, ...groups.glass, ...groups.trim, ...groups.under, ...groups.chrome];
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
@@ -297,7 +401,10 @@ function carBodyGeometry(m) {
   g.addGroup(o, groups.body.length, 0); o += groups.body.length;
   g.addGroup(o, groups.glass.length, 1); o += groups.glass.length;
   g.addGroup(o, groups.trim.length, 2); o += groups.trim.length;
-  g.addGroup(o, groups.under.length, 3);
+  g.addGroup(o, groups.under.length, 3); o += groups.under.length;
+  if (groups.chrome.length) g.addGroup(o, groups.chrome.length, 4);
+  g.userData.ringOf = ringOf;          // (each vertex's place in its section's ring, -1 inside the greenhouse's band)
+  g.userData.stations = stations; g.userData.secs = secs;
   g.computeVertexNormals();
 
   // end caps (flat normals, separate vertices)
@@ -348,6 +455,62 @@ function sharedMats() {
   return shared;
 }
 
+// (V103) a model's own parts (m.parts, carparts.js), laid on its body - made once per model, shared by its cars
+const PARTS = new WeakMap(), BODIES = new WeakMap();
+function partBody(m, raw) {
+  if (!BODIES.has(m)) BODIES.set(m, bodyOf(m, raw.userData.stations, raw.userData.secs));
+  return BODIES.get(m);
+}
+function partsOf(m, raw) {
+  if (PARTS.has(m)) return PARTS.get(m);
+  const body = partBody(m, raw), byMat = new Map();
+  for (const part of m.parts.flatMap(p => p.rim ? [{ ...p, mat: 'black', grow: p.rim, off: (p.off ?? 0.003) - 0.0015, rim: 0, depth: 0 }, p] : [p])) {
+    const g = partGeo(body, part, m.L);
+    if (!g.attributes.position.count) continue;
+    if (!byMat.has(part.mat)) byMat.set(part.mat, []);
+    byMat.get(part.mat).push(g);
+  }
+  const out = [...byMat].map(([name, gs]) => [mergeGeometries(gs.map(g => { const c = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(c.attributes)) if (!['position', 'normal', 'uv'].includes(k)) c.deleteAttribute(k); return c; })), name]);
+  PARTS.set(m, out);
+  return out;
+}
+// the parts' materials (shared by every car): lamp interiors, lenses, trims, grilles
+function partMat(name, S) {
+  const P = shared.parts ??= {};
+  if (P[name]) return P[name];
+  const std = (o) => new THREE.MeshStandardMaterial(o), phys = (o) => new THREE.MeshPhysicalMaterial(o);
+  const meshTex = (kind) => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#060607'; g.fillRect(0, 0, 64, 64);
+    g.strokeStyle = '#2a2b2e'; g.lineWidth = 5;
+    if (kind === 'slats') { for (let y = 8; y < 64; y += 16) { g.beginPath(); g.moveTo(0, y); g.lineTo(64, y); g.stroke(); } }
+    else if (kind === 'vslats') { g.lineWidth = 6; for (let x = 8; x < 64; x += 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 64); g.stroke(); } }
+    else for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) { const cx = x * 32 + (y % 2) * 16 + 8, cy = y * 32 + 16; g.beginPath(); for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + Math.PI / 6; g[k ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * 13, cy + Math.sin(a) * 13); } g.closePath(); g.stroke(); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.repeat.set(0.5, 0.5);
+    return t;
+  };
+  const M = {
+    chrome: S.chrome, trim: S.trim, under: S.under, tire: S.tire,
+    black: phys({ color: 0x050506, roughness: 0.12, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.04 }),   // (gloss black trim)
+    matte: std({ color: 0x1c1d1f, roughness: 0.78 }),                      // (unpainted textured plastic)
+    grey: std({ color: 0x3a3c3f, roughness: 0.7 }),
+    housing: std({ color: 0xd2d6db, roughness: 0.07, metalness: 1 }),      // (a lamp's reflector, behind its lens)
+    dark: std({ color: 0x24272b, roughness: 0.25, metalness: 0.9 }),       // (a smoked lamp's dark chrome)
+    proj: phys({ color: 0x0e1114, roughness: 0.04, metalness: 0.2, clearcoat: 1 }),   // (a projector's lens: dark glass)
+    lens: phys({ color: 0xffffff, roughness: 0.02, transparent: true, opacity: 0.16, clearcoat: 1, depthWrite: false }),
+    amber: std({ color: 0xb8730f, roughness: 0.25, emissive: 0xff9a20, emissiveIntensity: 0.03 }),
+    white: phys({ color: 0xe8eaec, roughness: 0.12, clearcoat: 1 }),       // (a reverse lamp's clear glass)
+    red: std({ color: 0x5c0607, roughness: 0.3 }),                         // (reflectors)
+    mesh: std({ map: meshTex('hex'), roughness: 0.6 }),
+    slats: std({ map: meshTex('slats'), roughness: 0.5 }),
+    vslats: std({ map: meshTex('vslats'), roughness: 0.5 }),
+    glass: S.glass,
+  };
+  for (const [k, v] of Object.entries(M)) P[k] = v;
+  return P[name] ?? S.trim;
+}
+
 export function paintMaterial(color, { metallic = 0.6, rough = 0.32, dusty = 0 } = {}) {
   const m = new THREE.MeshPhysicalMaterial({
     color, metalness: metallic, roughness: rough + dusty * 0.35,
@@ -372,7 +535,7 @@ export function buildCar(modelKey, paint, plateKey) {
   glassIn.side = THREE.BackSide; glassOut.side = THREE.FrontSide;
   const glass = { set opacity(v) { glassIn.opacity = glassOut.opacity = v; }, get opacity() { return glassOut.opacity; } };
   // the body, its end caps and every fixed detail are merged into one mesh: one draw call per material
-  const rigid = [[body, [paint, glassIn, S.trim, S.under]], [caps, paint]];
+  const rigid = [[body, [paint, glassIn, S.trim, S.under, S.chrome]], [caps, paint]];
 
   const zAt = (s) => s - m.L / 2;
   const add = (geo, material, x, y, z, rx = 0, ry = 0, rz = 0) => { rigid.push([geo, material, pose(x, y, z, rx, ry, rz)]); return null; };
@@ -389,7 +552,8 @@ export function buildCar(modelKey, paint, plateKey) {
   const headMat = S.headGlass.clone();
   const [, hy, hx, hw, hh] = m.lights.head;
   const headL = [], tailL = [];
-  if (!m.details) for (const sg of [-1, 1]) {
+  const own = !!(m.details || m.parts);           // (a model with its own lamps, grille and trims)
+  if (!own) for (const sg of [-1, 1]) {
     const s0 = surfaceS(sg * hx, hy + hh * 0.3, true);
     const p = profileAt(m, s0 + 0.05);
     const x = sg * Math.min(hx, p.hw - hw / 2 - 0.03);
@@ -398,7 +562,7 @@ export function buildCar(modelKey, paint, plateKey) {
   const tailMat = new THREE.MeshPhysicalMaterial({ color: 0x7a0a0a, roughness: 0.15, clearcoat: 1, emissive: 0xff1a10, emissiveIntensity: 0.15 * DAYLIGHT.k });
   DAYLIGHT.tails.push(tailMat);
   const [, ty, tx, tw, th] = m.lights.tail;
-  if (!m.details) for (const sg of [-1, 1]) {
+  if (!own) for (const sg of [-1, 1]) {
     const s0 = surfaceS(sg * tx, ty, false);
     const p = profileAt(m, s0 - 0.05);
     const x = sg * Math.min(tx, p.hw - tw / 2 - 0.02);
@@ -406,7 +570,8 @@ export function buildCar(modelKey, paint, plateKey) {
   }
   // grille
   const sg0 = surfaceS(0, m.lights.head[1], true);
-  if (m.grille === 'kidney') {
+  if (m.parts) for (const [geo, name] of partsOf(m, raw.body)) rigid.push([geo, name === 'paint' ? paint : name === 'head' ? headMat : name === 'tail' ? tailMat : partMat(name, S)]);
+  else if (m.grille === 'kidney') {
     for (const sg of [-1, 1]) add(roundedRectGeo(0.17, 0.12, 0.04, 0.08), S.chrome, sg * 0.11, 0.66, zAt(surfaceS(0.11, 0.66, true)) + 0.02, -0.3, 0, 0);
     for (const sg of [-1, 1]) add(roundedRectGeo(0.14, 0.09, 0.035, 0.08), S.trim, sg * 0.11, 0.66, zAt(surfaceS(0.11, 0.66, true)) + 0.008, -0.3, 0, 0);
     add(roundedRectGeo(0.9, 0.12, 0.05, 0.06), S.trim, 0, 0.36, zAt(surfaceS(0.4, 0.36, true)) + 0.01);
@@ -418,7 +583,11 @@ export function buildCar(modelKey, paint, plateKey) {
   // plates
   const plateMat = new THREE.MeshStandardMaterial({ map: TEX[plateKey] ?? TEX.plateA, roughness: 0.4 });
   const pg = new THREE.PlaneGeometry(0.52, 0.112);
-  const [pfy, pfz] = m.plates?.front ?? [0.42, zAt(0) - 0.012], [pry, prz] = m.plates?.rear ?? [m.belt[m.belt.length - 1][1] - 0.05, zAt(m.L) + 0.012];
+  // (a model with its own parts: its plates where its photos have them, on the paint - m.plates.front / .rear: [y])
+  const pOff = m.plates?.off ?? 0.008;         // (how far out of the paint: on a grille, in front of it)
+  const plateZ = (y, end) => { const o = partBody(m, raw.body).outline(y, end); return o ? (end === 'f' ? zAt(o[0][1]) - pOff : zAt(m.L - o[0][1]) + 0.008) : end === 'f' ? zAt(0) : zAt(m.L); };
+  const [pfy, pfz] = m.plates?.front?.length === 1 ? [m.plates.front[0], plateZ(m.plates.front[0], 'f')] : m.plates?.front ?? [0.42, zAt(0) - 0.012];
+  const [pry, prz] = m.plates?.rear?.length === 1 ? [m.plates.rear[0], plateZ(m.plates.rear[0], 'r')] : m.plates?.rear ?? [m.belt[m.belt.length - 1][1] - 0.05, zAt(m.L) + 0.012];
   add(pg, plateMat, 0, pfy, pfz, m.plates?.frontTilt ?? 0, Math.PI, 0);
   add(pg, plateMat, m.plates?.rearX ?? 0, pry, prz, m.plates?.rearTilt ?? 0);
   // mirrors, door handles and shut lines (a model with sides of its own draws them itself: doblo.js)
@@ -428,10 +597,10 @@ export function buildCar(modelKey, paint, plateKey) {
   // (a door mirror: its painted shell, wider than tall, out from the door's front corner on a black foot; its glass on
   // the back, turned a little toward the driver - what the driver sees of it)
   if (!m.ownSides) for (const sg of [-1, 1]) {
-    const s = m.wind[0] + 0.12;
+    const s = m.mirrorAt?.[0] ?? m.wind[0] + 0.12;
     const p = profileAt(m, s);
     const [mw, mh] = m.mirror ?? [0.2, 0.12];
-    const cx = sg * (p.hw + 0.05 + mw / 2), cy = p.belt + 0.075, cz = zAt(s);
+    const cx = sg * (p.hw + 0.05 + mw / 2), cy = m.mirrorAt?.[1] ?? p.belt + 0.075, cz = zAt(s);
     // set as a driver sets it: its glass's normal halves the angle between the eye and a level ray back past the car's
     // flank, a few degrees out (the flank just at the glass's inner edge; the passenger's convex one shows more)
     const toEye = eye.clone().sub(new THREE.Vector3(cx, cy, cz)).normalize(), back = new THREE.Vector3(sg * (sg < 0 ? 0.055 : 0.09), 0, 1).normalize();
@@ -443,19 +612,20 @@ export function buildCar(modelKey, paint, plateKey) {
     mirrors.push({ w: mw - 0.024, h: mh - 0.024, side: sg, m: glass(0.041) });   // (its glass: mirror.js)
     add(new THREE.BoxGeometry(0.1, 0.04, 0.06), S.trim, sg * (p.hw + 0.03), p.belt + 0.045, cz);
   }
-  if (!m.ownSides) for (const sg of [-1, 1]) for (const s of [m.pillars[0] - 0.2, m.pillars[1] - 0.25]) {
-    const p = profileAt(m, s);
-    add(new THREE.BoxGeometry(0.02, 0.025, 0.13), m.chromeHandles ? S.chrome : paint, sg * (p.hw * 0.99 + 0.005), p.belt - 0.08, zAt(s));
+  if (!m.ownSides) for (const sg of [-1, 1]) for (const [s, hy] of m.handles ?? [[m.pillars[0] - 0.2], [m.pillars[1] - 0.25]]) {
+    const p = profileAt(m, s), y = hy ?? p.belt - 0.08, x = m.parts ? partBody(m, raw.body).sideX(s, y) : p.hw * 0.99;
+    add(new THREE.BoxGeometry(0.02, 0.025, 0.13), m.chromeHandles ? S.chrome : m.handleMat === 'black' ? S.trim : paint, sg * (x + 0.005), y, zAt(s));
   }
   const seamMat = S.trim;
-  if (!m.ownSides) for (const sg of [-1, 1]) for (const s of [m.wind[0] + 0.12, m.pillars[0] + 0.03, m.pillars[1] - 0.02]) {
+  if (!m.ownSides && !m.parts) for (const sg of [-1, 1]) for (const s of [m.wind[0] + 0.12, m.pillars[0] + 0.03, m.pillars[1] - 0.02]) {
     const p = profileAt(m, s);
     const y0 = Math.max(p.yb + 0.06, profileAt(m, s - 0.1).yb + 0.06, profileAt(m, s + 0.1).yb + 0.06), y1 = p.belt - 0.015;
     if (y1 - y0 < 0.1) continue;
     add(new THREE.BoxGeometry(0.006, y1 - y0, 0.006), seamMat, sg * (p.hw + 0.001), (y0 + y1) / 2, zAt(s));
   }
   // exhaust
-  if (!m.details) add(new THREE.CylinderGeometry(0.035, 0.035, 0.15, 10), S.chrome, -0.5, 0.26, zAt(m.L) + 0.02, Math.PI / 2, 0, 0);
+  if (!own) add(new THREE.CylinderGeometry(0.035, 0.035, 0.15, 10), S.chrome, -0.5, 0.26, zAt(m.L) + 0.02, Math.PI / 2, 0, 0);
+  else if (m.exhaust) for (const [x, y, r, len] of m.exhaust) add(new THREE.CylinderGeometry(r, r, len, 14, 1, true), S.chrome, x, y, zAt(m.L) - len / 2 + 0.03, Math.PI / 2, 0, 0);
   // a model's own details (grille, lamps, trim, its cabin: maybach.js), merged with the body like the rest
   m.details?.({ add, S, paint, zAt, prof: (s) => profileAt(m, s), surfaceS, headMat, tailMat, rigid, mirrors });
 
@@ -472,6 +642,8 @@ export function buildCar(modelKey, paint, plateKey) {
   // wheels
   const wheels = [];
   let tireGeo;
+  // (V103: the model's own wheels, in 3D - its rim's design, on the real tyre's size)
+  if (m.rimStyle && !m.rim) m.rim = { geo: rim3D(m.r * m.rimK, m.rimStyle), mat: (shared.rimMat ??= new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.8, roughness: 0.32 })) };
   if (m.rim) {
     // round a 3D rim: the tyre's section turned about the axle - the bead on the rim's lip, the sidewalls bulging, the
     // shoulders, the tread - open in the middle, so the rim shows through
@@ -516,13 +688,15 @@ export function buildCar(modelKey, paint, plateKey) {
   for (const [ai, a] of m.axles.entries()) {
     for (const sg of [-1, 1]) {
       const pivot = new THREE.Object3D();
-      const x = sg * (m.W / 2 - m.tireW / 2 - 0.005);
+      const x = sg * (m.track ? m.track[ai] / 2 : m.W / 2 - m.tireW / 2 - 0.005);    // (V103: the real tracks)
       pivot.position.set(x, m.r, zAt(a));
       const spin = new THREE.Object3D();
       const rimAt = pose(sg * (m.tireW / 2 + 0.002), 0, 0, 0, sg * Math.PI / 2, 0), innerAt = pose(-sg * (m.tireW / 2 + 0.002), 0, 0, 0, -sg * Math.PI / 2, 0);
       // dark wheel-well liner
       // (round a 3D rim, the liner arches over the top only: none of it shows beside the tyre down to the ground)
       wells.push([new THREE.CylinderGeometry(m.r + 0.06, m.r + 0.06, m.tireW + 0.1, 18, 1, true, m.rim ? 0 : -Math.PI / 2, Math.PI), arch, pose(x, m.r, zAt(a), 0, 0, Math.PI / 2)]);
+      // (V103) the well's inner wall: through the arch, past the tyre, no view into the cabin's lining
+      wells.push([new THREE.CircleGeometry(m.r + 0.075, 24), arch, pose(x - sg * (m.tireW / 2 + 0.05), m.r, zAt(a), 0, Math.PI / 2, 0)]);
       wheels.push({ pivot, spin, rimAt, innerAt, front: ai === 0, side: sg, x, z: zAt(a) });
     }
   }

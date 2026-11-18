@@ -625,7 +625,7 @@ function shellGeo(m, body, caps, C) {
   const offAt = (ny) => 0.022 + 0.04 * Math.max(0, ny);
   const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const offOf = (i, z, ny) => {
-    const r = i % 18, s = z + m.L / 2, o = offAt(ny);
+    const r = body.userData.ringOf?.[i] ?? i % 18, s = z + m.L / 2, o = offAt(ny);
     if (r !== 7 && r !== 8 && r !== 10 && r !== 11 || s < m.wind[0] - 0.02 || s > m.wind[1] + 0.06) return o;
     return o + (0.016 - o) * (1 - sm(m.wind[1] - 0.1, m.wind[1] + 0.05, s));
   };
@@ -848,7 +848,8 @@ function seatParts(kind, w, mats, { back, len = 0.85, heads = [0] } = {}) {
 
 const CACHE = {};
 export function buildCabin(key, m, body, caps) {
-  const spec = CABINS[key];
+  // (V103: a model may take another's cabin - m.cabin: a key of CABINS, or [key, {what differs}] - or bring its own)
+  const c = m.cabin, spec = CABINS[key] ?? (typeof c === 'string' ? CABINS[c] : Array.isArray(c) ? { ...CABINS[c[0]], ...c[1] } : c);
   if (!spec) return null;
   const k = CACHE[key] ??= makeCabin(m, spec, body, caps);
   // this car's own meshes on the model's geometry, and its own copy of the lit materials (its dials alone light up)
@@ -1105,7 +1106,9 @@ function makeCabin(m, spec, body, caps) {
     for (let s = sFw + 0.45; s < sEnd; s += 0.15) prof.push([s, yF]);
     prof.push([sEnd, yF]);
     const NXF = 26;
-    const fl = prof.map(([s, y]) => { const w = inner(s, Math.max(y, yF + 0.04), 0.035); return Array.from({ length: NXF + 1 }, (_, j) => { const x = -w + 2 * w * j / NXF; const tun = y <= yF + 0.03 ? spec.tunnel * (1 - sstep(0.09, 0.2, Math.abs(x))) : 0; return V3(x, y + tun, zA(s)); }); });
+    // (V103: and between the rear wheel houses, where it reaches back over the axle - a hatchback's load floor)
+    const xWell = (m.track ? m.track[1] / 2 : m.W / 2 - m.tireW / 2 - 0.005) - m.tireW / 2 - 0.05;
+    const fl = prof.map(([s, y]) => { const w = Math.min(inner(s, Math.max(y, yF + 0.04), 0.035), Math.abs(s - m.axles[1]) < m.r + 0.14 ? xWell : 9); return Array.from({ length: NXF + 1 }, (_, j) => { const x = -w + 2 * w * j / NXF; const tun = y <= yF + 0.03 ? spec.tunnel * (1 - sstep(0.09, 0.2, Math.abs(x))) : 0; return V3(x, y + tun, zA(s)); }); });
     put(grid(fl, V3(0, yF + 1, zA(hs))), mats.carpet);
   }
   // pedals hanging from under the dash: clutch (a manual box), brake, accelerator
@@ -1179,7 +1182,9 @@ function makeCabin(m, spec, body, caps) {
       const rows = spec.rear === 'bench2' ? [hsR, hsR + 0.92] : [hsR];
       for (const s of rows) {
         if (s > L - 0.6) continue;
-        const w = Math.min(1.42, 2 * inner(s, hyR, 0.06));
+        // (V103: between the wheel houses - its sides came out through the rear arches)
+        const xWell = (m.track ? m.track[1] / 2 : m.W / 2 - m.tireW / 2 - 0.005) - m.tireW / 2 - 0.05;
+        const w = Math.min(1.42, 2 * inner(s, hyR, 0.06), 2 * xWell);
         const heads = len >= 0.66 ? (w > 1.25 && len >= 0.76 ? [-w / 2 + 0.28, 0, w / 2 - 0.28] : [-w / 2 + 0.28, w / 2 - 0.28]) : [];
         placeSeat(seatParts('bench', w, mats, { back, len, heads }), 0, s, hyR);
       }
