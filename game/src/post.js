@@ -358,7 +358,17 @@ const LENS = /* glsl */`
 uniform sampler2D tDiffuse;
 uniform vec2 uOut, uSrc, uTexel;   // the screen's and the drawn picture's half extents (tangents); the picture's texel
 uniform float uD, uPeak;
+// (V104) the head-mounted GoPro: its fisheye (uFish), the angle off the axis theta = uK1 r + uK3 r^3 for r in half
+// widths of the frame (uAsp: its half height in them), and what its picture adds - lateral colour (uCA), the light
+// falling off (uVig), the sensor's noise (uNoise), its colour (uSat, uCon), the helmet's edge (uHelm: the side, +-1)
+uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime;
 varying vec2 vUv;
+vec2 fishUV(vec2 q, float s) {
+  float r = length(q), th = min((uK1 * r + uK3 * r * r * r) * s, 1.45);
+  vec2 t = r > 1e-6 ? q / r * tan(th) : vec2(0.0);
+  return t / uSrc * 0.5 + 0.5;
+}
+float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 vec3 catmullRom(vec2 uv) {
   vec2 sp = uv / uTexel, tp = floor(sp - 0.5) + 0.5, f = sp - tp;
   vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f), w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
@@ -369,13 +379,17 @@ vec3 catmullRom(vec2 uv) {
   return r / (w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y);
 }
 void main() {
+  vec2 uv, q = (vUv * 2.0 - 1.0) * vec2(1.0, uAsp);
+  if (uFish > 0.5) uv = fishUV(q, 1.0);        // (V104) the GoPro's fisheye: the direction at this point of its frame
+  else {
   // the screen point on the Panini plane (tangents of the view's own field: the middle is the flat picture's)
   vec2 p = (vUv * 2.0 - 1.0) * uOut;
   // back to a direction (longitude from x, then the height): x = S sin(lon), y = S tan(lat), S = (d + 1) / (d + cos(lon))
   float d = uD, k = p.x * p.x / ((d + 1.0) * (d + 1.0));
   float cl = (-k * d + sqrt(max(k * k * d * d - (k + 1.0) * (k * d * d - 1.0), 0.0))) / (k + 1.0);
   float sl = sign(p.x) * sqrt(max(1.0 - cl * cl, 0.0));
-  vec2 uv = vec2(sl, p.y * (d + cl) / (d + 1.0)) / cl / uSrc * 0.5 + 0.5;   // that direction in the drawn (flat) picture
+  uv = vec2(sl, p.y * (d + cl) / (d + 1.0)) / cl / uSrc * 0.5 + 0.5;   // that direction in the drawn (flat) picture
+  }
   vec2 ex = dFdx(uv), ey = dFdy(uv), fx = ex / uTexel, fy = ey / uTexel;   // (a screen pixel's footprint, in the picture's texels)
   vec3 c;
   if (max(dot(fx, fx), dot(fy, fy)) <= 1.0) {
@@ -388,6 +402,30 @@ void main() {
     c = ((b + dd + f + h) * w + c) / (1.0 + 4.0 * w);
   } else c = 0.25 * (texture2D(tDiffuse, uv + 0.25 * (ex + ey)).rgb + texture2D(tDiffuse, uv - 0.25 * (ex + ey)).rgb
                  + texture2D(tDiffuse, uv + 0.25 * (ex - ey)).rgb + texture2D(tDiffuse, uv - 0.25 * (ex - ey)).rgb);
+  if (uFish > 0.5) {
+    float r2 = dot(q, q);
+    // lateral colour: red and blue land a little apart from green toward the edges
+    float ca = smoothstep(0.15, 1.3, r2);
+    c.r = mix(c.r, texture2D(tDiffuse, fishUV(q, 1.0 + uCA)).r, ca);
+    c.b = mix(c.b, texture2D(tDiffuse, fishUV(q, 1.0 - uCA)).b, ca);
+    // its colour: more saturated and a touch more contrast than the eye's
+    float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = clamp((mix(vec3(l), c, uSat) - 0.5) * uCon + 0.5, 0.0, 1.0);
+    // the light falling off toward the corners (most of it corrected in the camera)
+    c *= 1.0 - uVig * smoothstep(0.35, 1.4, r2);
+    // the helmet's side, 5-6 cm from the lens on the inner side: far out of focus, darker toward the bottom
+    if (uHelm != 0.0) {
+      float x = q.x * uHelm, edge = 0.84 - 0.07 * (q.y / max(uAsp, 0.1));
+      float m = smoothstep(edge - 0.06, edge + 0.07, x);
+      c = mix(c, c * 0.1 + vec3(0.012, 0.012, 0.014), m * 0.93);
+    }
+    // the sensor's noise: grain in the luminance and coloured blotches, worse in the dark (the gain turned up)
+    vec2 fc = floor(gl_FragCoord.xy);
+    float n = hash12(fc + fract(uTime * 7.31) * 517.0) - 0.5;
+    vec3 nc = vec3(hash12(floor(fc * 0.5) + fract(uTime * 3.7) * 311.0), hash12(floor(fc * 0.5) + 41.0 + fract(uTime * 5.3) * 197.0), hash12(floor(fc * 0.5) + 83.0 + fract(uTime * 2.9) * 401.0)) - 0.5;
+    float dark = 1.0 - smoothstep(0.02, 0.55, l);
+    c += (vec3(n) * 0.9 + nc * 0.6) * uNoise * (0.3 + 0.7 * dark);
+  }
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`;
 // how far the edges' directions reach in the drawn picture, over the screen's (Panini of strength d, the view's
@@ -410,11 +448,23 @@ export function lensSpan(tx) {
   const cl = (-k * d + Math.sqrt(Math.max(k * k * d * d - (k + 1) * (k * d * d - 1), 0))) / (k + 1);
   return 2 * Math.acos(Math.min(1, cl)) * 180 / Math.PI;
 }
+// (V104) the GoPro's Wide lens (HERO10 Black, 16:9, HyperSmooth off: 118 deg across, 69 up, 133 on the diagonal - GoPro's
+// own table): the angle off the axis theta = K1 r + K3 r^3, r in half widths of the frame, fitted to all three (118.0,
+// 69.0, 132.9 deg); goproNeed(a): the tangents the flat picture must reach for a frame a half-widths high (its corners)
+export const GOPRO_K1 = 1.0893, GOPRO_K3 = -0.0595;
+export function goproNeed(a) {
+  const r = Math.hypot(1, a), th = Math.min(GOPRO_K1 * r + GOPRO_K3 * r * r * r, 1.45), t = Math.tan(th);
+  return { x: Math.max(t / r, Math.tan(Math.min(GOPRO_K1 + GOPRO_K3, 1.45))), y: Math.max(t * a / r, Math.tan(Math.min(GOPRO_K1 * a + GOPRO_K3 * a * a * a, 1.45))) };
+}
 class LensPass extends Pass {
   constructor() {
     super();
     this.material = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, uOut: { value: new THREE.Vector2(1, 1) }, uSrc: { value: new THREE.Vector2(1, 1) },
-      uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 } }, vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
+      uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 },
+      uFish: { value: 0 }, uK1: { value: GOPRO_K1 }, uK3: { value: GOPRO_K3 }, uAsp: { value: 9 / 16 }, uCA: { value: 0.0025 }, uVig: { value: 0.22 },
+      uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 } },
+      vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
+    this.fish = false;                   // (V104) the GoPro's fisheye instead of the Panini
     this.quad = new FullScreenQuad(this.material);
     this.enabled = false;
     this.scale = 1;                      // (how much larger than the screen the scene is drawn: createComposer)
@@ -424,6 +474,18 @@ class LensPass extends Pass {
   aim(cam) {
     const u = this.material.uniforms;
     if (!this.enabled) { if (cam.zoom !== 1) { cam.zoom = 1; cam.updateProjectionMatrix(); } return; }
+    u.uFish.value = this.fish ? 1 : 0;
+    if (this.fish) {
+      // (V104) the GoPro's frame across the screen's width, its height as the screen's; the flat picture drawn just wide
+      // enough to hold its corners (and as much larger as the quality allows: the middle is magnified ~1.8x)
+      const ty = Math.tan(cam.fov * Math.PI / 360), tx = ty * cam.aspect, g = goproNeed(1 / cam.aspect);
+      const z = Math.min(ty / g.y, tx / g.x);
+      u.uAsp.value = 1 / cam.aspect; u.uSrc.value.set(tx / z, ty / z);
+      const mag = (tx / z) / GOPRO_K1 / this.scale;
+      u.uPeak.value = -Math.min(1 / 5, mag * mag / 14 + 0.05);            // (and its own sharpening, set high)
+      if (Math.abs(cam.zoom - z) > 1e-6) { cam.zoom = z; cam.updateProjectionMatrix(); }
+      return;
+    }
     const ty = Math.tan(cam.fov * Math.PI / 360), tx = ty * cam.aspect, f = lensFit(tx);
     u.uOut.value.set(tx, ty); u.uSrc.value.set(tx * f.m, ty * f.m); u.uD.value = f.d;
     // (the sharpening back: as much as the middle is magnified - measured at 1.04x, -1/14 gives the detail of the
@@ -561,7 +623,18 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     lens.scale = scale;
     lens.aim(camera);
   };
+  // (V104) the GoPro's picture on (its fisheye; drawn as much larger as setLens would allow, for the magnified middle) or
+  // off (back to the lens the menu set: setLens after it)
+  const setGoPro = (on) => {
+    lens.fish = on;
+    if (!on) { lens.material.uniforms.uFish.value = 0; return; }
+    lens.enabled = true;
+    const g = goproNeed(1 / camera.aspect), k = Math.min(Math.max(lensMax, 1), g.x / GOPRO_K1);
+    if (Math.abs(k - scale) > 1e-3) { scale = k; setSize(lastW, lastH); }
+    lens.scale = scale;
+    lens.aim(camera);
+  };
   // the anti-aliasing on or off (the menu): SMAA while TAA is off, the sharpening with TAA
   const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; if (cas) cas.enabled = on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, get scale() { return scale; } };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, setGoPro, get scale() { return scale; } };
 }

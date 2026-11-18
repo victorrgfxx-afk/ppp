@@ -315,6 +315,7 @@ async function main() {
     return Math.max(0.9 * best, Math.min(0.6, trees * 0.05));
   };
   let moonBeam = null, flashlight = null, headlights = null, bear = null, gradeU = null, vision = null;   // (made once the map is built)
+  let gopro = false;                        // (V104) the GoPro on the side of the head (M): its picture instead of the eyes'
   const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   // night palettes: a clear moonlit sky, or the low deck of a night storm
   const NIGHT = {
@@ -404,9 +405,9 @@ async function main() {
     DAYLIGHT.k = dayK; for (const m of DAYLIGHT.tails) m.emissiveIntensity = 0.15 * dayK;
     M.facadePorch.emissiveIntensity = 0.42 * dayK; M.facadeVeranda.emissiveIntensity = 0.38 * dayK; M.kneeWall.emissiveIntensity = 0.18 * dayK;
     // the eye: cd/m2 per unit of the scene's light (the sun's ~3.8 is ~100 000 lux, the moon's 0.48 ~0.25 lux)
-    if (vision) { vision.abs = Math.exp(THREE.MathUtils.lerp(Math.log(26000), Math.log(0.25 / 0.48), night)); vision.enabled = night > 0.02; }
+    if (vision) { vision.abs = Math.exp(THREE.MathUtils.lerp(Math.log(26000), Math.log(0.25 / 0.48), night)); vision.enabled = night > 0.02 && !gopro; }
     if (bear) bear.eyeMat.emissiveIntensity = 3 * night;                     // eyeshine in the dark
-    if (gradeU) { gradeU.uVig.value = horror ? 0.5 : 0.28; gradeU.uGrain.value = horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
+    if (gradeU) { gradeU.uVig.value = gopro ? 0.06 : horror ? 0.5 : 0.28; gradeU.uGrain.value = gopro ? 0 : horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
   };
   applyWeather(weatherKey);
 
@@ -838,6 +839,30 @@ async function main() {
   glasses.want = store.get('glasses', 'on') !== 'off'; glasses.worn = glasses.want ? 1 : 0; EYE.glasses.value = glasses.worn;
   const glassesUi = () => { for (const x of ['', '2']) if ($('glasses' + x)) $('glasses' + x).value = glasses.want ? 'on' : 'off'; };
   const wearGlasses = (on) => { glasses.wear(on); store.set('glasses', on ? 'on' : 'off'); glassesUi(); };
+  // (V104) the GoPro on a side mount of the helmet: the lens 13 cm right of the head's middle (the head's half breadth
+  // ~7.5 cm, the shell, the mount, the camera's lens off its inner face), 4 cm over the eyes, 5 cm behind them; it turns
+  // and bobs with the head. Its cover glass takes the drops and the fog the glasses did (the V102 logic: the same rain
+  // on the same face); the eyes' own effects go (no squint, no tears, no corona, no rods' night vision). The overlay is
+  // a live feed's: LIVE and its time, the battery, 1080p60 on the Wide lens - generic, no maker's mark.
+  const GOPRO_AT = new THREE.Vector3(0.13, 0.04, 0.05), _gpOff = new THREE.Vector3();
+  let goproT0 = 0, goproBatt = 0.72 + 0.24 * Math.random(), goproGlasses = true, goproTick = 0;
+  const goproHud = document.createElement('div');
+  goproHud.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:4;display:none;font:600 15px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#fff;text-shadow:0 1px 2px #000,0 0 6px rgba(0,0,0,0.6);letter-spacing:0.05em';
+  goproHud.innerHTML = '<div style="position:absolute;left:18px;top:14px;white-space:nowrap"><span style="color:#ff3030">&#9679;</span> LIVE <span data-t>00:00</span>'
+    + '<span style="opacity:0.8;margin-left:1.4em">1080p &middot; 60 &middot; W</span><span style="margin-left:1.4em" data-b></span></div>';   // (one line, top left: clear of the map and the counters)
+  document.body.appendChild(goproHud);
+  const goproT = goproHud.querySelector('[data-t]'), goproB = goproHud.querySelector('[data-b]');
+  const setGoPro = (on) => {
+    gopro = on;
+    EYE.cam.value = on ? 1 : 0;
+    if (on) { goproT0 = performance.now(); goproGlasses = glasses.want; glasses.want = true; glasses.worn = 1; }
+    else glasses.want = goproGlasses;
+    glasses.drops.length = 0; glasses.fog = glasses.fogB = 0;                 // (a clean lens, a clean pair of glasses)
+    post.setGoPro(on);
+    if (!on) post.setLens(efov === 'on', baseFov());
+    goproHud.style.display = on ? 'block' : 'none';
+    audio.setMic(on, 0);
+  };
   const eyeLights = [], _eyeV = new THREE.Vector3(), _eyeLook = new THREE.Vector3();
   const eyeTick = (dt) => {
     const pe = post.eye, cp = camera.position;
@@ -868,7 +893,7 @@ async function main() {
     EYE.glasses.value = glasses.worn;
     pe.setGlasses(glasses, THREE.MathUtils.lerp(0.0025, 0.0065, night));
     const es = eyeState.update({ dt, storm, snow: SNOW.uSnowFall.value, gale: windSpeed, windDir: STORM.uWind.value, look: _eyeLook,
-      outdoors: !inCar, shelter, on: EYE.on.value > 0.5, glasses: glasses.worn });
+      outdoors: !inCar, shelter, on: EYE.on.value > 0.5 && !gopro, glasses: glasses.worn });
     pe.squint = es.squint; pe.tear = es.tear; pe.wind = Math.min(1, windSpeed / 15);
   };
   let snowLamps = [];                                                   // (the 6 nearest, for the snow swirling in their light)
@@ -1513,6 +1538,7 @@ async function main() {
       if (input.hit('KeyK')) goToForest();
       if (input.hit('KeyP')) screenshot();
       if (input.hit('KeyY')) { wearGlasses(!glasses.want); hud.toast(glasses.want ? 'Ochelari tactici puși (Y îi scoate)' : 'Ochelari tactici scoși (Y îi pune la loc, șterși)', 2.5); }
+      if (input.hit('KeyM')) { setGoPro(!gopro); hud.toast(gopro ? 'GoPro pe cască, pe partea dreaptă: imaginea ei, ca transmisă (M o oprește)' : 'GoPro oprită: vezi cu ochii tăi', 3); }
       if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
       // B: the wind - after the weather, or a speed of the Beaufort scale
@@ -1613,7 +1639,7 @@ async function main() {
     if (mode === 'car' && active) {
       const m = input.consumeMouse();
       const sp = Math.abs(active.speed);
-      if (camMode === 'chase') {
+      if (camMode === 'chase' && !gopro) {
         if (m.x || m.y) { orbit.yaw -= m.x * sens(); orbit.pitch = clamp(orbit.pitch + m.y * sens(), -0.1, 0.9); orbit.idle = 0; }
         else { orbit.idle += dt; if (orbit.idle > 1.5) { orbit.yaw = damp(orbit.yaw, 0, 2, dt); orbit.pitch = damp(orbit.pitch, 0.18, 2, dt); } }
         const cy = active.h + orbit.yaw;
@@ -1943,7 +1969,8 @@ async function main() {
     // the camera's motion blur (a recording that sets the lens itself marks it manual); a jump of the camera - a view
     // picked, into or out of a car, another camera mode - is a cut, not a smear
     if (!post.cine.manual) {
-      const on = mblur > 0 && !paused;
+      // (V104: with the GoPro, its own shutter - auto exposure: ~1/1000 s by day, toward 1/120 s in the dark)
+      const shutter = gopro ? Math.max(mblur, 0.03 + 0.32 * THREE.MathUtils.smoothstep(night, 0.3, 0.9)) : mblur, on = shutter > 0 && !paused;
       if (post.cine.enabled !== on) post.cine.enabled = on;
       if (on) {
         const cut = camera.position.distanceTo(lastCam) > 6 || 2 * Math.acos(Math.min(1, Math.abs(camera.quaternion.dot(lastQ)))) > 0.6;
@@ -1961,7 +1988,7 @@ async function main() {
           }
           keepBox = behind ? _kb.set(0, 0, 1, 1) : _kb.set(x0, y0, x1, y1);
         }
-        post.cine.params = { shutter: mblur, cut, keep, keepBox };
+        post.cine.params = { shutter, cut, keep: gopro && mode === 'foot' && !riding ? Math.max(keep, 0.8) : keep, keepBox };   // (the pistol in your hands rides with the head)
       }
       lastCam.copy(camera.position); lastQ.copy(camera.quaternion);
     }
@@ -1969,6 +1996,27 @@ async function main() {
     if (post.shafts) { camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.85, sun.color); }
     // the pistol in your hands, last: where the camera has ended up this frame
     glock?.draw(camera, player);
+    // (V104) then the GoPro: the camera to its lens, on the side of the head (the pistol stays where the eyes hold it);
+    // its sensor's noise, the overlay's clock and battery, the microphone
+    if (gopro) {
+      camera.updateMatrixWorld();
+      _gpOff.copy(GOPRO_AT).applyQuaternion(camera.quaternion);
+      camera.position.add(_gpOff);
+      camera.updateMatrixWorld();
+      const lu = post.lens.material.uniforms;
+      lu.uTime.value = t; lu.uNoise.value = 0.006 + 0.07 * THREE.MathUtils.smoothstep(night, 0.2, 0.9) * (flashlight?.on ? 0.6 : 1);
+      goproTick += dt;
+      if (goproTick > 0.1) {
+        const s = Math.floor((performance.now() - goproT0) / 1000);
+        goproBatt = Math.max(0.01, goproBatt - goproTick / 5000);              // (~80 min on a charge, streaming)
+        goproT.textContent = (s >= 3600 ? Math.floor(s / 3600) + ':' : '') + String(Math.floor(s / 60) % 60).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+        goproB.textContent = '\u25AE ' + Math.round(goproBatt * 100) + '%';
+        const outside = mode === 'foot' && !riding, wx = STORM.uWind.value.x, wz = STORM.uWind.value.y;
+        const air = outside ? Math.hypot(wx - player.vel.x, wz - player.vel.z) : riding ? Math.abs(riding.speed ?? 0) : 0;
+        audio.setMic(true, Math.min(1.5, air / 14));
+        goproTick = 0;
+      }
+    }
     // (the car you drive moves with the camera: the anti-aliasing follows it by its own motion; so does the pistol)
     if (post.taa) {
       const mv = mode === 'car' && active ? active : riding;

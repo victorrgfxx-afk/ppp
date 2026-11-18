@@ -5,6 +5,15 @@ export class Audio {
     this.ctx = null; this.muted = false;
     this.nextBird = 2; this.t = 0;
   }
+  // (V104) what the GoPro's microphone hears, with its picture on: a small capsule behind the housing's port - the lows
+  // thinner, the presence lifted - and the wind buffeting the port (air: the air's speed over it / 14 m/s); off: the ears
+  setMic(on, air = 0) {
+    if (!this.ctx || !this.micHP) return;
+    const t = this.ctx.currentTime;
+    this.micHP.frequency.setTargetAtTime(on ? 150 : 10, t, 0.05);
+    this.micPk.gain.setTargetAtTime(on ? 4 : 0, t, 0.05);
+    this.buffetGain.gain.setTargetAtTime(on ? Math.min(0.45, 0.3 * air * air) : 0, t, 0.08);
+  }
   start() {
     if (this.ctx) { this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -12,7 +21,10 @@ export class Audio {
     const ctx = this.ctx = new AC();
     this.master = ctx.createGain(); this.master.gain.value = 0.9;
     const comp = ctx.createDynamicsCompressor();
-    this.master.connect(comp).connect(ctx.destination);
+    // (V104) the GoPro's microphone in the chain, flat until its picture is on (setMic)
+    this.micHP = ctx.createBiquadFilter(); this.micHP.type = 'highpass'; this.micHP.frequency.value = 10; this.micHP.Q.value = 0.7;
+    this.micPk = ctx.createBiquadFilter(); this.micPk.type = 'peaking'; this.micPk.frequency.value = 3500; this.micPk.Q.value = 0.9; this.micPk.gain.value = 0;
+    this.master.connect(this.micHP).connect(this.micPk).connect(comp).connect(ctx.destination);
     // noise buffer
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -24,6 +36,11 @@ export class Audio {
     const wf = ctx.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 380;
     this.windGain = ctx.createGain(); this.windGain.gain.value = 0.05;
     wn.connect(wf).connect(this.windGain).connect(this.master); wn.start();
+    // (V104) the wind on the GoPro's microphone port: a low rumble that comes and goes with the air over it
+    const mn = ctx.createBufferSource(); mn.buffer = this.noise; mn.loop = true; mn.playbackRate.value = 0.6;
+    const mf = ctx.createBiquadFilter(); mf.type = 'lowpass'; mf.frequency.value = 500;
+    this.buffetGain = ctx.createGain(); this.buffetGain.gain.value = 0;
+    mn.connect(mf).connect(this.buffetGain).connect(this.micPk); mn.start();
     this.windFilter = wf;
     // the leaves in the wind: the sprays' hiss, louder and brighter as the wind rises, in waves with the gusts, among
     // the trees only (silent in a calm; in winter, the bare twigs, much less)

@@ -47,6 +47,7 @@ export const EYE = {
   probeW: { value: 2 + EYE_N },
   on: { value: 1 },                          // the menu: the squint and the tears without glasses (1) or not (0)
   glasses: { value: 1 },                     // (V102) the glasses: worn (1) .. off (0), eased
+  cam: { value: 0 },                         // (V104) a camera, not an eye (the head-mounted GoPro): no corona or halo, no frame
 };
 
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
@@ -198,6 +199,7 @@ const COMP_FRAG = /* glsl */`
 uniform sampler2D tDiffuse, tVeil, tSoft, tProbe, tLens, tBlur;
 uniform float uVeilOn, uScat, uP, uAgeK, uTime, uSquint, uTear, uAspect, uOn, uWind, uT;
 uniform float uGlasses, uFog, uFogB, uAbsC, uWetSig;   // (V102: the glasses)
+uniform float uCam;                                   // (V104: a camera's lens, not the eye)
 uniform float uSrcWet[${EYE_N}];       // (V102: how much of each light's way through the glasses a drop takes)
 uniform vec2 uTexel;
 uniform mat4 uProjInv;
@@ -239,8 +241,9 @@ void main() {
   // the lights: per pixel, from each one's direction and illuminance at the eye
   vec4 ep = texture2D(tProbe, vec2(0.5 / ${(EYE_N + 2).toFixed(1)}, 0.5));
   float pupilMM = ep.g * 1000.0;
-  float kCor = 0.65 * smoothstep(3.0, 6.5, pupilMM) * (1.0 - 0.4 * uSquint);
-  float kHalo = 0.55 * smoothstep(4.5, 7.0, pupilMM) * (1.0 - 0.6 * uSquint);
+  // (a camera's lens has neither: the ciliary corona and the lens halo are the eye's own)
+  float kCor = 0.65 * smoothstep(3.0, 6.5, pupilMM) * (1.0 - 0.4 * uSquint) * (1.0 - uCam);
+  float kHalo = 0.55 * smoothstep(4.5, 7.0, pupilMM) * (1.0 - 0.6 * uSquint) * (1.0 - uCam);
   vec3 ray = (uProjInv * vec4(vUv * 2.0 - 1.0, 1.0, 1.0)).xyz;
   ray = normalize(ray);
   vec2 rp = ray.xy / max(-ray.z, 1e-4);
@@ -302,7 +305,7 @@ void main() {
     float b = degrees(pupilR), rimK = 0.9 * min(1.0, 0.003 / max(ep.g, 0.002));
     float el = degrees(asin(clamp(ray.y, -1.0, 1.0))), az = degrees(atan(abs(ray.x), -ray.z));
     float rim = max(smoothstep(36.0 - b, 36.0 + b, el) - smoothstep(45.0 - b, 45.0 + b, el), smoothstep(78.0 - b, 78.0 + b, az));
-    col *= 1.0 - rimK * rim * uGlasses;
+    col *= 1.0 - rimK * rim * uGlasses * (1.0 - uCam);           // (the camera's cover glass has no frame in view)
   }
   // the lids: blurred, with the lashes, from above and below (the squint)
   // (off the screen with the eyes open: their blurred edges come in as the lids close)
@@ -366,7 +369,7 @@ export class EyePass extends Pass {
     this.comp = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: COMP_FRAG, depthTest: false, depthWrite: false,
       uniforms: { tDiffuse: { value: null }, tVeil: { value: null }, tSoft: { value: null }, tProbe: EYE.probe, uVeilOn: { value: veil ? 1 : 0 }, uScat: { value: 0 },
         uP: { value: this.p }, uAgeK: { value: ageK }, uTime: { value: 0 }, uSquint: { value: 0 }, uTear: { value: 0 }, uAspect: { value: 1 },
-        tLens: { value: null }, tBlur: { value: null }, uGlasses: EYE.glasses, uFog: { value: 0 }, uFogB: { value: 0 }, uAbsC: { value: 1 }, uWetSig: { value: 0.1 },
+        tLens: { value: null }, tBlur: { value: null }, uGlasses: EYE.glasses, uCam: EYE.cam, uFog: { value: 0 }, uFogB: { value: 0 }, uAbsC: { value: 1 }, uWetSig: { value: 0.1 },
         uSrcWet: { value: new Float32Array(EYE_N) },
         uOn: EYE.on, uWind: { value: 0 }, uT: { value: 1 }, uTexel: { value: new THREE.Vector2() }, uProjInv: { value: new THREE.Matrix4() },
         uSrcDir: { value: this.srcDir }, uSrcInfo: { value: this.srcInfo }, uSrcCol: { value: this.srcCol } } });
