@@ -86,7 +86,8 @@ export class CinePass extends Pass {
     this.mid = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.mid2 = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.copy = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null } }, vertexShader: VERT, fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ gl_FragColor = texture2D(tDiffuse, vUv); }', depthTest: false, depthWrite: false });
-    this.lin = new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+    // (V108: one channel - only .r is read - as taa.js keeps its depth: 4 bytes a pixel, not 16, at the GoPro's ~5K)
+    this.lin = new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, format: THREE.RedFormat, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
     this.linMat = new THREE.ShaderMaterial({ uniforms: { tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() } }, vertexShader: VERT, fragmentShader: LIN, depthTest: false, depthWrite: false });
     this.hasLin = false;
     this.quad = new FullScreenQuad(null);

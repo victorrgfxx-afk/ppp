@@ -554,6 +554,17 @@ async function main() {
   const audio = new Audio();
   const hud = new HUD(world, built.houses, { geo: GEO, ortho: gt.ortho.image, orthoW: gt.orthoW?.image });
   const post = createComposer(renderer, scene, camera, Q, farScene);
+  perf.inner = () => post.composer.renderTarget1;            // (V108: the frame meter shows the size the scene is drawn at)
+  // (V108) the GoPro's full resolution asks ~1.5 GB of the graphics card for its buffers: if the card gives up while it
+  // is on (the WebGL context lost), the page starts again and, for this tab, the GoPro steps down its own ladder - 4K
+  // UHD, then 2.7K - rather than leave the screen black. (Once at 2.7K, or with no session storage: as before.)
+  let goproLite = 0;
+  try { goproLite = Math.min(2, +sessionStorage.getItem('strada.goproLite') || 0); } catch (_) {}
+  post.goproLevel = goproLite;
+  canvas.addEventListener('webglcontextlost', () => {
+    if (!gopro || goproLite >= 2) return;
+    try { sessionStorage.setItem('strada.goproLite', String(goproLite + 1)); location.reload(); } catch (_) {}
+  });
   const mirrors = Q.ssr ? new Mirrors(renderer, scene, farScene) : null;   // (the mirrors' images: Medium and up)
   if (mirrors) mirrors.off = store.get('mirrors', 'real') !== 'real';
   const driver = new Driver();
@@ -1531,7 +1542,10 @@ async function main() {
       if (input.hit('KeyK')) goToForest();
       if (input.hit('KeyP')) screenshot();
       if (input.hit('KeyY')) { wearGlasses(!glasses.want); hud.toast(glasses.want ? 'Ochelari tactici puși (Y îi scoate)' : 'Ochelari tactici scoși (Y îi pune la loc, șterși)', 2.5); }
-      if (input.hit('KeyM')) { setGoPro(!gopro); hud.toast(gopro ? 'GoPro pe cască, pe partea dreaptă (M o oprește)' : 'GoPro oprită: vezi cu ochii tăi', 2.5); }
+      if (input.hit('KeyM')) {
+        setGoPro(!gopro);
+        hud.toast(!gopro ? 'GoPro oprită: vezi cu ochii tăi' : goproLite ? `GoPro pe cască, la ${goproLite > 1 ? '2.7K: placa video n-a ținut 4K' : '4K: placa video n-a ținut 5.3K'} (M o oprește)` : 'GoPro pe cască, pe partea dreaptă (M o oprește)', 2.5);
+      }
       if (input.hit('KeyG')) { perf.set(!perf.on); store.set('perf', perf.on); hud.toast(perf.on ? 'Contor de performanță: FPS, timpul CPU și GPU al unui cadru, desenări (G îl ascunde)' : 'Contor de performanță ascuns', 3); }
       if (input.hit('KeyT')) { setWeather(WEATHER_ORDER[(WEATHER_ORDER.indexOf(weatherKey) + 1) % WEATHER_ORDER.length]); hud.toast('Vremea: ' + WEATHER[weatherKey].label); }
       // B: the wind - after the weather, or a speed of the Beaufort scale

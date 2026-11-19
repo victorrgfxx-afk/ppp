@@ -45,8 +45,10 @@ export class PerfMeter {
     else {
       const s = this.r.getDrawingBufferSize(this.size ??= new THREE.Vector2());
       const gpu = !this.ext ? 'GPU n/d' : a.gpuN ? `GPU ${(a.gpu / a.gpuN).toFixed(1)} ms` : 'GPU …';
+      // (V108) and the size the scene itself is drawn at, where that is larger (the lens, the GoPro's full resolution)
+      const rt = this.inner?.(), inner = rt && rt.width > s.x + 1 ? ` · intern ${Math.round(rt.width)}×${Math.round(rt.height)}` : '';
       this.el.textContent = `${fps} FPS · cadru ${(1000 * a.t / a.n).toFixed(1)} ms\nCPU ${(a.cpu / a.f).toFixed(1)} ms (max ${a.cpuMax.toFixed(1)}) · ${gpu}\n` +
-        `${Math.round(a.calls / a.f)} desenări · ${(a.tris / a.f / 1e6).toFixed(1)} M triunghiuri\n${s.x}×${s.y} px`;
+        `${Math.round(a.calls / a.f)} desenări · ${(a.tris / a.f / 1e6).toFixed(1)} M triunghiuri\n${s.x}×${s.y} px${inner}`;
     }
     this.reset();
   }

@@ -362,6 +362,7 @@ uniform float uD, uPeak;
 // widths of the frame (uAsp: its half height in them), and what its picture adds - lateral colour (uCA), the light
 // falling off (uVig), the sensor's noise (uNoise), its colour (uSat, uCon), the helmet's edge (uHelm: the side, +-1)
 uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime, uRmax;
+uniform float uBlurK;              // (V108) the see-through edge's blur in the picture's texels, kept as wide on the screen
 varying vec2 vUv;
 vec2 fishUV(vec2 q, float s) {
   float r = length(q), rr = min(r, uRmax), th = min((uK1 * rr + uK3 * rr * rr * rr) * s, 1.45);   // (past RMAX: the edge drawn out)
@@ -369,14 +370,47 @@ vec2 fishUV(vec2 q, float s) {
   return t / uSrc * 0.5 + 0.5;
 }
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+// (the picture has no mip levels: level 0 is all it has - read so, the taps need no derivatives, and may sit in loops
+// and branches the shader compilers keep as such)
+vec3 tap(vec2 p) { return textureLod(tDiffuse, p, 0.0).rgb; }
 vec3 catmullRom(vec2 uv) {
   vec2 sp = uv / uTexel, tp = floor(sp - 0.5) + 0.5, f = sp - tp;
   vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f), w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
   vec2 w12 = w1 + w2, t12 = (tp + w2 / w12) * uTexel, t0 = (tp - 1.0) * uTexel, t3 = (tp + 2.0) * uTexel;
-  vec3 r = texture2D(tDiffuse, vec2(t12.x, t0.y)).rgb * (w12.x * w0.y) + texture2D(tDiffuse, vec2(t0.x, t12.y)).rgb * (w0.x * w12.y)
-         + texture2D(tDiffuse, t12).rgb * (w12.x * w12.y) + texture2D(tDiffuse, vec2(t3.x, t12.y)).rgb * (w3.x * w12.y)
-         + texture2D(tDiffuse, vec2(t12.x, t3.y)).rgb * (w12.x * w3.y);
+  vec3 r = tap(vec2(t12.x, t0.y)) * (w12.x * w0.y) + tap(vec2(t0.x, t12.y)) * (w0.x * w12.y)
+         + tap(t12) * (w12.x * w12.y) + tap(vec2(t3.x, t12.y)) * (w3.x * w12.y)
+         + tap(vec2(t12.x, t3.y)) * (w12.x * w3.y);
   return r / (w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y);
+}
+// magnified or 1:1 (the middle): Catmull-Rom, and the softness of resampling taken back as the sharpening does it
+// (CAS's cross, with the screen's own neighbours: one screen pixel away in the picture)
+vec3 crisp(vec2 uv, vec2 ex, vec2 ey) {
+  vec3 c = catmullRom(uv);
+  vec3 b = tap(uv - ey), dd = tap(uv - ex), f = tap(uv + ex), h = tap(uv + ey);
+  float mn = min(min(min(dd.g, c.g), min(f.g, b.g)), h.g), mx = max(max(max(dd.g, c.g), max(f.g, b.g)), h.g);
+  float w = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-5), 0.0, 1.0)) * uPeak;
+  return ((b + dd + f + h) * w + c) / (1.0 + 4.0 * w);
+}
+// (V108) the GoPro's picture at its full resolution: its middle 1:1 with the screen - so toward the edges, where the
+// fisheye squeezes the world, one screen pixel covers up to ~7 of the picture's texels. The pixel gathers all it covers,
+// as a camera's pixel gathers the light falling on it: n taps along its footprint's long axis (aMaj, the radius) and
+// two rows across where that is wide too (aMin), red and blue each from their own place (the lateral colour: dR, dB) -
+// not a few taps that would let the squeezed detail shimmer as the head turns
+vec3 gather(vec2 uv, vec2 dR, vec2 dB, vec2 aMaj, vec2 aMin, float n, float rows, float ca) {
+  vec3 s = vec3(0.0);
+  for (int i = 0; i < 8; i++) {
+    if (float(i) >= n) break;
+    vec2 p = uv + aMaj * ((float(i) + 0.5) / n - 0.5);
+    for (int j = 0; j < 2; j++) {
+      if (float(j) >= rows) break;
+      vec2 pp = p + aMin * (rows > 1.5 ? (float(j) - 0.5) * 0.5 : 0.0);
+      vec3 t = tap(pp);
+      t.r = mix(t.r, textureLod(tDiffuse, pp + dR, 0.0).r, ca);
+      t.b = mix(t.b, textureLod(tDiffuse, pp + dB, 0.0).b, ca);
+      s += t;
+    }
+  }
+  return s / (n * rows);
 }
 void main() {
   vec2 uv, q = (vUv * 2.0 - 1.0) * vec2(1.0, uAsp);
@@ -392,36 +426,36 @@ void main() {
   }
   vec2 ex = dFdx(uv), ey = dFdy(uv), fx = ex / uTexel, fy = ey / uTexel;   // (a screen pixel's footprint, in the picture's texels)
   vec3 c;
-  if (max(dot(fx, fx), dot(fy, fy)) <= 1.0) {
-    // magnified (the middle): Catmull-Rom, and the softness of resampling taken back as the sharpening does it
-    // (CAS's cross, with the screen's own neighbours: one screen pixel away in the picture)
-    c = catmullRom(uv);
-    vec3 b = texture2D(tDiffuse, uv - ey).rgb, dd = texture2D(tDiffuse, uv - ex).rgb, f = texture2D(tDiffuse, uv + ex).rgb, h = texture2D(tDiffuse, uv + ey).rgb;
-    float mn = min(min(min(dd.g, c.g), min(f.g, b.g)), h.g), mx = max(max(max(dd.g, c.g), max(f.g, b.g)), h.g);
-    float w = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-5), 0.0, 1.0)) * uPeak;
-    c = ((b + dd + f + h) * w + c) / (1.0 + 4.0 * w);
-  } else c = 0.25 * (texture2D(tDiffuse, uv + 0.25 * (ex + ey)).rgb + texture2D(tDiffuse, uv - 0.25 * (ex + ey)).rgb
-                 + texture2D(tDiffuse, uv + 0.25 * (ex - ey)).rgb + texture2D(tDiffuse, uv - 0.25 * (ex - ey)).rgb);
+  if (uFish > 0.5) {
+    // (V108) the footprint as an ellipse: its long and short axes (texels per screen pixel) and the long one's direction
+    float A = fx.x * fx.x + fy.x * fy.x, B = fx.x * fx.y + fy.x * fy.y, C = fx.y * fx.y + fy.y * fy.y;
+    float hq = sqrt(0.25 * (A - C) * (A - C) + B * B), fMaj = sqrt(0.5 * (A + C) + hq), fMin = sqrt(max(0.5 * (A + C) - hq, 0.0));
+    vec2 dir = abs(B) > 1e-9 ? normalize(vec2(B, 0.5 * (C - A) + hq)) : (A >= C ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+    // lateral colour: red and blue land a little apart from green toward the edges
+    float ca = smoothstep(0.15, 1.3, dot(q, q));
+    vec2 uvR = fishUV(q, 1.0 + uCA), uvB = fishUV(q, 1.0 - uCA);
+    // 1:1 to a little squeezed: Catmull-Rom and the sharpening; squeezed more: the gathered footprint (blended between)
+    float t = smoothstep(1.2, 2.0, fMaj);
+    vec3 cc = vec3(0.0), cg = vec3(0.0);
+    if (t < 1.0) { cc = crisp(uv, ex, ey); cc.r = mix(cc.r, textureLod(tDiffuse, uvR, 0.0).r, ca); cc.b = mix(cc.b, textureLod(tDiffuse, uvB, 0.0).b, ca); }
+    if (t > 0.0) cg = gather(uv, uvR - uv, uvB - uv, dir * fMaj * uTexel, vec2(-dir.y, dir.x) * fMin * uTexel, clamp(ceil(fMaj), 2.0, 8.0), fMin > 1.5 ? 2.0 : 1.0, ca);
+    c = mix(cc, cg, t);
+  } else if (max(dot(fx, fx), dot(fy, fy)) <= 1.0) c = crisp(uv, ex, ey);
+  else c = 0.25 * (tap(uv + 0.25 * (ex + ey)) + tap(uv - 0.25 * (ex + ey)) + tap(uv + 0.25 * (ex - ey)) + tap(uv - 0.25 * (ex - ey)));
   if (uFish > 0.5) {
     float r2 = dot(q, q);
-    // lateral colour: red and blue land a little apart from green toward the edges
-    float ca = smoothstep(0.15, 1.3, r2);
-    c.r = mix(c.r, texture2D(tDiffuse, fishUV(q, 1.0 + uCA)).r, ca);
-    c.b = mix(c.b, texture2D(tDiffuse, fishUV(q, 1.0 - uCA)).b, ca);
     // (V107) the lens's edge, see-through - no dark band: toward the frame's edges and in its corners the picture
     // softens, its colours part (the glass's dispersion) and a faint glassy sheen lies over it; you see the world through
     float de = min(1.0 - abs(q.x), uAsp - abs(q.y));
     float edge = max(smoothstep(uRmax - 0.16, uRmax + 0.06, sqrt(r2)), 1.0 - smoothstep(0.0, 0.08, de));
     if (edge > 0.002) {
-      vec2 o = uTexel * (1.5 + 6.5 * edge);
-      vec3 bl = texture2D(tDiffuse, uv + vec2(o.x, 0.0)).rgb + texture2D(tDiffuse, uv - vec2(o.x, 0.0)).rgb
-              + texture2D(tDiffuse, uv + vec2(0.0, o.y)).rgb + texture2D(tDiffuse, uv - vec2(0.0, o.y)).rgb
-              + texture2D(tDiffuse, uv + o * 0.7).rgb + texture2D(tDiffuse, uv - o * 0.7).rgb
-              + texture2D(tDiffuse, uv + vec2(o.x, -o.y) * 0.7).rgb + texture2D(tDiffuse, uv + vec2(-o.x, o.y) * 0.7).rgb;
+      vec2 o = uTexel * (1.5 + 6.5 * edge) * uBlurK;
+      vec3 bl = tap(uv + vec2(o.x, 0.0)) + tap(uv - vec2(o.x, 0.0)) + tap(uv + vec2(0.0, o.y)) + tap(uv - vec2(0.0, o.y))
+              + tap(uv + o * 0.7) + tap(uv - o * 0.7) + tap(uv + vec2(o.x, -o.y) * 0.7) + tap(uv + vec2(-o.x, o.y) * 0.7);
       bl *= 0.125;
       float caE = uCA + 0.012 * edge;
-      bl.r = mix(bl.r, texture2D(tDiffuse, fishUV(q, 1.0 + caE)).r, 0.6);
-      bl.b = mix(bl.b, texture2D(tDiffuse, fishUV(q, 1.0 - caE)).b, 0.6);
+      bl.r = mix(bl.r, textureLod(tDiffuse, fishUV(q, 1.0 + caE), 0.0).r, 0.6);
+      bl.b = mix(bl.b, textureLod(tDiffuse, fishUV(q, 1.0 - caE), 0.0).b, 0.6);
       c = mix(c, bl, edge);
       c += vec3(0.035) * edge * (1.0 - dot(c, vec3(0.3333)));
     }
@@ -482,7 +516,7 @@ class LensPass extends Pass {
       uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 },
       uFish: { value: 0 }, uK1: { value: GOPRO_K1 }, uK3: { value: GOPRO_K3 }, uAsp: { value: 9 / 16 }, uCA: { value: 0.0025 }, uVig: { value: 0.22 },
       uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 },
-      uRmax: { value: GOPRO_RMAX } },
+      uRmax: { value: GOPRO_RMAX }, uBlurK: { value: 1 } },
       vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
     this.fish = false;                   // (V104) the GoPro's fisheye instead of the Panini
     this.quad = new FullScreenQuad(this.material);
@@ -555,6 +589,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // (with a depth texture: the wet-ground reflections march through it)
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ssr ? new THREE.DepthTexture(size.x, size.y) : null });
   const composer = new EffectComposer(renderer, rt);
+  // (V108: its sizes given in the device's pixels, whole - with its own pixel ratio, a larger drawing came out fractional,
+  // e.g. 2080.84 x 1300.53: the buffers cut to 2080 x 1300, the lens's texel grid then off by up to a texel)
+  composer.setPixelRatio(1);
   // the temporal anti-aliasing (taa.js): it needs the scene's depth, so not on the lowest setting (SMAA there)
   const taa = q.ssr ? new TAAPass(camera, null, null) : null;
   if (taa) composer.addPass(new TAAJitter(taa));
@@ -624,39 +661,65 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   composer.addPass(lens);
   // (how much larger than the screen the scene is drawn with the lens on: the middle keeps its sharpness up to this)
   const lensMax = q.ao ? (q.pixelRatio >= 2 ? 1.4 : 1.25) : q.ssr ? 1.1 : 1;
-  // (V105) the GoPro's wider lens: drawn larger still, so its magnified middle stays about as sharp as the eyes' view
-  const goproMax = q.ao ? (q.pixelRatio >= 2 ? 1.6 : 1.5) : q.ssr ? 1.25 : 1.1;
+  // (V108) the GoPro's picture at its full resolution, on every quality: drawn as much larger as its middle needs to be
+  // 1:1 with the screen (V105-V107 drew it 1.1-1.6x larger, the middle magnified ~1.6-2.4x), on the screen's every
+  // pixel (the device's own pixel ratio, not the quality's), up to the GoPro's own largest frame - 5.3K, 5312 x 2988
+  // pixels (15.9 MP) - and what the graphics card can hold. (If the card gives up - ~1.5 GB of buffers at 5.3K - main.js
+  // steps down the GoPro's own ladder for the tab: 4K UHD, 3840 x 2160, then 2.7K, 2704 x 1520.)
+  const GOPRO_FRAMES = [5312 * 2988, 3840 * 2160, 2704 * 1520], basePr = renderer.getPixelRatio(), gl = renderer.getContext();
+  let goproLevel = 0;
+  const hwMax = Math.min(renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), ...gl.getParameter(gl.MAX_VIEWPORT_DIMS));
   const css = renderer.getSize(new THREE.Vector2());
   let scale = 1, lastW = css.x, lastH = css.y;               // (the canvas's size in CSS pixels until the first resize)
-  const setSize = (w, h) => {
-    lastW = w; lastH = h;
-    composer.setSize(w * scale, h * scale);
+  const resize = () => {
     const s = renderer.getDrawingBufferSize(new THREE.Vector2()).multiplyScalar(scale).round();
+    composer.setSize(s.x, s.y);
     grade.uniforms.uRes.value.set(s.x, s.y);
     if (cas) cas.uniforms.uTexel.value.set(1 / s.x, 1 / s.y);
     if (gtao) gtao.setSize(s.x, s.y);
   };
-  // on or off (the menu); the drawing size from the overscan of the view as it is now (its field of view and aspect)
+  // the drawing size k (and the pixel ratio pr): the buffers made again only when either changes, or for a new window
+  const apply = (k, pr, force = false) => {
+    const prNew = Math.abs(pr - renderer.getPixelRatio()) > 1e-3;
+    if (prNew) renderer.setPixelRatio(pr);
+    if (force || prNew || Math.abs(k - scale) > 1e-3) { scale = k; resize(); }
+    lens.scale = scale;
+  };
+  // (V108) the GoPro's: the device's pixels, and the scale for a 1:1 middle (aim: the flat picture spans uSrc.x across,
+  // its middle magnified uSrc.x / K1 / scale) within the 5.3K frame and the card's limits
+  const goproFit = (force) => {
+    const pr = window.devicePixelRatio || 1, w = lastW * pr, h = lastH * pr, g = goproNeed(1 / camera.aspect);
+    const full = Math.max(g.x, g.y * camera.aspect) / GOPRO_K1;
+    const k = Math.max(1, Math.min(full, Math.sqrt(GOPRO_FRAMES[goproLevel] / (w * h)), (hwMax - 2) / Math.max(w, h)));
+    apply(k, pr, force);
+    // (the see-through edge's blur kept as wide on the screen as V107's, drawn 1.5x larger at the quality's pixel ratio)
+    lens.material.uniforms.uBlurK.value = pr * scale / (basePr * 1.5);
+    lens.aim(camera);
+  };
+  const setSize = (w, h) => {
+    lastW = w; lastH = h;
+    if (lens.fish) goproFit(true); else resize();
+  };
+  // on or off (the menu); the drawing size from the overscan of the view as it is now (its field of view and aspect).
+  // (While the GoPro is on, the menu's lens waits: it comes back with the GoPro off - main.js calls this then.)
   const setLens = (on, fov = camera.fov) => {
+    if (lens.fish) return;
     lens.enabled = on;
     const ty = Math.tan(fov * Math.PI / 360);
     const k = on ? Math.min(lensMax, lensFit(ty * camera.aspect).m) : 1;
-    if (Math.abs(k - scale) > 1e-3) { scale = k; setSize(lastW, lastH); }
-    lens.scale = scale;
+    apply(k, basePr);
     lens.aim(camera);
   };
-  // (V104) the GoPro's picture on (its fisheye; drawn as much larger as setLens would allow, for the magnified middle) or
-  // off (back to the lens the menu set: setLens after it)
+  // (V104) the GoPro's picture on (its fisheye, at its full resolution) or off (back to the quality's pixel ratio and
+  // the screen's size, then the lens the menu set: setLens after it)
   const setGoPro = (on) => {
     lens.fish = on;
-    if (!on) { lens.material.uniforms.uFish.value = 0; return; }
+    if (!on) { lens.material.uniforms.uFish.value = 0; apply(1, basePr); return; }
     lens.enabled = true;
-    const g = goproNeed(1 / camera.aspect), k = Math.min(goproMax, g.x / GOPRO_K1);
-    if (Math.abs(k - scale) > 1e-3) { scale = k; setSize(lastW, lastH); }
-    lens.scale = scale;
-    lens.aim(camera);
+    goproFit(false);
   };
   // the anti-aliasing on or off (the menu): SMAA while TAA is off, the sharpening with TAA
   const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; if (cas) cas.enabled = on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, setGoPro, get scale() { return scale; } };
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, setGoPro, get scale() { return scale; },
+    get goproLevel() { return goproLevel; }, set goproLevel(v) { goproLevel = Math.max(0, Math.min(GOPRO_FRAMES.length - 1, v | 0)); } };
 }

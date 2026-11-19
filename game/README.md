@@ -65,7 +65,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
 | K | te duce la marginea luminișului din pădurea de lângă cruce, unde se petrece scena (doar la 23:30, pe vreme înnorată) | la fel (cobori întâi) |
-| M | GoPro pe cască, pe partea dreaptă: obiectiv fisheye de 140°, cu marginea lentilei transparentă (V104–V107) | la fel, din capul șoferului |
+| M | GoPro pe cască, pe partea dreaptă: obiectiv fisheye de 140°, cu marginea lentilei transparentă, la rezoluție maximă: mijlocul 1:1 cu ecranul, până la cadrul 5.3K (V104–V108) | la fel, din capul șoferului |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -845,6 +845,48 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **GoPro la rezoluție maximă (V108)** (`src/post.js`, `src/main.js`, `src/perf.js`, `src/cinepass.js`):
+  * **Ce s-a schimbat:** mijlocul imaginii GoPro e acum 1:1 cu ecranul, fără niciun pixel mărit.
+    * Fisheye-ul se face dintr-o imagine plată desenată mai mare decât ecranul. În V105–V107 era de 1,1–1,6 ori mai mare, deci mijlocul ajungea mărit de ~1,6–2,4 ori.
+    * Acum se desenează cât cere 1:1: de ~2,6 ori pe fiecare latură. La 1920×1080 asta înseamnă intern 4994×2809.
+    * Se aplică pe orice calitate și pe pixelii nativi ai ecranului: raportul de pixeli e al dispozitivului, nu al calității. Pe un ecran 2× cu calitatea Înaltă trece de la 1,25 la 2.
+  * **Plafonul:** cel mai mare cadru al unei GoPro, 5.3K = 5312×2988 px (15,9 MP), plus limitele plăcii video.
+    * Pe 1080p și 1200p plafonul nu se atinge.
+    * Pe 1440p imaginea internă e exact 5312×2988, iar mijlocul e mărit doar de 1,25×. Pe 4K e tot 5.3K, cu mijlocul mărit de 1,88×.
+  * **Marginile, fără sclipiri:** la 1:1, acolo unde fisheye-ul comprimă lumea, un pixel de pe ecran acoperă până la ~7 texeli.
+    * Pixelul îi adună acum pe toți, ca pixelul unui senzor: până la 8 eșantioane pe lungimea amprentei lui (raza) și două rânduri pe lățime unde e lată. Roșul și albastrul vin fiecare din locul lor (aberația laterală).
+    * Înainte erau 4 eșantioane fixe, care lăsau detaliul comprimat să sclipească la rotirea capului.
+    * Mijlocul păstrează Catmull-Rom și accentuarea GoPro. Accentuarea scade de la −0,20 la −0,12, pentru că nu mai are de compensat mărirea. Trecerea dintre cele două e lină.
+  * **Măsurat:** pe un banc de test cu un tipar procedural cu detalii fine, comparat cu pixelul ideal al camerei (media a 36 de puncte pe aria fiecărui pixel), la 800×500. Eroarea RMS (×1000) față de ideal:
+
+    | zona | V107 | V108 |
+    |---|---|---|
+    | centru (r < 0,35) | 13,05 | 5,22 |
+    | mijloc (0,35–0,7) | 12,97 | 3,67 |
+    | spre margine (0,7–0,9) | 2,70 | 0,87 |
+
+    * În V107, la jumătatea razei, eroarea sărea brusc de la 11,1 la 4,4 între două inele vecine. Era un inel vizibil unde se schimba filtrul. În V108 eroarea scade lin.
+    * Fără accentuare, filtrul nou bate filtrul vechi și la aceeași rezoluție (centru 2,17 față de 3,15).
+    * În joc, decupajele din același cadru arată ce cifrele spun: în V107 pixeli măriți și „purici” de accentuare, în V108 acele de brad, stâlpii și frunzișul fin.
+  * **Corectat pe drum:** dimensiunile bufferelor ieșeau fracționare (2080,84×1300,53) și erau tăiate la 2080×1300, iar grila de texeli a obiectivului se decala cu până la un texel. Compozitorul primește acum dimensiuni întregi, în pixeli de dispozitiv.
+  * **Memorie:** la 5.3K, bufferele cer în jur de 1,5 GB pe placa video (estimare).
+    * Adâncimea liniară a motion blur-ului ocupa 16 octeți pe pixel. Acum ocupă 4: un singur canal, cum o ține și TAA, pentru că se citește doar `.r`.
+    * Dacă placa cedează (contextul WebGL pierdut cu GoPro pornită), jocul repornește și, pentru tabul curent, coboară pe treptele GoPro: 4K UHD (3840×2160), apoi 2.7K (2704×1520). Mesajul spune la ce rezoluție a rămas.
+    * La 2.7K nu mai repornește, deci nu poate intra în buclă.
+  * **Redimensionare și meniu:** la schimbarea mărimii ferestrei, scara se recalculează. Obiectivul din meniu (FOV extins) așteaptă cât e pornită GoPro și revine după.
+  * **Panoul FPS (G)** arată și rezoluția internă, de exemplu „1920×1080 px · intern 4994×2809”.
+  * **Costul, spus cinstit:** sunt de ~3 ori mai mulți pixeli decât în V107 și de ~7 ori mai mulți decât fără GoPro. Pe o placă video slabă, FPS-ul scade pe măsură. Calitatea Medie sau Scăzută păstrează rezoluția și scade costul fiecărui pixel.
+  * **Testat:**
+    * banc de fidelitate (tabelul de mai sus) și decupaje înainte/după din același cadru;
+    * în joc, la Înaltă și Scăzută: scara, raportul de pixeli și bufferele; redimensionarea la 2:1 și înapoi; oprirea, cu și fără obiectivul din meniu;
+    * ecran 2× (1,25 → 2 → 1,25);
+    * plafoanele 5.3K / 4K / 2.7K;
+    * pierderea contextului de trei ori la rând: 4K, apoi 2.7K, apoi fără repornire;
+    * fără shader căzut și fără eroare WebGL; `tools/cars-test.mjs`.
+  * **Surse:**
+    * 5.3K 16:9 = 5312×2988: [CineD, GoPro HERO11 Black](https://www.cined.com/camera-database/?camera=Hero11-Black);
+    * HERO10 Black filmează 5.3K la 60 fps: [Digital Production](https://digitalproduction.com/2021/09/20/hero10-black-hardware/);
+    * 4K 16:9 = 3840×2160 și 2.7K 16:9 = 2704×1520: [tabelul modurilor HERO8 Black](https://havecamerawilltravel.com/action/gopro-hero8-black-video-modes/), [manualul GoPro HERO5 Black](https://www.manualsdir.com/manuals/814934/gopro-hero-5-black.html?page=22).
 * **GoPro: fără negru, marginea lentilei transparentă (V107)** (`src/post.js`, `src/main.js`):
   * **Ce s-a schimbat:** nu mai e nimic întunecat: fără colțuri negre, fără linie pe margini, fără vignetare. Spre marginile cadrului și în colțuri imaginea se înmoaie treptat, culorile se despart puțin (dispersia sticlei) și peste ea stă un luciu fin, ca marginea unei lentile prin care vezi.
   * **Colțurile:** pe 16:9, colțurile cadrului sunt la ~79° de axă, dincolo de ce poate desena imaginea plată (~74°). Acolo marginea ei e întinsă, iar efectul transparent o înmoaie, cum arată și marginea unui fisheye real, foarte comprimată.
