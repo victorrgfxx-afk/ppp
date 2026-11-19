@@ -636,6 +636,7 @@ export class RainOcclusion {
     this.rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false, depthBuffer: true });
     this.cam = new THREE.OrthographicCamera(-half, half, half, -half, 1, 1500);
     this.cam.rotation.set(-Math.PI / 2, 0, 0);                 // looking straight down: screen right = +x, up = -z
+    this.viewCam = new THREE.PerspectiveCamera();               // (where you stand: the levels of detail chosen from it)
     this.mat = new THREE.ShaderMaterial({ vertexShader: OCC_VERT, fragmentShader: OCC_FRAG, uniforms: { uRef: { value: 0 } }, side: THREE.DoubleSide });
     RAIN.uOcc.value = this.rt.texture;
     this.last = new THREE.Vector2(1e9, 1e9);
@@ -710,6 +711,13 @@ export class RainOcclusion {
     renderer.setClearColor(0x000000, 1);                         // (nothing drawn: taken as the ground near the camera)
     renderer.clear();
     scene.updateMatrixWorld();                                    // (the scene does not update itself: main.js)
+    // (V110) every level of detail as the view has it - the terrain's chunks, chosen from where you stand: seen from these
+    // cameras, 600 m away, three.js picked the coarsest near level for each (10 m cells on Înaltă, 25 m on Scăzută, for
+    // the view's 5-10 m), and on the hills the ground the snow lies on came out 1-3 m under the ground drawn: the lying
+    // snow sank out of sight round you, bare cover in a patch about you with the snow's edge round it
+    this.viewCam.position.copy(camPos); this.viewCam.updateMatrixWorld();
+    const lods = [];
+    scene.traverse((o) => { if (o.isLOD && o.autoUpdate) { o.update(this.viewCam); o.autoUpdate = false; lods.push(o); } });
     renderer.render(scene, this.cam);
     if (want) {
       if (!this.snow) this.initSnow();
@@ -746,6 +754,7 @@ export class RainOcclusion {
     renderer.setClearColor(_cc, ca);
     scene.background = bg; scene.overrideMaterial = ov; renderer.shadowMap.autoUpdate = sm;
     hide.forEach((o, i) => { o.visible = vis[i]; });
+    for (const o of lods) o.autoUpdate = true;
     RAIN.uOccOn.value = 1;
     return true;
   }

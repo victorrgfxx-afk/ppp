@@ -192,6 +192,17 @@ function patchCells(holes, pos, nor, idx, X, Z, cx, cz, step, m, H, n, i0, j0) {
   void m;
 }
 
+// (V110) a chunk's level of detail by its distance alone: the lens and the GoPro draw the view wider with a zoom under 1
+// (the flat picture they bend), which three.js reads as a wide-angle lens and divides the distance by - the GoPro's
+// 0.065 put the ground under you at its 25-50 m cells, and the lens's ~0.8 a level coarser too
+const lodByDistance = THREE.LOD.prototype.update;
+function lodUpdate(camera) {
+  const z = camera.zoom;
+  if (z === 1) return lodByDistance.call(this, camera);
+  camera.zoom = 1;
+  try { lodByDistance.call(this, camera); } finally { camera.zoom = z; }
+}
+
 function gridTerrain(scene, G, mat, CH, levels, skip = null) {
   const { n, ext, step, H } = G;
   const nc = (n - 1) / CH;
@@ -200,6 +211,7 @@ function gridTerrain(scene, G, mat, CH, levels, skip = null) {
   for (let cj = 0; cj < nc; cj++) for (let ci = 0; ci < nc; ci++) {
     if (skip && skip(-ext + ci * CH * step, -ext + cj * CH * step, -ext + (ci + 1) * CH * step, -ext + (cj + 1) * CH * step)) continue;
     const lod = new THREE.LOD();
+    lod.update = lodUpdate;
     const cx = -ext + (ci + 0.5) * CH * step, cz = -ext + (cj + 0.5) * CH * step;
     lod.position.set(cx, 0, cz);
     for (const [s, dist] of levels) {
