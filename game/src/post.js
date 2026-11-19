@@ -361,10 +361,10 @@ uniform float uD, uPeak;
 // (V104) the head-mounted GoPro: its fisheye (uFish), the angle off the axis theta = uK1 r + uK3 r^3 for r in half
 // widths of the frame (uAsp: its half height in them), and what its picture adds - lateral colour (uCA), the light
 // falling off (uVig), the sensor's noise (uNoise), its colour (uSat, uCon), the helmet's edge (uHelm: the side, +-1)
-uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime;
+uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime, uRmax, uRc;
 varying vec2 vUv;
 vec2 fishUV(vec2 q, float s) {
-  float r = length(q), th = min((uK1 * r + uK3 * r * r * r) * s, 1.45);
+  float r = length(q), rr = min(r, uRmax), th = min((uK1 * rr + uK3 * rr * rr * rr) * s, 1.45);   // (past RMAX: the edge drawn out)
   vec2 t = r > 1e-6 ? q / r * tan(th) : vec2(0.0);
   return t / uSrc * 0.5 + 0.5;
 }
@@ -411,14 +411,12 @@ void main() {
     // its colour: more saturated and a touch more contrast than the eye's
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = clamp((mix(vec3(l), c, uSat) - 0.5) * uCon + 0.5, 0.0, 1.0);
-    // the light falling off toward the corners (most of it corrected in the camera)
-    c *= 1.0 - uVig * smoothstep(0.35, 1.4, r2);
-    // the helmet's side, 5-6 cm from the lens on the inner side: far out of focus, darker toward the bottom
-    if (uHelm != 0.0) {
-      float x = q.x * uHelm, edge = 0.84 - 0.07 * (q.y / max(uAsp, 0.1));
-      float m = smoothstep(edge - 0.06, edge + 0.07, x);
-      c = mix(c, c * 0.1 + vec3(0.012, 0.012, 0.014), m * 0.93);
-    }
+    // the light falling off toward the edges, then the lens's image circle ending: a dark band round the frame, see-through
+    // where it begins, near black in the corners; a little wider on the helmet's side (its edge, out of focus, beyond)
+    c *= 1.0 - uVig * smoothstep(0.2, 1.1, r2);
+    float side = max(0.0, q.x * uHelm), rb = sqrt(r2) + 0.05 * side;
+    float band = smoothstep(uRc - 0.24, uRc + 0.05, rb);
+    c *= 1.0 - 0.93 * band * (0.75 + 0.25 * band);
     // the sensor's noise: grain in the luminance and coloured blotches, worse in the dark (the gain turned up)
     vec2 fc = floor(gl_FragCoord.xy);
     float n = hash12(fc + fract(uTime * 7.31) * 517.0) - 0.5;
@@ -448,13 +446,23 @@ export function lensSpan(tx) {
   const cl = (-k * d + Math.sqrt(Math.max(k * k * d * d - (k + 1) * (k * d * d - 1), 0))) / (k + 1);
   return 2 * Math.acos(Math.min(1, cl)) * 180 / Math.PI;
 }
-// (V104) the GoPro's Wide lens (HERO10 Black, 16:9, HyperSmooth off: 118 deg across, 69 up, 133 on the diagonal - GoPro's
-// own table): the angle off the axis theta = K1 r + K3 r^3, r in half widths of the frame, fitted to all three (118.0,
-// 69.0, 132.9 deg); goproNeed(a): the tangents the flat picture must reach for a frame a half-widths high (its corners)
-export const GOPRO_K1 = 1.0893, GOPRO_K3 = -0.0595;
+// (V104-V105) the GoPro's fisheye: the angle off the axis theta = K1 r + K3 r^3, r in half widths of the frame. V104 had
+// GoPro's Wide (HERO10 Black, 16:9: 118 deg across, 69 up, 133 on the diagonal - K1 1.0893, K3 -0.0595, fitted to all
+// three); V105 goes far wider, toward GoPro's widest (the Max Lens Mod 2.0's Max HyperView, 177 deg): 150 across, 87 up,
+// ~170 on the diagonal, the same shape of curve. Past r = RMAX no flat picture can feed it at a sharp middle: there the
+// lens's image circle ends - the dark band round the frame's edges, darkest in the corners (RC: the circle's radius) -
+// and the picture's edge is drawn out under it. goproNeed(a): the tangents the flat picture must reach for a frame a
+// half widths high, every point of it within RMAX
+export const GOPRO_K1 = 1.369, GOPRO_K3 = -0.06, GOPRO_RMAX = 0.98, GOPRO_RC = 1.04;
+const goproTh = (r) => Math.min(GOPRO_K1 * r + GOPRO_K3 * r * r * r, 1.45);
 export function goproNeed(a) {
-  const r = Math.hypot(1, a), th = Math.min(GOPRO_K1 * r + GOPRO_K3 * r * r * r, 1.45), t = Math.tan(th);
-  return { x: Math.max(t / r, Math.tan(Math.min(GOPRO_K1 + GOPRO_K3, 1.45))), y: Math.max(t * a / r, Math.tan(Math.min(GOPRO_K1 * a + GOPRO_K3 * a * a * a, 1.45))) };
+  let x = 0, y = 0;
+  for (let i = 0; i <= 64; i++) {
+    const ph = i / 64 * Math.PI / 2, re = Math.min(GOPRO_RMAX, 1 / Math.max(Math.cos(ph), 1e-6), a / Math.max(Math.sin(ph), 1e-6));
+    const tt = Math.tan(goproTh(re));
+    x = Math.max(x, tt * Math.cos(ph)); y = Math.max(y, tt * Math.sin(ph));
+  }
+  return { x, y };
 }
 class LensPass extends Pass {
   constructor() {
@@ -462,7 +470,8 @@ class LensPass extends Pass {
     this.material = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, uOut: { value: new THREE.Vector2(1, 1) }, uSrc: { value: new THREE.Vector2(1, 1) },
       uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 },
       uFish: { value: 0 }, uK1: { value: GOPRO_K1 }, uK3: { value: GOPRO_K3 }, uAsp: { value: 9 / 16 }, uCA: { value: 0.0025 }, uVig: { value: 0.22 },
-      uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 } },
+      uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 },
+      uRmax: { value: GOPRO_RMAX }, uRc: { value: GOPRO_RC } },
       vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
     this.fish = false;                   // (V104) the GoPro's fisheye instead of the Panini
     this.quad = new FullScreenQuad(this.material);
@@ -604,6 +613,8 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   composer.addPass(lens);
   // (how much larger than the screen the scene is drawn with the lens on: the middle keeps its sharpness up to this)
   const lensMax = q.ao ? (q.pixelRatio >= 2 ? 1.4 : 1.25) : q.ssr ? 1.1 : 1;
+  // (V105) the GoPro's wider lens: drawn larger still, so its magnified middle stays about as sharp as the eyes' view
+  const goproMax = q.ao ? (q.pixelRatio >= 2 ? 1.6 : 1.5) : q.ssr ? 1.25 : 1.1;
   const css = renderer.getSize(new THREE.Vector2());
   let scale = 1, lastW = css.x, lastH = css.y;               // (the canvas's size in CSS pixels until the first resize)
   const setSize = (w, h) => {
@@ -629,7 +640,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     lens.fish = on;
     if (!on) { lens.material.uniforms.uFish.value = 0; return; }
     lens.enabled = true;
-    const g = goproNeed(1 / camera.aspect), k = Math.min(Math.max(lensMax, 1), g.x / GOPRO_K1);
+    const g = goproNeed(1 / camera.aspect), k = Math.min(goproMax, g.x / GOPRO_K1);
     if (Math.abs(k - scale) > 1e-3) { scale = k; setSize(lastW, lastH); }
     lens.scale = scale;
     lens.aim(camera);
