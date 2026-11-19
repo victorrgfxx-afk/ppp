@@ -361,7 +361,7 @@ uniform float uD, uPeak;
 // (V104) the head-mounted GoPro: its fisheye (uFish), the angle off the axis theta = uK1 r + uK3 r^3 for r in half
 // widths of the frame (uAsp: its half height in them), and what its picture adds - lateral colour (uCA), the light
 // falling off (uVig), the sensor's noise (uNoise), its colour (uSat, uCon), the helmet's edge (uHelm: the side, +-1)
-uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime, uRmax, uRc;
+uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime, uRmax;
 varying vec2 vUv;
 vec2 fishUV(vec2 q, float s) {
   float r = length(q), rr = min(r, uRmax), th = min((uK1 * rr + uK3 * rr * rr * rr) * s, 1.45);   // (past RMAX: the edge drawn out)
@@ -411,12 +411,13 @@ void main() {
     // its colour: more saturated and a touch more contrast than the eye's
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = clamp((mix(vec3(l), c, uSat) - 0.5) * uCon + 0.5, 0.0, 1.0);
-    // the light falling off toward the edges, then the lens's image circle ending: a dark band round the frame, see-through
-    // where it begins, near black in the corners; a little wider on the helmet's side (its edge, out of focus, beyond)
+    // the light falling off toward the edges; the lens's image circle ending just short of the frame's corners (small,
+    // dark, see-through as they begin); round the rest a fine dark rim, a touch wider on the helmet's side
     c *= 1.0 - uVig * smoothstep(0.2, 1.1, r2);
-    float side = max(0.0, q.x * uHelm), rb = sqrt(r2) + 0.05 * side;
-    float band = smoothstep(uRc - 0.24, uRc + 0.05, rb);
-    c *= 1.0 - 0.93 * band * (0.75 + 0.25 * band);
+    float corner = smoothstep(uRmax - 0.035, uRmax + 0.012, sqrt(r2));
+    float rimW = q.x * uHelm > 0.0 ? 0.03 : 0.02, d = min(1.0 - abs(q.x), uAsp - abs(q.y));
+    float rim = 1.0 - smoothstep(0.0, rimW, d);
+    c *= 1.0 - max(0.94 * corner, 0.55 * rim);
     // the sensor's noise: grain in the luminance and coloured blotches, worse in the dark (the gain turned up)
     vec2 fc = floor(gl_FragCoord.xy);
     float n = hash12(fc + fract(uTime * 7.31) * 517.0) - 0.5;
@@ -448,12 +449,12 @@ export function lensSpan(tx) {
 }
 // (V104-V105) the GoPro's fisheye: the angle off the axis theta = K1 r + K3 r^3, r in half widths of the frame. V104 had
 // GoPro's Wide (HERO10 Black, 16:9: 118 deg across, 69 up, 133 on the diagonal - K1 1.0893, K3 -0.0595, fitted to all
-// three); V105 goes far wider, toward GoPro's widest (the Max Lens Mod 2.0's Max HyperView, 177 deg): 150 across, 87 up,
-// ~170 on the diagonal, the same shape of curve. Past r = RMAX no flat picture can feed it at a sharp middle: there the
-// lens's image circle ends - the dark band round the frame's edges, darkest in the corners (RC: the circle's radius) -
-// and the picture's edge is drawn out under it. goproNeed(a): the tangents the flat picture must reach for a frame a
-// half widths high, every point of it within RMAX
-export const GOPRO_K1 = 1.369, GOPRO_K3 = -0.06, GOPRO_RMAX = 0.98, GOPRO_RC = 1.04;
+// three); V105-V106 far wider, toward GoPro's widest (the Max Lens Mod 2.0's Max HyperView, 177 deg): 140 across, 81 up,
+// the same shape of curve (V105's 150 left the corners ~85 deg off the axis, which no flat picture can feed: its dark band
+// had to be wide). Past r = RMAX (~74 deg) the lens's image circle ends: only the frame's corners lie beyond it - small and
+// dark - and round the rest of the frame a fine dark rim. goproNeed(a): the tangents the flat picture must reach for a
+// frame a half widths high, every point of it within RMAX
+export const GOPRO_K1 = 1.2817, GOPRO_K3 = -0.06, GOPRO_RMAX = 1.07;
 const goproTh = (r) => Math.min(GOPRO_K1 * r + GOPRO_K3 * r * r * r, 1.45);
 export function goproNeed(a) {
   let x = 0, y = 0;
@@ -471,7 +472,7 @@ class LensPass extends Pass {
       uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 },
       uFish: { value: 0 }, uK1: { value: GOPRO_K1 }, uK3: { value: GOPRO_K3 }, uAsp: { value: 9 / 16 }, uCA: { value: 0.0025 }, uVig: { value: 0.22 },
       uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 },
-      uRmax: { value: GOPRO_RMAX }, uRc: { value: GOPRO_RC } },
+      uRmax: { value: GOPRO_RMAX } },
       vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
     this.fish = false;                   // (V104) the GoPro's fisheye instead of the Panini
     this.quad = new FullScreenQuad(this.material);
