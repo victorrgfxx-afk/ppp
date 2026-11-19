@@ -407,7 +407,7 @@ async function main() {
     // the eye: cd/m2 per unit of the scene's light (the sun's ~3.8 is ~100 000 lux, the moon's 0.48 ~0.25 lux)
     if (vision) { vision.abs = Math.exp(THREE.MathUtils.lerp(Math.log(26000), Math.log(0.25 / 0.48), night)); vision.enabled = night > 0.02 && !gopro; }
     if (bear) bear.eyeMat.emissiveIntensity = 3 * night;                     // eyeshine in the dark
-    if (gradeU) { gradeU.uVig.value = gopro ? 0.06 : horror ? 0.5 : 0.28; gradeU.uGrain.value = gopro ? 0 : horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
+    if (gradeU) { gradeU.uVig.value = gopro ? 0 : horror ? 0.5 : 0.28; gradeU.uGrain.value = gopro ? 0 : horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
   };
   applyWeather(weatherKey);
 

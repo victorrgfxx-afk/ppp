@@ -408,16 +408,26 @@ void main() {
     float ca = smoothstep(0.15, 1.3, r2);
     c.r = mix(c.r, texture2D(tDiffuse, fishUV(q, 1.0 + uCA)).r, ca);
     c.b = mix(c.b, texture2D(tDiffuse, fishUV(q, 1.0 - uCA)).b, ca);
+    // (V107) the lens's edge, see-through - no dark band: toward the frame's edges and in its corners the picture
+    // softens, its colours part (the glass's dispersion) and a faint glassy sheen lies over it; you see the world through
+    float de = min(1.0 - abs(q.x), uAsp - abs(q.y));
+    float edge = max(smoothstep(uRmax - 0.16, uRmax + 0.06, sqrt(r2)), 1.0 - smoothstep(0.0, 0.08, de));
+    if (edge > 0.002) {
+      vec2 o = uTexel * (1.5 + 6.5 * edge);
+      vec3 bl = texture2D(tDiffuse, uv + vec2(o.x, 0.0)).rgb + texture2D(tDiffuse, uv - vec2(o.x, 0.0)).rgb
+              + texture2D(tDiffuse, uv + vec2(0.0, o.y)).rgb + texture2D(tDiffuse, uv - vec2(0.0, o.y)).rgb
+              + texture2D(tDiffuse, uv + o * 0.7).rgb + texture2D(tDiffuse, uv - o * 0.7).rgb
+              + texture2D(tDiffuse, uv + vec2(o.x, -o.y) * 0.7).rgb + texture2D(tDiffuse, uv + vec2(-o.x, o.y) * 0.7).rgb;
+      bl *= 0.125;
+      float caE = uCA + 0.012 * edge;
+      bl.r = mix(bl.r, texture2D(tDiffuse, fishUV(q, 1.0 + caE)).r, 0.6);
+      bl.b = mix(bl.b, texture2D(tDiffuse, fishUV(q, 1.0 - caE)).b, 0.6);
+      c = mix(c, bl, edge);
+      c += vec3(0.035) * edge * (1.0 - dot(c, vec3(0.3333)));
+    }
     // its colour: more saturated and a touch more contrast than the eye's
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = clamp((mix(vec3(l), c, uSat) - 0.5) * uCon + 0.5, 0.0, 1.0);
-    // the light falling off toward the edges; the lens's image circle ending just short of the frame's corners (small,
-    // dark, see-through as they begin); round the rest a fine dark rim, a touch wider on the helmet's side
-    c *= 1.0 - uVig * smoothstep(0.2, 1.1, r2);
-    float corner = smoothstep(uRmax - 0.035, uRmax + 0.012, sqrt(r2));
-    float rimW = q.x * uHelm > 0.0 ? 0.03 : 0.02, d = min(1.0 - abs(q.x), uAsp - abs(q.y));
-    float rim = 1.0 - smoothstep(0.0, rimW, d);
-    c *= 1.0 - max(0.94 * corner, 0.55 * rim);
     // the sensor's noise: grain in the luminance and coloured blotches, worse in the dark (the gain turned up)
     vec2 fc = floor(gl_FragCoord.xy);
     float n = hash12(fc + fract(uTime * 7.31) * 517.0) - 0.5;
@@ -451,9 +461,9 @@ export function lensSpan(tx) {
 // GoPro's Wide (HERO10 Black, 16:9: 118 deg across, 69 up, 133 on the diagonal - K1 1.0893, K3 -0.0595, fitted to all
 // three); V105-V106 far wider, toward GoPro's widest (the Max Lens Mod 2.0's Max HyperView, 177 deg): 140 across, 81 up,
 // the same shape of curve (V105's 150 left the corners ~85 deg off the axis, which no flat picture can feed: its dark band
-// had to be wide). Past r = RMAX (~74 deg) the lens's image circle ends: only the frame's corners lie beyond it - small and
-// dark - and round the rest of the frame a fine dark rim. goproNeed(a): the tangents the flat picture must reach for a
-// frame a half widths high, every point of it within RMAX
+// had to be wide). Past r = RMAX (~74 deg) only the frame's corners lie: there, as along the edges, the lens's edge is
+// see-through (V107: softened, its colours parted, no darkening), the flat picture's edge drawn out under it.
+// goproNeed(a): the tangents the flat picture must reach for a frame a half widths high, every point of it within RMAX
 export const GOPRO_K1 = 1.2817, GOPRO_K3 = -0.06, GOPRO_RMAX = 1.07;
 const goproTh = (r) => Math.min(GOPRO_K1 * r + GOPRO_K3 * r * r * r, 1.45);
 export function goproNeed(a) {
