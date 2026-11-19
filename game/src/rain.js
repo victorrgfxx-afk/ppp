@@ -1529,7 +1529,11 @@ const BLANKET_POS = /* glsl */`
 #ifdef SNOW_FINE
   vec2 sxz = position.xz + uSnowFine.xy;
 #else
-  vec2 sxz = position.xz + uOccBox.xy;
+  // (V109) on the world's 0.4 m lattice, whatever the box: the box moves in 3 m steps, 7.5 of its cells - on every other
+  // step the lattice stood 0.2 m off the fine blanket's (whose edges lie on the world's), and the coarse vertex just
+  // inside the fine square, sunk out of the way, dragged the snow down along its edge: a groove round the 12.8 m square
+  // about you, the ground showing in it, there and gone as you walked
+  vec2 sxz = position.xz + floor(uOccBox.xy / 0.4 + 0.5) * 0.4;
 #endif
   float sd;
   float sy = snowAt(sxz, sd);
