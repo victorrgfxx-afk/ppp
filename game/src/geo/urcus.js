@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, heightAt, speciesAt } from './data.js';
+import { GEO, heightAt, speciesAt, keepTree } from './data.js';
 import { M } from '../materials.js';
 import { brambleTexture, starGeo, addShortGrass } from './hillwood.js';
 import { TREE_T, TREE_TYPES, addForestMix } from './trees.js';
@@ -254,7 +254,7 @@ export function prepareUrcus() {
     if (T.keep) out.keep.set(T.keep.subarray(0, T.n));
     for (let i = 0; i < T.n; i++) if (blocks(T.t[i], T.s[i] * 1.1, T.x[i], T.z[i])) out.s[i] = 0;    // (the mapped ones across them: not built)
     out.keep.fill(1, T.n);
-    TREES.forEach(([x, z, ty, sc], k) => { out.x[T.n + k] = x; out.z[T.n + k] = z; out.t[T.n + k] = TREE_T[ty]; out.s[T.n + k] = sc; });
+    TREES.forEach(([x, z, ty, sc], k) => { out.x[T.n + k] = x; out.z[T.n + k] = z; out.t[T.n + k] = TREE_T[ty]; out.s[T.n + k] = sc; keepTree(x, z); });
     GEO.trees = out;
   }
   return true;

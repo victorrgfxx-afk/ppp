@@ -84,5 +84,116 @@ export function addOutbuildings() {
     }
   }
   GEO.buildings.push(...added);
+
+  // The yards' trees and shrubs round the station and the streets of the user's drone photos (27 Sep 2026): every yard
+  // there has two or three fruit trees, now and then a walnut or a young spruce, shrubs and a hedge by the house, where
+  // the map's trees (from the satellite's 10 m pixels) give a yard one tree at most. Behind and beside each house (away
+  // from its road), clear of it, of the sheds just placed, of the roads and rails, of the trees already there; the
+  // places built from photos (the holes) keep theirs.
+  const GC = [-80, -40], GR = 600, yard = [], ycell = new Map(), lots = GEO.meta.lots ?? [-35, 35, -60, 45];
+  const KINDS = [[3, 0.8, 1.25, 3.2], [3, 0.8, 1.25, 3.2], [11, 0.8, 1.3, 1.6], [3, 0.75, 1.15, 3.2], [11, 0.7, 1.2, 1.6], [4, 0.7, 1.0, 5.0], [2, 0.38, 0.62, 3.0]];
+  const crowded = (x, z, sp) => {
+    for (let i = Math.floor((x - 6) / 10); i <= Math.floor((x + 6) / 10); i++) for (let j = Math.floor((z - 6) / 10); j <= Math.floor((z + 6) / 10); j++) {
+      for (const t of tcell.get(i + ',' + j) ?? []) if (T.s[t] > 0 && Math.hypot(T.x[t] - x, T.z[t] - z) < sp) return true;
+      for (const [yx, yz, ys] of ycell.get(i + ',' + j) ?? []) if (Math.hypot(yx - x, yz - z) < Math.max(sp, ys)) return true;
+    }
+    return false;
+  };
+  for (const b of GEO.buildings) {
+    if (!HOUSE.has(b.b) || b.o || (b.lv ?? 1) > 3 || !b.r?.length) continue;
+    const A = area(b.p);
+    if (A < 50 || A > 300) continue;
+    let cx = 0, cz = 0; const n = b.p.length / 2;
+    for (let i = 0; i < b.p.length; i += 2) { cx += b.p[i]; cz += b.p[i + 1]; }
+    cx /= n; cz /= n;
+    if (Math.hypot(cx - GC[0], cz - GC[1]) > GR) continue;
+    if (cx > lots[0] - 1 && cx < lots[1] + 1 && cz > lots[2] - 2 && cz < lots[3] + 2) continue;     // (the lots of the street of the photos)
+    if (inHole(cx, cz) || holeFlag(cx, cz, 'noFences')) continue;
+    let h = 2166136261; for (const ch of String(b.id) + 'y') h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    const R = rng(h >>> 0);
+    const [dr, q] = nearest(cx, cz, 45);
+    let bx, bz;
+    if (q && dr < 40) { const l = Math.hypot(cx - q[0], cz - q[1]) || 1; bx = (cx - q[0]) / l; bz = (cz - q[1]) / l; }
+    else { const a = R() * Math.PI * 2; bx = Math.cos(a); bz = Math.sin(a); }
+    let back = 0, front = 0, side = 0;
+    for (let i = 0; i < b.p.length; i += 2) { const dx = b.p[i] - cx, dz = b.p[i + 1] - cz, v = dx * bx + dz * bz; back = Math.max(back, v); front = Math.max(front, -v); side = Math.max(side, Math.abs(-dx * bz + dz * bx)); }
+    const count = 4 + (R() < 0.6 ? 1 : 0) + (R() < 0.35 ? 1 : 0);
+    for (let k = 0; k < count; k++) {
+      const [type, s0, s1, sp] = KINDS[k < 2 ? k : Math.floor(R() * KINDS.length)];
+      for (let tr = 0; tr < 8; tr++) {
+        // a shrub goes by the house now and then (the hedge, the lilac by the porch); the rest behind it and to its sides
+        const byHouse = type === 11 && R() < 0.35;
+        const v = byHouse ? (R() < 0.5 ? back + 1.2 + R() * 1.5 : -(front + 1.2 + R() * 2)) : back + 1.8 + R() * 14;
+        const u = (R() - 0.5) * 2 * (side + (byHouse ? 1.5 : 5));
+        const x = cx + bx * v - bz * u, z = cz + bz * v + bx * u;
+        const clearance = type === 11 ? 1.3 : type === 4 ? 3.5 : 2.4;
+        if (inBld(x, z, type === 11 ? 0.8 : 1.6) || inHole(x, z) || holeFlag(x, z, 'noFences') || wet(x, z) || forestCode(x, z)) continue;
+        if (nearest(x, z, 10)[0] < clearance || !placed.every(([px, pz, pr]) => Math.hypot(px - x, pz - z) > pr + clearance * 0.6) || crowded(x, z, sp)) continue;
+        const sc = s0 + R() * (s1 - s0);
+        yard.push([x, z, type, sc]);
+        const key = Math.floor(x / 10) + ',' + Math.floor(z / 10);
+        if (!ycell.has(key)) ycell.set(key, []);
+        ycell.get(key).push([x, z, sp]);
+        break;
+      }
+    }
+  }
+  if (yard.length) {
+    const m = T.n + yard.length, x = new Float32Array(m), z = new Float32Array(m), t = new Uint8Array(m), s = new Float32Array(m);
+    x.set(T.x.subarray(0, T.n)); z.set(T.z.subarray(0, T.n)); t.set(T.t.subarray(0, T.n)); s.set(T.s.subarray(0, T.n));
+    yard.forEach(([ax, az, at, as], k) => { x[T.n + k] = ax; z[T.n + k] = az; t[T.n + k] = at; s[T.n + k] = as; });
+    GEO.trees = { n: m, x, z, t, s };
+    if (T.keep) { GEO.trees.keep = new Uint8Array(m); GEO.trees.keep.set(T.keep.subarray(0, T.n)); }
+  }
+  GEO.yardTrees = yard.length;
+
+  // The fences along the streets there: in the drone photos every house has one at the street's edge - painted sheet,
+  // old boards, pickets, wrought iron on a rendered base, wire mesh, now and then a rendered wall - with the gate in
+  // front of the house; the map has almost none of them. Along the nearest road, 0.6-1.2 m in from its edge, over the
+  // house's frontage and a little past it, the gate's 3.2 m left open; not across another fence, a house or a road.
+  const FSTYLE = [[2, 0.35], [5, 0.2], [0, 0.15], [4, 0.15], [1, 0.1], [3, 0.05]];
+  const fcell = new Map(), fput = (x, z) => { const k = Math.floor(x / 8) + ',' + Math.floor(z / 8); if (!fcell.has(k)) fcell.set(k, []); fcell.get(k).push([x, z]); };
+  for (const f of GEO.fences) for (let i = 1; i < f.length; i += 2) fput(f[i], f[i + 1]);
+  const fenced = (x, z, r) => {
+    for (let i = Math.floor((x - r) / 8); i <= Math.floor((x + r) / 8); i++) for (let j = Math.floor((z - r) / 8); j <= Math.floor((z + r) / 8); j++)
+      for (const [fx, fz] of fcell.get(i + ',' + j) ?? []) if (Math.hypot(fx - x, fz - z) < r) return true;
+    return false;
+  };
+  let nf = 0;
+  for (const b of GEO.buildings) {
+    if (!HOUSE.has(b.b) || b.o || (b.lv ?? 1) > 3 || !b.r?.length || String(b.id).includes('a')) continue;
+    const A = area(b.p);
+    if (A < 50 || A > 300) continue;
+    let cx = 0, cz = 0; const n = b.p.length / 2;
+    for (let i = 0; i < b.p.length; i += 2) { cx += b.p[i]; cz += b.p[i + 1]; }
+    cx /= n; cz /= n;
+    if (Math.hypot(cx - GC[0], cz - GC[1]) > GR) continue;
+    if (cx > lots[0] - 1 && cx < lots[1] + 1 && cz > lots[2] - 2 && cz < lots[3] + 2) continue;
+    if (inHole(cx, cz) || holeFlag(cx, cz, 'noFences')) continue;
+    const [dr, q] = nearest(cx, cz, 30);
+    if (!q || dr > 22) continue;
+    let h = 2166136261; for (const ch of String(b.id) + 'f') h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    const R = rng(h >>> 0);
+    // the road's way here (along it) and the way to the house (across it)
+    const l = Math.hypot(cx - q[0], cz - q[1]) || 1, nx = (cx - q[0]) / l, nz = (cz - q[1]) / l, ux = -nz, uz = nx;
+    const roadHalf = l - dr;                                  // (nearest gives the distance beyond the road's edge)
+    let s0 = Infinity, s1 = -Infinity;
+    for (let i = 0; i < b.p.length; i += 2) { const s = (b.p[i] - q[0]) * ux + (b.p[i + 1] - q[1]) * uz; s0 = Math.min(s0, s); s1 = Math.max(s1, s); }
+    s0 -= 2 + R() * 3; s1 += 2 + R() * 3;
+    const off = roadHalf + 0.6 + R() * 0.6, gate = (s0 + s1) / 2 + (R() - 0.5) * (s1 - s0) * 0.4;
+    let u = R(), style = 2; for (const [st, w] of FSTYLE) { if (u < w) { style = st; break; } u -= w; }
+    const at = (s) => [q[0] + ux * s + nx * off, q[1] + uz * s + nz * off];
+    // the run in 1 m steps, cut where it would cross a house, a road, another fence or a hole
+    let run = [];
+    const flush = () => { if (run.length >= 3) { GEO.fences.push([style, ...run.flat().map(v => Math.round(v * 100) / 100)]); nf++; for (const p of run) fput(...p); } run = []; };
+    for (let s = s0; s <= s1 + 1e-6; s += 1) {
+      const [x, z] = at(s);
+      const bad = inBld(x, z, 0.6) || nearest(x, z, 8)[0] < 0.3 || inHole(x, z) || holeFlag(x, z, 'noFences') || wet(x, z) || fenced(x, z, 1.5) || Math.abs(s - gate) < 1.6;
+      if (bad) { flush(); continue; }
+      run.push([x, z]);
+    }
+    flush();
+  }
+  GEO.yardFences = nf;
   return added.length;
 }

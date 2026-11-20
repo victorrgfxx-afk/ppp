@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { GEO, heightAt, gridHeight, railHeightAt, addHole, addHolePoly, addFineZone } from './data.js';
+import { GEO, heightAt, gridHeight, railHeightAt, addHole, addHolePoly, addFineZone, keepTree } from './data.js';
 import { Acc } from './bridge.js';
 import { M, addWind } from '../materials.js';
-import { normalFromCanvas } from '../textures.js';
+import { normalFromCanvas, TEX } from '../textures.js';
 import { rng } from '../util.js';
 import { frame, canvas, tex, grain, blobs, boxAt, cyl, tube, drape, merged, pairs, road, clamp01 } from './pitigaia.js';
 
@@ -15,12 +15,16 @@ import { frame, canvas, tex, grain, blobs, boxAt, cyl, tube, drape, merged, pair
 //  * 49-50 (45.13241 N 25.71193 E): the square in front of Gara Câmpina: the kerbed island with the spruces (the OSM
 //    trees), the no-entry signs, the lamp masts, the cars parked round it and along the streets, the station building
 // Layout from OSM and aerial imagery (measurements only).
-const RA = '325854129', RB = '12717442', LOOP = '303801956';
+const RA = '325854129', RB = '12717442';
 const P1 = [-702.1, -118.0], GATE = [-680.8, -105.3], BUS = [-660.4, -124.2];
 const WALL = { s0: 322, s1: 468, o: 13.5 };      // retaining wall along Strada Gării (s on 12717442), photo 48
 const LOCO = { rail: '183278860', x: -468.4, z: -172.9 };     // on the siding next to the wall, ~65 m ahead in photo 48
 const STYLE = {
-  '304012472': { wall: 'brickRed', levels: 2, roofMat: 'tiles', roof: 'tileRed' },        // Gara Câmpina (photo 49)
+  // Gara Câmpina (photo 49): red brick; the roof from the drone photo of 27 Sep 2026 (PLAZA below) - standing-seam sheet,
+  // its red-brown paint chalked to a dusty pink and rusting, twelve brick chimneys where the photo shows them
+  '304012472': { wall: 'brickRed', levels: 2, roofMat: 'seamFaded', roof: 'roofSeamSalmon',
+    chimneys: [[-134.0, -141.3], [-137.8, -141.3], [-137.8, -135.4], [-141.8, -135.7], [-145.6, -140.7], [-152.7, -136.0], [-157.5, -136.6],
+      [-155.0, -142.1], [-166.1, -144.6], [-168.6, -139.3], [-171.6, -143.2], [-174.2, -136.0]] },
   '915376441': { wall: 'stuccoCream', roofMat: 'metalTile', roof: 'metalTileGreen' },    // stadium building (photo 47)
 };
 const UP = [0, 1, 0];
@@ -36,6 +40,72 @@ function editTrees(remove, add) {
   GEO.trees = { n, x, z, t, s };
 }
 const T_WALNUT = 4, T_SPRUCE = 2, T_HORNBEAM = 1, T_OAK = 0, T_LOMBARDY = 13, T_POPLAR = 14, T_YOUNGPINE = 15;   // trees.js TYPES
+
+// The square in front of the station from straight over it: the user's drone photo of 27 Sep 2026, 16:46 (the camera
+// ~100 m up), registered on the station's roof (its eaves on the OSM footprint, ~19 px/m up there) and read off on the
+// ground (~17.4 px/m) in the game's frame - x north-west, z north-east, metres. Round the middle of the photo (the
+// island, the taxi rank, the parking) it holds to about a metre; towards its edges the camera's tilt moves it a few
+// metres, so there the mapped houses decide (the side street keeps clear of them). The island and the lanes round it
+// do not run square to the station: ~10 degrees off, the footway widening to the south-east.
+const PLAZA = {
+  // the station's footway (concrete pavers on a 15 cm kerb) with the kiosk on it; the planted beds at its two ends
+  footway: [[-124.0, -133.7], [-139.4, -133.7], [-139.4, -130.2], [-171.0, -130.2], [-171.0, -125.0], [-169.5, -123.1], [-128.5, -123.1], [-124.0, -126.5]],
+  bedSE: [[-171.0, -130.2], [-176.3, -130.2], [-176.3, -133.7], [-184.0, -133.7], [-184.0, -116.5], [-178.0, -119.5], [-173.0, -123.6], [-171.0, -125.0]],
+  bedNW: [[-124.0, -133.7], [-124.0, -126.5], [-121.8, -125.3], [-116.0, -125.3], [-116.0, -134.5]],
+  bedTrees: [[-123.8, -129.4, T_SPRUCE, 1.05], [-119.3, -128.4, T_SPRUCE, 0.9]],
+  // the asphalt of the whole square: the taxi rank, the lanes round the island, the parking aisle, the lots (its corner
+  // north-west of the island left to the bushes of photo 51, castel.js)
+  paved: [[-115.5, -110.4], [-115.5, -102.0], [-115.5, -89.5], [-121.0, -87.6], [-158.4, -76.9], [-158.6, -69.6], [-162.6, -68.3], [-178.5, -63.3],
+    [-178.5, -78.0], [-187.5, -82.7], [-190.0, -95.0], [-191.0, -107.0], [-186.0, -111.0], [-184.0, -116.5], [-178.0, -119.5], [-173.0, -123.6],
+    [-171.0, -125.0], [-169.5, -123.1], [-128.5, -123.1], [-124.0, -126.5], [-121.8, -125.3], [-121.8, -110.6]],
+  // the island: grass on a 17 cm kerb, wider to the south-east, bulging round the big spruce at its north-west end; a
+  // white concrete ring in its middle
+  island: [[-123.5, -111.6], [-123.8, -108.6], [-125.6, -106.0], [-129.9, -104.2], [-133.6, -102.6], [-141.7, -99.9], [-150.9, -98.5], [-156.1, -97.9],
+    [-162.0, -97.3], [-165.6, -97.4], [-168.5, -98.4], [-170.2, -100.2], [-170.8, -102.6], [-170.3, -104.9], [-168.4, -107.3], [-165.5, -108.7],
+    [-160.1, -110.7], [-155.0, -111.4], [-150.7, -111.5], [-143.7, -111.8], [-134.2, -113.1], [-130.4, -113.9], [-127.2, -114.0], [-124.8, -113.2]],
+  ring: [-147.6, -106.7, 2.5],
+  // on it: the two big blue spruces at its ends, four round-crowned trees by its sides (the trunks under the crowns'
+  // tops, the tilt taken off), the lamp by the taxi rank (its arm over the bays) and the one on its nose
+  trees: [[-129.3, -108.9, T_SPRUCE, 1.4], [-157.8, -105.6, T_SPRUCE, 1.25], [-139.4, -111.6, T_HORNBEAM, 0.72], [-150.3, -110.6, T_HORNBEAM, 0.68],
+    [-138.8, -103.3, T_HORNBEAM, 0.7], [-149.4, -102.7, T_HORNBEAM, 0.74]],
+  lamps: [[-147.3, -111.1, [0.55, -0.83]], [-169.6, -103.6, [0, -1]]],
+  // the taxi rank: five bays along the footway's kerb (the fourth hatched with an X), its outer line; two long bays
+  // along the island, their outer line; TAXI written in each
+  rankA: { kerb: -123.1, line: [[-133.9, -121.0], [-157.9, -119.2]], xs: [-133.9, -138.4, -143.4, -148.9, -153.7, -157.9], cross: 3 },
+  rankB: { line: [[-135.1, -116.0], [-155.6, -113.6]], xs: [-135.1, -144.7, -155.6], depth: 3.0 },
+  // the parking on the north-east side: twelve cars nose in, along a 12 cm kerb; the verge behind them with two young
+  // spruces and a concrete lamp post in the gap between the tenth and eleventh car
+  row: { from: [-126.7, -87.8], to: [-155.7, -78.9] },
+  verge: [[-121.0, -87.6], [-158.4, -76.9], [-158.6, -69.6], [-137.5, -74.1], [-121.8, -79.6], [-119.6, -82.5]],
+  vergeTrees: [[-129.2, -84.0, T_SPRUCE, 0.62], [-135.4, -83.6, T_SPRUCE, 0.55]],
+  vergeLamp: [-150.8, -78.6],
+  // the side street behind the verge (not on the map): 4.6 m of asphalt, dashed edge lines, the concrete gutter along
+  // its south-west edge (from the lamp on), the green welded-mesh fence of the gardens along the other; its centre line
+  side: [[-117.6, -78.6], [-121.5, -77.2], [-136.7, -71.9], [-158.6, -65.6], [-178.5, -60.4], [-186.0, -58.6]],
+  // the kiosk on the footway (blue, a pale roof), the green polycarbonate shelter past the south-east wing, a rusty shed:
+  // centre x, z, half sizes along x, z
+  kiosk: [-166.1, -125.8, 2.5, 1.4],
+  shelter: [-195.3, -129.6, 4.6, 5.4],
+  shed: [-192.4, -115.3, 1.3, 2.8],
+  // the cars parked round it: [x, z, heading (the way the nose points, x and z), model, paint]
+  cars: [
+    // along the island's east side, noses north-west
+    [-132.6, -101.6, 'nw', 'hatch', 0x2d6fc0], [-137.6, -100.2, 'nw', 'sedan', 0x24272b], [-142.7, -98.6, 'nw', 'sedan', 0xb3b7bb], [-147.3, -97.9, 'nw', 'hatch', 0xe6e6e3],
+    [-161.3, -95.9, 'nw', 'sedan', 0x1f2226],
+    // the taxi rank and the lane by it
+    [-130.5, -121.9, 'nw', 'hatch', 0xeeeeec], [-152.0, -117.4, 'nw', 'sedan', 0xa9adb1], [-156.1, -112.9, 'nw', 'hatch', 0xf0f0ee], [-165.0, -111.9, 'nw', 'suv', 0x34373b],
+    // by the station's south-east wing, and the two coming in at the north-west end
+    [-179.4, -117.7, 'nw', 'sedan', 0xbfc2c5], [-119.0, -113.7, 'se', 'sedan', 0x2a2d31], [-116.4, -112.1, 'nw', 'hatch', 0xe9e9e6],
+    // the lot at the north end (four, noses north-west)
+    [-119.1, -100.4, 'up', 'sedan', 0x1e2125], [-118.4, -98.0, 'up', 'hatch', 0x7a7f84], [-118.2, -95.6, 'up', 'hatch', 0xb3261f], [-118.1, -93.2, 'up', 'sedan', 0xc4c7ca],
+    // the lot at the south end: three nose to the verge's end, two by the side street, the skip between them
+    [-165.6, -79.5, 'ne', 'sedan', 0x1f2226], [-172.5, -77.7, 'ne', 'hatch', 0xa8c79a], [-176.8, -76.1, 'ne', 'sedan', 0xc6c9cc], [-163.7, -66.9, 'sw', 'suv', 0xb7babd],
+    [-172.0, -63.9, 'sw', 'sedan', 0x8e9399],
+  ],
+  rowPaint: [0xc6c9cc, 0x3b3e43, 0x1d2024, 0xbfc2c5, 0x202326, 0x24272b, 0x1b1e21, 0x2a2d31, 0xc9ccce, 0xd2d4d6, 0xb4b8bb, 0x2f6cc6],
+  rowModel: ['sedan', 'hatch', 'sedan', 'hatch', 'suv', 'sedan', 'sedan', 'sedan', 'hatch', 'sedan', 'suv', 'hatch'],
+  skip: [-167.5, -65.6],
+};
 
 // ------------------------------------------------------------------ before the terrain
 export function prepareGara() {
@@ -78,6 +148,23 @@ export function prepareGara() {
   if (ra) addHolePoly(band(frame(pairs(ra.p)), 30, 195, -30, 12), { noFences: true, scatter: false });
   addHolePoly(band(F, WALL.s0 - 8, WALL.s1 + 8, -rs * 14, rs * 30), { noFences: true, scatter: false });
   addHolePoly(band(F, 0, 130, 28, -18), { noFences: true, scatter: false });
+  // the square as the drone photo shows it (PLAZA): no generated fences or sheds on its asphalt, its kerbed areas, the
+  // side street and the shelter past the station; no lines on Strada Gării across it (none in the photo)
+  for (const P of [PLAZA.paved, PLAZA.verge, PLAZA.island, PLAZA.footway, PLAZA.bedSE, PLAZA.bedNW]) addHolePoly(P, { noFences: true, scatter: false });
+  {
+    const S = PLAZA.side, L = [], Rr = [];
+    for (let i = 0; i < S.length; i++) {
+      const a = S[Math.max(0, i - 1)], b = S[Math.min(S.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]), nx = (b[1] - a[1]) / l, nz = -(b[0] - a[0]) / l;
+      L.push([S[i][0] + nx * 4.2, S[i][1] + nz * 4.2]); Rr.push([S[i][0] - nx * 4.2, S[i][1] - nz * 4.2]);
+    }
+    addHolePoly([...L, ...Rr.reverse()], { noFences: true, scatter: false });
+    const [x, z, hx, hz] = PLAZA.shelter;
+    addHolePoly([[x - hx - 1, z - hz - 1], [x + hx + 1, z - hz - 1], [x + hx + 1, z + hz + 1], [x - hx - 1, z + hz + 1]], { noFences: true, scatter: false });
+  }
+  rb.noMarkAt = [0, 70];
+  // Strada Zarzărului (the drone photo 163818, along it to the station): asphalt, patched, not the gravel the map has
+  const zarz = road('264436197');
+  if (zarz && zarz.s === 'gravel') zarz.s = 'asphalt';
   return true;
 }
 const STORE = {};
@@ -187,6 +274,27 @@ function mats() {
     locoBlue: std({ color: 0x1d4f9a, roughness: 0.45, metalness: 0.3 }), locoWhite: std({ color: 0xd9dcdd, roughness: 0.45, metalness: 0.3 }), locoGlass: std({ color: 0x1a2530, roughness: 0.1, metalness: 0.6 }),
   };
   MT.stoneLight = std({ map: MT.retaining.map, normalMap: MT.retaining.normalMap, roughness: 0.95, color: 0xdcd7cd });   // stadium wall (photo 47)
+  // the station square (PLAZA): its asphalt and its raised kerbed areas over the mapped roads' ribbons there (their
+  // offset -8), the paint over its asphalt; TAXI on the bays (white letters, worn like the paint)
+  const off = (m, u) => Object.assign(m, { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: u });
+  MT.asphaltSq = off(MT.asphalt.clone(), -9);
+  MT.grassSq = off(MT.grass.clone(), -11);
+  MT.walkSq = off(MT.walk.clone(), -11);
+  MT.paint = off(M.marking.clone(), -10);
+  const taxi = canvas(512, 128), xg = taxi.getContext('2d');
+  xg.clearRect(0, 0, 512, 128); xg.fillStyle = '#f2f2ee'; xg.textAlign = 'center'; xg.textBaseline = 'middle'; xg.font = 'bold 118px Arial';
+  xg.save(); xg.translate(256, 66); xg.scale(1, 1.05); xg.fillText('TAXI', 0, 0); xg.restore();
+  for (let i = 0; i < 260; i++) { xg.clearRect(R() * 512, R() * 128, 1 + R() * 5, 1 + R() * 3); }
+  MT.taxi = off(std({ map: tex(taxi), transparent: true, alphaTest: 0.4, depthWrite: false, roughness: 0.7 }), -10);
+  MT.ringWhite = std({ map: M.concrete.map, normalMap: M.concrete.normalMap, roughness: 0.85, color: 0xf4f3ef });
+  MT.kioskBlue = std({ color: 0x2f6db8, roughness: 0.45, metalness: 0.25 });
+  MT.kioskRoof = std({ color: 0xa6b8ca, roughness: 0.5, metalness: 0.35 });
+  MT.kioskGlass = std({ color: 0x24313b, roughness: 0.12, metalness: 0.6 });
+  MT.polyGreen = std({ map: MT.sheet.map, color: 0x3d9a62, roughness: 0.3, metalness: 0, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
+  MT.rustSheet = std({ map: TEX.roofRust, normalMap: TEX.roofCorrN, roughness: 0.85, metalness: 0.25, side: THREE.DoubleSide });
+  MT.skip = std({ color: 0x3f5a40, roughness: 0.6, metalness: 0.35 });
+  MT.gutter = std({ color: 0x2b2c2d, roughness: 0.7, metalness: 0.5 });
+  MT.meshGreen = cut(tex(mesh, { repeat: true }), { alphaTest: 0.3, roughness: 0.8, transparent: true, depthWrite: false, color: 0x5a8a66 });
   return MT;
 }
 
@@ -204,8 +312,10 @@ function column(list, x, y, z, H, Rr, seed, base = 0) {
 // ------------------------------------------------------------------ build
 export function buildGara(B, world) {
   const Mt = mats();
-  const A = { kerb: new Acc(), kerbGrey: new Acc(), walk: new Acc(), asphalt: new Acc(), grass: new Acc(), rubber: new Acc(), retaining: new Acc(), stone: new Acc(), buildMesh: new Acc(), wire: new Acc(), parkSign: new Acc(), board: new Acc(), disc: new Acc(), noEntry: new Acc(), noVeh: new Acc(), signBack: new Acc(), sheet: new Acc(), graffiti: new Acc() };
-  const G = { tower: [], cap: [], white: [], lime: [], leaves: [], thuja: [], orange: [], green: [], blue: [], red: [], wood: [], dark: [], galv: [], lamp: [], pole: [], locoBlue: [], locoWhite: [], locoGlass: [], stone: [], bark: [] };
+  const A = { kerb: new Acc(), kerbGrey: new Acc(), walk: new Acc(), asphalt: new Acc(), grass: new Acc(), rubber: new Acc(), retaining: new Acc(), stone: new Acc(), buildMesh: new Acc(), wire: new Acc(), parkSign: new Acc(), board: new Acc(), disc: new Acc(), noEntry: new Acc(), noVeh: new Acc(), signBack: new Acc(), sheet: new Acc(), graffiti: new Acc(),
+    asphaltSq: new Acc(), walkSq: new Acc(), grassSq: new Acc(), paint: new Acc(), taxi: new Acc(), ring: new Acc(), gutter: new Acc(), meshGreen: new Acc(), poly: new Acc(), rust: new Acc() };
+  const G = { tower: [], cap: [], white: [], lime: [], leaves: [], thuja: [], orange: [], green: [], blue: [], red: [], wood: [], dark: [], galv: [], lamp: [], pole: [], locoBlue: [], locoWhite: [], locoGlass: [], stone: [], bark: [],
+    kioskBlue: [], kioskGlass: [], kioskRoof: [], rustWall: [], skip: [] };
   const box = (x, z, hw, hd, rot, y0, y1, tag) => world.addStatic(new world.Box(x, z, hw, hd, rot, y0, y1, tag));
   const Y = (x, z) => heightAt(x, z);
   const R = rng(9120);
@@ -478,33 +588,90 @@ export function buildGara(B, world) {
     out.B = { W, dir, rs, hw };
   }
 
-  // ================================================================ the station square (photos 49-50)
-  const C_ = frameOf(RB), LP = frameOf(LOOP);
-  if (C_ && LP) {
-    const { W, dir } = C_, hw = C_.r.w / 2;
-    // island between Strada Gării and the maxi-taxi loop: offset polylines, kerb, grass, the spruces on the OSM trees
-    const Pm = pairs(C_.r.p).slice(0, 4), Pl = pairs(LP.r.p);
-    const cx = [...Pm, ...Pl].reduce((a, p) => a + p[0], 0) / (Pm.length + Pl.length), cz = [...Pm, ...Pl].reduce((a, p) => a + p[1], 0) / (Pm.length + Pl.length);
-    const offIn = (P, d) => P.map((p, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; let nx = -(b[1] - a[1]) / l, nz = (b[0] - a[0]) / l; if ((cx - p[0]) * nx + (cz - p[1]) * nz < 0) { nx = -nx; nz = -nz; } return [p[0] + nx * d, p[1] + nz * d]; });
-    const resamp = (P, step) => { const F = frame(P), o = []; for (let s = 0; s <= F.L; s += step) { const q = F.at(s); o.push([q.x, q.z]); } return o; };
-    const mIn = offIn(resamp(Pm, 2), hw + 0.3).filter(p => Math.hypot(p[0] - Pm[0][0], p[1] - Pm[0][1]) > 7 && Math.hypot(p[0] - Pm[3][0], p[1] - Pm[3][1]) > 6);
-    const lIn = offIn(resamp(Pl, 2), LP.r.w / 2 + 0.3).filter(p => Math.hypot(p[0] - Pl[0][0], p[1] - Pl[0][1]) > 7 && Math.hypot(p[0] - Pl[Pl.length - 1][0], p[1] - Pl[Pl.length - 1][1]) > 6);
-    const island = [...mIn, ...lIn.reverse()];
-    const ne = -Math.sign(C_.F.local(cx, cz).o) || -1;                                     // the car park's (north-east) side
-    const inIsl = (x, z) => { let c = false; for (let i = 0, j = island.length - 1; i < island.length; j = i++) if ((island[i][1] > z) !== (island[j][1] > z) && x < (island[j][0] - island[i][0]) * (z - island[i][1]) / (island[j][1] - island[i][1]) + island[i][0]) c = !c; return c; };
-    drape(A.grass, island, 0.17, 2, 2.5);
-    for (let i = 0; i < island.length; i++) {
-      const a = island[i], b = island[(i + 1) % island.length], ya = Y(...a) + 0.03, yb = Y(...b) + 0.03, mx = (a[0] + b[0]) / 2 - cx, mz = (a[1] + b[1]) / 2 - cz;
-      quadV(A.kerbGrey, a, b, ya - 0.08, ya + 0.16, yb - 0.08, yb + 0.16, [-mx, 0, -mz], [0, 0, 1, 0, 1, 0.2, 0, 0.2]);
-      grow(a[0], a[1], 2);
-    }
-    surfaces.push((x, z) => inIsl(x, z) ? Y(x, z) + 0.17 : null);
-    treeDel.push(inIsl);
-    const sc = [1.3, 1.05, 1.35, 0.9, 1.2];
-    [[-144.0, -108.2], [-150.3, -108.0], [-157.0, -107.9], [-163.8, -108.0], [-170.6, -108.5]].forEach(([x, z], k) => { if (inIsl(x, z)) treeAdd.push([x, z, T_SPRUCE, sc[k]]); });
-    // no-entry signs at the island's south-east nose, lamp posts on it
+  // ================================================================ the station square (photos 49-50), laid out after the
+  // drone photo from straight over it (PLAZA)
+  const C_ = frameOf(RB);
+  if (C_) {
+    const { W, dir } = C_, hw = C_.r.w / 2, Q = PLAZA;
+    const inP = (P, x, z) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > z) !== (P[j][1] > z) && x < (P[j][0] - P[i][0]) * (z - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; };
+    const mean = (P) => [P.reduce((a, p) => a + p[0], 0) / P.length, P.reduce((a, p) => a + p[1], 0) / P.length];
+    const [cx, cz] = mean(Q.island);
+    const ne = -Math.sign(C_.F.local(cx, cz).o) || -1;                                    // the parking's (north-east) side of Strada Gării
+    // a raised area: its top draped h over the ground, a kerb round it facing out (cut to <= 2 m to follow the ground)
+    const raised = (top, P, h, tile = 2.5) => {
+      drape(top, P, h, 2, tile);
+      for (let i = 0; i < P.length; i++) {
+        const a = P[i], b = P[(i + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (L < 0.01) continue;
+        let nx = (b[1] - a[1]) / L, nz = -(b[0] - a[0]) / L;
+        if (inP(P, (a[0] + b[0]) / 2 + nx * 0.05, (a[1] + b[1]) / 2 + nz * 0.05)) { nx = -nx; nz = -nz; }
+        const k = Math.ceil(L / 2);
+        for (let j = 0; j < k; j++) {
+          const p0 = [a[0] + (b[0] - a[0]) * j / k, a[1] + (b[1] - a[1]) * j / k], p1 = [a[0] + (b[0] - a[0]) * (j + 1) / k, a[1] + (b[1] - a[1]) * (j + 1) / k];
+          quadV(A.kerbGrey, p0, p1, Y(...p0) - 0.1, Y(...p0) + h, Y(...p1) - 0.1, Y(...p1) + h, [nx, 0, nz], [j * L / k, 0, (j + 1) * L / k, 0, (j + 1) * L / k, 0.3, j * L / k, 0.3]);
+        }
+        grow(a[0], a[1], 1);
+      }
+      surfaces.push((x, z) => inP(P, x, z) ? Y(x, z) + h : null);
+    };
+    // a painted line on the asphalt (cut to 1 m pieces on the ground)
+    const stripe = (a, b, w = 0.12) => {
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 0.01) return;
+      const ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L, px = -uz * w / 2, pz = ux * w / 2, k = Math.max(1, Math.ceil(L));
+      for (let j = 0; j < k; j++) {
+        const p0 = [a[0] + ux * L * j / k, a[1] + uz * L * j / k], p1 = [a[0] + ux * L * (j + 1) / k, a[1] + uz * L * (j + 1) / k], y0 = Y(...p0) + 0.05, y1 = Y(...p1) + 0.05;
+        A.paint.quad([p0[0] - px, y0, p0[1] - pz], [p1[0] - px, y1, p1[1] - pz], [p1[0] + px, y1, p1[1] + pz], [p0[0] + px, y0, p0[1] + pz], UP, [0, (j % 4) / 4, 1, (j % 4 + 1) / 4, 1, (j % 4 + 1) / 4, 0, (j % 4) / 4]);
+      }
+    };
+    // TAXI on a bay, reading along (ux, uz)
+    const taxi = (x, z, ux, uz) => {
+      const L = 1.7, H = 0.43, vx = uz, vz = -ux, y = Y(x, z) + 0.052;                 // (the letters' top to the left of the reading way: not mirrored from above)
+      const P = (s, t) => [x + ux * s + vx * t, y, z + uz * s + vz * t];
+      A.taxi.quad(P(-L / 2, -H / 2), P(L / 2, -H / 2), P(L / 2, H / 2), P(-L / 2, H / 2), UP, [0, 0, 1, 0, 1, 1, 0, 1]);
+    };
+    const lerpZ = ([[x0, z0], [x1, z1]], x) => z0 + (z1 - z0) * (x - x0) / (x1 - x0);
+
+    // the asphalt of the whole square, the station's footway, the beds at its ends, the island, the parking's verge
+    drape(A.asphaltSq, Q.paved, 0.04, 2, 3.2);
+    for (const p of Q.paved) grow(p[0], p[1], 2);
+    raised(A.walkSq, Q.footway, 0.15, 2);
+    raised(A.grassSq, Q.bedSE, 0.15);
+    raised(A.grassSq, Q.bedNW, 0.15);
+    raised(A.grassSq, Q.island, 0.17);
+    raised(A.grassSq, Q.verge, 0.12);
+    treeDel.push((x, z) => inP(Q.paved, x, z) || inP(Q.island, x, z) || inP(Q.verge, x, z) || inP(Q.footway, x, z) || inP(Q.bedNW, x, z) || inP(Q.bedSE, x, z));
+    for (const t of [...Q.trees, ...Q.vergeTrees, ...Q.bedTrees]) { treeAdd.push(t); keepTree(t[0], t[1]); }
+
+    // the white concrete ring in the island's middle (25 cm wide, 10 cm proud of the grass)
     {
-      const nose = island.reduce((m, p) => (!m || p[0] < m[0] ? p : m), null);            // the most south-eastern point (smallest x)
+      const [rx, rz, rr] = Q.ring, n = 56, y0 = Y(rx, rz) + 0.17, w = 0.13, ht = 0.1, P = (r, a, y) => [rx + Math.cos(a) * r, y, rz + Math.sin(a) * r];
+      for (let k = 0; k < n; k++) {
+        const a0 = k / n * Math.PI * 2, a1 = (k + 1) / n * Math.PI * 2, am = (a0 + a1) / 2, cm = Math.cos(am), sm = Math.sin(am), u0 = k * 0.28, u1 = u0 + 0.28;
+        A.ring.quad(P(rr - w, a0, y0 + ht), P(rr + w, a0, y0 + ht), P(rr + w, a1, y0 + ht), P(rr - w, a1, y0 + ht), UP, [u0, 0, u0, 0.26, u1, 0.26, u1, 0]);
+        A.ring.quad(P(rr + w, a0, y0 - 0.06), P(rr + w, a1, y0 - 0.06), P(rr + w, a1, y0 + ht), P(rr + w, a0, y0 + ht), [cm, 0, sm], [u0, 0, u1, 0, u1, 0.16, u0, 0.16]);
+        A.ring.quad(P(rr - w, a0, y0 - 0.06), P(rr - w, a1, y0 - 0.06), P(rr - w, a1, y0 + ht), P(rr - w, a0, y0 + ht), [-cm, 0, -sm], [u0, 0, u1, 0, u1, 0.16, u0, 0.16]);
+      }
+    }
+    // the island's lamps: a galvanised mast, its arm out over the lane
+    for (const [x, z, [ax, az]] of Q.lamps) {
+      const y = Y(x, z) + 0.17;
+      cyl(G.galv, x, y - 0.3, z, 8.8, 0.09, 0.055, 8);
+      tube(G.galv, [x, y + 8.3, z], [x + ax * 1.7, y + 8.75, z + az * 1.7], 0.045, 6);
+      const hd = new THREE.BoxGeometry(0.62, 0.11, 0.26); hd.rotateY(-Math.atan2(az, ax)); hd.translate(x + ax * 2.0, y + 8.7, z + az * 2.0); G.dark.push(hd);
+      box(x, z, 0.1, 0.1, 0, y - 1, y + 8, 'pole');
+    }
+    // the verge's concrete lamp post, its arm over the parking aisle
+    {
+      const [x, z] = Q.vergeLamp, y = Y(x, z) + 0.12;
+      cyl(G.pole, x, y - 0.3, z, 9.4, 0.15, 0.09, 6);
+      tube(G.galv, [x, y + 8.8, z], [x - 0.1, y + 9.1, z - 1.8], 0.045, 6);
+      const hd = new THREE.BoxGeometry(0.26, 0.11, 0.6); hd.translate(x - 0.12, y + 9.05, z - 2.1); G.dark.push(hd);
+      box(x, z, 0.14, 0.14, 0, y - 1, y + 9, 'pole');
+    }
+
+    // the no-entry signs at the island's south-east nose (photo 49)
+    {
+      const nose = Q.island.reduce((m, p) => (!m || p[0] < m[0] ? p : m), null);           // the most south-eastern point (smallest x)
       const [fx0, fz0] = [nose[0] - cx, nose[1] - cz], fl = Math.hypot(fx0, fz0), fx = fx0 / fl, fz = fz0 / fl;
       for (const [e, mat] of [[-1.6, 'noEntry'], [1.6, 'noVeh']]) {
         const x = nose[0] - fx * 1.2 - fz * e, z = nose[1] - fz * 1.2 + fx * e, y = Y(x, z) + 0.17;
@@ -513,32 +680,9 @@ export function buildGara(B, world) {
         faceBoard(A.signBack, x - fx * 0.005, y + 1.75, z - fz * 0.005, 0.6, 0.6, -fx, -fz);
         box(x, z, 0.05, 0.05, 0, y - 1, y + 2.4, 'sign');
       }
-      for (const t of [0.42, 0.52]) {
-        const p = island[Math.floor(island.length * t)], x = p[0] + (cx - p[0]) * 0.45, z = p[1] + (cz - p[1]) * 0.45, y = Y(x, z) + 0.17;
-        cyl(G.galv, x, y - 0.3, z, 8.8, 0.08, 0.05, 8);
-        const hd = new THREE.BoxGeometry(0.5, 0.1, 0.22); hd.translate(x + 0.3, y + 8.6, z); G.dark.push(hd);
-        box(x, z, 0.1, 0.1, 0, y - 1, y + 8, 'pole');
-      }
     }
-    // the car park on the north-east side between the island and the side street: painted kerb and footway, the
-    // asphalt lot with cars nose-in, the tall double-arm LED mast by the kerb (photo 49: ~20 m to the right of the
-    // camera, which stands ~10 m before the junction with the loop)
+    // the tall double-arm LED mast by the kerb at the square's south-east end (photo 49: ~20 m to the right of the camera)
     {
-      footway(C_, 40, 62, ne, hw, 2.0, true);
-      footway(C_, 72, 104, ne, hw, 2.0, true);
-      const oa = ne * (hw + 2.15), ob = ne * (hw + 2.15 + 5.6), lot = [];
-      for (let t = 43; t <= 62; t += 1.5) lot.push(W(t, oa));
-      for (let t = 62; t >= 43; t -= 1.5) lot.push(W(t, ob));
-      drape(A.asphalt, lot, 0.04, 2, 3.2);
-      const paints = [0x8d9095, 0x3f4247, 0xe9e9e7, 0x2d3237, 0x9aa0a5, 0xb3261f, 0x5b6066];
-      const models = ['suv', 'sedan', 'hatch', 'p508', 'suv', 'hatch', 'sedan'];
-      let k = 0;
-      for (let t = 45; t <= 61 && k < paints.length; t += 2.7) {
-        const [x, z] = W(t, ne * (hw + 2.15 + 2.7)), [ux, uz] = dir(t);
-        cars.push({ x, z, h: Math.atan2(uz * ne, -ux * ne), model: models[k], paint: paints[k] });   // nose away from the street
-        k++;
-      }
-      treeDel.push((x, z) => { const l = C_.F.local(x, z); return l.s > 38 && l.s < 106 && l.o * ne > hw && l.o * ne < hw + 10; });
       const s = 58, [x, z] = W(s, ne * (hw + 1.3)), y = Y(x, z), [ux, uz] = dir(s), ax = -uz, az = ux;   // arms across the street
       cyl(G.galv, x, y - 0.4, z, 12.4, 0.16, 0.08, 10);
       for (const e of [-1, 1]) {
@@ -548,7 +692,103 @@ export function buildGara(B, world) {
       }
       box(x, z, 0.18, 0.18, 0, y - 1, y + 12, 'pole');
     }
-    // the south-west side before the square: grey sheet fence, a car parked along it; the big spruce in front of the
+    // the taxi rank: the bays along the footway (the fourth hatched with an X), the long ones along the island
+    {
+      const R_ = Q.rankA, zl = (x) => lerpZ(R_.line, x);
+      stripe([R_.xs[0], zl(R_.xs[0])], [R_.xs[R_.xs.length - 1], zl(R_.xs[R_.xs.length - 1])]);
+      for (const x of R_.xs) stripe([x, R_.kerb + 0.1], [x, zl(x)]);
+      for (let i = 0; i < R_.xs.length - 1; i++) {
+        const xa = R_.xs[i], xb = R_.xs[i + 1], xm = (xa + xb) / 2, zm = (R_.kerb + zl(xm)) / 2;
+        if (i === R_.cross) { stripe([xa - 0.2, R_.kerb + 0.3], [xb + 0.2, zl(xb) - 0.25]); stripe([xa - 0.2, zl(xa) - 0.25], [xb + 0.2, R_.kerb + 0.3]); } else taxi(xm, zm, 1, 0);
+      }
+      const B_ = Q.rankB, zb = (x) => lerpZ(B_.line, x);
+      stripe([B_.xs[0], zb(B_.xs[0])], [B_.xs[B_.xs.length - 1], zb(B_.xs[B_.xs.length - 1])]);
+      for (const x of B_.xs) stripe([x, zb(x)], [x, zb(x) + B_.depth]);
+      for (let i = 0; i < B_.xs.length - 1; i++) { const xm = (B_.xs[i] + B_.xs[i + 1]) / 2; taxi(xm, zb(xm) + B_.depth / 2, -1, 0); }   // (read from the lane, as the others)
+    }
+
+    // the side street: asphalt, dashed edge lines, the gutter along its south-west edge, the gardens' green mesh fence
+    {
+      const S = Q.side, half = 2.3, off = (o) => {
+        const out = [];
+        for (let i = 0; i < S.length; i++) {
+          const a = S[Math.max(0, i - 1)], b = S[Math.min(S.length - 1, i + 1)], L = Math.hypot(b[0] - a[0], b[1] - a[1]), nx = (b[1] - a[1]) / L, nz = -(b[0] - a[0]) / L;
+          out.push([S[i][0] + nx * o, S[i][1] + nz * o]);
+        }
+        return out;
+      };
+      // (+o: the south-west side, towards the verge)
+      const sw = off(half), nE = off(-half);
+      drape(A.asphaltSq, [...sw, ...nE.slice().reverse()], 0.04, 2, 3.2);
+      for (const side of [off(half - 0.3), off(-half + 0.3)]) {
+        for (let i = 0; i < side.length - 1; i++) {
+          const a = side[i], b = side[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]), ux = (b[0] - a[0]) / L, uz = (b[1] - a[1]) / L;
+          for (let t = 0.5; t < L - 1; t += 3) stripe([a[0] + ux * t, a[1] + uz * t], [a[0] + ux * Math.min(L, t + 1.5), a[1] + uz * Math.min(L, t + 1.5)], 0.1);
+        }
+      }
+      // the gutter: a concrete channel with a grating, from the verge's lamp to the street's end
+      const g0 = off(half + 0.05), g1 = off(half + 0.5);
+      for (let i = 0; i < S.length - 1; i++) {
+        if (S[i + 1][0] > Q.vergeLamp[0] + 2) continue;
+        const a0 = g0[i], b0 = g0[i + 1], a1 = g1[i], b1 = g1[i + 1], L = Math.hypot(b0[0] - a0[0], b0[1] - a0[1]), k = Math.ceil(L / 1.5);
+        for (let j = 0; j < k; j++) {
+          const f0 = j / k, f1 = (j + 1) / k, P = (p, q, f) => [p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f];
+          const p00 = P(a0, b0, f0), p01 = P(a0, b0, f1), p10 = P(a1, b1, f0), p11 = P(a1, b1, f1);
+          A.kerbGrey.quad([p00[0], Y(...p00) + 0.045, p00[1]], [p01[0], Y(...p01) + 0.045, p01[1]], [p11[0], Y(...p11) + 0.06, p11[1]], [p10[0], Y(...p10) + 0.06, p10[1]], UP, [0, 0, 1, 0, 1, 0.3, 0, 0.3]);
+          const m0 = P(p00, p10, 0.3), m1 = P(p01, p11, 0.3), n0 = P(p00, p10, 0.7), n1 = P(p01, p11, 0.7);
+          A.gutter.quad([m0[0], Y(...m0) + 0.056, m0[1]], [m1[0], Y(...m1) + 0.056, m1[1]], [n1[0], Y(...n1) + 0.058, n1[1]], [n0[0], Y(...n0) + 0.058, n0[1]], UP, [0, 0, 1, 0, 1, 1, 0, 1]);
+        }
+      }
+      // the fence of the gardens: green welded mesh on dark posts, 1.7 m, along the street's north-east side
+      const fence = off(-half - 0.8).filter(p => p[0] < -120);
+      panelRun(A.meshGreen, fence, 1.7, 2.5, 2.5, 0.02, G.dark, 1.75);
+      for (const p of [...sw, ...nE]) grow(p[0], p[1], 2);
+      const segD = (x, z) => { let d = Infinity; for (let i = 0; i < S.length - 1; i++) { const [ax, az] = S[i], [bx, bz] = S[i + 1], dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz))); d = Math.min(d, Math.hypot(x - ax - t * dx, z - az - t * dz)); } return d; };
+      treeDel.push((x, z) => segD(x, z) < half + 1.2);
+    }
+
+    // the kiosk on the footway: blue panels, a dark window to the square, a pale roof
+    {
+      const [x, z, hx, hz] = Q.kiosk, y = Y(x, z) + 0.15;
+      boxAt(G.kioskBlue, x, y + 1.3, z, hx * 2, 2.6, hz * 2);
+      boxAt(G.kioskGlass, x, y + 1.45, z + hz + 0.005, hx * 1.2, 0.9, 0.02);
+      boxAt(G.kioskRoof, x, y + 2.7, z, hx * 2 + 0.3, 0.16, hz * 2 + 0.3);
+      box(x, z, hx, hz, 0, y - 0.5, y + 2.8, 'house');
+      grow(x, z, 4);
+    }
+    // the green polycarbonate shelter past the south-east wing (on posts, sloping to the south-west), the rusty shed
+    {
+      const [x, z, hx, hz] = Q.shelter, y = Y(x, z);
+      for (const [ex, ez] of [[-1, -1], [-1, 1], [1, -1], [1, 1], [0, -1], [0, 1]]) boxAt(G.dark, x + ex * (hx - 0.1), y + 1.35, z + ez * (hz - 0.1), 0.1, 2.9, 0.1);
+      const P = (ex, ez) => [x + ex * hx, y + (ez > 0 ? 2.95 : 2.55), z + ez * hz];
+      A.poly.quad(P(-1, -1), P(1, -1), P(1, 1), P(-1, 1), UP, [0, 0, hx * 2 / 1.0, 0, hx * 2 / 1.0, hz * 2 / 1.0, 0, hz * 2 / 1.0]);
+      box(x, z, hx, hz, 0, y + 2.4, y + 3.1, 'roof');
+      grow(x, z, 7);
+      const [sx, sz, shx, shz] = Q.shed, sy = Y(sx, sz);
+      boxAt(G.rustWall, sx, sy + 1.1, sz, shx * 2, 2.3, shz * 2);
+      const Rq = (ex, ez) => [sx + ex * (shx + 0.15), sy + (ex > 0 ? 2.45 : 2.25), sz + ez * (shz + 0.15)];
+      A.rust.quad(Rq(-1, -1), Rq(1, -1), Rq(1, 1), Rq(-1, 1), UP, [0, 0, 3, 0, 3, 6, 0, 6]);
+      box(sx, sz, shx, shz, 0, sy - 0.5, sy + 2.4, 'house');
+      grow(sx, sz, 4);
+      // the skip in the lot at the south end
+      const [kx, kz] = Q.skip, ky = Y(kx, kz);
+      boxAt(G.skip, kx, ky + 0.75, kz, 3.6, 1.4, 1.9);
+      box(kx, kz, 1.8, 0.95, 0, ky - 0.5, ky + 1.5, 'house');
+    }
+
+    // the cars parked round the square, and the parking's twelve nose in to the verge
+    {
+      const H = { nw: [0.993, -0.115], se: [-0.993, 0.115], up: [0.956, -0.294], ne: [0.294, 0.956], sw: [-0.294, -0.956] };
+      for (const [x, z, hd, model, paint] of Q.cars) { const [fx, fz] = H[hd]; cars.push({ x, z, h: Math.atan2(-fx, -fz), model, paint }); }
+      const [ax, az] = Q.row.from, [bx, bz] = Q.row.to, n = 12, ux = (bx - ax), uz = (bz - az);
+      // the measured spacing: ten cars ~2.45 m apart, a gap, two more
+      const ts = [0, 0.0815, 0.161, 0.2465, 0.3255, 0.4085, 0.487, 0.5695, 0.6575, 0.7325, 0.919, 1];
+      for (let i = 0; i < n; i++) {
+        const t = ts[i], x = ax + ux * t, z = az + uz * t;
+        cars.push({ x, z, h: Math.atan2(-0.293, -0.956), model: Q.rowModel[i], paint: Q.rowPaint[i] });
+      }
+    }
+    // the south-west side past the square: grey sheet fence, a car parked along it; the big spruce in front of the
     // station (photo 49)
     {
       const o = -ne * (hw + 2.4), pts = [];
@@ -556,24 +796,11 @@ export function buildGara(B, world) {
       panelRun(A.sheet, pts, 2.0, 3, 1.5, 0.0, G.galv, 2.0);
       treeDel.push((x, z) => { const l = C_.F.local(x, z); return l.s > 66 && l.s < 108 && l.o * -ne > hw && l.o * -ne < hw + 12; });
       treeDel.push((x, z) => Math.hypot(x + 178, z + 126) < 5);
-      treeAdd.push([-178, -126, T_SPRUCE, 1.2]);
+      treeAdd.push([-178, -126, T_SPRUCE, 1.2]); keepTree(-178, -126);
       const [x, z] = W(79, -ne * (hw + 1.2)), [ux, uz] = dir(79);
       cars.push({ x, z, h: Math.atan2(-ux, -uz), model: 'suv', paint: 0xb9ad93 });
     }
-    // cars parked in front of the island on the loop (photo 49) and along the island's north edge (photo 50)
-    {
-      const LF = LP.F, L = LF.L, pal = [0xf0f0ee, 0xeeeeec, 0xb9bcc0];
-      const inward = (s) => { const q = LF.at(s), [ux, uz] = LF.dir(s); let nx = -uz, nz = ux; if ((cx - q.x) * nx + (cz - q.z) * nz < 0) { nx = -nx; nz = -nz; } return [q, ux, uz, nx, nz]; };
-      [L - 18, L - 12.5, L - 30].forEach((s, k) => { const [q, ux, uz, nx, nz] = inward(s); cars.push({ x: q.x - nx * 0.2, z: q.z - nz * 0.2, h: Math.atan2(-ux, -uz), model: ['sedan', 'p508', 'hatch'][k], paint: pal[k] }); });
-      // photo 50: white hatchback, black Peugeot, white saloon along the island on the left, a beige estate and a dark
-      // SUV on the right, all facing north-west
-      [[40, -1, 'hatch', 0xf2f2f0], [35.4, -1, 'p508', 0x1f2226], [30.6, -1, 'sedan', 0xeeeeec], [29, 1, 'sedan', 0xb8ad90], [22.5, 1, 'suv', 0x2c3036]].forEach(([t, side, model, paint]) => {
-        const [x, z] = W(t, side * ne * (hw - 1.05)), [ux, uz] = dir(t);
-        cars.push({ x, z, h: Math.atan2(ux, uz), model, paint });
-      });
-    }
-    for (const p of island) grow(p[0], p[1], 8);
-    out.C = { island, cx, cz, W, dir, hw, ne };
+    out.C = { island: Q.island, cx, cz, W, dir, hw, ne };
   }
 
   // ---- trees: out where rebuilt, the new ones in
@@ -584,9 +811,14 @@ export function buildGara(B, world) {
   put(A.kerb, Mt.kerb); put(A.kerbGrey, Mt.kerbGrey); put(A.walk, Mt.walk, { noCast: true }); put(A.asphalt, Mt.asphalt, { noCast: true }); put(A.grass, Mt.grass, { noCast: true });
   put(A.rubber, Mt.rubber, { noCast: true }); put(A.retaining, Mt.retaining); put(A.graffiti, Mt.graffiti, { noAO: true, noCast: true }); put(A.stone, Mt.stoneLight); put(A.buildMesh, Mt.buildMesh, { noAO: true }); put(A.wire, Mt.wire, { noAO: true, noCast: true });
   put(A.sheet, Mt.sheet); put(A.parkSign, Mt.parkSign); put(A.board, Mt.board); put(A.disc, Mt.disc, { noAO: true }); put(A.noEntry, Mt.noEntry, { noAO: true }); put(A.noVeh, Mt.noVeh, { noAO: true }); put(A.signBack, Mt.signBack);
+  // the station square (PLAZA)
+  put(A.asphaltSq, Mt.asphaltSq, { noCast: true }); put(A.walkSq, Mt.walkSq, { noCast: true }); put(A.grassSq, Mt.grassSq, { noCast: true });
+  put(A.paint, Mt.paint, { noAO: true, noCast: true }); put(A.taxi, Mt.taxi, { noAO: true, noCast: true }); put(A.ring, Mt.ringWhite);
+  put(A.gutter, Mt.gutter, { noCast: true }); put(A.meshGreen, Mt.meshGreen, { noAO: true }); put(A.poly, Mt.polyGreen, { noAO: true }); put(A.rust, Mt.rustSheet);
   const geo = (key, mat) => { if (G[key].length) B.geo(mat, merged(G[key])); };
   geo('tower', Mt.tower); geo('cap', Mt.cap); geo('white', Mt.white); geo('lime', Mt.lime); geo('leaves', Mt.leaves); geo('thuja', Mt.thuja);
   geo('orange', Mt.orange); geo('green', Mt.green); geo('blue', Mt.blue); geo('red', Mt.red); geo('wood', Mt.wood); geo('dark', Mt.dark); geo('galv', M.galv);
+  geo('kioskBlue', Mt.kioskBlue); geo('kioskGlass', Mt.kioskGlass); geo('kioskRoof', Mt.kioskRoof); geo('rustWall', Mt.rustSheet); geo('skip', Mt.skip);
   geo('lamp', M.lampGlass); geo('pole', M.concretePole); geo('locoBlue', Mt.locoBlue); geo('locoWhite', Mt.locoWhite); geo('locoGlass', Mt.locoGlass); geo('bark', M.bark);
 
   if (!Number.isFinite(bb.x0)) return null;

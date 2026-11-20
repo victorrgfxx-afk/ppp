@@ -32,7 +32,9 @@ const OVR_WALL = { stuccoWhite: 0xe8e6e0, stuccoCream: 0xe3d6bd, stuccoPeach: 0x
   peachDusty: 0xd8bfb0, mustard: 0xcfad62, stampedDark: 0x8a8d8f };
 const OVR_ROOF = { roofMetalGray: 0xa8adb3, roofMetalBrown: 0x5d3a2a, roofMetalRed: 0x8a2e24, roofMetalLight: 0xc4c9ce, metalTileBrown: 0x52302a, metalTileGreen: 0x2f4a36, roofMetalRust: 0x86553d, roofMetalDark: 0x45484d, roofMetalTeal: 0x5c9a92, tileRed: 0xffffff,
   // (photos 17, 21, 22) chocolate pressed-steel tile; old sheet, its paint faded and rusting in patches
-  metalTileChoc: 0x44352f, roofRustOld: 0x7d5a46 };
+  metalTileChoc: 0x44352f, roofRustOld: 0x7d5a46,
+  // the station's chalked red-brown paint (the drone photo of 27 Sep 2026: dusty pink in the shade, pale salmon in the sun)
+  roofSeamSalmon: 0xb9968a };
 // facade texture per wall material
 const FKEY = { house: 'facadeHouse', houseB: 'facadeHouseB', block: 'facadeBlock', wood: 'facadeWood', ind: 'facadeInd', shingle: 'facadeShingle', stamped: 'facadeStamped' };
 // the eaves on the photos (1, 2, 17-23): a fascia board along the eaves and up the verges, the overhang boarded
@@ -77,6 +79,8 @@ export function makeBuildingMaterials() {
     stone: M.stoneCladding,
     roofMetal: new THREE.MeshStandardMaterial({ map: TEX.roofMetal, normalMap: TEX.roofMetalN, roughness: 0.48, metalness: 0.45, vertexColors: true, side: THREE.DoubleSide }),
     roofTiles: new THREE.MeshStandardMaterial({ map: TEX.roofTiles, normalMap: TEX.roofTilesN, roughness: 0.78, vertexColors: true, side: THREE.DoubleSide }),
+    // old painted standing seam, the paint chalked to a dusty pink and rusting (Gara Câmpina, the drone photo of 27 Sep 2026)
+    roofSeamFaded: new THREE.MeshStandardMaterial({ map: TEX.roofSeamFaded, normalMap: TEX.roofMetalN, roughnessMap: TEX.roofSeamFadedRM, metalnessMap: TEX.roofSeamFadedRM, roughness: 1, metalness: 1, vertexColors: true, side: THREE.DoubleSide }),
     // pressed-steel 'metal tile' roofing (photos 17, 21): the tile relief, glossy painted steel
     roofMetalTile: new THREE.MeshStandardMaterial({ normalMap: TEX.roofTilesN, normalScale: new THREE.Vector2(1.3, 1.3), roughness: 0.42, metalness: 0.35, vertexColors: true, side: THREE.DoubleSide }),
     roofFlat: new THREE.MeshStandardMaterial({ map: TEX.gravel, roughness: 0.95, color: 0x6b6b68 }),
@@ -332,7 +336,7 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
       }
     } else {
       const [rk, rhex] = pickKind(ROOF_KINDS, r(), h), tiles = !o.roof && rk === 'tiles';
-      const roofMat = tiles || o.roofMat === 'tiles' ? mats.roofTiles : o.roofMat === 'metalTile' ? mats.roofMetalTile : o.roof ? mats.roofMetal
+      const roofMat = tiles || o.roofMat === 'tiles' ? mats.roofTiles : o.roofMat === 'metalTile' ? mats.roofMetalTile : o.roofMat === 'seamFaded' ? mats.roofSeamFaded : o.roof ? mats.roofMetal
         : rk === 'galv' ? mats.roofGalv : rk === 'rust' ? mats.roofRust : r() < 0.55 ? mats.roofMetalTile : mats.roofMetal;
       const rc = o.roof ? col(OVR_ROOF[o.roof] ?? 0xa8adb3) : col(rhex);
       const pitch = THREE.MathUtils.degToRad(o.pitch ?? (tiles ? 34 : 27 + (h % 7)));
@@ -354,11 +358,13 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
       const gableMat = woodGable ? mats.trim : wk === 'shingle' ? mats.shinglePlain : mats.house;
       const gableColor = woodGable ? col(OVR_TRIM[o.gableTrim] ?? (trimHex > 0 ? trimHex : 0x4a3124)) : wc;
       let f0 = null;
+      const fs = [];
       for (const [i, rr] of b.r.entries()) {
         // o.ridge applies to the main (largest) rectangle; the others keep their own axis (cross wings)
         const res = rectRoof(B, mats, rr, top, pitch, ov, rc, roofMat, gable, wc, { ridge: i === 0 || o.ridgeAll ? o.ridge : null, gableMat, gableColor });
         ridge = Math.max(ridge, res.ridgeY);
         if (i === 0) f0 = res;
+        fs.push(res);
         if (ed) eaves(B, mats, res, { ...ed, pipes: i === 0 ? [[1, -1], [-1, 1]] : [] });
       }
       if (ed) stats.eaves++;
@@ -376,7 +382,31 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
         const cr = new THREE.BoxGeometry(0.12, 1.4, 0.7); cr.translate(0, ridge + 17.2, 0);
         B.geo(mats.spire, cr, Tm);
       }
-      if (o.chimney || (!o.roofType && r() < 0.45)) {
+      // several chimneys where a photo shows them (world [x, z]; the station's twelve in the drone photo): brick stacks
+      // ~1 m over the roof where each stands (the hipped roof's height there, over all its rectangles), corbelled and capped
+      if (o.chimneys) {
+        const roofAt = (x, z) => {
+          let y = -Infinity;
+          for (const f of fs) {
+            const q = f.P(0, 0, 0), a = f.P(1, 0, 0), c = f.P(0, 1, 0), dx = x - q[0], dz = z - q[2];
+            const s = dx * (a[0] - q[0]) + dz * (a[2] - q[2]), u = dx * (c[0] - q[0]) + dz * (c[2] - q[2]);
+            if (Math.abs(s) > f.H || Math.abs(u) > f.D) continue;
+            const tt = (f.ridgeY - f.eaveY) / f.D;
+            y = Math.max(y, Math.min(f.ridgeY, f.eaveY + tt * Math.min(f.D - Math.abs(u), f.gable ? Infinity : f.H - Math.abs(s))));
+          }
+          return y;
+        };
+        for (const [xh, zh] of o.chimneys) {
+          const yr = roofAt(xh, zh);
+          if (!Number.isFinite(yr)) continue;
+          const cTop = yr + 1.05, ch = new THREE.BoxGeometry(0.6, cTop - top + 0.4, 0.6);
+          ch.translate(xh, (top - 0.4 + cTop) / 2, zh);
+          B.geo(mats.brick, ch);
+          const cap = new THREE.BoxGeometry(0.76, 0.18, 0.76); cap.translate(xh, cTop - 0.2, zh); B.geo(mats.brick, cap);
+          const slab = new THREE.BoxGeometry(0.82, 0.06, 0.82); slab.translate(xh, cTop + 0.03, zh); B.geo(mats.plinth, slab, null, null, { noCast: true });
+        }
+      }
+      if (!o.chimneys && (o.chimney || (!o.roofType && r() < 0.45))) {
         const rr = b.r[0];
         const off = (r() - 0.5) * Math.max(rr[2], rr[3]);
         let cxh = rr[0] + Math.cos(rr[4]) * off * (rr[2] >= rr[3] ? 1 : 0) - Math.sin(rr[4]) * off * (rr[2] < rr[3] ? 1 : 0);

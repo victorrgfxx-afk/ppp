@@ -345,6 +345,29 @@ function genRoofCorr() {
   TEX.roofRustRM = tex(rm(rustMask), { srgb: false });
 }
 
+function genRoofSeamFaded() {
+  // Old painted standing-seam sheet: Gara Câmpina's roof in the user's drone photo from straight over it (27 Sep 2026).
+  // The red-brown paint has chalked to a dusty pink (the vertex colour carries it): paler in streaks down the slope and
+  // where the sun bleached it, still deep where it holds; rust-brown in blotches, creeping from the seams and the
+  // sheets' laps. Ribs every 0.5 m like genRoofMetal (its normal map serves); texture = 1 m across, V = along the slope.
+  // The roughness (G) and metalness (B): paint, not metal - chalked and dull, the rust duller still.
+  const n = 256;
+  const rustM = new Float32Array(n * n);
+  const map = paint(n, n, (x, y, p) => {
+    const gx = x % 128, seam = Math.exp(-Math.pow(Math.min(gx, 128 - gx) / 7, 2));
+    const lap = Math.exp(-Math.pow(((y % 256) - 4) / 5, 2));                              // the sheets' cross lap
+    const blot = fbm(x / 38, y / 38, 4, n / 38, 81), runs = fbm(x / 5, y / 80, 3, n / 5, 82);
+    const r = clamp((fbm(x / 20, y / 26, 4, n / 20, 83) - 0.56) * 3.4 + seam * 0.22 + lap * 0.3, 0, 1);
+    rustM[y * n + x] = r;
+    const chalk = clamp(0.9 + 0.3 * (blot - 0.5) + 0.16 * (runs - 0.5) + 0.05 * (valueNoise(x / 2, y / 2, n / 2, 84) - 0.5), 0.66, 1.12);
+    p[0] = clamp((chalk * (1 - r) + 0.66 * r) * 228, 0, 255);
+    p[1] = clamp((chalk * (1 - r) + 0.46 * r) * 228, 0, 255);
+    p[2] = clamp((chalk * (1 - r) + 0.36 * r) * 228, 0, 255);
+  });
+  TEX.roofSeamFaded = tex(map);
+  TEX.roofSeamFadedRM = tex(paint(n, n, (x, y, p) => { const r = rustM[y * n + x]; p[0] = 0; p[1] = (0.7 + 0.22 * r) * 255; p[2] = (0.06 - 0.06 * r) * 255; }), { srgb: false });
+}
+
 function genRoofTiles() {
   // Ceramic "tigla" rows (texture = 1 m x 1 m, 4 rows, 5 tiles)
   const n = 512;
@@ -1045,7 +1068,7 @@ export async function loadTextures(base, onProgress, maxAniso = 8, opts = {}) {
   const gens = [
     ['tencuială', genStucco], ['lemn', genWood], ['gard lemn', genPicket], ['iarbă', genGrass],
     ['pietriș', genGravel], ['pavele', genPavers], ['gresie', genTiles], ['soclu', genCeramicPlinth],
-    ['placaj cărămidă', genBrickCladding], ['tablă', () => { genRoofMetal(); genRoofCorr(); }], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
+    ['placaj cărămidă', genBrickCladding], ['tablă', () => { genRoofMetal(); genRoofCorr(); genRoofSeamFaded(); }], ['țiglă', genRoofTiles], ['plasă sârmă', genChainLink],
     ['frunze', () => { genLeaves('broad'); genLeaves('small'); genLeaves('dense'); genLeaves('autumn'); genPinnate(); genTwigs(); genLeafSprays(); }], ['brad', () => { genFirBranch(); genSpruceAtlas(); genPineTuft(); }], ['scoarță', () => genBarkTextures(TEX, tex, heightToNormalCanvas, OPTS.barkHalf)],
     ['ferestre', genCurtain], ['marcaje', () => { genPaintWear(); genManhole(); genSoil(); genForest(); genFacadeTop(); genBlackMetal(); }],
     ['nori', genCloudNoise],

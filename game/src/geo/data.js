@@ -247,6 +247,13 @@ function registerHole(h) {
     B[k >> 2] &= ~(3 << ((k & 3) << 1));
   }
 }
+// Trees a place needs at every quality and by a road's edge (trees.js neither thins them on the lower qualities nor
+// takes them off a road's verge): marked by where they stand, so that the mark holds whatever later rebuilds GEO.trees
+// (the places that take trees away or add their own build new arrays, without GEO.trees.keep)
+const KEPT = new Set();
+const keptKey = (x, z) => Math.round(Math.fround(x) * 64) + ',' + Math.round(Math.fround(z) * 64);
+export function keepTree(x, z) { KEPT.add(keptKey(x, z)); }
+export function treeKept(x, z) { return KEPT.has(keptKey(x, z)); }
 // scattered single trees inside a hole are dropped (unless it keeps them)
 export function inHole(x, z) {
   for (const h of GEO.holes || []) if (h.scatter !== false && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;

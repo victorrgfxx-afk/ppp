@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { GEO, heightAt, forestCode, inHole, speciesAt, speciesCompanion } from './data.js';
+import { GEO, heightAt, forestCode, inHole, speciesAt, speciesCompanion, treeKept } from './data.js';
 import { M, addWind, mossy } from '../materials.js';
 import { TEX } from '../textures.js';
 import { rng } from '../util.js';
@@ -293,8 +293,9 @@ export function buildTrees(scene, world, renderer, quality) {
   const r = rng(99);
   let count = 0;
   for (let i = 0; i < n; i++) {
-    if (density < 1 && !T.keep?.[i] && r() > density) continue;             // (keep: trees a place needs at every quality)
-    if (T.s[i] > 0 && !T.keep?.[i] && treeOnRoad(T.x[i], T.z[i])) T.s[i] = 0;         // (none on a road: roadbed.js; a place's own kept)
+    const kept = T.keep?.[i] || treeKept(T.x[i], T.z[i]);
+    if (density < 1 && !kept && r() > density) continue;                     // (kept: trees a place needs at every quality)
+    if (T.s[i] > 0 && !kept && treeOnRoad(T.x[i], T.z[i])) T.s[i] = 0;               // (none on a road: roadbed.js; a place's own kept)
     if (T.s[i] <= 0 || inHole(T.x[i], T.z[i])) { r(); r(); r(); continue; }      // (scale 0: a tree a place has removed)
     const k = count++;
     X[k] = T.x[i]; Z[k] = T.z[i]; Y[k] = heightAt(X[k], Z[k]) - 0.05;

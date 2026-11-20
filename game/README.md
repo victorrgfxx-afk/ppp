@@ -845,6 +845,45 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Toate pozele, încă o dată: piața gării după poza ta cu drona de deasupra ei, acoperișul gării, curțile și gardurile (V111)** (`src/geo/gara.js`, `src/geo/buildings.js`, `src/textures.js`, `src/geo/anexe.js`, `src/geo/data.js`, `src/geo/trees.js`, `src/geo/urcus.js`):
+  * **Cum:**
+    * am reluat cele 20 de poze din `reference/` (strada ta, casele, câinii, crucea; refăcute clădire cu clădire în V81) și cele 4 noi cu drona (27 sep 2026);
+    * am randat jocul din aceleași unghiuri cu drona;
+    * cel mai departe de poze ieșeau piața gării (iarbă unde e asfalt, altă insulă, fără parcare) și curțile (peluze goale unde în poze sunt pomi, tufe și grădini).
+  * **Planul pieței, citit din poza de deasupra ei (16:46, camera la ~100 m):**
+    * poza e așezată pe acoperișul gării: streașina pe amprenta din OSM (~19 px/m acolo, ~17,4 px/m la sol);
+    * planul e citit în coordonatele jocului: la mijloc (insula, stația de taxi, parcarea) ține cam 1 m;
+    * spre margini, înclinarea camerei mută cu câțiva metri, așa că acolo decid casele din hartă: strada laterală le ocolește.
+  * **Ce e nou în piață:**
+    * **asfaltul:** între gară și insulă era iarbă. Acum e asfalt până la parcare, cu trotuarul gării din pavele (bordură de 15 cm) și chioșcul albastru pe el. Liniile Străzii Gării nu mai trec prin piață, pentru că în poză nu sunt;
+    * **stația de taxi:** cinci locuri de-a lungul trotuarului (al patrulea hașurat cu X) și două lungi lângă insulă, cu linii albe și „TAXI” scris în fiecare;
+    * **insula:** e mai îngustă (10–13 m) și rotită cu ~10° față de gară, ca în poză. Are cei doi brazi argintii la capete și patru copaci rotunzi pe margini. În mijloc e cercul alb de beton (Ø 5 m). Stâlpul de lângă taxiuri își întinde brațul peste locuri, iar al doilea stă în vârful insulei, unde rămân indicatoarele din poza 49;
+    * **parcarea dinspre nord-est:** 12 mașini cu botul spre fâșia verde, la ~2,45 m una de alta. Între a zecea și a unsprezecea e golul cu stâlpul de beton. Pe fâșie stau doi brazi tineri. Mai sunt parcarea mică din capătul de nord (4 mașini) și cea din sud, cu containerul;
+    * **strada laterală** din spatele fâșiei (nu e în OSM): 4,6 m de asfalt, linii de margine întrerupte, rigolă de beton cu grătar și gardul verde din plasă al grădinilor;
+    * **mașinile:** 34 parcate în jur, cu culorile din poză;
+    * **lângă aripa de sud-est:** copertina verde din policarbonat și magazia ruginită.
+  * **Acoperișul gării:**
+    * era țiglă roșie aprinsă. În poză e tablă fălțuită cu vopseaua roșu-maronie decolorată în roz prăfuit (somon în soare), ruginită pe pete, de-a lungul falțurilor și la îmbinări;
+    * are acum o textură nouă cu vopsea mată și nemetalică. Panta din umbră nu mai iese aproape neagră;
+    * cele 12 coșuri de cărămidă, cu căciulă, stau unde le arată poza, fiecare la ~1 m peste acoperiș în locul lui.
+  * **Bordurile:** bordura insulei vechi se vedea doar dinspre interior (fața era întoarsă). Bordurile noi privesc în afară.
+  * **Curțile:**
+    * în pozele cu drona, fiecare curte are 2–3 pomi fructiferi, uneori un nuc sau un brad tânăr, tufe și gard viu;
+    * harta (din pixeli de satelit de 10 m) dădea cel mult un copac pe curte;
+    * acum, pe 600 m în jurul gării, sunt 1252 de plante noi (4–6 pe curte), în spatele și pe lângă case. Stau la distanță de case, magazii, drumuri, șine și de copacii existenți;
+    * **gardurile de la stradă:** în poze fiecare casă are unul (tablă vopsită, scânduri vechi, șipci, fier forjat pe soclu, plasă, rar zid tencuit), iar harta nu le avea. Acum sunt 376, cu poarta de 3,2 m lăsată în dreptul casei. Stau la 0,6–1,2 m de marginea drumului cel mai apropiat, pe fața casei și puțin peste ea, fără să treacă peste alt gard, peste o casă sau peste un drum;
+    * **Strada Zarzărului** (poza 163818, de-a lungul ei spre gară) e asfaltată, cu petice, nu cu pietriș cum o are harta;
+    * loturile străzii tale (refăcute din poze) și locurile refăcute din poze rămân cum erau.
+  * **Copacii ceruți de un loc:**
+    * pe calitățile Scăzută și Medie, copacii se răresc la 35 % și 65 %, iar cei de pe marginea drumului se scot. Fac excepție copacii marcați ca necesari locului;
+    * marca se pierdea la prima reconstrucție a listei de copaci de către alt loc. Așa pățeau copacii de pe ulița din clipul IMG_0725, de la prima cotitură, și ar fi pățit și brazii de pe insulă;
+    * acum marca ține după poziția copacului și nu se mai pierde.
+  * **Testat:**
+    * lint;
+    * randări din aceleași unghiuri cu drona, înainte și după: de sus, larg spre gară, pe Strada Zarzărului, peste curți;
+    * vederi de la nivelul ochilor în piață;
+    * fără shader căzut și fără eroare WebGL;
+    * `tools/cars-test.mjs`.
 * **Zăpada pe Dealul Crucii și terenul cu GoPro (V110)** (`src/rain.js`, `src/geo/terrain.js`):
   * **Problema:** pe Dealul Crucii, pe zăpadă, pătratul din jurul tău rămânea. Pajiștea de lângă tine n-avea stratul de zăpadă, doar albul de suprafață, iar marginea stratului fin se vedea ca o linie dreaptă.
   * **Cauza, măsurată înainte de orice modificare:**
