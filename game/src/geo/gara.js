@@ -55,8 +55,8 @@ const PLAZA = {
   bedTrees: [[-123.8, -129.4, T_SPRUCE, 1.05], [-119.3, -128.4, T_SPRUCE, 0.9]],
   // the asphalt of the whole square: the taxi rank, the lanes round the island, the parking aisle, the lots (its corner
   // north-west of the island left to the bushes of photo 51, castel.js)
-  paved: [[-115.5, -110.4], [-115.5, -102.0], [-115.5, -89.5], [-121.0, -87.6], [-158.4, -76.9], [-158.6, -69.6], [-162.6, -68.3], [-178.5, -63.3],
-    [-178.5, -78.0], [-187.5, -82.7], [-190.0, -95.0], [-191.0, -107.0], [-186.0, -111.0], [-184.0, -116.5], [-178.0, -119.5], [-173.0, -123.6],
+  paved: [[-115.5, -110.4], [-115.5, -102.0], [-115.5, -89.5], [-121.0, -87.6], [-158.4, -76.9], [-158.6, -69.6], [-162.6, -68.3], [-175.5, -64.1],
+    [-176.0, -78.0], [-187.5, -82.7], [-190.0, -95.0], [-191.0, -107.0], [-186.0, -111.0], [-184.0, -116.5], [-178.0, -119.5], [-173.0, -123.6],
     [-171.0, -125.0], [-169.5, -123.1], [-128.5, -123.1], [-124.0, -126.5], [-121.8, -125.3], [-121.8, -110.6]],
   // the island: grass on a 17 cm kerb, wider to the south-east, bulging round the big spruce at its north-west end; a
   // white concrete ring in its middle
@@ -80,8 +80,9 @@ const PLAZA = {
   vergeTrees: [[-129.2, -84.0, T_SPRUCE, 0.62], [-135.4, -83.6, T_SPRUCE, 0.55]],
   vergeLamp: [-150.8, -78.6],
   // the side street behind the verge (not on the map): 4.6 m of asphalt, dashed edge lines, the concrete gutter along
-  // its south-west edge (from the lamp on), the green welded-mesh fence of the gardens along the other; its centre line
-  side: [[-117.6, -78.6], [-121.5, -77.2], [-136.7, -71.9], [-158.6, -65.6], [-178.5, -60.4], [-186.0, -58.6]],
+  // its south-west edge (from the lamp on), the green welded-mesh fence of the gardens along the other; its centre line,
+  // to the photo's edge (a house of the aerial footprints, V112, stands where it went on)
+  side: [[-117.6, -78.6], [-121.5, -77.2], [-136.7, -71.9], [-158.6, -65.6], [-175.5, -61.2]],
   // the kiosk on the footway (blue, a pale roof), the green polycarbonate shelter past the south-east wing, a rusty shed:
   // centre x, z, half sizes along x, z
   kiosk: [-166.1, -125.8, 2.5, 1.4],
@@ -99,7 +100,7 @@ const PLAZA = {
     // the lot at the north end (four, noses north-west)
     [-119.1, -100.4, 'up', 'sedan', 0x1e2125], [-118.4, -98.0, 'up', 'hatch', 0x7a7f84], [-118.2, -95.6, 'up', 'hatch', 0xb3261f], [-118.1, -93.2, 'up', 'sedan', 0xc4c7ca],
     // the lot at the south end: three nose to the verge's end, two by the side street, the skip between them
-    [-165.6, -79.5, 'ne', 'sedan', 0x1f2226], [-172.5, -77.7, 'ne', 'hatch', 0xa8c79a], [-176.8, -76.1, 'ne', 'sedan', 0xc6c9cc], [-163.7, -66.9, 'sw', 'suv', 0xb7babd],
+    [-165.6, -79.5, 'ne', 'sedan', 0x1f2226], [-172.5, -77.7, 'ne', 'hatch', 0xa8c79a], [-175.4, -76.4, 'ne', 'sedan', 0xc6c9cc], [-163.7, -66.9, 'sw', 'suv', 0xb7babd],
     [-172.0, -63.9, 'sw', 'sedan', 0x8e9399],
   ],
   rowPaint: [0xc6c9cc, 0x3b3e43, 0x1d2024, 0xbfc2c5, 0x202326, 0x24272b, 0x1b1e21, 0x2a2d31, 0xc9ccce, 0xd2d4d6, 0xb4b8bb, 0x2f6cc6],

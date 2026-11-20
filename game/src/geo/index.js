@@ -37,6 +37,7 @@ import { prepareUrcus } from './urcus.js';
 import { prepareSonda } from './sonda.js';
 import { buildWagons } from './wagons.js';
 import { addOutbuildings } from './anexe.js';
+import { addFootprints } from './amprente.js';
 
 export { GEO, heightAt, profileAt, bridgeHeight, footprintIndex, FAR };
 
@@ -94,16 +95,20 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const plans = GEO.roadPlan = planRoads(fit);
   indexPlans(plans);
   snapJunctions(plans);
+  const ml = addFootprints();                            // the houses OSM lacks (the ML footprints), clear of the planned roads
   const tp = performance.now(), L = terrainLevels(quality);
   const rb = conformTerrain(plans, { near: L.near.map(l => l[0]), world: L.world.map(l => l[0]) });
   snapJunctions(plans, GEO.roadsLifted);               // (again where the ground made a road come up: its junctions follow)
   log('drumuri: plan ' + plans.length + ' (' + Math.round(tp - tr) + ' ms), teren ' + rb.ms + ' ms, ' + JSON.stringify({ ...GEO.roadbedLog, ...fit.stats(), terrain: undefined }), performance.now() - t0);
+  log('case din amprente: ' + JSON.stringify(ml), performance.now() - t0);
   const terrain = buildTerrain(scene, gt, quality);
   // the far relief (to 20 km, then the horizon to 100 km): drawn in a pass of its own (post.js FarPass)
   const far = [buildFarTerrain(gt), buildHorizon(gt), buildHorizon(gt, true)].filter(Boolean);
   const water = buildWater(scene);
   log('teren', performance.now() - t0);
+  const ta = performance.now();
   const anexe = addOutbuildings();                      // the lots' sheds and summer kitchens behind the houses (the drone photos)
+  log('anexe ' + anexe + ', curți ' + GEO.yardTrees + ' plante, ' + GEO.yardFences + ' garduri, ' + GEO.yardGates + ' porți (' + Math.round(performance.now() - ta) + ' ms)', performance.now() - t0);
   const { fronts, stats } = buildBuildings(B, world, makeBuildingMaterials(), quality.bldDetail);
   const landmarks = buildLandmarks(B, world);
   // the landmarks' moving parts (the pumping units' beams and cranks): their own meshes, animated by tick()

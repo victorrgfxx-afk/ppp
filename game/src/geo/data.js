@@ -8,8 +8,11 @@ export async function loadGeo(base) {
   const get = (f) => fetch(base + f).then(r => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
   // binary grids travel as base64 in JSON (static hosts may refuse .bin)
   const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
-  const [json, h, hw, far, trees, forest, species, hz, hz2] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null), get('species.json').then(bin).catch(() => null), get('horizon.json').catch(() => null), get('horizon2.json').catch(() => null)]);
+  const [json, h, hw, far, trees, forest, species, hz, hz2, ml] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null), get('species.json').then(bin).catch(() => null), get('horizon.json').catch(() => null), get('horizon2.json').catch(() => null), get('ml_buildings.json').catch(() => null)]);
   Object.assign(GEO, json);
+  // the houses OSM lacks (geo/ml_footprints.py: Microsoft's Global ML Building Footprints), added by amprente.js
+  GEO.mlBuildings = ml?.buildings ?? [];
+  GEO.mlSource = ml?.source ?? null;
   const g = json.meta.grid;
   // near grid (5 m, +-3 km around the street) and world grid (10 m, the whole playable map)
   GEO.n = g.n; GEO.ext = g.ext; GEO.step = g.step;
@@ -254,14 +257,38 @@ const KEPT = new Set();
 const keptKey = (x, z) => Math.round(Math.fround(x) * 64) + ',' + Math.round(Math.fround(z) * 64);
 export function keepTree(x, z) { KEPT.add(keptKey(x, z)); }
 export function treeKept(x, z) { return KEPT.has(keptKey(x, z)); }
+// the holes in 64 m cells (V112: the yards of every house of the near grid ask ~10^6 times), made again whenever
+// GEO.holes has grown (it only grows; sonda.js pushes its own); one without finite bounds (or over 20 km across) is
+// tried everywhere
+const HCELL = 64;
+let holeGrid = null, holeAll = [], holeN = -1;
+function holesAt(x, z) {
+  const H = GEO.holes;
+  if (!H) return null;
+  if (holeN !== H.length) {
+    holeGrid = new Map(); holeAll = []; holeN = H.length;
+    for (const h of H) {
+      if (!((h.x1 - h.x0) * (h.z1 - h.z0) < 4e8)) { holeAll.push(h); continue; }                     // (none such so far)
+      for (let i = Math.floor(h.x0 / HCELL); i <= Math.floor(h.x1 / HCELL); i++) for (let j = Math.floor(h.z0 / HCELL); j <= Math.floor(h.z1 / HCELL); j++) {
+        const k = (i + 32768) * 65536 + j + 32768;
+        let l = holeGrid.get(k); if (!l) { l = []; holeGrid.set(k, l); } l.push(h);
+      }
+    }
+  }
+  return holeGrid.get((Math.floor(x / HCELL) + 32768) * 65536 + Math.floor(z / HCELL) + 32768);
+}
 // scattered single trees inside a hole are dropped (unless it keeps them)
 export function inHole(x, z) {
-  for (const h of GEO.holes || []) if (h.scatter !== false && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
+  const L = holesAt(x, z);
+  if (L) for (const h of L) if (h.scatter !== false && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
+  for (const h of holeAll) if (h.scatter !== false && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
   return false;
 }
 // a flag of the holes at (x, z) (e.g. noFences: no generated lot fences / village poles there)
 export function holeFlag(x, z, key) {
-  for (const h of GEO.holes || []) if (h[key] && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
+  const L = holesAt(x, z);
+  if (L) for (const h of L) if (h[key] && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
+  for (const h of holeAll) if (h[key] && x >= h.x0 && x <= h.x1 && z >= h.z0 && z <= h.z1 && h.test(x, z)) return true;
   return false;
 }
 // ground painted as forest floor (last year's leaves) without clearing anything: a road's verges in the wood
