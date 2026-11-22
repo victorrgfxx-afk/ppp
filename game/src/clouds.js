@@ -5,8 +5,8 @@ import { TEX } from './textures.js';
 // Volumetric cumulus (V113). The fair-weather cumulus of the clear presets were a layer of 2D noise on a plane, lit by
 // a step towards the sun. Here they are a volume marched through: the cloud layer from 1500 m over the street (the
 // same deck the clouds' shadows are read from, lighting.js CLOUD_SH: the very same field of value noise, carried by the
-// same wind - every cloud lies over its own shadow) up to 3 km, a cloud's top the higher the deeper inside the field
-// (a tower over its core), its flat base at the condensation level, its billows eaten out of its edges by detail noise
+// same wind - every cloud lies over its own shadow) up to 2.7 km, a cloud's top the higher the deeper inside the field
+// (a dome over its core), its flat base at the condensation level, its billows eaten out of its edges by detail noise
 // (Schneider, "The real-time volumetric cloudscapes of Horizon Zero Dawn", SIGGRAPH 2015: a coverage field, a height
 // profile, erosion by detail). Light: the sun's (the moon's by night) through four steps towards it, Beer-Lambert, with
 // the multiple scattering of a thick cloud as octaves of lowered extinction and a flatter phase (Hillaire, "Physically
@@ -47,9 +47,10 @@ float slab( vec3 q, float k ) {
   return mix( mix( a.g, a.r, k ), mix( b.g, b.r, k ), ty );
 }
 // the density (0-1) at a point of the world, and how high in its cloud it is (0 its base, 1 its top). Over the field's
-// every cloud a dome (its top 520 m over the base a field's step inside it, ~900 m over a deep core, sinking to nothing
-// at its edge - where the shadows begin), the density full 120 m under the dome's surface and 30 m over the flat base; the surface pushed in and out by
-// the detail in 100-200 m lumps (the cauliflower), more of it near the top
+// every cloud a dome (its top 520 m over the base a field's step inside it, ~900 m over a deep core - times uHeight: lower
+// on a clear day - sinking to nothing at its edge, where the shadows begin), the density full 120 m under the dome's
+// surface and 30 m over the flat base; the surface pushed in and out by the detail in 100-200 m lumps (the
+// cauliflower), more of it near the top
 float dens( vec3 w, out float hf ) {
   hf = 0.0;
   float h = w.y - ${CLOUD_BASE.toFixed(1)};
