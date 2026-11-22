@@ -808,6 +808,12 @@ async function main() {
   // (snowprobe.js); a print goes as deep as your foot (press: of the depth's three quarters, all of it in fresh snow)
   const snowPack = new SnowPack(), snowProbe = new SnowProbe(snowPack), _sG = {}, _sS = {}, _sB = {}, _sW = {};
   const pressOf = (s) => s && s.d0 > 0.005 ? THREE.MathUtils.clamp(s.sink / (0.75 * s.d0), 0.02, 1) : 1;
+  // (V116) what the snow lies on: a road, the street's pavement or the paved yard at home - there it packs and its
+  // drifts set hard - or else grass (a meadow, a lawn, a garden, a field, the wood's floor, the hill of the cross),
+  // where it stays loose to the ground and you go through it (snowprobe.js)
+  const pavedYard = (x, z) => x > W.EAST_FENCE && x < 14.3 && z > -5.8 && z < 9 && !(x > 4.4 && x < 5.4 && z > -5.4 && z < -2.35);
+  const onGrass = (x, z, y) => world.surfaceAt(x, z, y) === 'grass' && !pavedYard(x, z);
+  let snowGrass = false;
   player.snowGround = (x, z, gh) => { const s = snowProbe.at(x, z, _sG); return s && Math.abs(s.base - gh) < 0.7 ? s.support : null; };
   player.onStep = (foot, hs) => { if (printing()) { const s = snowProbe.at(player.pos.x, player.pos.z, _sS); trail.step(player.pos, player.yaw, foot, hs > 4, s ? s.d0 : SNOW.uSnowDepth.value, undefined, pressOf(s)); } };
   player.onLand = () => { if (printing()) trail.land(player.pos, player.yaw, pressOf(snowProbe.at(player.pos.x, player.pos.z, _sS))); };
@@ -1869,7 +1875,7 @@ async function main() {
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active || v === riding })),
       friends: others.list(mp, pos),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
-        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm, ${snowPack.label}` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
+        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm, ${snowPack.label(mode === 'foot' && snowGrass)}` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
     if ((riverT -= dt) <= 0) {
       riverT = 0.5; riverK = geoWorld.water?.sound(camera.position) ?? 0;
@@ -1991,8 +1997,10 @@ async function main() {
     trail.update(renderer, camera.position, dt, SNOW.uSnow.value > 0.01 ? SNOW.uSnowFall.value * (1 + 1.5 * storm) / 150 : RAIN.uRain.value / 600);
     blanket.update(camera);
     // (V115) the snow round your feet, read off the GPU for the frames to come (snowprobe.js)
-    if (mode === 'foot' && !riding && !player.noclip && blanket.mesh.visible) snowProbe.request(renderer, player.pos.x, player.pos.z, player.pos.y);
-    else snowProbe.off();
+    if (mode === 'foot' && !riding && !player.noclip && blanket.mesh.visible) {
+      snowGrass = onGrass(player.pos.x, player.pos.z, player.pos.y);
+      snowProbe.request(renderer, player.pos.x, player.pos.z, player.pos.y, snowGrass ? 1 : 0);
+    } else snowProbe.off();
     // who pushes through the spruces: you on foot (a 1.75 m capsule) or the car you drive (its front and back)
     const firBodies = [];
     if (mode === 'car' && active) {

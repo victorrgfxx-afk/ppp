@@ -228,7 +228,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * **Urme în zăpadă.** Fiecare pas lasă urma bocancului: o talpă de ~29 cm, cu toc și cu crampoane.
     * Zăpada proaspătă e presată până la ~un sfert din grosime, cu pereți puțin surpați și o bordură împinsă în jur (cel mult ~6 cm).
     * Din zăpada de peste ~20 cm picioarele nu se mai ridică de tot: între urme rămâne un șanț târât.
-    * **Zăpada adâncă (V115):** în pudră te afunzi trei sferturi din grosime, iar corpul face o tranșee cât tine, cu pereți opaci. Pe zăpada și pe troienele întărite de vânt calci deasupra și te urci pe ele. Cât de tare e zăpada depinde de vreme și de istoria ei: ninsoare, viscol, ziua de după.
+    * **Zăpada adâncă (V115–V116):** în pudră te afunzi trei sferturi din grosime, iar corpul face o tranșee cât tine, cu pereți opaci. Pe iarbă (pajiști, grădini, Dealul Crucii) zăpada rămâne mereu afânată și intri în ea. Pe drumuri, pe trotuar și în curtea pavată, zăpada întărită de vânt te ține și te urci pe troiene. Cât de tare e zăpada acolo depinde de vreme și de istoria ei: ninsoare, viscol, ziua de după.
     * Când alergi, urmele sunt mai lungi. Când aterizezi dintr-o săritură, rămân amândouă tălpile.
     * Și trecătorul de pe Strada Gării lasă urme.
     * **Roțile mașinii lasă făgașe** cu modelul anvelopei, care stă pe loc. În zăpada mai adâncă decât garda la sol (~17 cm), burta mașinii ară un șanț lat între ele.
@@ -847,6 +847,25 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Pe iarbă zăpada rămâne afânată, mai ales pe Dealul Crucii (V116)** (`src/snowprobe.js`, `src/main.js`):
+  * **Ce era greșit în V115:** după viscol sau pe *Zăpadă, senin*, zăpada se întărea peste tot, inclusiv pe pajiști și pe Dealul Crucii. Acolo călcai deasupra, în loc să intri în ea.
+  * **Acum contează și pe ce stă zăpada:**
+    * **pe iarbă** (pajiști, gazon, grădini, câmpuri, pădure și tot Dealul Crucii) zăpada nu se întărește, oricum ar fi fost vremea. Firele de iarbă o țin deasupra pământului, iar căldura solului de sub ele face la bază chiciură de adâncime, fragilă și slab legată. O eventuală crustă se rupe sub bocanc. Te afunzi ~trei sferturi din grosime, ca în zăpada proaspătă, iar corpul face tranșeea. Asta e valabil și pentru troienele de pe iarbă;
+    * **pe suprafețe dure** (drumuri și ulițe, inclusiv cele de pământ de pe deal, trotuarul străzii tale și curtea pavată de acasă) zăpada se întărește după vreme, ca în V115. După viscol calci deasupra și te urci pe troiene.
+    * În HUD, pe iarbă apare *afânată pe iarbă*.
+  * **Cum se știe ce e sub zăpadă:** suprafața pe care o folosesc și roțile mașinii (`world.surfaceAt`): drumurile cu suprafața lor (asfalt, beton, pavaj, piatră, pietriș, pământ), asfaltul și trotuarul străzii tale, iar în rest iarbă. Curtea pavată de acasă e marcată separat.
+  * **Măsurat** (Scăzută, 60 cm de zăpadă, aceeași zăpadă întărită după viscol peste tot):
+
+    | unde | zăpada | te afunzi |
+    |---|---|---|
+    | pajiștea de lângă cruce | 97 cm | 72–73 cm (~75 %), cu tranșee |
+    | drumul de pământ de pe deal | 12–13 cm | 2 cm |
+    | troianul din curtea cu iarbă de lângă casă | 2,17 m | 1,63 m (75 %) |
+    | troianul din curtea pavată de acasă | 1,15 m | 2 cm: urci pe el, picioarele ajung la 1,35 m |
+
+  * **Testat:** lint; mers automat pe pajiștea de lângă cruce și pe drumul de pământ de lângă ea, apoi în curtea pavată, până pe troian; `tools/cars-test.mjs`.
+  * **Limite, spuse cinstit:** în afara străzii tale, jocul nu are hartă pentru curțile pavate sau betonate ale altor case. Acolo totul în afara drumurilor e considerat iarbă, deci zăpada e afânată.
+  * **Surse:** [ICSSG (Fierz et al., UNESCO 2009)](https://cryosphericsciences.org/wp-content/uploads/2019/02/snowclass_2009-11-23-tagged-highres.pdf), chiciura de adâncime (DH): „usually fragile”, „may be very poorly bonded”, „very fragile snow”; [Domine, Barrere și Morin, *Biogeosciences* 13, 2016](https://bg.copernicus.org/articles/13/6471/2016/): în tufe de 20–40 cm, zăpada e mai puțin densă și chiciura de adâncime crește până la înălțimea lor.
 * **Zăpada adâncă: în pudră te afunzi și ea ia forma corpului, pe troienele întărite de vânt te urci; zăpada nu mai e transparentă (V115)** (`src/snowprobe.js` nou; `src/snowtrail.js`, `src/player.js`, `src/main.js`, `src/rain.js`):
   * **Ce era:**
     * jucătorul călca mereu pe pământ, oricât de groasă era zăpada;

@@ -15,6 +15,11 @@ import { SNOW, RAIN, BLANKET_PARS } from './rain.js';
 // (from 148 kPa: Sugiura, Yang & Ohata, Rapid change of tundra snow hardness in Alaska, Annals of Glaciology 52(58),
 // 2011) - you walk on it, and on the drifts the gale piled up (wind-packed snow 350-400: Paterson). New snow on top of
 // an old, hard cover: only the new gives way.
+// (V116) That is on what is hard under it: a road, a pavement, a paved yard. On grass - a meadow, a lawn, a garden, a
+// field, the hill of the cross - it never sets hard: the stems hold it up off the ground and the warmth of the soil
+// under them grows depth hoar at its base, "usually fragile", "very poorly bonded", "very fragile snow" (ICSSG, DH);
+// in 20-40 cm bushes the snow is less dense and its depth hoar grows to their height (Domine, Barrere & Morin,
+// Biogeosciences 13, 2016) - as in knee-high hay. Any crust on it breaks: you go through it as through fresh snow (uSoft).
 // Where your feet go in more than ~30 cm your legs, then your hips, plough a trench as wide as you (snowtrail.js
 // body): the snow takes your shape, its walls stand round you (and the camera never ends up inside it).
 //
@@ -29,6 +34,7 @@ const FRAG = /* glsl */`
 ${BLANKET_PARS}
 uniform vec4 uC;      // the grid's centre x, z, its spacing, the height its heights are given from
 uniform vec4 uPack;   // the snowpack (SnowPack): the share of the depth fallen fresh, the old snow's density in the open and in the drifts, a boot's (kg/m3)
+uniform float uSoft;  // (V116) grass under it (1): loose to the ground, whatever the weather
 // (16 bits in two bytes: read back from an ordinary RGBA8 target, as every GPU can)
 vec2 enc(float v) { float u = floor(clamp(v, 0.0, 1.0) * 65535.0 + 0.5), hi = floor(u / 256.0); return vec2(hi, u - hi * 256.0) / 255.0; }
 void main() {
@@ -40,7 +46,8 @@ void main() {
   vec2 uv = vec2(0.5 + (xz.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (xz.y - uOccBox.y) / (2.0 * uOccBox.z));
   float rho = mix(uPack.y, uPack.z, smoothstep(1.2, 1.9, fieldCubic(uv).g));
   // how far a boot goes in (the fresh layer down to ${RHO.fresh} / ${RHO.boot} of it, the old one to rho / ${RHO.boot}; a print at least)
-  float sink = d0 * (uPack.x * (1.0 - ${RHO.fresh.toFixed(1)} / uPack.w) + (1.0 - uPack.x) * max(0.0, 1.0 - rho / uPack.w));
+  float fresh = max(uPack.x, uSoft);
+  float sink = d0 * (fresh * (1.0 - ${RHO.fresh.toFixed(1)} / uPack.w) + (1.0 - fresh) * max(0.0, 1.0 - rho / uPack.w));
   sink = max(sink, min(d0, 0.015));
   float top = b + d0 + trailDh(xz, d0);
   // where you stand: down through what gives way, or on the floor of a print or a track that went deeper
@@ -55,7 +62,7 @@ export class SnowProbe {
     this.rt.texture.name = 'snowProbe';
     this.mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, depthTest: false, depthWrite: false,
       uniforms: { uSnowField: SNOW.uSnowField, uTrail: SNOW.uTrail, uOccBox: RAIN.uOccBox, uSnowCar: SNOW.uSnowCar, uTrailBox: SNOW.uTrailBox, uSnowFine: SNOW.uSnowFine,
-        uSnowCarSize: SNOW.uSnowCarSize, uSnowDepth: SNOW.uSnowDepth, uC: { value: new THREE.Vector4() }, uPack: { value: pack.u } } });
+        uSnowCarSize: SNOW.uSnowCarSize, uSnowDepth: SNOW.uSnowDepth, uC: { value: new THREE.Vector4() }, uPack: { value: pack.u }, uSoft: { value: 0 } } });
     this.quad = new FullScreenQuad(this.mat);
     this.buf = new Uint8Array(N * 3 * N * 4);
     const f = () => new Float32Array(N * N);
@@ -63,10 +70,11 @@ export class SnowProbe {
     this.cx = 0; this.cz = 0;
     this.valid = false; this.busy = false; this.gen = 0;
   }
-  // a new read round (x, z), its heights given from y - unless the last one is not in yet
-  request(renderer, x, z, y) {
+  // a new read round (x, z), its heights given from y - unless the last one is not in yet; soft: grass under it (V116)
+  request(renderer, x, z, y, soft = 0) {
     if (this.busy) return;
     this.mat.uniforms.uC.value.set(x, z, SP, y);
+    this.mat.uniforms.uSoft.value = soft;
     const rt0 = renderer.getRenderTarget();
     renderer.setRenderTarget(this.rt);
     this.quad.render(renderer);
@@ -141,6 +149,10 @@ export class SnowPack {
     this.sync();
   }
   sync() { this.u.set(this.depth > 0 ? this.fresh / this.depth : 0, this.open, this.drift, RHO.boot); }
-  // in words (the HUD)
-  get label() { return this.u.x > 0.5 ? 'pufoasă' : this.u.x > 0.15 ? 'proaspătă peste strat vechi' : this.open > 330 ? 'întărită de vânt' : this.open > 265 ? 'bătută de vânt' : 'așezată'; }
+  // in words (the HUD); on grass (V116) it stays loose whatever the weather did to it
+  label(grass = false) {
+    if (this.u.x > 0.5) return 'pufoasă';
+    if (grass) return 'afânată pe iarbă';
+    return this.u.x > 0.15 ? 'proaspătă peste strat vechi' : this.open > 330 ? 'întărită de vânt' : this.open > 265 ? 'bătută de vânt' : 'așezată';
+  }
 }
