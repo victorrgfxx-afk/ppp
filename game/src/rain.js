@@ -1487,7 +1487,7 @@ export class SnowFX {
 // out where it ends. Further away the cover of rain.js (white surfaces) carries on. Near you a finer one takes over (a
 // vertex every 3.3 cm over 12.8 m, ahead of you): it carries the footprints and the tyre tracks (snowtrail.js) down to
 // the tread; along its edge it runs straight between the coarse vertices, so the two meet without a crack.
-const BLANKET_PARS = /* glsl */`
+export const BLANKET_PARS = /* glsl */`
 uniform sampler2D uSnowField, uTrail;
 uniform vec4 uOccBox, uSnowCar, uTrailBox, uSnowFine;
 uniform vec2 uSnowCarSize;
@@ -1564,7 +1564,9 @@ function blanketMaterials(fine) {
   const uni = { uOcc: RAIN.uOcc, uOccOn: RAIN.uOccOn, uSnowField: SNOW.uSnowField, uOccBox: RAIN.uOccBox, uSnowDepth: SNOW.uSnowDepth, uSnowLight: SNOW.uSnowLight, uSnowCar: SNOW.uSnowCar, uSnowCarSize: SNOW.uSnowCarSize,
     uTrail: SNOW.uTrail, uTrailBox: SNOW.uTrailBox, uSnowFine: SNOW.uSnowFine, uSnowPlaster: SNOW.uSnowPlaster, uSnowFall: SNOW.uSnowFall, uSnowWindDir: SNOW.uSnowWindDir };
   const def = (fine ? '#define SNOW_FINE\n' : '') + `#define SNOW_TE ${fine ? '0.03' : '0.06'}\n`;
-  const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
+  // (V115: both its faces - a camera that ends up inside the snow, flying or in a car's chase view, sees snow, not
+  // through it; its shadow as before, from the faces turned away from the light)
+  const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, side: THREE.DoubleSide, shadowSide: THREE.BackSide });
   mat.color.setRGB(0.87, 0.9, 0.94);                         // (the cover's snow colour)
   mat.userData.noWet = true;
   mat.onBeforeCompile = (sh) => {

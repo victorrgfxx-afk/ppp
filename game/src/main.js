@@ -9,6 +9,7 @@ import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt
 import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray, FogGlow } from './rain.js';
 import { Runoff, EaveStreams } from './runoff.js';
 import { SnowTrail } from './snowtrail.js';
+import { SnowProbe, SnowPack } from './snowprobe.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
@@ -803,8 +804,13 @@ async function main() {
   const trail = new SnowTrail(lowQ ? 1024 : 2048, 24), snowLee = new SnowLee(lowQ ? 512 : 1024, lowQ ? 256 : 512);
   // (the prints: in the snow, and in the mud where the ground is wet earth - V92; rain.js shows each where it belongs)
   const printing = () => SNOW.uSnow.value > 0.05 || (RAIN.uWet.value > 0.12 && SNOW.uSnow.value < 0.01);
-  player.onStep = (foot, hs) => { if (printing()) trail.step(player.pos, player.yaw, foot, hs > 4, SNOW.uSnowDepth.value); };
-  player.onLand = () => { if (printing()) trail.land(player.pos, player.yaw); };
+  // (V115) the deep snow: how far your feet go into it and where you stand - read off the GPU round your feet
+  // (snowprobe.js); a print goes as deep as your foot (press: of the depth's three quarters, all of it in fresh snow)
+  const snowPack = new SnowPack(), snowProbe = new SnowProbe(snowPack), _sG = {}, _sS = {}, _sB = {}, _sW = {};
+  const pressOf = (s) => s && s.d0 > 0.005 ? THREE.MathUtils.clamp(s.sink / (0.75 * s.d0), 0.02, 1) : 1;
+  player.snowGround = (x, z, gh) => { const s = snowProbe.at(x, z, _sG); return s && Math.abs(s.base - gh) < 0.7 ? s.support : null; };
+  player.onStep = (foot, hs) => { if (printing()) { const s = snowProbe.at(player.pos.x, player.pos.z, _sS); trail.step(player.pos, player.yaw, foot, hs > 4, s ? s.d0 : SNOW.uSnowDepth.value, undefined, pressOf(s)); } };
+  player.onLand = () => { if (printing()) trail.land(player.pos, player.yaw, pressOf(snowProbe.at(player.pos.x, player.pos.z, _sS))); };
   // the spruces near you in detail: the branches you push through, the snow that falls off them (geo/firs.js)
   const firs = new FirDetail(scene, { cap: { 'Scăzută': 12, 'Medie': 24, 'Înaltă': 40 }[Q.label] ?? 56, audio });
   firs.addSource(geoWorld.trees.firSource);
@@ -859,7 +865,8 @@ async function main() {
   storm = stormTarget; blizzard = snowFall > 0 ? storm : 0;
   if (blizzard > 0) { SNOW.uSnowDepth.value = 0.2; SNOW.uSnowPlaster.value = 0.7; }                     // (and a blizzard already blowing)
   else if (snowCover > 0) SNOW.uSnowPlaster.value = 0.5;                                               // (the trunks white on one side)
-  let offRoad = false;                                                  // (in deep snow off the roads: slower going)
+  snowPack.start(blizzard > 0 ? 'gale' : snowFall > 0 ? 'fall' : 'cover', SNOW.uSnowDepth.value);     // (V115: powder, wind-packed, settled)
+  let offRoad = false;                                                  // (in deep snow off the roads: the car's wheels held back)
   let fxClock = 0;                                                      // (the wheel effects' own clock: wheelfx.js)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   // (V101) the nearest of them light everything round (lamps.js); the eye's own state (eye.js)
@@ -1614,6 +1621,12 @@ async function main() {
         for (let i = 0; i < PHOTO_VIEWS.length; i++) if (input.hit('Digit' + ((i + 1) % 10))) { if (riding) unride(null); gotoView(i); }
         if (input.hit('KeyL')) { flashlight.set(!flashlight.on); hud.toast(flashlight.on ? 'Lanterna aprinsă' : 'Lanterna stinsă'); }
         player.update(dt, input, audio, sens());
+        // (V115) where your feet go deep into the snow your body ploughs it aside: it takes your shape (snowtrail.js)
+        if (!player.noclip && printing()) {
+          const s = snowProbe.at(player.pos.x, player.pos.z, _sB), flat = !!(player.sl || player.sup);
+          if (s && (s.sink > 0.28 || (flat && s.sink > 0.08))) trail.body(player.pos, player.yaw, s.sink, pressOf(s), flat);
+          else trail.bodyAt.p = null;
+        }
         // a dog right next to you wins over a car parked beyond the fence (nothing to use while flying)
         const dog = player.noclip ? null : dogs.nearest(player.pos.x, player.pos.z);
         const near = dog || player.noclip ? null : nearestCar();
@@ -1856,7 +1869,7 @@ async function main() {
       cars: vehicles.map(v => ({ x: v.x, z: v.z, h: v.h, active: v === active || v === riding })),
       friends: others.list(mp, pos),
       location: (crossLm && Math.hypot(pos.x - crossLm.x, pos.z - crossLm.z) < 45 ? 'Crucea de pe deal · ' : brLm && brLm.surface(pos.x, pos.z) !== null && pos.y > brLm.surface(pos.x, pos.z) - 2.5 ? 'Podul peste Prahova · ' : roadName ? roadName + ' · ' : '') + (dHome < 14 ? 'Acasă · nr. 123H' : `acasă ${dHome < 1000 ? Math.round(dHome) + ' m' : (dHome / 1000).toFixed(1) + ' km'}`) +
-        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
+        (SNOW.uSnowDepth.value >= 0.01 ? ` · zăpadă ${Math.round(SNOW.uSnowDepth.value * 100)} cm, ${snowPack.label}` : '') + (storm > 0.3 ? ` · vânt ${Math.round(windSpeed * (1 - shelter) * 3.6)} km/h` + (shelter > 0.4 ? ' (la adăpost)' : '') : ''),
     });
     if ((riverT -= dt) <= 0) {
       riverT = 0.5; riverK = geoWorld.water?.sound(camera.position) ?? 0;
@@ -1893,6 +1906,7 @@ async function main() {
     if (snowFall > 0) dep.value = Math.min(0.6, dep.value + dt * SNOW.uSnowFall.value * sc * 0.08 / 60 * (1 + 0.5 * storm));
     else if (snowCover > 0) dep.value = Math.min(Math.max(dep.value, 0.25), dep.value + dt * 0.1);
     else dep.value = Math.max(0, dep.value - dt * (rainTarget > 0 ? 0.025 : 0.01));
+    snowPack.update(dt, dep.value, snowFall > 0, blizzard);              // (V115: how hard it is - snowprobe.js)
     // the snow sticks to the windward faces (trunks, poles, walls): a blizzard plasters them in ~1.5 min, a snowfall
     // with its breeze streaks them, and the clear day after finds the trunks of a wood white on one side; it stays
     // until the snow melts
@@ -1912,7 +1926,15 @@ async function main() {
     } else shelter = 0;
     shWind.copy(STORM.uWind.value).multiplyScalar(1 - shelter);
     TRACTION.wind = storm > 0.05 ? shWind : null;
-    player.slow = offRoad ? 1 - 0.5 * Math.min(1, dep.value / 0.5) : 1;   // (wading: knee-deep snow halves the pace)
+    // (V115) wading: the snow you push into just ahead, as far as your feet go into it - breaking trail (in your own
+    // trench or on a hard drift the going is easy). Pandolf, Haisman & Goldman 1976: walking in soft snow costs 2.5x,
+    // 3.3x, 4.1x the effort on a road with the feet 15, 25, 35 cm in (on a line: eta = 1.3 + 0.08 per cm); at the same
+    // effort the pace goes as 1/sqrt(eta) (the cost of walking in Pandolf's equation: ~ eta v^2), firm snow's the 1
+    {
+      const v = player.vel, hs = Math.hypot(v.x, v.z), fx = hs > 0.3 ? v.x / hs : -Math.sin(player.yaw), fz = hs > 0.3 ? v.z / hs : -Math.cos(player.yaw);
+      const s = mode === 'foot' ? snowProbe.at(player.pos.x + fx * 0.35, player.pos.z + fz * 0.35, _sW) : null;
+      player.slow = damp(player.slow ?? 1, Math.sqrt(1.3 / (1.3 + 8 * (s ? Math.max(0, s.top - s.support) : 0))), 6, dt);
+    }
     player.snowK = SNOW.uSnow.value; player.wetK = RAIN.uWet.value;        // (a slide: far on snow, further on wet grass)
     const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002;
     let occNew = false;
@@ -1968,6 +1990,9 @@ async function main() {
     }
     trail.update(renderer, camera.position, dt, SNOW.uSnow.value > 0.01 ? SNOW.uSnowFall.value * (1 + 1.5 * storm) / 150 : RAIN.uRain.value / 600);
     blanket.update(camera);
+    // (V115) the snow round your feet, read off the GPU for the frames to come (snowprobe.js)
+    if (mode === 'foot' && !riding && !player.noclip && blanket.mesh.visible) snowProbe.request(renderer, player.pos.x, player.pos.z, player.pos.y);
+    else snowProbe.off();
     // who pushes through the spruces: you on foot (a 1.75 m capsule) or the car you drive (its front and back)
     const firBodies = [];
     if (mode === 'car' && active) {
@@ -2099,7 +2124,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

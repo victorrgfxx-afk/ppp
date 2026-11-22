@@ -116,7 +116,8 @@ export class Player {
       const s = this.sl; s.t += dt;
       // (on the hip: friction, ~0.45 g on grass or tarmac in clothes, ~0.14 on snow; the slope pulls you on or holds
       // you back: g sin a cos a along its fall)
-      const mu = (this.snowK ?? 0) > 0.5 ? 0.14 : (this.wetK ?? 0) > 0.3 ? 0.32 : 0.45;
+      // (V115: through deep soft snow you plough instead of gliding - its drag as the pace it leaves you walking: main.js)
+      const mu = ((this.snowK ?? 0) > 0.5 ? 0.14 : (this.wetK ?? 0) > 0.3 ? 0.32 : 0.45) + 1.2 * (1 - (this.slow ?? 1));
       const e = 0.4, x = this.pos.x, z = this.pos.z, ry = this.pos.y + 0.5, wg = this.world;
       const gx = (wg.groundHeight(x + e, z, ry) - wg.groundHeight(x - e, z, ry)) / (2 * e), gz = (wg.groundHeight(x, z + e, ry) - wg.groundHeight(x, z - e, ry)) / (2 * e);
       if (hs > 1e-3) { const k = Math.max(0, hs - mu * 9.81 * dt) / hs; this.vel.x *= k; this.vel.z *= k; }
@@ -157,7 +158,11 @@ export class Player {
     }
     // vertical
     this.pos.y += this.vel.y * dt;
-    const gh = this.world.groundHeight(this.pos.x, this.pos.z, this.pos.y);
+    let gh = this.world.groundHeight(this.pos.x, this.pos.z, this.pos.y);
+    // (V115) in the snow you stand where your feet stop in it: down through fresh powder, up on a drift the wind packed
+    // hard (main.js: snowprobe.js)
+    const sg = this.snowGround?.(this.pos.x, this.pos.z, gh);
+    if (sg != null && sg > gh) gh = sg;
     if (this.pos.y <= gh + 0.001) {
       if (!this.onGround && this.vel.y < -3) { this.landShake = Math.min(0.08, -this.vel.y * 0.012); audio?.land(this.surface()); this.onLand?.(); }
       this.pos.y = gh; this.vel.y = 0; this.onGround = true;

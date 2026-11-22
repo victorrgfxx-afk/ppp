@@ -228,6 +228,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
   * **Urme în zăpadă.** Fiecare pas lasă urma bocancului: o talpă de ~29 cm, cu toc și cu crampoane.
     * Zăpada proaspătă e presată până la ~un sfert din grosime, cu pereți puțin surpați și o bordură împinsă în jur (cel mult ~6 cm).
     * Din zăpada de peste ~20 cm picioarele nu se mai ridică de tot: între urme rămâne un șanț târât.
+    * **Zăpada adâncă (V115):** în pudră te afunzi trei sferturi din grosime, iar corpul face o tranșee cât tine, cu pereți opaci. Pe zăpada și pe troienele întărite de vânt calci deasupra și te urci pe ele. Cât de tare e zăpada depinde de vreme și de istoria ei: ninsoare, viscol, ziua de după.
     * Când alergi, urmele sunt mai lungi. Când aterizezi dintr-o săritură, rămân amândouă tălpile.
     * Și trecătorul de pe Strada Gării lasă urme.
     * **Roțile mașinii lasă făgașe** cu modelul anvelopei, care stă pe loc. În zăpada mai adâncă decât garda la sol (~17 cm), burta mașinii ară un șanț lat între ele.
@@ -846,6 +847,67 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Zăpada adâncă: în pudră te afunzi și ea ia forma corpului, pe troienele întărite de vânt te urci; zăpada nu mai e transparentă (V115)** (`src/snowprobe.js` nou; `src/snowtrail.js`, `src/player.js`, `src/main.js`, `src/rain.js`):
+  * **Ce era:**
+    * jucătorul călca mereu pe pământ, oricât de groasă era zăpada;
+    * după un viscol, la 60 cm de zăpadă, troienele de lângă garduri și case ajung la 2,3 m (măsurat cu sonda de mai jos), deci ochiul (1,6 m) ajungea cu 0,7 m sub suprafață;
+    * stratul de zăpadă avea o singură față, cea de sus. Din interior nu se desena, așa că prin el se vedeau gardul și pământul.
+  * **Cât de tare e zăpada depinde de vreme** (`src/snowprobe.js`):
+    * **Cât se afundă piciorul:** bocancul apasă cu ~30 kPa (80 kg pe o talpă de 29 × 10,5 cm). Coboară până când zăpada de sub el e tasată la ~400 kg/m³, adică un strat cu densitatea ρ se strânge la ρ/400 din grosime.
+    * **Ninsoare** (aer calm): zăpadă proaspătă, ~100 kg/m³. Te afunzi trei sferturi din grosime, exact cât presau urmele și până acum.
+    * **Viscol:** vântul rupe cristalele și le îndesă. Cât bate, zăpada are ~280 kg/m³ în câmp (te afunzi ~30 %) și 350 pe troiene (~13 %).
+    * **După viscol:** zăpada se întărește la ~380 kg/m³ în câmp și 400 pe troiene. Calci pe ea și rămâne doar urma bocancului, de câțiva centimetri.
+    * **Zăpadă, senin:** zăpada așezată are 250 kg/m³, deci în câmp te afunzi ~37 %. Troienele au fost făcute de vânt, sunt plăci de vânt, și te urci pe ele.
+    * **Ninsoare peste un strat vechi întărit:** te afunzi doar prin zăpada nouă.
+    * **În timp:** zăpada proaspătă se așază în ~5 minute de senin. Totul merge în timp accelerat, ca ninsoarea.
+    * Starea zăpezii apare în HUD, lângă grosime: *pufoasă*, *bătută de vânt*, *întărită de vânt*, *așezată*, *proaspătă peste strat vechi*.
+  * **Unde stai:**
+    * o sondă pe placa video calculează zăpada în 9 × 9 puncte, la 20 cm unul de altul, în jurul picioarelor. Folosește exact codul GLSL cu care se desenează zăpada (forma troienelor și urmele);
+    * rezultatul se citește înapoi asincron, fără să oprească placa video, cu un cadru-două întârziere;
+    * piciorul stă unde se oprește în zăpadă: jos prin pudră, sus pe troianul întărit.
+  * **Zăpada ia forma corpului:**
+    * unde picioarele intră mai mult de ~28 cm, corpul ară zăpada și face o tranșee cât tine: ~28 cm la gambe, ~46 cm la șolduri (măsurat la jumătatea peretelui);
+    * tranșeea e îngustă jos, la tălpi, și largă sus, cu buza surpată și rotunjită. Pereții coboară pe 26 cm (~80° la un metru adâncime); în pudra foarte adâncă se surpă, pe până la 50 cm;
+    * stând pe loc, în jurul tău rămâne groapa, mai lată decât adâncă. Alunecând sau întins pe spate, rămâne un jgheab cât umerii și cât lungimea ta;
+    * camera stă mereu deasupra fundului gropii, deci zăpada din jur se vede mereu din afară, ca pereți albi și opaci. În pudra de 2,3 m ești îngropat până la gât (ochiul e cu ~12 cm sub suprafața din jur) și vezi doar pereții gropii;
+    * un perete vertical, desenat pe rețeaua stratului (un vârf la 3,3–6,7 cm), ieșea ca un pieptene de zimți. De aceea pereții au pantă.
+  * **Opacă și când camera intră totuși în zăpadă** (zbor liber, camera din spatele mașinii într-un troian): stratul are acum ambele fețe și din interior se vede alb, nu prin el. Umbra lui e calculată ca înainte.
+  * **Mersul:**
+    * încetinești după cât de adânc trebuie să-ți faci drum prin zăpada din fața ta. Mersul prin zăpadă moale costă de 2,5 / 3,3 / 4,1 ori efortul de pe drum, cu urma adâncă de 15 / 25 / 35 cm (Pandolf, Haisman și Goldman, 1976). La același efort, pasul scade ca 1/√η (ecuația Pandolf);
+    * în pudră de 80 cm mergi cu ~46 % din pas, iar în troianul de 2,2 m cu ~31 %. În propria tranșee și pe zăpada întărită mergi aproape normal (90–96 %).
+    * alunecarea (C din fugă, cu pistolul) care intră în pudră se oprește mai repede: 3,9 m în 0,78 s, față de 5,8 m în 1,12 s pe zăpada întărită. Direct din pudră nici nu poți fugi destul de repede ca s-o pornești (3,2 m/s, din cei 4,6 necesari).
+  * **Măsurat** (Scăzută, 60 cm de zăpadă după viscol, același drum până în troianul de lângă casă, mers automat cu tasta W):
+
+    | | înainte (V114) | acum |
+    |---|---|---|
+    | troian de 2,3 m, zăpadă întărită | picioarele pe pământ, ochiul 0,7 m sub zăpadă: se văd prin ea gardul și pământul | picioarele urcă de la 0,94 la 2,41 m și se afundă 2–4 cm; ochiul rămâne 1,53–1,59 m deasupra zăpezii |
+    | același troian, pudră | la fel | picioarele coboară până la un sfert din grosime deasupra solului (0,4–0,8 m), tranșee cât corpul, ochiul 1,6 m deasupra fundului ei |
+    | Zăpadă, senin, apoi troianul | la fel | în câmp te afunzi 18–26 cm (61–69 % din pas), pe troian 2 cm (91–96 %) |
+
+  * **Cât costă:**
+    * un apel de desenare în plus (sonda, 243 de pixeli) și o citire asincronă pe cadru;
+    * urmele corpului intră în același apel cu restul urmelor;
+    * stratul cu două fețe, măsurat în aceeași scenă: cadrul a durat 614–717 ms cu o față și 636–674 ms cu două, în randarea software. Diferența e sub zgomotul măsurătorii.
+  * **Testat:**
+    * lint;
+    * mersul automat de mai sus, prin pudră, prin zăpada întărită și prin zăpada așezată, cu înălțimea picioarelor, a zăpezii și a ochiului măsurate pe drum;
+    * randări din aceleași puncte înainte și după;
+    * camera forțată în troian (zbor liber): se vede albă și opacă;
+    * alunecarea pe zăpada întărită și în pudră, de pe același drum;
+    * zăpada trecută prin ninsoare → senin → viscol → senin → ninsoare peste;
+    * `tools/cars-test.mjs`.
+  * **Limite, spuse cinstit:**
+    * densitățile sunt aceleași pe toată strada (după vreme și după istoria ei), nu strat cu strat ca într-un profil real. Troienele se deosebesc doar prin formă: sunt locurile unde vântul a pus mai multă zăpadă decât media;
+    * timpul e accelerat: zăpada se întărește în ~1,5 minute după viscol, nu într-o zi;
+    * sonda citește cu un cadru-două întârziere. După o teleportare sau la coborârea din mașină într-un troian întărit, stai o clipă pe pământ și apoi urci;
+    * trecătorii de pe Strada Gării merg tot pe pământ, iar urmele lor se presează ca în zăpada proaspătă;
+    * pe Scăzută (un vârf la 6,7 cm), buza tranșeelor foarte adânci are pe alocuri mici zimți.
+  * **Surse:**
+    * [Clasificarea internațională a zăpezii de pe sol (Fierz et al., UNESCO 2009)](https://cryosphericsciences.org/wp-content/uploads/2019/02/snowclass_2009-11-23-tagged-highres.pdf): duritatea (Tabelul 1.4), afundarea piciorului (*foot penetration*, 2.8), zăpada bătută de vânt (RGwp, „hardness increases with wind speed”) și plăcile de vânt („usually found on lee slopes”);
+    * [densitățile după Paterson, *The Physics of Glaciers* (Science Learning Hub)](https://www.sciencelearn.org.nz/resources/1391-snow-and-ice-density): zăpadă nouă 50–70, așezată 200–300, bătută de vânt 350–400 kg/m³;
+    * [Sugiura, Yang și Ohata 2011, *Annals of Glaciology* 52(58)](https://www.cambridge.org/core/journals/annals-of-glaciology/article/rapid-change-of-tundra-snow-hardness-in-alaska/F466A4E800575E1AC4BCBE0B5F7EBB0F): 278 kg/m³ cât bate vântul, 371–380 după; duritatea minimă 5 kPa în timpul viscolului și 148 kPa după;
+    * [Sommer, Lehning și Fierz 2018, *Frontiers in Earth Science* 6](https://www.frontiersin.org/articles/10.3389/feart.2018.00004): zăpada de câteva ore are 30–100 kg/m³ și vântul o întărește;
+    * [coeficienții de teren pentru zăpadă moale (ecuația Pandolf)](https://en.wikipedia.org/wiki/Pandolf_equation); măsurătorile pe zăpadă: Pandolf, Haisman și Goldman, *Ergonomics* 19, 1976.
 * **Zăpada cu grosime: pe acoperișuri, cu cornișe peste jgheaburi, țurțuri la streașini și perne de zăpadă pe mașini; senin înseamnă senin (V114)** (`src/snowroofs.js` nou; `src/geo/buildings.js`, `src/cars.js`, `src/main.js`, `src/lighting.js`, `src/sky.js`, `src/export/unreal.js`):
   * **Senin înseamnă senin** (`src/lighting.js`, `src/sky.js`, `src/main.js`): cu norii volumetrici din V113, *Senin* păstrase acoperirea veche (0,4), adică o treime din cer în nori, iar *Zăpadă, senin* 0,25. Acum ambele au cerul complet senin: niciun nor, nici volumetric, nici în stratul vechi, și nicio umbră de nor pe pământ. Pragul câmpului de nori pentru acoperire 0 e 0,95, pe care câmpul nu-l atinge niciodată. Pe cer senin harta norilor nu se mai calculează deloc. *Parțial noros* își păstrează cumulusul, iar vremurile înnorate, plafonul. Verificat în același cadru: *Senin* fără niciun nor, *Parțial noros* cu cumulus.
   * **Ce era:** sub zăpadă, acoperișurile și mașinile erau doar albite de shaderul zăpezii. Albul se oprea fix la marginea țiglei, fără grosime, iar jgheabul rămânea la vedere. Țurțuri nu existau.

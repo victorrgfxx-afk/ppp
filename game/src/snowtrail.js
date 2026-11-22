@@ -9,15 +9,15 @@ import { SNOW, RAIN } from './rain.js';
 // it holds. On wet ground (V92) the same map holds the prints pressed into the mud (rain.js: where the ground is earth).
 const STAMP_VERT = /* glsl */`
 attribute vec2 corner;
-attribute vec4 aP;          // centre x, z, heading, kind (0 a boot, 1 a tyre's track, 2 a drag or a car's belly)
+attribute vec4 aP;          // centre x, z, heading, kind (0 a boot, 1 a tyre's track, 2 a drag or a car's belly, 3 your body: V115)
 attribute vec4 aS;          // half width, half length (a track: of its segment), how hard it presses (0..1), its rim
-attribute float aT;         // a track: how far its wheel had rolled at the segment's start (m: the tread stays put)
+attribute float aT;         // a track: how far its wheel had rolled at the segment's start (m: the tread stays put); a body: its walls' width
 uniform vec4 uBox;          // centre x, z, half size
 varying vec2 vL;
 varying vec4 vS;
 varying float vK, vT;
 void main() {
-  vec2 ext = (aP.w > 0.5 ? vec2(aS.x, aS.y + aS.x) : aS.xy) + 0.13;      // (room for the rim)
+  vec2 ext = (aP.w > 0.5 ? vec2(aS.x, aS.y + aS.x) : aS.xy) + (aP.w > 2.5 ? 0.23 * aT + 0.1 : 0.13);      // (room for the rim)
   vL = corner * ext;
   // local x across, y forward (the heading's forward is -sin h, -cos h in world x, z)
   float c = cos(aP.z), s = sin(aP.z);
@@ -44,9 +44,13 @@ void main() {
     if (vK < 1.5) tread = step(0.5, fract((vT + vL.y) * 9.0 + abs(vL.x) * 7.0));
   }
   // its walls: fresh snow crumbles in a little (and the fine blanket's 3.3 cm vertices draw a steeper one jagged);
-  // the rim pushed up round it, highest ~3 cm out, gone by ~11 cm
-  float press = vS.z * (1.0 - smoothstep(-0.045, 0.02, d));
-  float rim = vS.w * smoothstep(-0.015, 0.03, d) * (1.0 - smoothstep(0.03, 0.11, d));
+  // the rim pushed up round it, highest ~3 cm out, gone by ~11 cm. A body's trench (V115), up to ~2 m deep, is as
+  // you are: narrow at your feet, wide at your hips, its lip crumbled and rounded; its walls go down over W (26 cm,
+  // ~80 deg halfway down a metre; in deeper powder up to 50 cm, as it sloughs in) - over several of the blanket's
+  // vertices: a steeper one, drawn on their 3.3-6.7 cm lattice, came out a comb of spikes
+  float W = vT - vS.y, e0 = vK > 2.5 ? -0.77 * W : -0.045, e1 = vK > 2.5 ? 0.23 * W : 0.02;
+  float press = vS.z * (1.0 - smoothstep(e0, e1, d));
+  float rim = vS.w * smoothstep(e1 - 0.035, e1 + 0.01, d) * (1.0 - smoothstep(e1 + 0.01, e1 + 0.09, d));
   gl_FragColor = vec4(press, rim, tread * press * smoothstep(-0.01, -0.03, d), 0.0);
 }`;
 const QUAD_VERT = /* glsl */`
@@ -101,6 +105,7 @@ export class SnowTrail {
     this.fillT = 0;
     this.on = false; this.dirty = true;
     this.feet = { '-1': null, 1: null };          // your last print of each foot
+    this.bodyAt = { p: null, h: null };           // (V115) where your body last ploughed the snow, which way
     this.wheels = new Map();                       // a car's wheels: where they were, how far they rolled
   }
 
@@ -119,22 +124,38 @@ export class SnowTrail {
   }
 
   // a step: where the body is, which way it faces, which foot (-1 left, 1 right), running, how deep the snow lies
-  // (feet: whose last prints, yours by default). The foot lands ~12 cm ahead and 10 cm to its side, toes a little out;
-  // in snow over ~20 cm the toes drag a furrow into each print.
-  step(pos, yaw, foot, run, depth, feet = this.feet) {
+  // (feet: whose last prints, yours by default; press: how much of the depth's three quarters the boot goes through -
+  // all of it in fresh snow, a little on a hard one: V115, snowprobe.js). The foot lands ~12 cm ahead and 10 cm to its
+  // side, toes a little out; where it goes in over ~15 cm the toes drag a furrow into each print.
+  step(pos, yaw, foot, run, depth, feet = this.feet, press = 1) {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
     const x = pos.x + rx * 0.1 * foot + fx * 0.12, z = pos.z + rz * 0.1 * foot + fz * 0.12;
-    this.add(x, z, yaw - foot * 0.08, 0, 0.055, run ? 0.16 : 0.145, 1, run ? 1 : 0.8);
-    const prev = feet[foot];
-    if (prev && depth > 0.2) {
+    this.add(x, z, yaw - foot * 0.08, 0, 0.055, run ? 0.16 : 0.145, press, run ? 1 : 0.8);
+    const prev = feet[foot], s = depth * press;
+    if (prev && s > 0.2) {
       const L = Math.hypot(x - prev.x, z - prev.z);
       // (the toe ploughs through it on the way down: the last ~40% of the stride)
-      if (L > 0.2 && L < 2.2) this.segment(prev.x + (x - prev.x) * 0.6, prev.z + (z - prev.z) * 0.6, x, z, 2, 0.04, 0.32 * Math.min(1, (depth - 0.2) / 0.2), 0.25);
+      if (L > 0.2 && L < 2.2) this.segment(prev.x + (x - prev.x) * 0.6, prev.z + (z - prev.z) * 0.6, x, z, 2, 0.04, press * 0.32 * Math.min(1, (s - 0.2) / 0.2), 0.25);
     }
     feet[foot] = { x, z };
   }
   // landing from a jump: both feet
-  land(pos, yaw) { this.step(pos, yaw, -1, false, 0); this.step(pos, yaw, 1, false, 0); }
+  land(pos, yaw, press = 1) { this.step(pos, yaw, -1, false, 0, this.feet, press); this.step(pos, yaw, 1, false, 0, this.feet, press); }
+  // (V115) wading through snow your feet go into deeper than ~30 cm (sink, m; press as a step's): your legs, then your
+  // hips plough it aside down to where your feet stop - a trench as wide as you, ~28 cm at the shins, ~46 at the hips
+  // (halfway down), its walls steep; standing, the hole round you, broad across; sliding or lying on it (flat), a trough
+  // as wide as your shoulders, your length on your back. Where you stand in it, it takes your shape.
+  body(pos, yaw, sink, press, flat = false) {
+    const st = this.bodyAt, x = pos.x, z = pos.z;
+    // (half its width halfway down the wall; the stamp's own reaches 0.27 W further: its wall's slope, STAMP_FRAG)
+    const hw = flat ? 0.25 : 0.14 + 0.09 * THREE.MathUtils.smoothstep(sink, 0.3, 0.75);
+    const W = THREE.MathUtils.clamp(0.26 + 0.25 * (sink - 0.8), 0.26, 0.5), r = 0.27 * W;
+    const L = st.p ? Math.hypot(x - st.p.x, z - st.p.z) : 0;
+    if (st.p && L > 0.02 && L < 3) { this.segment(st.p.x, st.p.z, x, z, 3, hw + r, press, 0.6, W); st.h = Math.atan2(-(x - st.p.x), -(z - st.p.z)); }
+    else if (flat) this.add(x - Math.sin(st.h ?? yaw) * 0.5, z - Math.cos(st.h ?? yaw) * 0.5, st.h ?? yaw, 3, 0.24 + r, 0.55, press, 0.6, W);
+    else this.add(x, z, yaw + Math.PI / 2, 3, 0.15 + r, Math.max(0, hw - 0.15), press, 0.6, W);
+    if (!st.p || L > 0.02) st.p = { x, z };
+  }
 
   // the car you drive (Vehicle): the four tyres roll their tracks; in snow deeper than its clearance (~17 cm) the
   // belly ploughs a trench between them
@@ -165,7 +186,7 @@ export class SnowTrail {
   update(renderer, camPos, dt, fill) {
     const on = SNOW.uSnow.value > 0.01 || RAIN.uWet.value > 0.1;
     if (!on) {
-      if (this.on) { this.on = false; this.box.w = 0; this.dirty = true; this.feet = { '-1': null, 1: null }; this.wheels.clear(); }
+      if (this.on) { this.on = false; this.box.w = 0; this.dirty = true; this.feet = { '-1': null, 1: null }; this.bodyAt.p = null; this.wheels.clear(); }
       this.n = 0;
       return;
     }
