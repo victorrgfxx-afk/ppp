@@ -4,6 +4,7 @@ import { loadTextures, TEX } from './textures.js';
 import { buildMaterials, M } from './materials.js';
 import { createSky, createLights, buildEnvironment, setSkyWeather } from './sky.js';
 import { CloudVolume } from './clouds.js';
+import { SnowRoofs, Icicles } from './snowroofs.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth, CLOUD_SH, cloudLevel } from './lighting.js';
 import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray, FogGlow } from './rain.js';
 import { Runoff, EaveStreams } from './runoff.js';
@@ -225,7 +226,7 @@ async function main() {
   const clouds = new CloudVolume(sky, CLOUD_SH), cloudEye = new THREE.Vector3();
   const cloudsNow = (all) => {
     const su = sky.material.uniforms;
-    if (su.uCumulus.value <= 0) { su.uVol.value = 0; return; }
+    if (su.uCumulus.value <= 0 || su.uCover.value < 0.01) { su.uVol.value = 0; return; }   // (a deck, or a clear sky: no cumulus)
     CLOUD_SH.z = cloudLevel(su.uCover.value);
     clouds.update(renderer, cloudEye.setFromMatrixPosition(camera.matrixWorld), all || !clouds.ready);
     su.uVol.value = su.uCumulus.value;
@@ -336,6 +337,7 @@ async function main() {
     clear: { zenith: [0.004, 0.007, 0.018], horizon: [0.014, 0.02, 0.034], cloudLit: [0.05, 0.056, 0.07], cloudDark: [0.012, 0.013, 0.017], fog: [0.012, 0.015, 0.024] },
     deck: { zenith: [0.007, 0.008, 0.011], horizon: [0.011, 0.012, 0.016], cloudLit: [0.03, 0.032, 0.039], cloudDark: [0.01, 0.011, 0.013], fog: [0.013, 0.014, 0.018] },
   };
+  let freshSnow = 0;                                  // (V114: a new snowfall: the snow on every car again)
   const applyWeather = (key, h = hour) => {
     weatherKey = key; hour = h;
     const date = sunTime(hour, WEATHER[key].winter);
@@ -345,6 +347,7 @@ async function main() {
     const moonUp = THREE.MathUtils.smoothstep(moonInfo.el, -1, 5) * moonInfo.illum, overcast = w.cover > 0.6;
     rainTarget = w.rain ?? 0; wetTarget = Math.max(rainTarget, w.damp ?? 0); fogMode = w.fogPatches ?? 0; AIR_FOG.x = fogMode;
     snowFall = w.snow ?? 0; snowCover = w.snowCover ?? 0;
+    if (snowFall > 0) freshSnow++;
     if (!!w.winter !== winter) { winter = !!w.winter; setWinter?.(winter); }
     SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];                       // (bare in the snow)
     horror = night > 0.5 && rainTarget > 0 ? 1 : 0;                         // a night storm: the bear is out
@@ -441,6 +444,8 @@ async function main() {
   for (const m of geoWorld.far) farScene.add(m);
   FAR.uH0.value = GEO.meta.origin.h0;
   const built = buildWorld(scene, world, Q, { geo: true, street: world.streetZ, fronts: geoWorld.fronts, blocked: footprintIndex() });
+  const snowRoofs = new SnowRoofs(scene);            // (V114: the snow on the roofs, with its depth and its cornices)
+  const icicles = new Icicles(scene);                 // (V114: and the icicles under their eaves)
   const dogs = buildDogs(scene, world);
 
   // ---------- parked cars exactly as in the photos ----------
@@ -1385,6 +1390,7 @@ async function main() {
   };
   const enterCar = (v) => {
     mode = 'car'; active = v; tunerStop = 0;
+    v.brushed = freshSnow;                                             // (V114: the snow off it, till it snows again: cars.js cap)
     noSignal = noSignalZone(v.x, v.z); signalT = 0;                      // (the navigation starts up where you are)
     if ((night > 0.5 || storm > 0.3) && !v.lightsOn) v.setLights(true);   // (headlights on at night and in a gale)
     audio.door();
@@ -1556,6 +1562,8 @@ async function main() {
     }
     sky.material.uniforms.uTime.value = t;
     cloudsNow(false);
+    snowRoofs.update(camera.position);
+    icicles.update(camera.position, snowRoofs.group.visible, THREE.MathUtils.smoothstep(SNOW.uSnowDepth.value, 0.08, 0.25));
     // the clouds' shadows: only separate cumulus in sunshine cast them (an overcast deck's light is all diffuse); not on
     // the lowest setting (a computed cloud field in every lit pixel)
     CLOUD_SH.z = cloudLevel(sky.material.uniforms.uCover.value);
@@ -1798,6 +1806,8 @@ async function main() {
         if (v.car.cabin) v.car.cabin.group.visible = v === active || d < 16;    // (a cabin shows only through the glass of a car close by)
         // (V113) past FAR_LOD m, a car with its lamps off is two draws, not ~13 (cars.js): back within 5 m less of it
         v.car.setFar?.(v !== active && !v.lightsOn && !v.brake && d > FAR_LOD - (v.car.far.visible ? 5 : 0));
+        // (V114) the snow lying on it, while it lies and until you drive it (you brush it off before you set off)
+        if (v.car.cap) v.car.cap.visible = snowRoofs.group.visible && v !== active && v !== riding && v.brushed !== freshSnow && d < 150;
       }
     }
 
@@ -2089,7 +2099,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { clouds, sky, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

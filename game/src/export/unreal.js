@@ -504,7 +504,7 @@ export async function exportUnreal(game, sink, { log = (s) => console.log('[ue] 
     grp.updateMatrixWorld(true);
     const acc = new Map();
     grp.traverse(o => {
-      if (o === veh.car.far) return;
+      if (o === veh.car.far || o === veh.car.cap) return;
       if (!o.isMesh || !o.visible) return;
       const ms = Array.isArray(o.material) ? o.material : [o.material];
       const g = o.geometry, P = g.attributes.position, N = g.attributes.normal ?? (g.computeVertexNormals(), g.attributes.normal), U = g.attributes.uv, idx = g.index ? g.index.array : null, cnt = idx ? idx.length : P.count;

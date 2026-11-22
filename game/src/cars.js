@@ -5,6 +5,7 @@ import { toCreasedNormals, mergeGeometries } from 'three/addons/utils/BufferGeom
 import { buildCabin } from './interior.js';
 import { bodyOf, partGeo, rimGeo as rim3D, grow } from './carparts.js';
 import { REAL } from './carmodels.js';
+import { snowSlabMaterial } from './snowroofs.js';
 
 // Geometry pieces [geometry, material (or one per group), matrix?] -> one non-indexed geometry with a single group
 // (one draw call) per material, in the order the materials first appear. The same triangles as separate meshes.
@@ -554,6 +555,83 @@ function partMat(name, S) {
   return P[name] ?? S.trim;
 }
 
+// (V114) The snow lying on a parked car: after a night's snowfall a car is a pillow of it - on the roof, the bonnet, the
+// boot and the windscreens (a windscreen at ~30 deg holds it, a door or a side window does not), as deep as on the
+// ground or a little less, rounded off at every edge. Made once per model from its own body: its top surface sampled
+// on a 7 cm grid (the highest of its triangles over each point, and how much that one faces up), the snow kept where
+// the top faces up enough (thinner the steeper), its depth rounded down to nothing over the last three cells to the
+// edge of where it lies. Drawn in the roofs' snow material (snowroofs.js: its depth a uniform, the ground's).
+const CAPS = new WeakMap();
+function carCap(m, P, groups) {
+  if (CAPS.has(m)) return CAPS.get(m);
+  const C = 0.07, x0 = -m.W / 2 - 0.15, z0 = -m.L / 2 - 0.15, nx = Math.ceil((m.W + 0.3) / C) + 1, nz = Math.ceil((m.L + 0.3) / C) + 1, NN = nx * nz;
+  const top = new Float32Array(NN).fill(-1e9), up = new Float32Array(NN);
+  for (const g of groups) for (let t = g.start; t + 2 < g.start + g.count; t += 3) {
+    const ax = P[3 * t], ay = P[3 * t + 1], az = P[3 * t + 2], bx = P[3 * t + 3], by = P[3 * t + 4], bz = P[3 * t + 5], cx = P[3 * t + 6], cy = P[3 * t + 7], cz = P[3 * t + 8];
+    const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+    const nX = uy * vz - uz * vy, nY = uz * vx - ux * vz, nZ = ux * vy - uy * vx, nl = Math.hypot(nX, nY, nZ);
+    const det = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (nl < 1e-12 || Math.abs(det) < 1e-12) continue;
+    const ny = Math.abs(nY) / nl;
+    const i0 = Math.max(0, Math.ceil((Math.min(ax, bx, cx) - x0) / C)), i1 = Math.min(nx - 1, Math.floor((Math.max(ax, bx, cx) - x0) / C));
+    const j0 = Math.max(0, Math.ceil((Math.min(az, bz, cz) - z0) / C)), j1 = Math.min(nz - 1, Math.floor((Math.max(az, bz, cz) - z0) / C));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const px = x0 + i * C, pz = z0 + j * C;
+      const l1 = ((bz - cz) * (px - cx) + (cx - bx) * (pz - cz)) / det, l2 = ((cz - az) * (px - cx) + (ax - cx) * (pz - cz)) / det, l3 = 1 - l1 - l2;
+      if (l1 < -1e-4 || l2 < -1e-4 || l3 < -1e-4) continue;
+      const y = l1 * ay + l2 * by + l3 * cy, k = j * nx + i;
+      if (y > top[k]) { top[k] = y; up[k] = ny; }
+    }
+  }
+  const has = new Uint8Array(NN);
+  for (let k = 0; k < NN; k++) has[k] = top[k] > -1e8 && up[k] > 0.55 ? 1 : 0;
+  // how many cells in from the edge of the snow (up to 3)
+  const dist = new Uint8Array(NN);
+  let cur = has;
+  for (let it = 1; it <= 3; it++) {
+    const nxt = new Uint8Array(NN);
+    for (let j = 1; j < nz - 1; j++) for (let i = 1; i < nx - 1; i++) {
+      const k = j * nx + i;
+      if (cur[k] && cur[k - 1] && cur[k + 1] && cur[k - nx] && cur[k + nx]) { nxt[k] = 1; dist[k] = it; }
+    }
+    cur = nxt;
+  }
+  const th = new Float32Array(NN);
+  for (let k = 0; k < NN; k++) if (has[k]) th[k] = 0.85 * THREE.MathUtils.smoothstep(up[k], 0.55, 0.85) * Math.sqrt(dist[k] / 3);
+  const idx = new Int32Array(NN).fill(-1), pos = [], dir = [], nrm = [], ind = [];
+  const hRef = (i, j) => { const k = j * nx + i; return top[k] + th[k] * 0.25; };
+  const vert = (i, j) => {
+    const k = j * nx + i;
+    if (idx[k] >= 0) return idx[k];
+    idx[k] = pos.length / 3;
+    pos.push(x0 + i * C, top[k], z0 + j * C); dir.push(0, th[k], 0);
+    const il = Math.max(0, i - 1), ir = Math.min(nx - 1, i + 1), jl = Math.max(0, j - 1), jr = Math.min(nz - 1, j + 1);
+    const ok = (ii, jj) => has[jj * nx + ii];
+    const dx = ok(ir, j) && ok(il, j) ? (hRef(ir, j) - hRef(il, j)) / ((ir - il) * C) : 0, dz = ok(i, jr) && ok(i, jl) ? (hRef(i, jr) - hRef(i, jl)) / ((jr - jl) * C) : 0;
+    const l = Math.hypot(dx, 1, dz);
+    nrm.push(-dx / l, 1 / l, -dz / l);
+    return idx[k];
+  };
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const k = j * nx + i, ks = [k, k + 1, k + 1 + nx, k + nx];
+    if (!ks.every(q => has[q])) continue;
+    const hs = ks.map(q => top[q]);
+    if (Math.max(...hs) - Math.min(...hs) > 0.12) continue;          // (no skin across a drop: a roof's edge to a door)
+    const a = vert(i, j), b = vert(i + 1, j), c = vert(i + 1, j + 1), d = vert(i, j + 1);
+    ind.push(a, c, b, a, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('snowDir', new THREE.Float32BufferAttribute(dir, 3));
+  g.setAttribute('snowFix', new THREE.Float32BufferAttribute(new Float32Array(pos.length), 3));   // (the slab material's: none here)
+  g.setIndex(ind);
+  g.computeBoundingSphere();
+  if (g.boundingSphere) g.boundingSphere.radius += 0.6;
+  CAPS.set(m, g);
+  return g;
+}
+
 export function paintMaterial(color, { metallic = 0.6, rough = 0.32, dusty = 0 } = {}) {
   const m = new THREE.MeshPhysicalMaterial({
     color, metalness: metallic, roughness: rough + dusty * 0.35,
@@ -792,6 +870,7 @@ export function buildCar(modelKey, paint, plateKey) {
   farGeo.addGroup(0, nPaint, 0); farGeo.addGroup(nPaint, nv - nPaint, 1);
   farGeo.boundingSphere = merged.geo.boundingSphere;
   merged.geo.groups = merged.geo.groups.filter(r => !merged.mats[r.materialIndex].far);
+  const capGeo = carCap(m, merged.geo.attributes.position.array, merged.geo.groups);   // (V114: before the windows leave)
   merged.mats = merged.mats.map(mt => mt.far ? S.under : mt);      // (no group of the near body draws these)
   // the windows: a mesh of their own, which casts no shadow - the sun shines in through them onto the cabin (whose
   // inside skin, interior.js, shades it under the roof and the doors); inner faces first, then the outer ones
@@ -806,6 +885,10 @@ export function buildCar(modelKey, paint, plateKey) {
   const bodyMesh = new THREE.Mesh(merged.geo, merged.mats);
   bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
   bodyPivot.add(bodyMesh, glassMesh);
+  // (V114) the snow lying on it (main.js shows it while snow lies, if the car has not been driven since)
+  const cap = new THREE.Mesh(capGeo, snowSlabMaterial());
+  cap.visible = false; cap.receiveShadow = true; cap.castShadow = false;
+  bodyPivot.add(cap);
   const far = new THREE.Mesh(farGeo, [paint, farMaterial()]);
   far.castShadow = true; far.receiveShadow = true; far.visible = false;
   bodyPivot.add(far);
@@ -833,7 +916,7 @@ export function buildCar(modelKey, paint, plateKey) {
   // (a car's materials are its own: rain.js leaves its lenses and badges alone inside the car you are in)
   group.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.userData.car = true; });
   return {
-    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers, blob, far, setFar,
+    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers, blob, far, setFar, cap,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,
     half: { w: m.W / 2 + 0.05, l: m.L / 2 },
   };

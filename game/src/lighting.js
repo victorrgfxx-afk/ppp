@@ -74,8 +74,9 @@ float cloudShade( vec3 w, vec3 s, float d ) {
 	float n = 0.55 * cloudNoise( p ) + 0.3 * cloudNoise( p * 2.17 + 5.3 ) + 0.15 * cloudNoise( p * 4.93 + 11.1 );
 	return 1.0 - cloudSh.w * smoothstep( cloudSh.z - 0.045, cloudSh.z + 0.045, n ) * ( 1.0 - smoothstep( 6000.0, 7800.0, d ) );
 }`;
-// the noise level the clouds start at for a cover (0-1): about 0.8 of the cover in shade (thin clouds cast little)
-export const cloudLevel = (cover) => 0.66 - 0.27 * cover;
+// the noise level the clouds start at for a cover (0-1): about 0.8 of the cover in shade (thin clouds cast little); a
+// clear sky (cover 0) none at all - over 0.95 the field never reaches (V114: down to 0.3 as before)
+export const cloudLevel = (cover) => cover >= 0.3 ? 0.66 - 0.27 * cover : 0.95 - (0.95 - 0.579) * cover / 0.3;
 
 // Must run before the first material is compiled. Returns false (and leaves three.js alone) if the chunk changed.
 export function installCascadedShadows() {
@@ -153,8 +154,9 @@ export function shareInstancedDepth(root) {
 
 // ------------------------------------------------------------------ weather
 // Each preset: the sky shader's uniforms, the sun / sky lights, the image-based light, fog and exposure.
-// "senin" and "noros" match the sunny Street View captures (deep blue sky, cumulus, hard sun shadows); "innorat" is the
-// grey late-September deck of the user's own photos 1-23.
+// "senin" is a clear sky: deep blue, not a cloud, hard sun shadows (V114, the user: when it is clear, clear - with the
+// volumetric cumulus of V113 its old cover, 0.4, was a third of the sky in clouds); "noros" has the cumulus of the
+// sunny Street View captures; "innorat" is the grey late-September deck of the user's own photos 1-23.
 // breeze: the wind at the crowns between gales (m/s; the trees, treewind.js: a still grey day ~2, a sunny autumn day ~2.5,
 // cumulus weather a little gustier ~3.5, a downpour ~5; a squall's or a blizzard's gale is `gale`, these only under it)
 // vis: the meteorological visibility at the street's level (m; Koschmieder, 2 % contrast; the air itself: air.js): a
@@ -164,7 +166,7 @@ export function shareInstancedDepth(root) {
 // rain, snow and a blizzard fill the whole column between the clouds and the ground
 export const WEATHER = {
   senin: {
-    label: 'Senin', breeze: 2.5, cover: 0.4, cumulus: 1, zenith: [0.03, 0.115, 0.43], horizon: [0.46, 0.6, 0.78], bright: 1,
+    label: 'Senin', breeze: 2.5, cover: 0, cumulus: 1, zenith: [0.03, 0.115, 0.43], horizon: [0.46, 0.6, 0.78], bright: 1,
     cloudLit: [1.25, 1.22, 1.18], cloudDark: [0.46, 0.52, 0.62],
     sun: 3.8, sunColor: [1, 0.94, 0.84], hemi: 0.4, hemiSky: [0.8, 0.85, 0.95], hemiGround: [0.45, 0.4, 0.32],
     env: 1.4, envDesat: 0.7, envGround: [0.4, 0.37, 0.3], fog: [0.6, 0.69, 0.8], vis: 32000, exposure: 0.95, shadow: 1,
@@ -210,7 +212,7 @@ WEATHER.ninsoare = {
 };
 // the day after: deep blue sky, low winter sun, the snow lies everywhere and throws the light back up
 WEATHER.zapada = {
-  label: 'Zăpadă, senin', breeze: 1.5, cover: 0.25, cumulus: 1, zenith: [0.025, 0.1, 0.42], horizon: [0.52, 0.64, 0.82], bright: 1,
+  label: 'Zăpadă, senin', breeze: 1.5, cover: 0, cumulus: 1, zenith: [0.025, 0.1, 0.42], horizon: [0.52, 0.64, 0.82], bright: 1,
   cloudLit: [1.25, 1.24, 1.22], cloudDark: [0.5, 0.56, 0.66],
   sun: 3.6, sunColor: [1, 0.95, 0.88], hemi: 0.5, hemiSky: [0.78, 0.84, 0.96], hemiGround: [0.74, 0.76, 0.8],
   env: 1.45, envDesat: 0.6, envGround: [0.72, 0.74, 0.78], fog: [0.64, 0.72, 0.84], vis: 75000, exposure: 0.82, shadow: 1, snowCover: 1, winter: true,

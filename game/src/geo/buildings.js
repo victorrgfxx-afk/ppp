@@ -151,8 +151,14 @@ function rectRoof(B, mats, r, top, pitch, ov, color, roofMat, gable, wallColor, 
       B.tris(gableMat, pos, [nx, 0, nz, nx, 0, nz, nx, 0, nz], uv, gableColor);
     }
   }
-  return { ridgeY, eaveY, P, H, D, R, hw, hd, gable, cx, cz };
+  return { ridgeY, eaveY, P, H, D, R, hw, hd, gable, cx, cz, ex, ez };
 }
+
+// (V114) every pitched roof's frame, for the snow lying on it (snowroofs.js): 14 numbers each - its centre x, z, the
+// axes along the ridge (ex) and across it (ez), the half-lengths H (along) and D (across, the overhangs included), the
+// ridge's half-length R (= H: a gable), the heights of the eaves and the ridge, gable (1/0), how much snow stays on
+// it (a smooth metal sheet sheds it), the building's index in GEO.buildings
+export const ROOF_FRAMES = [];
 
 // a 4-sided pipe from a to b ([x, y, z]), w wide (downpipes)
 function pipe(B, m, a, b, w, color) {
@@ -242,7 +248,9 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
   const fronts = [];
   const stats = { n: 0, hip: 0, gable: 0, flat: 0, eaves: 0 };
   B.cullFor.set(mats.trim, 1500); B.cullFor.set(mats.gutter, 600);
+  let bi = -1;
   for (const b of GEO.buildings) {
+    bi++;
     const h = hashId(b.id);
     const r = rng(h);
     const r2 = rng(h ^ 0x5bd1e995);          // (the eaves' draws: the looks drawn with r stay as they were)
@@ -362,6 +370,11 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
       for (const [i, rr] of b.r.entries()) {
         // o.ridge applies to the main (largest) rectangle; the others keep their own axis (cross wings)
         const res = rectRoof(B, mats, rr, top, pitch, ov, rc, roofMat, gable, wc, { ridge: i === 0 || o.ridgeAll ? o.ridge : null, gableMat, gableColor });
+        {
+          const smooth = roofMat === mats.roofMetal || roofMat === mats.roofGalv || roofMat === mats.roofSeamFaded;
+          const keep = smooth ? 0.4 + 0.45 * ((h >>> 9) % 101) / 100 : 0.85 + 0.15 * ((h >>> 9) % 101) / 100;
+          ROOF_FRAMES.push(res.cx, res.cz, res.ex[0], res.ex[1], res.ez[0], res.ez[1], res.H, res.D, res.R, res.eaveY, res.ridgeY, gable ? 1 : 0, keep, bi);
+        }
         ridge = Math.max(ridge, res.ridgeY);
         if (i === 0) f0 = res;
         fs.push(res);

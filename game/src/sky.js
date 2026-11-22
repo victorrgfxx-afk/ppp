@@ -77,7 +77,7 @@ void main() {
   float big = texture2D(uNoise, uv * 0.018 + vec2(t * 0.3, 0.0)).b;
   float cov = uCover + (big - 0.5) * 0.5;
   float soft = mix(0.4, 0.09, uCumulus);
-  float dens = smoothstep(1.0 - cov - soft * 0.45, 1.0 - cov + soft * 0.55, c);
+  float dens = smoothstep(1.0 - cov - soft * 0.45, 1.0 - cov + soft * 0.55, c) * smoothstep(0.0, 0.05, uCover);   // (a clear sky: none)
   // a hole in the deck where the full moon looks through (night storm over the hill of the cross), 5-9 deg from it;
   // its rim ragged by +-2 deg of noise in the moon's own frame (a drawn circle read as a dark ring around the moon)
   float mm = max(dot(d, uMoonDir), 0.0);
