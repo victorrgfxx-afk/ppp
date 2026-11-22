@@ -66,7 +66,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | L | lanterna (noaptea se aprinde singură) | faruri |
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
 | K | te duce la marginea luminișului din pădurea de lângă cruce, unde se petrece scena (doar la 23:30, pe vreme înnorată) | la fel (cobori întâi) |
-| M | GoPro pe cască, pe partea dreaptă: obiectiv fisheye de 140°, cu marginea lentilei transparentă, la rezoluție maximă: mijlocul 1:1 cu ecranul, până la cadrul 5.3K (V104–V108) | la fel, din capul șoferului |
+| M | GoPro pe cască, pe partea dreaptă: obiectiv fisheye Max HyperView de 177° pe diagonală (157° × 91°), cu rezoluție adaptivă după FPS (V104–V113); **,** (virgula) schimbă lentila: 177°, 158° (cea din V105–V112), 133° | la fel, din capul șoferului |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -846,6 +846,55 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **GoPro mult mai largă și mai fluidă, nori volumetrici, LOD pentru mașini (V113)** (`src/post.js`, `src/clouds.js`, `src/sky.js`, `src/shafts.js`, `src/cars.js`, `src/main.js`):
+  * **Ce ai cerut:** GoPro să meargă mult mai fluid (aveai puține FPS-uri), să fie mult mai largă și încă un update mare la grafică, luând exemplu de la GTA 6.
+  * **GoPro, cum era:** până în V112, un singur cadru dreptunghiular foarte larg (140° × 81°), desenat la cel mult 5.3K ca mijlocul imaginii să rămână 1:1. Un obiectiv dreptunghiular nu poate trece de ~150°: marginile cer tot mai mulți pixeli. Costul era de ~7 ori pixelii vederii normale.
+  * **GoPro, cum e acum (`src/post.js`):**
+    * lentila e cea mai largă a unei GoPro reale, Max HyperView: 177° pe diagonala cadrului 16:9, adică 157° × 91°. Proiecția e θ = K1·(r + C·r³), cu C = −0,0468, iar K1 e ales astfel încât diagonala să dea exact 177°;
+    * imaginea e desenată din trei vederi: una la mijloc, până la 50° în stânga și în dreapta, și două laterale, rotite la ±61°. Lentila le îmbină pe 46°–50°. Umbrele se calculează o singură dată pentru toate trei. Fiecare vedere laterală are TAA-ul, tonemapping-ul și gradarea ei;
+    * fiecare vedere e desenată doar cu pixelii de care are nevoie lentila, nu cu un cadru uriaș, deci rezoluția nu mai explodează la margini;
+    * **rezoluție adaptivă (DRS):** 7 trepte, de la 42 % la 100 %, pornind de la 67 %. Ținta e timpul de cadru al vederii normale, dar nu sub 16,7 ms. Coboară o treaptă peste 1,15 × țintă și urcă sub 1,08 ×. O treaptă care n-a ajutat e anulată, deci pe un procesor încărcat (nu pe placa video) rezoluția nu scade degeaba;
+    * **cât stai pe loc,** vederile laterale se desenează pe rând, câte una pe cadru. Cea de la cadrul trecut e rotită în lentilă cu cât ți-ai mișcat capul între timp, iar o rotație în jurul lentilei nu deplasează nimic aproape față de ce e departe. Imediat ce camera se mișcă peste 1,5 cm pe cadru (mers, mașină), le desenează pe amândouă la fiecare cadru;
+    * **o eroare veche, reparată:** din V104, vinieta și grăunții vederii normale rămâneau aplicate și peste imaginea GoPro, care avea deja vinieta ei. Mijlocul ieșea cu ~15 % mai întunecat.
+  * **LOD pentru mașini (`src/cars.js`, `src/main.js`):**
+    * o mașină parcată se desena din ~13 apeluri (caroseria pe materiale, geamurile de două ori, roțile, aripile, umbra de contact). În vederea laterală stângă a GoPro, mașinile de la ~150 m făceau 963 din 1915 apeluri;
+    * acum, peste 60 m (și înapoi sub 55 m), o mașină cu luminile stinse se desenează din 2 apeluri: vopseaua ei, plus o geometrie cu restul pieselor într-un singur material, cu culoarea, rugozitatea și metalul fiecărei piese în vârfuri;
+    * folosește aceleași buffere ca mașina întreagă, deci aproape nu ocupă memorie în plus;
+    * între 25 și 60 m, cele două versiuni sunt practic identice, chiar mărite de 3 ori: s-au pierdut doar textul plăcuței și interiorul, care la 60 m au 2–3 pixeli;
+    * ajută și vederea normală (Înaltă, cu umbrele): pe Zarzărului 2969 → 1976 de apeluri pe cadru (−33 %), pe strada ta 3021 → 2170 (−28 %).
+  * **Măsurat** (browserul de test fără placă video, Scăzută, 1280 × 720, aceleași poziții):
+
+    | | V112 | V113 |
+    |---|---|---|
+    | GoPro, timp pe cadru | 14,2 s | 7,2 s în mers, 5,6 s pe loc |
+    | GoPro, apeluri de desenare pe cadru | 3142 | 3613 în mers, 2603 pe loc |
+    | apeluri pe cadru GoPro, fără → cu LOD (Zarzărului / strada ta) | | 4610 → 3420 / 4552 → 3585 |
+    | vederea normală, același browser | | 11,0 s; GoPro e acum mai ieftină decât ea |
+
+    Placa video schimbă cifrele absolute, nu proporțiile pixelilor. Browserul de test nu poate măsura rezoluția adaptivă, pentru că un cadru durează secunde. Pentru teste există `post.setGoProScale(i)`.
+  * **Nori volumetrici, ca în jocurile mari (`src/clouds.js`, `src/sky.js`):**
+    * **analiza Digital Foundry a trailerelor GTA 6** pune la baza imaginii iluminarea globală, reflexiile pe sticlă și umbrele filtrate. Cerul cu cumulus volumetrici e ce se vede în aproape fiecare cadru de afară. Tehnica e cea din jocurile AAA: Horizon Zero Dawn (Schneider 2015) și Frostbite (Hillaire 2016). Din GTA 6 s-a luat doar tehnica, nu imaginea;
+    * **forma:** stratul de nori e de la 1500 m deasupra străzii, exact puntea de unde se citesc umbrele norilor pe pământ (V98). Câmpul de zgomot e același, purtat de același vânt, deci fiecare nor stă deasupra umbrei lui. Peste fiecare nor din câmp se ridică un dom, mai înalt deasupra miezului (până la ~900 m), cu bază plată și cu „conopida” săpată de un zgomot de detaliu. Pe vreme senină norii sunt turtiți (cumulus humilis), iar pe parțial noros sunt mai înalți (mediocris);
+    * **lumina:** soarele (noaptea, luna) e urmărit în 4 pași prin nor (Beer–Lambert). Împrăștierea multiplă dintr-un nor gros e aproximată prin octave (Hillaire 2016, Wrenninge 2013). Faza Henyey–Greenstein cu doi lobi dă marginile argintii spre soare. De sus vine lumina cerului, de jos cea a pământului. Norii foarte îndepărtați intră în pâcla orizontului;
+    * **cât costă:** norii sunt desenați într-o hartă a cerului de 1024 × 1024, câte o bandă pe cadru (32 768 de texeli, 56 de pași fiecare). Harta e completă la fiecare 32 de cadre, iar fiecare trecere se amestecă cu ce era (34 %), deci zgomotul eșantionării se netezește. Măsurat: +2,2 % din timpul cadrului (13,58 s față de 13,29 s, pe parțial noros, cel mai acoperit), adică ~0,3 ms la 60 FPS, pe orice calitate;
+    * **unde se văd:** în toate vederile, inclusiv GoPro, și în reflexiile mașinilor și geamurilor, pentru că lumina de mediu e construită din același cer;
+    * **apus:** nori întunecați cu margini aurii. **Noapte:** luminați de lună. Pe *Înnorat* și în ploaie rămâne plafonul de până acum, care era deja după pozele tale;
+    * **razele de soare** (`src/shafts.js`, Înaltă/Ultra): până acum un nor nu oprea razele, pentru că cerul din spatele lui conta ca liber. Acum un cumulus contează ca obstacol, în măsura în care nu lasă lumina să treacă (citit din aceeași hartă). Razele ies din golurile dintre nori. Efectul e discret: pe parțial noros, ~5 % din luminozitate în jurul soarelui.
+  * **Testat:**
+    * lint;
+    * randări cu norii vechi și cu cei noi din același cadru: senin la prânz, parțial noros, apus spre soare, noapte;
+    * GoPro pe strada ta și pe Zarzărului;
+    * cusătura dintre vederi cu capul rotit cu 1,7° pe cadru: sub un pixel;
+    * razele printre nori, pe dealul cu steagul, cu harta norilor înghețată între cele două cadre: diferența arată raze radiale dinspre soare prin zona acoperită de nori;
+    * mașini la 25–60 m, aproape vs. departe;
+    * apeluri de desenare pe vedere, cu și fără LOD;
+    * timpul de cadru cu și fără nori;
+    * `tools/cars-test.mjs`.
+  * **Limite, spuse cinstit:**
+    * vederea laterală care stă un cadru cât ești pe loc arată lucrurile care se mișcă (o mașină care trece) cu un cadru în urmă, la cusătură;
+    * norii au rezoluția hărții (~5–9 pixeli pe grad), deci sunt puțin mai moi decât restul imaginii;
+    * cât de des sunt norii vine din vremea aleasă, aceeași care dădea umbrele.
+  * **Surse:** GoPro, [Max Lens Mod 2.0: Max HyperView, 177°](https://gopro.com/en/us/shop/mounts-accessories/max-lens-mod-2/ADWAL-002.html); Digital Foundry despre trailerul 2 GTA 6 ([LibertyCity](https://libertycity.net/news/gta-6/8997-digital-foundry-analyzes-gta-6s-second.html), [GameSpot](https://www.gamespot.com/articles/gta-6-trailer-2-was-only-30fps-and-it-may-be-too-much-for-switch-2/1100-6531393/)); Schneider & Vos, [The Real-time Volumetric Cloudscapes of Horizon Zero Dawn](https://www.advances.realtimerendering.com/s2015/The%20Real-time%20Volumetric%20Cloudscapes%20of%20Horizon%20-%20Zero%20Dawn%20-%20ARTR.pdf) (SIGGRAPH 2015); Hillaire, [Physically Based Sky, Atmosphere and Cloud Rendering in Frostbite](https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/s2016_pbs_frostbite_sky_clouds.pdf) (SIGGRAPH 2016); Mitchell, „Volumetric Light Scattering as a Post-Process” (GPU Gems 3, cap. 13).
 * **Toate casele din împrejurimi, cu anexele, curțile și gardurile lor (V112)** (`geo/ml_footprints.py`, `assets/geo/ml_buildings.json`, `src/geo/amprente.js`, `src/geo/anexe.js`, `src/geo/data.js`, `src/geo/index.js`, `src/geo/gara.js`):
   * **Problema:** OSM nu are o mare parte din case. Pe Strada Zarzărului are 11, iar poza ta cu drona (163818) arată peste 30, cu magaziile, bucătăriile de vară și garajele lor.
   * **Sursa:** Microsoft Global ML Building Footprints (ODbL): amprente de clădiri trasate de o rețea neuronală pe imaginile aeriene Bing. O singură placă (quadkey 120320322) acoperă toată harta (±8 km).

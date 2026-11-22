@@ -455,6 +455,49 @@ function sharedMats() {
   return shared;
 }
 
+// (V113) a car far away: one material for every part but its paint, each vertex's colour (its part's, linear) with its
+// roughness and metal in the alpha (metal: 0.5 + 0.49 r, else 0.49 r - cars.js buildCar)
+function farMaterial() {
+  if (shared.farMat) return shared.farMat;
+  const m = shared.farMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, envMapIntensity: 1.1 });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+  float farMk = step(0.5, vColor.a);
+  metalnessFactor = farMk;
+  roughnessFactor = max(0.03, (vColor.a - 0.5 * farMk) / 0.49);`);
+  };
+  m.customProgramCacheKey = () => 'carFar';
+  return m;
+}
+// a part's look from afar: its colour (a map's: its average), whether metal, its roughness (a clear coat's, if it has
+// one); a clear lens shows its lamp's reflector, a 3D rim's coloured parts a mid metal
+const texAvgs = new WeakMap(), _lin = new THREE.Color();
+function texAvg(t) {
+  if (texAvgs.has(t)) return texAvgs.get(t);
+  const out = new THREE.Color(0.5, 0.5, 0.5), img = t.image;
+  try {
+    if (img && img.width > 0 && typeof document !== 'undefined') {
+      const c = document.createElement('canvas'); c.width = c.height = 16;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0, 16, 16);
+      const d = g.getImageData(0, 0, 16, 16).data, srgb = t.colorSpace === THREE.SRGBColorSpace;
+      out.setRGB(0, 0, 0);
+      for (let i = 0; i < d.length; i += 4) { _lin.setRGB(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255, srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace); out.r += _lin.r / 256; out.g += _lin.g / 256; out.b += _lin.b / 256; }
+    }
+  } catch { out.setRGB(0.5, 0.5, 0.5); }
+  texAvgs.set(t, out);
+  return out;
+}
+function farLook(mt) {
+  if (mt.transparent && (mt.opacity ?? 1) < 0.5) return [new THREE.Color(0xd2d6db), true, 0.08];
+  if (mt.vertexColors) return [new THREE.Color(0.45, 0.45, 0.46), true, 0.3];
+  const c = mt.color ? mt.color.clone() : new THREE.Color(1, 1, 1);
+  if (mt.map) c.multiply(texAvg(mt.map));
+  let rough = mt.roughness ?? 0.5;
+  if ((mt.clearcoat ?? 0) > 0.5) rough = Math.min(rough, (mt.clearcoatRoughness ?? 0) + 0.05);
+  return [c, (mt.metalness ?? 0) > 0.5, Math.min(1, Math.max(0, rough))];
+}
+
 // (V103) a model's own parts (m.parts, carparts.js), laid on its body - made once per model, shared by its cars
 const PARTS = new WeakMap(), BODIES = new WeakMap();
 function partBody(m, raw) {
@@ -701,7 +744,8 @@ export function buildCar(modelKey, paint, plateKey) {
     }
   }
   group.add(tires.mesh, rims.mesh, inners.mesh);
-  bodyPivot.add(new THREE.Mesh(mergeByMaterial(wells).geo, arch));
+  const wellMesh = new THREE.Mesh(mergeByMaterial(wells).geo, arch);
+  bodyPivot.add(wellMesh);
   const wm = new THREE.Matrix4(), wp = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3();
   const put = (f, i, M) => {
     const P = f.mesh.geometry.attributes.position, N = f.mesh.geometry.attributes.normal, o = i * f.n;
@@ -729,7 +773,26 @@ export function buildCar(modelKey, paint, plateKey) {
     for (const f of [tires, rims, inners]) { const g = f.mesh.geometry; g.attributes.position.needsUpdate = g.attributes.normal.needsUpdate = true; g.computeBoundingSphere(); }
   };
   setWheels(0, 0);
+  // (V113) the far version (main.js: past FAR_LOD m) is two draws instead of ~13: the body's merge below, its windows and
+  // its wheels and wells as they stand included (those in groups of their own, which the near body does not draw) -
+  // the paint's triangles first, drawn in the car's own paint, every other part in one shared material whose colour,
+  // roughness and metal each vertex carries (farMaterial)
+  rigid.unshift([new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3)), paint]);
+  for (const [o, mt] of [[tires.mesh, S.tire], [rims.mesh, rimMat], [inners.mesh, S.under], [wellMesh, arch]]) rigid.push([o.geometry, { far: mt }]);
   const merged = mergeByMaterial(rigid);
+  const farGeo = new THREE.BufferGeometry(), nv = merged.geo.attributes.position.count, FC = new Uint8Array(nv * 4);
+  for (const k of ['position', 'normal', 'uv']) farGeo.setAttribute(k, merged.geo.attributes[k]);
+  for (const r of merged.geo.groups) {
+    const [c, metal, rough] = farLook(merged.mats[r.materialIndex].far ?? merged.mats[r.materialIndex]);
+    const a = Math.round((metal ? 0.5 + rough * 0.49 : rough * 0.49) * 255), rgb = [c.r, c.g, c.b].map(v => Math.round(Math.min(1, v) * 255));
+    for (let i = r.start; i < r.start + r.count; i++) FC.set([rgb[0], rgb[1], rgb[2], a], i * 4);
+  }
+  farGeo.setAttribute('color', new THREE.BufferAttribute(FC, 4, true));
+  const nPaint = merged.geo.groups[0].count;
+  farGeo.addGroup(0, nPaint, 0); farGeo.addGroup(nPaint, nv - nPaint, 1);
+  farGeo.boundingSphere = merged.geo.boundingSphere;
+  merged.geo.groups = merged.geo.groups.filter(r => !merged.mats[r.materialIndex].far);
+  merged.mats = merged.mats.map(mt => mt.far ? S.under : mt);      // (no group of the near body draws these)
   // the windows: a mesh of their own, which casts no shadow - the sun shines in through them onto the cabin (whose
   // inside skin, interior.js, shades it under the roof and the doors); inner faces first, then the outer ones
   const gIn = merged.geo.groups.find(r => merged.mats[r.materialIndex] === glassIn);
@@ -743,6 +806,11 @@ export function buildCar(modelKey, paint, plateKey) {
   const bodyMesh = new THREE.Mesh(merged.geo, merged.mats);
   bodyMesh.castShadow = true; bodyMesh.receiveShadow = true;
   bodyPivot.add(bodyMesh, glassMesh);
+  const far = new THREE.Mesh(farGeo, [paint, farMaterial()]);
+  far.castShadow = true; far.receiveShadow = true; far.visible = false;
+  bodyPivot.add(far);
+  const nearParts = [bodyMesh, glassMesh, wellMesh, tires.mesh, rims.mesh, inners.mesh];
+  const setFar = (on) => { if (on === far.visible) return; far.visible = on; for (const o of nearParts) o.visible = !on; };
 
   // soft contact shadow (grounds the car like ambient occlusion)
   if (!shared.blob) {
@@ -765,7 +833,7 @@ export function buildCar(modelKey, paint, plateKey) {
   // (a car's materials are its own: rain.js leaves its lenses and badges alone inside the car you are in)
   group.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.userData.car = true; });
   return {
-    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers, blob,
+    group, bodyPivot, wheels, setWheels, steer, cabin, model: m, mirrors, wipers, blob, far, setFar,
     lights: { head: headL, tail: tailL, tailMat, headMat }, glass,
     half: { w: m.W / 2 + 0.05, l: m.L / 2 },
   };

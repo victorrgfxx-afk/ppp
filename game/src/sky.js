@@ -37,6 +37,8 @@ uniform float uHole;
 uniform float uFlash;
 uniform vec3 uMoonDir;
 uniform vec3 uMoonCol;
+uniform sampler2D uVolMap;  // (V113) the volumetric cumulus, drawn into a map of the sky (clouds.js)
+uniform float uVol;         // how much they take the 2D layer's place (the cumulus weathers; 0 on the lowest setting)
 varying vec3 vDir;
 float skyHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 
@@ -105,6 +107,13 @@ void main() {
   cloud += vec3(0.75, 0.8, 1.0) * uFlash * (0.5 + thick);
   float fade = smoothstep(-0.02, 0.2, y);
   vec3 col = mix(sky, cloud, dens * fade);
+  // (V113) the volumetric cumulus over the sky behind them: what they let through of it, plus the light they scatter
+  // (the map: equidistant azimuthal, the zenith in its middle, the horizon on its rim)
+  if (uVol > 0.0) {
+    vec4 vc = vec4(0.0, 0.0, 0.0, 1.0);
+    if (d.y > 0.0) vc = texture2D(uVolMap, 0.5 + 0.5 * (acos(min(d.y, 1.0)) / 1.5707963) * d.xz / max(length(d.xz), 1e-6));
+    col = mix(col, sky * vc.a + vc.rgb + vec3(0.75, 0.8, 1.0) * uFlash * (1.0 - vc.a), uVol);
+  }
   col = mix(col, hor * 1.02, (1.0 - smoothstep(0.0, 0.16, y)) * 0.65);
   // for the image-based light: in sun the shade is also lit by the sunlit ground, walls and leaves around it, which
   // the bare sky lacks, so its blue is partly neutralised there
@@ -132,6 +141,7 @@ export function createSky() {
       uGround: { value: new THREE.Vector3(0.33, 0.33, 0.31) },
       uNight: { value: 0 }, uHole: { value: 0 }, uFlash: { value: 0 },
       uMoonDir: { value: new THREE.Vector3(0, 1, 0) }, uMoonCol: { value: new THREE.Vector3(0.9, 0.92, 1) },
+      uVolMap: { value: null }, uVol: { value: 0 },
     },
     side: THREE.BackSide, depthWrite: false, fog: false,
   });

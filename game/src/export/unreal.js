@@ -498,9 +498,13 @@ export async function exportUnreal(game, sink, { log = (s) => console.log('[ue] 
   let ci = 0;
   for (const veh of game.vehicles || []) {
     const grp = veh.car?.group; if (!grp) continue;
+    // (V113) every car whole: a car far away is drawn by its far LOD (cars.js), never exported in its place
+    const wasFar = !!veh.car.far?.visible;
+    veh.car.setFar?.(false);
     grp.updateMatrixWorld(true);
     const acc = new Map();
     grp.traverse(o => {
+      if (o === veh.car.far) return;
       if (!o.isMesh || !o.visible) return;
       const ms = Array.isArray(o.material) ? o.material : [o.material];
       const g = o.geometry, P = g.attributes.position, N = g.attributes.normal ?? (g.computeVertexNormals(), g.attributes.normal), U = g.attributes.uv, idx = g.index ? g.index.array : null, cnt = idx ? idx.length : P.count;
@@ -521,6 +525,7 @@ export async function exportUnreal(game, sink, { log = (s) => console.log('[ue] 
         }
       }
     });
+    if (wasFar) veh.car.setFar(true);
     const name = `Car_${String(++ci).padStart(2, '0')}_${san(veh.name || veh.car?.model?.name || 'car')}`;
     const prims = [...acc.values()].map(a => { const w = weld(a.p.view(), a.nr.view(), a.uv.view(), null); return { material: a.rec.name, P: w.P, N: w.N, U: w.U, C: null, I: w.I }; });
     const b = await writeGltf(`cars/${name}`, [{ name, prims }]);

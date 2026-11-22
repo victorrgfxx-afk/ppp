@@ -21,6 +21,9 @@ uniform sampler2D tColor, tDepth;
 uniform mat4 uInvProj;
 uniform vec2 uSun;
 uniform float uAspect, uThr, uAir;
+uniform sampler2D tCloud;           // (V113) the volumetric cumulus' map (clouds.js), its alpha what they let through
+uniform float uCloud;
+uniform mat3 uCamRot;
 varying vec2 vUv;
 void main() {
   // (the scene as drawn, before post.js' guard: a sun glint on glass can overflow a half float, and one Inf here,
@@ -33,6 +36,12 @@ void main() {
   float near = exp(-dot(dv, dv) * 5.0);                              // (the sky's glow around the sun only)
   float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
   vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  // (V113) a cumulus is as much in the sun's way as a roof: the sky seen through one counts as open only as far as it
+  // lets the light through (its map, by the pixel's direction) - the shafts come out of the gaps between them
+  if (uCloud > 0.0 && sky > 0.5) {
+    vec3 wd = normalize(uCamRot * (v.xyz / v.w));
+    if (wd.y > 0.0) sky *= mix(1.0, texture2D(tCloud, 0.5 + 0.5 * (acos(min(wd.y, 1.0)) / 1.5707963) * wd.xz / max(length(wd.xz), 1e-6)).a, uCloud);
+  }
   // r the bright sky near the sun, g the sky there at all, b as if all were sky; a the air in front (1 for the sky)
   gl_FragColor = vec4(l * sky * near * smoothstep(uThr, uThr * 2.5, l), sky * near, near, d >= 0.99999 ? 1.0 : 1.0 - exp(v.z / v.w / uAir));
 }`;
@@ -69,11 +78,12 @@ export class ShaftsPass extends Pass {
     const rt = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.mask = rt(); this.b1 = rt(); this.b2 = rt();
     const mat = (fs, u) => new THREE.ShaderMaterial({ uniforms: u, vertexShader: VERT, fragmentShader: fs, depthTest: false, depthWrite: false });
-    this.maskMat = mat(MASK, { tColor: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uThr: { value: 1 }, uAir: { value: 25 } });
+    this.maskMat = mat(MASK, { tCloud: { value: null }, uCloud: { value: 0 }, uCamRot: { value: new THREE.Matrix3() }, tColor: { value: null }, tDepth: { value: null }, uInvProj: { value: new THREE.Matrix4() }, uSun: { value: new THREE.Vector2() }, uAspect: { value: 1 }, uThr: { value: 1 }, uAir: { value: 25 } });
     this.blurMat = mat(BLUR, { tSrc: { value: null }, uSun: { value: new THREE.Vector2() }, uLen: { value: 0.9 }, uDecay: { value: 0.96 } });
     this.compMat = mat(COMP, { tDiffuse: { value: null }, tShafts: { value: null }, tMask: { value: null }, uCol: { value: new THREE.Color(1, 1, 1) }, uK: { value: 0 } });
     this.quad = new FullScreenQuad(null);
     this.sunUv = new THREE.Vector2(); this.k = 0; this.hasMask = false; this.thr = 0.18; this.air = 25; this.gain = 1.3;
+    this.cloudMap = null; this.cloudK = 0;           // (V113: clouds.js - main.js sets them)
     this.hook = (r, rb) => this.takeMask(r, rb);
     this.enabled = false;
   }
@@ -101,6 +111,7 @@ export class ShaftsPass extends Pass {
     const u = this.maskMat.uniforms;
     u.tColor.value = rb.texture; u.tDepth.value = rb.depthTexture; u.uSun.value.copy(this.sunUv); u.uAspect.value = rb.width / rb.height;
     u.uInvProj.value.copy(this.camera.projectionMatrixInverse); u.uAir.value = this.air;
+    u.tCloud.value = this.cloudMap; u.uCloud.value = this.cloudMap ? this.cloudK : 0; u.uCamRot.value.setFromMatrix4(this.camera.matrixWorld);
     // (only the bright sky around the sun - its glow, the clear sky between crowns - not dark cloud bases; the sky's
     // radiance before the exposure is ~0.2-1 by day: tried 0.15-1.2 in a wood at mid-afternoon)
     u.uThr.value = this.thr;

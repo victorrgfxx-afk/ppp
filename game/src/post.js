@@ -363,12 +363,33 @@ uniform float uD, uPeak;
 // falling off (uVig), the sensor's noise (uNoise), its colour (uSat, uCon), the helmet's edge (uHelm: the side, +-1)
 uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime, uRmax;
 uniform float uBlurK;              // (V108) the see-through edge's blur in the picture's texels, kept as wide on the screen
+// (V113) the GoPro's rig: the two side views (their pictures; on or off), the right one's yaw and its box of tangents
+// (x0, x1 across, y1 up and down: the left one's mirrored), the azimuths between which the middle gives way to them
+uniform sampler2D tSideL, tSideR;
+uniform float uSide, uYaw;
+uniform vec3 uSBox;
+uniform vec2 uSeam;
+uniform mat3 uRotL, uRotR;         // (V113) from this frame's view back to the one each side view was drawn from
 varying vec2 vUv;
-vec2 fishUV(vec2 q, float s) {
-  float r = length(q), rr = min(r, uRmax), th = min((uK1 * rr + uK3 * rr * rr * rr) * s, 1.45);   // (past RMAX: the edge drawn out)
-  vec2 t = r > 1e-6 ? q / r * tan(th) : vec2(0.0);
-  return t / uSrc * 0.5 + 0.5;
+// the direction at the frame's point q (x right, y up, z ahead), its angle off the axis scaled by s (the lateral
+// colour); with the side views the whole frame (no RMAX: they hold the corners, to 88.5 deg off the axis)
+vec3 fishDir(vec2 q, float s) {
+  float r = length(q), rr = uSide > 0.5 ? r : min(r, uRmax), th = min((uK1 * rr + uK3 * rr * rr * rr) * s, uSide > 0.5 ? 1.56 : 1.45);
+  return r > 1e-6 ? vec3(q / r * sin(th), cos(th)) : vec3(0.0, 0.0, 1.0);
 }
+vec2 fishUV(vec2 q, float s) { vec3 d = fishDir(q, s); return d.xy / max(d.z, 1e-4) / uSrc * 0.5 + 0.5; }
+// a direction in the side views' pictures: the right one's (x > 0), or the left one's (mirrored) - turned back to the
+// view each was drawn from (they are drawn in turn, one a frame, while the head turns between)
+vec2 sideUV(vec3 d0) {
+  vec3 d = (d0.x > 0.0 ? uRotR : uRotL) * d0;
+  vec3 m = vec3(d0.x > 0.0 ? d.x : -d.x, d.y, d.z);
+  float c = cos(uYaw), s = sin(uYaw);
+  vec2 t = vec2(m.x * c - m.z * s, m.y) / max(m.x * s + m.z * c, 1e-4);
+  vec2 uv = vec2((t.x - uSBox.x) / (uSBox.y - uSBox.x), t.y / (2.0 * uSBox.z) + 0.5);
+  if (d0.x < 0.0) uv.x = 1.0 - uv.x;
+  return uv;
+}
+vec3 sideTap(vec2 uv, float right) { return right > 0.5 ? textureLod(tSideR, uv, 0.0).rgb : textureLod(tSideL, uv, 0.0).rgb; }
 float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 // (the picture has no mip levels: level 0 is all it has - read so, the taps need no derivatives, and may sit in loops
 // and branches the shader compilers keep as such)
@@ -414,7 +435,8 @@ vec3 gather(vec2 uv, vec2 dR, vec2 dB, vec2 aMaj, vec2 aMin, float n, float rows
 }
 void main() {
   vec2 uv, q = (vUv * 2.0 - 1.0) * vec2(1.0, uAsp);
-  if (uFish > 0.5) uv = fishUV(q, 1.0);        // (V104) the GoPro's fisheye: the direction at this point of its frame
+  vec3 fd = vec3(0.0, 0.0, 1.0);
+  if (uFish > 0.5) { fd = fishDir(q, 1.0); uv = fd.xy / max(fd.z, 1e-4) / uSrc * 0.5 + 0.5; }   // (V104) the GoPro's fisheye: the direction at this point of its frame
   else {
   // the screen point on the Panini plane (tangents of the view's own field: the middle is the flat picture's)
   vec2 p = (vUv * 2.0 - 1.0) * uOut;
@@ -425,6 +447,11 @@ void main() {
   uv = vec2(sl, p.y * (d + cl) / (d + 1.0)) / cl / uSrc * 0.5 + 0.5;   // that direction in the drawn (flat) picture
   }
   vec2 ex = dFdx(uv), ey = dFdy(uv), fx = ex / uTexel, fy = ey / uTexel;   // (a screen pixel's footprint, in the picture's texels)
+  // (V113) the side views' share: by the direction's azimuth, none in the middle, all past the seam; their pictures'
+  // footprint of a screen pixel (worked out here, where every pixel runs: the derivatives need it)
+  float ws = uFish > 0.5 && uSide > 0.5 ? smoothstep(uSeam.x, uSeam.y, abs(atan(fd.x, fd.z))) : 0.0;
+  vec2 suv = sideUV(fd), sx = dFdx(suv), sy = dFdy(suv);
+  float right = fd.x > 0.0 ? 1.0 : 0.0;
   vec3 c;
   if (uFish > 0.5) {
     // (V108) the footprint as an ellipse: its long and short axes (texels per screen pixel) and the long one's direction
@@ -436,10 +463,20 @@ void main() {
     vec2 uvR = fishUV(q, 1.0 + uCA), uvB = fishUV(q, 1.0 - uCA);
     // 1:1 to a little squeezed: Catmull-Rom and the sharpening; squeezed more: the gathered footprint (blended between)
     float t = smoothstep(1.2, 2.0, fMaj);
-    vec3 cc = vec3(0.0), cg = vec3(0.0);
-    if (t < 1.0) { cc = crisp(uv, ex, ey); cc.r = mix(cc.r, textureLod(tDiffuse, uvR, 0.0).r, ca); cc.b = mix(cc.b, textureLod(tDiffuse, uvB, 0.0).b, ca); }
-    if (t > 0.0) cg = gather(uv, uvR - uv, uvB - uv, dir * fMaj * uTexel, vec2(-dir.y, dir.x) * fMin * uTexel, clamp(ceil(fMaj), 2.0, 8.0), fMin > 1.5 ? 2.0 : 1.0, ca);
-    c = mix(cc, cg, t);
+    vec3 cc = vec3(0.0), cg = vec3(0.0), cs = vec3(0.0);
+    if (ws < 1.0) {
+      if (t < 1.0) { cc = crisp(uv, ex, ey); cc.r = mix(cc.r, textureLod(tDiffuse, uvR, 0.0).r, ca); cc.b = mix(cc.b, textureLod(tDiffuse, uvB, 0.0).b, ca); }
+      if (t > 0.0) cg = gather(uv, uvR - uv, uvB - uv, dir * fMaj * uTexel, vec2(-dir.y, dir.x) * fMin * uTexel, clamp(ceil(fMaj), 2.0, 8.0), fMin > 1.5 ? 2.0 : 1.0, ca);
+    }
+    // (V113) the side view: four taps over the screen pixel's footprint (they are drawn ~1:1), the lateral colour from
+    // the directions at the angles scaled as the middle's
+    if (ws > 0.0) {
+      vec2 a1 = 0.25 * (sx + sy), a2 = 0.25 * (sx - sy);
+      cs = 0.25 * (sideTap(suv + a1, right) + sideTap(suv - a1, right) + sideTap(suv + a2, right) + sideTap(suv - a2, right));
+      cs.r = mix(cs.r, sideTap(sideUV(fishDir(q, 1.0 + uCA)), right).r, ca);
+      cs.b = mix(cs.b, sideTap(sideUV(fishDir(q, 1.0 - uCA)), right).b, ca);
+    }
+    c = mix(mix(cc, cg, t), cs, ws);
   } else if (max(dot(fx, fx), dot(fy, fy)) <= 1.0) c = crisp(uv, ex, ey);
   else c = 0.25 * (tap(uv + 0.25 * (ex + ey)) + tap(uv - 0.25 * (ex + ey)) + tap(uv + 0.25 * (ex - ey)) + tap(uv - 0.25 * (ex - ey)));
   if (uFish > 0.5) {
@@ -447,15 +484,31 @@ void main() {
     // (V107) the lens's edge, see-through - no dark band: toward the frame's edges and in its corners the picture
     // softens, its colours part (the glass's dispersion) and a faint glassy sheen lies over it; you see the world through
     float de = min(1.0 - abs(q.x), uAsp - abs(q.y));
-    float edge = max(smoothstep(uRmax - 0.16, uRmax + 0.06, sqrt(r2)), 1.0 - smoothstep(0.0, 0.08, de));
+    // (with the side views the corners are the world's own: only the frame's edges stay see-through)
+    float edge = max(uSide > 0.5 ? 0.0 : smoothstep(uRmax - 0.16, uRmax + 0.06, sqrt(r2)), 1.0 - smoothstep(0.0, 0.08, de));
     if (edge > 0.002) {
-      vec2 o = uTexel * (1.5 + 6.5 * edge) * uBlurK;
-      vec3 bl = tap(uv + vec2(o.x, 0.0)) + tap(uv - vec2(o.x, 0.0)) + tap(uv + vec2(0.0, o.y)) + tap(uv - vec2(0.0, o.y))
-              + tap(uv + o * 0.7) + tap(uv - o * 0.7) + tap(uv + vec2(o.x, -o.y) * 0.7) + tap(uv + vec2(-o.x, o.y) * 0.7);
-      bl *= 0.125;
+      vec3 bl = vec3(0.0);
       float caE = uCA + 0.012 * edge;
-      bl.r = mix(bl.r, textureLod(tDiffuse, fishUV(q, 1.0 + caE), 0.0).r, 0.6);
-      bl.b = mix(bl.b, textureLod(tDiffuse, fishUV(q, 1.0 - caE), 0.0).b, 0.6);
+      if (ws < 1.0) {
+        // (V113: by the screen pixel's footprint in the middle's picture, as the side views' - as wide on the screen)
+        vec2 ox = ex * (1.0 + 4.3 * edge), oy = ey * (1.0 + 4.3 * edge);
+        vec3 b0 = tap(uv + ox) + tap(uv - ox) + tap(uv + oy) + tap(uv - oy)
+                + tap(uv + (ox + oy) * 0.7) + tap(uv - (ox + oy) * 0.7) + tap(uv + (ox - oy) * 0.7) + tap(uv - (ox - oy) * 0.7);
+        b0 *= 0.125;
+        b0.r = mix(b0.r, textureLod(tDiffuse, fishUV(q, 1.0 + caE), 0.0).r, 0.6);
+        b0.b = mix(b0.b, textureLod(tDiffuse, fishUV(q, 1.0 - caE), 0.0).b, 0.6);
+        bl += b0 * (1.0 - ws);
+      }
+      if (ws > 0.0) {
+        // (as wide on the screen as the middle's: by the side picture's own footprint of a screen pixel)
+        vec2 ox = sx * (1.0 + 4.3 * edge), oy = sy * (1.0 + 4.3 * edge);
+        vec3 b1 = sideTap(suv + ox, right) + sideTap(suv - ox, right) + sideTap(suv + oy, right) + sideTap(suv - oy, right)
+                + sideTap(suv + (ox + oy) * 0.7, right) + sideTap(suv - (ox + oy) * 0.7, right) + sideTap(suv + (ox - oy) * 0.7, right) + sideTap(suv - (ox - oy) * 0.7, right);
+        b1 *= 0.125;
+        b1.r = mix(b1.r, sideTap(sideUV(fishDir(q, 1.0 + caE)), right).r, 0.6);
+        b1.b = mix(b1.b, sideTap(sideUV(fishDir(q, 1.0 - caE)), right).b, 0.6);
+        bl += b1 * ws;
+      }
       c = mix(c, bl, edge);
       c += vec3(0.035) * edge * (1.0 - dot(c, vec3(0.3333)));
     }
@@ -497,17 +550,136 @@ export function lensSpan(tx) {
 // the same shape of curve (V105's 150 left the corners ~85 deg off the axis, which no flat picture can feed: its dark band
 // had to be wide). Past r = RMAX (~74 deg) only the frame's corners lie: there, as along the edges, the lens's edge is
 // see-through (V107: softened, its colours parted, no darkening), the flat picture's edge drawn out under it.
-// goproNeed(a): the tangents the flat picture must reach for a frame a half widths high, every point of it within RMAX
 export const GOPRO_K1 = 1.2817, GOPRO_K3 = -0.06, GOPRO_RMAX = 1.07;
-const goproTh = (r) => Math.min(GOPRO_K1 * r + GOPRO_K3 * r * r * r, 1.45);
-export function goproNeed(a) {
-  let x = 0, y = 0;
-  for (let i = 0; i <= 64; i++) {
-    const ph = i / 64 * Math.PI / 2, re = Math.min(GOPRO_RMAX, 1 / Math.max(Math.cos(ph), 1e-6), a / Math.max(Math.sin(ph), 1e-6));
-    const tt = Math.tan(goproTh(re));
-    x = Math.max(x, tt * Math.cos(ph)); y = Math.max(y, tt * Math.sin(ph));
+// (V113) One flat picture cannot hold a lens that wide: its corners lay ~79 deg off the axis, so it was drawn up to 3.5
+// tangents out (V108: 5.3K, 15.9 MP, to keep its middle 1:1) - most of it squeezed back into the frame's edges. Now the
+// GoPro is a rig of three: the middle view (all the passes: the anti-aliasing, the reflections, the AO, the haze, the
+// shafts) out to 50 deg either side, and two side views turned toward the edges (the scene, the far relief and the sky,
+// their own anti-aliasing), blended over 4 deg. Each holds about one picture pixel to one screen pixel, so the whole
+// frame takes ~4 MP at 1080p (a quarter), and the lens goes to GoPro's widest: Max HyperView, 177 deg on the diagonal
+// (GoPro's figure for the Max Lens Mod 2.0 and the Ultra Wide Lens Mod) - 157 across and 91 up on 16:9, every corner the
+// world's own, no longer drawn out. The curve keeps V105's shape: theta = K1 (r + C r^3), C = K3 / K1 = -0.0468.
+export const GOPRO_LENSES = [
+  { diag: 177, name: 'Max HyperView, 177°' },
+  { diag: 158, name: '158° (V105–V112)' },
+  { diag: 133, name: 'Wide, 133°' },
+];
+const GOPRO_C = -0.0468, SEAM = 50 * Math.PI / 180, SEAM_BLEND = 4 * Math.PI / 180;
+// the rig for a lens (diagonal on GoPro's 16:9 frame) on a screen of this aspect: the middle's box of tangents (tx, ty),
+// the side views' yaw and box (x0, x1 across in the right one's frame, y1 up and down), the tangents that hold the whole
+// frame (all: for what asks whether a thing is in view)
+export function goproRig(diagDeg, aspect) {
+  const rc = Math.hypot(1, 9 / 16), K1 = (diagDeg / 2) * Math.PI / 180 / (rc + GOPRO_C * rc ** 3), K3 = K1 * GOPRO_C, A = 1 / aspect;
+  const pts = [], NX = 96, NY = Math.max(24, Math.round(96 * A));
+  for (let i = 0; i <= NX; i++) for (let j = 0; j <= NY; j++) {
+    const x = -1 + 2 * i / NX, y = (-1 + 2 * j / NY) * A, r = Math.hypot(x, y), th = Math.min(K1 * r + K3 * r * r * r, 1.56);
+    pts.push(r < 1e-9 ? [0, 0, 1] : [Math.sin(th) * x / r, Math.sin(th) * y / r, Math.cos(th)]);
   }
-  return { x, y };
+  let tx = 0, ty = 0, maxAz = 0, allX = 0, allY = 0;
+  for (const d of pts) {
+    const az = Math.abs(Math.atan2(d[0], d[2]));
+    maxAz = Math.max(maxAz, az);
+    if (az <= SEAM) { tx = Math.max(tx, Math.abs(d[0] / d[2])); ty = Math.max(ty, Math.abs(d[1] / d[2])); }
+    if (d[2] > 0.17) { allX = Math.max(allX, Math.abs(d[0] / d[2])); allY = Math.max(allY, Math.abs(d[1] / d[2])); }
+  }
+  const rig = { K1, K3, tx: tx * 1.01, ty: ty * 1.01, sides: null, seam: [SEAM - SEAM_BLEND, SEAM], all: [allX, allY], across: 2 * (K1 + K3) * 180 / Math.PI, up: 2 * (K1 * A + K3 * A ** 3) * 180 / Math.PI };
+  if (maxAz <= SEAM) return rig;
+  let best = null;
+  for (let a = 30; a <= 85; a++) {
+    const al = a * Math.PI / 180, c = Math.cos(al), sn = Math.sin(al);
+    let x0 = Infinity, x1 = -Infinity, y1 = 0;
+    for (const d of pts) {
+      if (Math.atan2(d[0], d[2]) < SEAM - SEAM_BLEND) continue;
+      const ez = d[0] * sn + d[2] * c, u = (d[0] * c - d[2] * sn) / ez, v = Math.abs(d[1] / ez);
+      x0 = Math.min(x0, u); x1 = Math.max(x1, u); y1 = Math.max(y1, v);
+    }
+    const area = (x1 - x0) * y1;
+    if (!best || area < best.area) best = { yaw: al, x0, x1, y1, area };
+  }
+  // (a hair wider than the frame needs: the taps over a pixel's footprint stay inside)
+  const m = 0.01 * (best.x1 - best.x0);
+  rig.sides = { yaw: best.yaw, x0: best.x0 - m, x1: best.x1 + m, y1: best.y1 * 1.01 };
+  return rig;
+}
+// the GoPro's drawing scales: the side views and the middle drawn at this share of one picture pixel to one screen pixel
+// (V113: the frame rate picks it, goproFrame)
+const DRS = [0.42, 0.5, 0.58, 0.67, 0.76, 0.86, 1];
+const _yAxis = new THREE.Vector3(0, 1, 0), _qYaw = new THREE.Quaternion(), _wp = new THREE.Vector3(), _wq = new THREE.Quaternion(), _ws = new THREE.Vector3();
+const _lp = new THREE.Vector3(), _lq = new THREE.Quaternion(), _ls = new THREE.Vector3(), _rq = new THREE.Quaternion(), _rm = new THREE.Matrix4();
+// (V113) a side view's far relief and sky: FarPass's, with the side view's own box of tangents (its frustum is off the axis)
+class SideFarPass extends Pass {
+  constructor(scene, camera) {
+    super();
+    this.scene = scene; this.camera = camera; this.needsSwap = false; this.jitter = null; this.box = [-1, 1, 1];
+    this.cam = new THREE.PerspectiveCamera(70, 1, 30, 430000);
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    const c = this.cam, [x0, x1, y1] = this.box, n = 30, f = 430000;
+    c.position.copy(this.camera.position); c.quaternion.copy(this.camera.quaternion); c.updateMatrixWorld();
+    c.projectionMatrix.makePerspective(x0 * n, x1 * n, y1 * n, -y1 * n, n, f);
+    const e = c.projectionMatrix.elements;
+    if (this.jitter) { e[8] += this.jitter.x; e[9] += this.jitter.y; }
+    c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
+    const ac = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer);
+    renderer.clear();
+    renderer.render(this.scene, c);
+    renderer.autoClear = ac;
+  }
+}
+// (V113) one of the GoPro's side views: its camera at the lens, turned by the rig's yaw to its side (sign: +1 right, -1
+// left), its frustum the rig's box; the scene, the far relief and the sky, the anti-aliasing (as the middle's, when on:
+// the rain, the snow and the spray drawn after it, the middle's own), the tone mapping and the GoPro's colour
+class SideView {
+  constructor(renderer, scene, farScene, sign, taaMain, gradeU) {
+    this.sign = sign; this.taaMain = taaMain;
+    this.q = new THREE.Quaternion(); this.valid = false;       // (the main camera's turn it was last drawn with)
+    this.cam = new THREE.PerspectiveCamera();
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 0, depthTexture: taaMain ? new THREE.DepthTexture(1, 1) : null });
+    const comp = this.composer = new EffectComposer(renderer, rt);
+    comp.setPixelRatio(1); comp.renderToScreen = false;
+    this.taa = taaMain ? new TAAPass(this.cam, null, null) : null;
+    if (this.taa) { this.taa.fx = taaMain.fx; comp.addPass(new TAAJitter(this.taa)); }
+    this.far = farScene ? new SideFarPass(farScene, this.cam) : null;
+    if (this.far) {
+      comp.addPass(this.far);
+      const rp = new RenderPass(scene, this.cam);
+      rp.clear = false; rp.clearDepth = true;
+      comp.addPass(rp);
+    } else comp.addPass(new RenderPass(scene, this.cam));
+    if (this.taa) {
+      const tap = new DepthTap();
+      comp.addPass(tap);
+      this.taa.attach(tap, this.far);
+      comp.addPass(nanGuard());
+      comp.addPass(this.taa);
+      this.taa.enabled = taaMain.enabled;
+    }
+    comp.addPass(new OutputPass());
+    this.grade = new ShaderPass(new THREE.ShaderMaterial({ vertexShader: GradeShader.vertexShader, fragmentShader: GradeShader.fragmentShader,
+      uniforms: { tDiffuse: { value: null }, uTime: gradeU.uTime, uRes: { value: new THREE.Vector2(1, 1) }, uGrain: { value: 0 }, uVig: { value: 0 }, uCold: gradeU.uCold, uFrost: { value: 0 } } }));
+    comp.addPass(this.grade);
+  }
+  setSize(w, h) { this.composer.setSize(w, h); this.grade.uniforms.uRes.value.set(w, h); }
+  place(main, rig) {
+    const c = this.cam, R = rig.sides, n = main.near, f = main.far;
+    const x0 = this.sign > 0 ? R.x0 : -R.x1, x1 = this.sign > 0 ? R.x1 : -R.x0;
+    main.matrixWorld.decompose(_wp, _wq, _ws);
+    c.position.copy(_wp);
+    c.quaternion.copy(_wq).multiply(_qYaw.setFromAxisAngle(_yAxis, -this.sign * R.yaw));
+    c.near = n; c.far = f;
+    c.updateMatrixWorld();
+    c.projectionMatrix.makePerspective(x0 * n, x1 * n, R.y1 * n, -R.y1 * n, n, f);
+    c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
+    if (this.far) this.far.box = [x0, x1, R.y1];
+  }
+  render(renderer) {
+    if (this.taa) { if (this.taa.enabled !== this.taaMain.enabled) this.taa.enabled = this.taaMain.enabled; this.taa.mover = this.taaMain.mover; }
+    this.composer.render(0);
+  }
+  get texture() { return this.composer.readBuffer.texture; }
+  dispose() { this.composer.renderTarget1.dispose(); this.composer.renderTarget2.dispose(); this.taa?.dispose(); }
 }
 class LensPass extends Pass {
   constructor() {
@@ -516,12 +688,18 @@ class LensPass extends Pass {
       uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 },
       uFish: { value: 0 }, uK1: { value: GOPRO_K1 }, uK3: { value: GOPRO_K3 }, uAsp: { value: 9 / 16 }, uCA: { value: 0.0025 }, uVig: { value: 0.22 },
       uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 },
-      uRmax: { value: GOPRO_RMAX }, uBlurK: { value: 1 } },
+      uRmax: { value: GOPRO_RMAX }, uBlurK: { value: 1 },
+      tSideL: { value: null }, tSideR: { value: null }, uSide: { value: 0 }, uYaw: { value: 1 }, uSBox: { value: new THREE.Vector3(-0.3, 0.5, 0.9) },
+      uSeam: { value: new THREE.Vector2(SEAM - SEAM_BLEND, SEAM) }, uRotL: { value: new THREE.Matrix3() }, uRotR: { value: new THREE.Matrix3() } },
       vertexShader: AB_VERT, fragmentShader: LENS, depthTest: false, depthWrite: false });
     this.fish = false;                   // (V104) the GoPro's fisheye instead of the Panini
     this.quad = new FullScreenQuad(this.material);
     this.enabled = false;
     this.scale = 1;                      // (how much larger than the screen the scene is drawn: createComposer)
+    this.rig = null;                     // (V113) the GoPro's rig (goproRig) and its side views (SideView), its screen's aspect
+    this.sides = null;
+    this.screenAspect = 16 / 9;
+    this.turn = 0; this.lastPos = null; this.allSides = false;   // (whose turn; where the camera was; both every frame)
   }
   setSize(w, h) { this.material.uniforms.uTexel.value.set(1 / w, 1 / h); }
   // the camera drawn wider for this frame's view (its own field of view and aspect; zoom 1 when off)
@@ -529,15 +707,17 @@ class LensPass extends Pass {
     const u = this.material.uniforms;
     if (!this.enabled) { if (cam.zoom !== 1) { cam.zoom = 1; cam.updateProjectionMatrix(); } return; }
     u.uFish.value = this.fish ? 1 : 0;
-    if (this.fish) {
-      // (V104) the GoPro's frame across the screen's width, its height as the screen's; the flat picture drawn just wide
-      // enough to hold its corners (and as much larger as the quality allows: the middle is magnified ~1.8x)
-      const ty = Math.tan(cam.fov * Math.PI / 360), tx = ty * cam.aspect, g = goproNeed(1 / cam.aspect);
-      const z = Math.min(ty / g.y, tx / g.x);
-      u.uAsp.value = 1 / cam.aspect; u.uSrc.value.set(tx / z, ty / z);
-      const mag = (tx / z) / GOPRO_K1 / this.scale;
+    if (this.fish && this.rig) {
+      // (V113) the GoPro's frame across the screen's width, its height as the screen's; the camera is the rig's middle
+      // view: its box of tangents (an aspect and a zoom of its own), the side views around it
+      const R = this.rig, ty = Math.tan(cam.fov * Math.PI / 360), asp = R.tx / R.ty, z = ty / R.ty;
+      u.uAsp.value = 1 / this.screenAspect; u.uSrc.value.set(R.tx, R.ty); u.uK1.value = R.K1; u.uK3.value = R.K3;
+      u.uSide.value = R.sides ? 1 : 0;
+      if (R.sides) { u.uYaw.value = R.sides.yaw; u.uSBox.value.set(R.sides.x0, R.sides.x1, R.sides.y1); }
+      u.uSeam.value.set(R.seam[0], R.seam[1]);
+      const mag = 1 / Math.max(this.scale, 0.1);                         // (the middle magnified this much on the screen)
       u.uPeak.value = -Math.min(1 / 5, mag * mag / 14 + 0.05);            // (and its own sharpening, set high)
-      if (Math.abs(cam.zoom - z) > 1e-6) { cam.zoom = z; cam.updateProjectionMatrix(); }
+      if (Math.abs(cam.zoom - z) > 1e-6 || Math.abs(cam.aspect - asp) > 1e-6) { cam.zoom = z; cam.aspect = asp; cam.updateProjectionMatrix(); }
       return;
     }
     const ty = Math.tan(cam.fov * Math.PI / 360), tx = ty * cam.aspect, f = lensFit(tx);
@@ -549,11 +729,35 @@ class LensPass extends Pass {
     if (Math.abs(cam.zoom - 1 / f.m) > 1e-6) { cam.zoom = 1 / f.m; cam.updateProjectionMatrix(); }
   }
   render(renderer, writeBuffer, readBuffer) {
-    this.material.uniforms.tDiffuse.value = readBuffer.texture;
+    const u = this.material.uniforms;
+    u.tDiffuse.value = readBuffer.texture;
+    // (V113) the side views first, from where the middle was just drawn (the shadow maps as it left them: not again);
+    // one a frame, in turn, while the camera stands (each at half the frame rate, the head's turn since taken back in the
+    // lens: uRot - a turn about the lens's centre shifts nothing near against what is far); both once it moves more
+    // than 1.5 cm a frame (walking, a car: what is near would shift between them at the seam), or after a cut
+    if (this.fish && this.rig?.sides && this.sides && this.camera) {
+      const cam = this.camera;
+      cam.matrixWorld.decompose(_lp, _lq, _ls);
+      const moved = this.lastPos ? _lp.distanceTo(this.lastPos) : Infinity;
+      (this.lastPos ??= new THREE.Vector3()).copy(_lp);
+      const both = moved > 0.015 || this.allSides;
+      this.turn = (this.turn + 1) & 1;
+      const sm = renderer.shadowMap.autoUpdate;
+      renderer.shadowMap.autoUpdate = false;
+      this.sides.forEach((v, i) => {
+        if (both || !v.valid || this.turn === i) { v.place(cam, this.rig); v.render(renderer); v.q.copy(_lq); v.valid = true; }
+        // the rotation from this frame's camera to the one it was drawn with, in the lens's axes (z ahead)
+        _rq.copy(v.q).invert().multiply(_lq);
+        const e = (i ? u.uRotR : u.uRotL).value.setFromMatrix4(_rm.makeRotationFromQuaternion(_rq)).elements;
+        e[2] = -e[2]; e[5] = -e[5]; e[6] = -e[6]; e[7] = -e[7];
+      });
+      renderer.shadowMap.autoUpdate = sm;
+      u.tSideL.value = this.sides[0].texture; u.tSideR.value = this.sides[1].texture;
+    }
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
   }
-  dispose() { this.material.dispose(); this.quad.dispose(); }
+  dispose() { this.material.dispose(); this.quad.dispose(); this.sides?.forEach(v => v.dispose()); }
 }
 
 // The far relief and the sky (terrain.js FAR): drawn first into the frame with a camera of their own (the street's
@@ -582,6 +786,14 @@ class FarPass extends Pass {
     renderer.autoClear = ac;
     e[8] = e8; e[9] = e9;
   }
+}
+
+function nanGuard() {
+  return new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0); gl_FragColor = min(c, vec4(64.0)); }',
+  });
 }
 
 export function createComposer(renderer, scene, camera, q, farScene = null) {
@@ -619,11 +831,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     composer.addPass(gtao);
   }
   // safety net: never let a stray NaN/Inf pixel be smeared across the screen by blur passes
-  composer.addPass(new ShaderPass({
-    uniforms: { tDiffuse: { value: null } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main(){ vec4 c = texture2D(tDiffuse, vUv); if (any(isnan(c)) || any(isinf(c))) c = vec4(0.0, 0.0, 0.0, 1.0); gl_FragColor = min(c, vec4(64.0)); }',
-  }));
+  composer.addPass(nanGuard());
   // the anti-aliasing: after the reflections and the AO (smoothed with the rest), before the haze's blur and the bloom
   if (taa) composer.addPass(taa);
   // the air shimmering over the campfire (campfire.js turns it on near a lit fire in view)
@@ -658,25 +866,29 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   composer.addPass(grade);
   // the enhanced field of view: the last pass, from the picture drawn wider (and larger) to the screen
   const lens = new LensPass();
+  lens.camera = camera;
   composer.addPass(lens);
   // (how much larger than the screen the scene is drawn with the lens on: the middle keeps its sharpness up to this)
   const lensMax = q.ao ? (q.pixelRatio >= 2 ? 1.4 : 1.25) : q.ssr ? 1.1 : 1;
-  // (V108) the GoPro's picture at its full resolution, on every quality: drawn as much larger as its middle needs to be
-  // 1:1 with the screen (V105-V107 drew it 1.1-1.6x larger, the middle magnified ~1.6-2.4x), on the screen's every
-  // pixel (the device's own pixel ratio, not the quality's), up to the GoPro's own largest frame - 5.3K, 5312 x 2988
-  // pixels (15.9 MP) - and what the graphics card can hold. (If the card gives up - ~1.5 GB of buffers at 5.3K - main.js
-  // steps down the GoPro's own ladder for the tab: 4K UHD, 3840 x 2160, then 2.7K, 2704 x 1520.)
+  // (V108) the GoPro's picture on the screen's every pixel (the device's own pixel ratio, not the quality's), at most
+  // the GoPro's own largest frame - 5.3K, 5312 x 2988 pixels (15.9 MP) - and what the graphics card can hold. (If the
+  // card gives up, main.js steps down the GoPro's own ladder for the tab: 4K UHD, 3840 x 2160, then 2.7K, 2704 x 1520.)
   const GOPRO_FRAMES = [5312 * 2988, 3840 * 2160, 2704 * 1520], basePr = renderer.getPixelRatio(), gl = renderer.getContext();
   let goproLevel = 0;
   const hwMax = Math.min(renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), ...gl.getParameter(gl.MAX_VIEWPORT_DIMS));
   const css = renderer.getSize(new THREE.Vector2());
   let scale = 1, lastW = css.x, lastH = css.y;               // (the canvas's size in CSS pixels until the first resize)
+  let sizeW = 0, sizeH = 0;                                  // (the passes' size as set: the GoPro's middle has an aspect of its own)
+  const setComposerSize = (w, h) => {
+    composer.setSize(w, h);
+    grade.uniforms.uRes.value.set(w, h);
+    if (cas) cas.uniforms.uTexel.value.set(1 / w, 1 / h);
+    if (gtao) gtao.setSize(w, h);
+    sizeW = w; sizeH = h;
+  };
   const resize = () => {
     const s = renderer.getDrawingBufferSize(new THREE.Vector2()).multiplyScalar(scale).round();
-    composer.setSize(s.x, s.y);
-    grade.uniforms.uRes.value.set(s.x, s.y);
-    if (cas) cas.uniforms.uTexel.value.set(1 / s.x, 1 / s.y);
-    if (gtao) gtao.setSize(s.x, s.y);
+    setComposerSize(s.x, s.y);
   };
   // the drawing size k (and the pixel ratio pr): the buffers made again only when either changes, or for a new window
   const apply = (k, pr, force = false) => {
@@ -685,16 +897,50 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     if (force || prNew || Math.abs(k - scale) > 1e-3) { scale = k; resize(); }
     lens.scale = scale;
   };
-  // (V108) the GoPro's: the device's pixels, and the scale for a 1:1 middle (aim: the flat picture spans uSrc.x across,
-  // its middle magnified uSrc.x / K1 / scale) within the 5.3K frame and the card's limits
+  // (V113) the GoPro: the rig of its lens (goproRig) on the screen's device pixels; the middle and the side views drawn
+  // at the scale the frame rate allows (DRS[drs] of one picture pixel to one screen pixel; V108 drew the middle 1:1
+  // always), within the 5.3K frame and the card's limits
+  let goproLens = 0, drs = 3;
   const goproFit = (force) => {
-    const pr = window.devicePixelRatio || 1, w = lastW * pr, h = lastH * pr, g = goproNeed(1 / camera.aspect);
-    const full = Math.max(g.x, g.y * camera.aspect) / GOPRO_K1;
-    const k = Math.max(1, Math.min(full, Math.sqrt(GOPRO_FRAMES[goproLevel] / (w * h)), (hwMax - 2) / Math.max(w, h)));
-    apply(k, pr, force);
-    // (the see-through edge's blur kept as wide on the screen as V107's, drawn 1.5x larger at the quality's pixel ratio)
-    lens.material.uniforms.uBlurK.value = pr * scale / (basePr * 1.5);
+    const pr = window.devicePixelRatio || 1, w = Math.round(lastW * pr), h = Math.round(lastH * pr);
+    const rig = goproRig(GOPRO_LENSES[goproLens].diag, w / h), R = rig.sides;
+    lens.rig = rig; lens.screenAspect = w / h;
+    const fc = (w / 2) / rig.K1;                             // (the frame's pixels a radian, in its middle)
+    const mp = (2 * fc * rig.tx) * (2 * fc * rig.ty) + (R ? 2 * (fc * (R.x1 - R.x0)) * (2 * fc * R.y1) : 0);
+    const s = Math.min(DRS[drs], Math.sqrt(GOPRO_FRAMES[goproLevel] / mp));
+    const cl = (v) => Math.max(16, Math.min(hwMax - 2, Math.round(v)));
+    const cw = cl(2 * fc * rig.tx * s), ch = cl(2 * fc * rig.ty * s);
+    if (Math.abs(pr - renderer.getPixelRatio()) > 1e-3) renderer.setPixelRatio(pr);
+    if (force || cw !== sizeW || ch !== sizeH) setComposerSize(cw, ch);
+    if (R) {
+      lens.sides ??= [new SideView(renderer, scene, farScene, -1, taa, grade.uniforms), new SideView(renderer, scene, farScene, 1, taa, grade.uniforms)];
+      const sw = cl(fc * (R.x1 - R.x0) * s), sh = cl(2 * fc * R.y1 * s);
+      for (const v of lens.sides) { v.setSize(sw, sh); v.valid = false; }
+    }
+    scale = s; lens.scale = s;
     lens.aim(camera);
+  };
+  // (V113) its frame rate: the scale a step down when the frames take 15 % longer than the eyes' did (and than 60 Hz's),
+  // over a second; a step up when they keep within 8 % of it (at the screen's refresh: the headroom is not seen) -
+  // taken back if that was too much (and no step up for 20 s); a step down that did not help (the processor, not the
+  // graphics card, the limit) taken back too (and no step down for 10 s)
+  const D = { t: 0, n: 0, sum: 0, eye: 1000 / 60, hold: 0, probe: false, last: null, upBlock: 0, downBlock: 0 };
+  let drsLock = null;                                        // (a scale held: tests, or a setting)
+  const goproFrame = (ms) => {
+    if (!(ms > 0 && ms < 1000)) return;
+    if (!lens.fish) { D.eye += (ms - D.eye) * 0.02; return; }
+    if (drsLock !== null) return;
+    D.sum += ms; D.n++; D.t += ms;
+    if (D.t < 1000) return;
+    const ft = D.sum / D.n; D.t = 0; D.sum = 0; D.n = 0;
+    if (D.hold > 0) { D.hold--; return; }                    // (the window after a change: its buffers made again)
+    const target = Math.max(1000 / 60, D.eye), set = (v) => { drs = v; goproFit(false); D.hold = 1; };
+    if (D.upBlock > 0) D.upBlock--;
+    if (D.downBlock > 0) D.downBlock--;
+    if (D.probe) { D.probe = false; if (ft > target * 1.15 && drs > 0) { D.upBlock = 20; set(drs - 1); return; } }
+    if (D.last) { const l = D.last; D.last = null; if (ft > l.ft * 0.95) { D.downBlock = 10; set(l.level); return; } }
+    if (ft > target * 1.15 && drs > 0 && !D.downBlock) { D.last = { ft, level: drs }; set(drs - 1); return; }
+    if (ft < target * 1.08 && drs < DRS.length - 1 && !D.upBlock) { D.probe = true; set(drs + 1); }
   };
   const setSize = (w, h) => {
     lastW = w; lastH = h;
@@ -710,16 +956,40 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     apply(k, basePr);
     lens.aim(camera);
   };
-  // (V104) the GoPro's picture on (its fisheye, at its full resolution) or off (back to the quality's pixel ratio and
-  // the screen's size, then the lens the menu set: setLens after it)
+  // (V104) the GoPro's picture on (its rig) or off (back to the quality's pixel ratio and the screen's size and aspect,
+  // then the lens the menu set: setLens after it)
   const setGoPro = (on) => {
     lens.fish = on;
-    if (!on) { lens.material.uniforms.uFish.value = 0; apply(1, basePr); return; }
+    if (!on) {
+      lens.material.uniforms.uFish.value = 0; lens.material.uniforms.uSide.value = 0;
+      camera.aspect = lastW / lastH; camera.zoom = 1; camera.updateProjectionMatrix();
+      apply(1, basePr, true);
+      return;
+    }
     lens.enabled = true;
-    goproFit(false);
+    goproFit(true);
+  };
+  // (V113) its drawing scale held at DRS[i] (null: the frame rate picks it again)
+  const setGoProScale = (i) => { drsLock = i === null ? null : Math.max(0, Math.min(DRS.length - 1, i | 0)); if (drsLock !== null) { drs = drsLock; if (lens.fish) goproFit(false); } };
+  // (V113) the GoPro's lens (GOPRO_LENSES): the next one
+  const setGoProLens = (i) => { const n = GOPRO_LENSES.length; goproLens = ((i % n) + n) % n; if (lens.fish) goproFit(true); return GOPRO_LENSES[goproLens]; };
+  // (V113) the camera that says what is in view (the forest's people, the hikers, the animals: nothing appears or goes
+  // where you can see it): with the GoPro, a frustum round its whole frame, not its middle view's
+  const seeCam = new THREE.PerspectiveCamera();
+  const viewCam = () => {
+    if (!lens.fish || !lens.rig) return camera;
+    camera.updateMatrixWorld();
+    camera.matrixWorld.decompose(seeCam.position, seeCam.quaternion, _ws);
+    const n = camera.near, [ax, ay] = lens.rig.all;
+    seeCam.near = n; seeCam.far = camera.far;
+    seeCam.projectionMatrix.makePerspective(-ax * n, ax * n, ay * n, -ay * n, n, camera.far);
+    seeCam.projectionMatrixInverse.copy(seeCam.projectionMatrix).invert();
+    seeCam.updateMatrixWorld();
+    return seeCam;
   };
   // the anti-aliasing on or off (the menu): SMAA while TAA is off, the sharpening with TAA
   const setTAA = (on) => { if (!taa) return; taa.enabled = on; if (smaa) smaa.enabled = !on; if (cas) cas.enabled = on; };
-  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, setGoPro, get scale() { return scale; },
+  return { composer, grade, gtao, bloom, smaa, ssr, aerial, shafts, cine, shield, vision, eye, taa, heat, cas, lens, setTAA, setSize, setLens, setGoPro, setGoProLens, setGoProScale, goproFrame, get scale() { return scale; },
+    get viewCam() { return viewCam(); }, get goproLens() { return goproLens; }, get drs() { return DRS[drs]; },
     get goproLevel() { return goproLevel; }, set goproLevel(v) { goproLevel = Math.max(0, Math.min(GOPRO_FRAMES.length - 1, v | 0)); } };
 }
