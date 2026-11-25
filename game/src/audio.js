@@ -113,6 +113,10 @@ export class Audio {
     const ff = ctx.createBiquadFilter(); ff.type = 'bandpass'; ff.frequency.value = 520; ff.Q.value = 0.5;
     this.fireGain = ctx.createGain(); this.fireGain.gain.value = 0;
     fn.connect(ff).connect(this.fireGain).connect(this.master); fn.start();
+    // (V120) a transformer's hum: its core's magnetostriction at twice the mains' 50 Hz - 100 Hz and its harmonics -
+    // there with or without a load on it (silent until you are near one: main.js)
+    this.humGain = ctx.createGain(); this.humGain.gain.value = 0; this.humGain.connect(this.master);
+    for (const [f, a] of [[100, 1], [200, 0.5], [300, 0.28], [400, 0.1]]) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f; const g = ctx.createGain(); g.gain.value = a; o.connect(g).connect(this.humGain); o.start(); }
     // horn (yours, a friend's)
     this.horn = this.hornVoice(ctx);
     this.horn2 = this.hornVoice(ctx);
@@ -429,6 +433,14 @@ export class Audio {
   gunMagOut() { this.burst({ f: 2200, q: 3, dur: 0.03, gain: 0.18 }); this.burst({ f: 900, q: 2, dur: 0.05, gain: 0.1, delay: 0.05 }); }
   gunMagIn() { this.burst({ f: 1700, q: 3, dur: 0.035, gain: 0.22 }); this.burst({ f: 3200, q: 5, dur: 0.02, gain: 0.15, delay: 0.03 }); }
   gunRack() { this.burst({ f: 1500, q: 3, dur: 0.04, gain: 0.22 }); this.burst({ f: 2400, q: 4, dur: 0.03, gain: 0.2, delay: 0.12 }); }
+  // (V120) the station's controls: the main breaker's snap (its spring-charged contacts), a phase's fuses pulled out
+  // of or pushed into their jaws, the lighting's switch; an arc's crack when the fuses are worked with the load on
+  relay(kind, on, load) {
+    if (!this.ctx) return;
+    if (kind === 'breaker') { this.burst({ f: 240, q: 0.9, dur: 0.06, gain: 0.6 }); this.burst({ f: 2600, q: 2.5, dur: 0.02, gain: 0.4 }); this.burst({ f: 900, q: 3, dur: 0.03, gain: 0.15, delay: 0.035 }); }
+    else if (kind === 'fuse') { this.burst({ f: 1300, q: 1.5, dur: 0.05, gain: 0.3 }); this.burst({ f: 520, q: 1, dur: 0.09, gain: 0.22, delay: 0.05 }); if (load) { this.burst({ f: 5200, q: 0.6, dur: 0.05, gain: 0.3, rate: 1.4 }); this.burst({ f: 3000, q: 0.8, dur: 0.12, gain: 0.12, delay: 0.02 }); } }
+    else { this.burst({ f: 1900, q: 2.2, dur: 0.025, gain: 0.3 }); this.burst({ f: 650, q: 2, dur: 0.04, gain: 0.12, delay: 0.02 }); }
+  }
   // a bear: a low growl (rough, pulsing) or a roar (louder, opening up); quieter with distance
   bear(roar, dist) {
     if (!this.ctx) return;
@@ -568,6 +580,7 @@ export class Audio {
     this.hissGain.gain.setTargetAtTime(storm * 0.035 * gust * (1 - 0.85 * lee), now, 0.3);
     const rain = st.rain ?? 0;
     this.snowCover = st.snowCover ?? 0;
+    if (this.humGain) this.humGain.gain.setTargetAtTime(0.06 * (st.hum ?? 0), now, 0.3);
     this.drone.gain.setTargetAtTime(0.09 * (st.horror ?? 0) + 0.04 * (st.mission ?? 0), now, 1.5);
     this.villageGain.gain.setTargetAtTime(0.03 * (1 - 0.6 * (st.snowHush ?? 0)), now, 2);   // (V100: fresh snow swallows the echoes)
     this.howlF.frequency.setTargetAtTime(220 + 120 * Math.sin(this.t * 0.17) + 60 * Math.sin(this.t * 0.53), now, 0.8);

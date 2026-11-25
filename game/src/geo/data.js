@@ -10,6 +10,9 @@ export async function loadGeo(base) {
   const bin = (o) => { const s = atob(o.b64), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u.buffer; };
   const [json, h, hw, far, trees, forest, species, hz, hz2, ml] = await Promise.all([get('geo.json'), get('height.json').then(bin), get('height_w.json').then(bin).catch(() => null), get('far.json').then(bin), get('trees.json').then(bin), get('forest.json').then(bin).catch(() => null), get('species.json').then(bin).catch(() => null), get('horizon.json').catch(() => null), get('horizon2.json').catch(() => null), get('ml_buildings.json').catch(() => null)]);
   Object.assign(GEO, json);
+  // (V120) the commune's own boundary (OSM relation 14701879, Poiana Câmpina, admin_level 8): its houses and lamps
+  // are on the network the relay in the wood on the hill of the cross feeds (geo/releu.js)
+  GEO.commune = await get('poiana.json').then(c => c.ring).catch(() => null);
   // the houses OSM lacks (geo/ml_footprints.py: Microsoft's Global ML Building Footprints), added by amprente.js
   GEO.mlBuildings = ml?.buildings ?? [];
   GEO.mlSource = ml?.source ?? null;
@@ -221,6 +224,17 @@ export function addHolePoly(P, opt = {}) {
   const test = (x, z, m = 0) => inPoly(P, x, z) || (m > 0 && polyDist(P, x, z) <= m);
   registerHole({ x0: x0 - 2, x1: x1 + 2, z0: z0 - 2, z1: z1 + 2, test, ...opt });
 }
+// (V120) inside the commune of Poiana Câmpina (its boundary: a flat ring x0, z0, x1, z1, ...)
+export function inCommune(x, z) {
+  const R = GEO.commune;
+  if (!R) return false;
+  let c = false;
+  for (let i = 0, j = R.length - 2; i < R.length; j = i, i += 2) {
+    const x1 = R[i], z1 = R[i + 1], x2 = R[j], z2 = R[j + 1];
+    if ((z1 > z) !== (z2 > z) && x < (x2 - x1) * (z - z1) / (z2 - z1) + x1) c = !c;
+  }
+  return c;
+}
 export function inPoly(P, x, z) {
   let c = false;
   for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
@@ -355,6 +369,8 @@ export class GeoBuilder {
     for (let i = 0; i < nrm.length; i++) g.n.push(nrm[i]);
     for (let i = 0; i < uv.length; i++) g.uv.push(uv[i]);
     const nv = pos.length / 3;
+    // (V120) the building's code (geo/buildings.js houseCode: its windows lit at night, its phase), per vertex
+    if (material.userData.bld) { g.b ??= []; const bv = opts.bld ?? 0; for (let i = 0; i < nv; i++) g.b.push(bv); }
     if (color) { g.hasColor = true; }
     if (color && color.length === pos.length) { for (let i = 0; i < color.length; i++) g.c.push(color[i]); return; }   // per vertex
     const c = color || [1, 1, 1];
@@ -388,6 +404,7 @@ export class GeoBuilder {
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3));
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
       if (g.hasColor || g.material.vertexColors) geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3));
+      if (g.b) geo.setAttribute('aBld', new THREE.Float32BufferAttribute(g.b, 1));
       geo.computeBoundingSphere();
       const m = new THREE.Mesh(geo, g.material);
       m.castShadow = !g.opts.noCast; m.receiveShadow = true;

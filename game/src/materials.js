@@ -3,6 +3,7 @@ import { TEX } from './textures.js';
 import { WIND } from './util.js';
 import { TWIND, TWIND_GLSL } from './treewind.js';
 import { autumnize } from './season.js';
+import { handWindows } from './power.js';
 
 export const M = {};
 
@@ -222,6 +223,8 @@ export function buildMaterials() {
   std('terracotta', { roughness: 0.85, color: 0xb35d3e });
   std('pot', { roughness: 0.8, color: 0xcfc6bd });
   std('lampGlass', { roughness: 0.2, color: 0xe8e2d0, emissive: 0x000000 });
+  // (V120) the street lamps of the commune of Poiana Câmpina: the same glass, dark when its power is cut (main.js)
+  M.lampGlassC = M.lampGlass.clone(); M.lampGlassC.name = 'lampGlassC';
   std('red', { roughness: 0.6, color: 0xa3161b });
   std('interiorDark', { roughness: 0.9, color: 0x1a1816 });
 
@@ -230,8 +233,9 @@ export function buildMaterials() {
     const m = new THREE.MeshPhysicalMaterial({ map, color: tint, roughness: 0.08, metalness: 0.0, clearcoat: 1, clearcoatRoughness: 0.03, reflectivity: 0.6, envMapIntensity: 1.2 });
     m.name = name; M[name] = m; return m;
   };
-  glass('windowCurtain', TEX.curtain, 0xd8d8d8);
-  glass('windowBlinds', TEX.blinds, 0xdddddd);
+  // (V120) lit at night, on the commune's power (power.js)
+  handWindows(glass('windowCurtain', TEX.curtain, 0xd8d8d8));
+  handWindows(glass('windowBlinds', TEX.blinds, 0xdddddd));
   glass('windowDark', null, 0x1d2023);
 
   // --- foliage ---

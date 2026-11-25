@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GEO, heightAt, holeFlag } from './data.js';
+import { GEO, heightAt, holeFlag, inCommune } from './data.js';
 import { postSpot, onRoad } from './roadbed.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
@@ -30,7 +30,7 @@ export function makePropMaterials() {
       { m: cut(TEX.fenceIron, null, { metalness: 0.6, roughness: 0.45 }), h: 1.3, tile: 1, base: M.stuccoGray, baseH: 0.4 },
       { m: cut(TEX.fenceWoodOld, TEX.fenceWoodOldN), h: 1.6, tile: 1 },
     ],
-    pole: M.concretePole, metal: M.galv, lamp: M.lampGlass, insulator: M.ceramicWhite,
+    pole: M.concretePole, metal: M.galv, lamp: M.lampGlass, lampC: M.lampGlassC, insulator: M.ceramicWhite,
     tower: Object.assign(new THREE.MeshStandardMaterial({ color: 0x8e959b, roughness: 0.55, metalness: 0.6 }), { userData: { rainThrough: true } }),   // (a lattice: rain and snow fall through)
     wire: fadingLines(new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true })),
   };
@@ -105,8 +105,11 @@ function concretePoleGeo(B, mats, x, z, n, lampSide) {
     const la = new THREE.BoxGeometry(1.3, 0.05, 0.05); la.translate(lampSide * 0.62, h - 2.2, 0);
     B.geo(mats.metal, la, T);
     const head = new THREE.BoxGeometry(0.5, 0.07, 0.22); head.translate(lampSide * 1.3, h - 2.22, 0);
-    B.geo(mats.lamp, head, T);
-    LAMPS.push(new THREE.Vector3(lampSide * 1.3, h - 2.27, 0).applyMatrix4(T));
+    // (V120) a lamp of the commune of Poiana Câmpina: its own glass, dark when its power is cut (power.js, main.js)
+    const lp = new THREE.Vector3(lampSide * 1.3, h - 2.27, 0).applyMatrix4(T);
+    lp.commune = inCommune(lp.x, lp.z);
+    B.geo(lp.commune ? mats.lampC : mats.lamp, head, T);
+    LAMPS.push(lp);
   }
   return { top: y + h - 0.6, y, T };
 }

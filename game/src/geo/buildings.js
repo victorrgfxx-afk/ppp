@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { GEO } from './data.js';
+import { GEO, inCommune } from './data.js';
+import { POWER } from '../power.js';
 import { TEX } from '../textures.js';
 import { M } from '../materials.js';
 import { rng } from '../util.js';
@@ -49,18 +50,58 @@ const pickShare = (K, u) => { let a = 0; for (const [p, v] of K) { a += p; if (u
 
 function hashId(id) { let h = 2166136261; for (const ch of String(id)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
 
+// (V120) The houses' windows at night. Each building carries a code (a vertex attribute, GeoBuilder opts.bld):
+//  - its quarter's share of homes with someone up (act): the map in ~320 m squares, from ~10 % to ~70 % (a block of
+//    flats more, a works or a shed little);
+//  - its own draw (r): lit tonight if r < act;
+//  - its phase (1-3: L1, L2, L3) if it is in the commune of Poiana Câmpina - on the station's network (power.js
+//    POWER), dark with that phase or the main switch off; 0 outside it (Câmpina, Breaza: always on their own power).
+// code = 1 + r*255 + 256 * act*255 + 65536 * phase; 0 (no code: a gable) never lit. Its windows: the glass of the
+// facade texture (not wall, smooth: the roughness map's channels), each lit or not by its own hash, at the hour's share
+// (power.js uWin.y), warm or whiter, brighter or dimmer.
+const hashN = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+export function houseCode(x, z, seed, kind) {
+  const ZC = 320, zx = Math.floor((x + 137) / ZC), zz = Math.floor((z - 59) / ZC);
+  let act = 0.1 + 0.62 * Math.pow(hashN(zx * 7.31 + zz * 13.7), 0.8);
+  if (kind === 'ind') act *= 0.25; else if (kind === 'block') act = Math.min(0.85, act + 0.12);
+  const ph = inCommune(x, z) ? 1 + Math.floor(hashN(seed * 3.17) * 3) : 0;
+  return 1 + Math.floor(hashN(seed) * 255) + 256 * Math.floor(act * 255) + 65536 * ph;
+}
+const WIN_V = `attribute float aBld;\nvarying float vBld;\nvarying vec2 vWinUv;`;
+const WIN_F = `uniform vec4 uPower;\nuniform vec2 uWin;\nvarying float vBld;\nvarying vec2 vWinUv;`;
+const WIN_EMIT = `
+  {
+    float code = floor(vBld + 0.5), r = mod(code - 1.0, 256.0) / 255.0, act = mod(floor((code - 1.0) / 256.0), 256.0) / 255.0;
+    float ph = floor((code - 1.0) / 65536.0);
+    float on = ph < 0.5 ? 1.0 : uPower.w * (ph < 1.5 ? uPower.x : ph < 2.5 ? uPower.y : uPower.z);
+    float wh = fract(sin(dot(floor(vWinUv) + r * 17.3, vec2(12.9898, 78.233))) * 43758.5453);
+    float lit = step(0.5, code) * step(r, act) * on * step(wh, 0.55 * uWin.y) * uWin.x;
+    vec3 wcol = mix(vec3(1.0, 0.6, 0.3), vec3(1.0, 0.84, 0.64), step(0.75, fract(wh * 7.13)));
+    totalEmissiveRadiance += wcol * winGlass * lit * (1.4 + 1.6 * fract(wh * 3.7));
+  }`;
 export function makeBuildingMaterials() {
   const facade = (key, extra = {}) => {
-    const m = new THREE.MeshStandardMaterial({ map: TEX[key], normalMap: TEX[key + 'N'], roughnessMap: TEX[key + 'R'] ?? null, roughness: TEX[key + 'R'] ? 1 : 0.8, metalness: 0, vertexColors: true, ...extra });
+    const { noWin, ...mo } = extra;
+    const m = new THREE.MeshStandardMaterial({ map: TEX[key], normalMap: TEX[key + 'N'], roughnessMap: TEX[key + 'R'] ?? null, roughness: TEX[key + 'R'] ? 1 : 0.8, metalness: 0, vertexColors: true, ...mo });
     if (TEX[key + 'R']) {
+      // (V120) the windows: what is not wall and is smooth (the glass), lit at night by the house's own code
+      const win = !noWin;
+      if (win) m.userData.bld = true;
       m.onBeforeCompile = (sh) => {
+        if (win) {
+          sh.uniforms.uPower = POWER.uPower; sh.uniforms.uWin = POWER.uWin;
+          sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + WIN_V).replace('#include <uv_vertex>', '#include <uv_vertex>\n  vBld = aBld; vWinUv = uv;');
+        }
         sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\n' + (win ? WIN_F : ''))
           .replace('#include <color_fragment>', '')
           .replace('#include <map_fragment>', `#include <map_fragment>
-  float wallMask = texture2D(roughnessMap, vRoughnessMapUv).b;
-  diffuseColor.rgb *= mix(vec3(1.0), vColor.rgb, wallMask);`);
+  vec4 wTex = texture2D(roughnessMap, vRoughnessMapUv);
+  float wallMask = wTex.b, winGlass = (1.0 - wallMask) * (1.0 - smoothstep(0.3, 0.55, wTex.g));
+  diffuseColor.rgb *= mix(vec3(1.0), vColor.rgb, wallMask);`)
+          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>' + (win ? WIN_EMIT : ''));
       };
-      m.customProgramCacheKey = () => 'facadeMask';
+      m.customProgramCacheKey = () => 'facadeMask' + (win ? 'W' : '');
     }
     return m;
   };
@@ -72,7 +113,7 @@ export function makeBuildingMaterials() {
     shingle: facade('facadeShingle'),
     stamped: facade('facadeStamped'),
     // gable ends of shingled houses: the same shingles without windows, mapped in metres
-    shinglePlain: facade('facadeShingleP'),
+    shinglePlain: facade('facadeShingleP', { noWin: true }),
     ind: facade('facadeInd'),
     plinth: M.stuccoGray,
     plinthBrown: new THREE.MeshStandardMaterial({ color: 0x5a3a2e, roughness: 0.8 }),
@@ -280,6 +321,10 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
     else top = floor0 + lv * floorH + 0.15;
     // --- walls (edges walked backwards so the quad normal points outwards) ---
     const n = P.length;
+    // (V120) its code: lit at night or not, its phase in the commune (houseCode)
+    let gx = 0, gz = 0;
+    for (const q of P) { gx += q[0]; gz += q[1]; }
+    const bld = houseCode(gx / n, gz / n, h * 0.618 + n, wk === 'ind' ? 'ind' : wk === 'block' ? 'block' : 'house');
     for (let k = n - 1; k >= 0; k--) {
       const A = P[(k + 1) % n], C = P[k];
       const L = Math.hypot(C[0] - A[0], C[1] - A[1]);
@@ -288,7 +333,7 @@ export function buildBuildings(B, world, mats, detailR = 1200) {
       if (L < 2.1 || isShed) { u0 = 0.02; u1 = 0.02 + Math.min(0.14, L / bayW * 0.14); }
       else u1 = Math.max(1, Math.round(L / bayW));
       const vTop = (top - floor0) / floorH;
-      B.quad(wallMat, A[0], A[1], C[0], C[1], floor0, top, floor0, top, u0, u1, 0, vTop, 0, vTop, wc);
+      B.quad(wallMat, A[0], A[1], C[0], C[1], floor0, top, floor0, top, u0, u1, 0, vTop, 0, vTop, wc, { bld });
       // plinth / foundation following the terrain
       B.quad(o.plinth === 'stoneCladding' ? mats.stone : o.plinth === 'brown' ? mats.plinthBrown : mats.plinth, A[0], A[1], C[0], C[1], base, floor0, base, floor0, 0, L, 0, floor0 - base, 0, floor0 - base, null, { noCast: true });
       world.addStatic(new world.Box((A[0] + C[0]) / 2, (A[1] + C[1]) / 2, L / 2, 0.2, Math.atan2(-(C[1] - A[1]), C[0] - A[0]), base - 2, top + 6, 'house'));

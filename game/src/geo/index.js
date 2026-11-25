@@ -36,6 +36,7 @@ import { prepareBiserica } from './biserica.js';
 import { prepareUrcus } from './urcus.js';
 import { prepareSonda } from './sonda.js';
 import { prepareMagazie } from './magazie.js';
+import { prepareReleu } from './releu.js';
 import { buildWagons } from './wagons.js';
 import { addOutbuildings } from './anexe.js';
 import { addFootprints } from './amprente.js';
@@ -89,6 +90,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   prepareUrcus();                                       // the lane up to the cross (the user's clip): its real width, the trees by its first bend
   prepareSonda();                                       // the oil wells in the wood (photos 84-86): the pad levelled, no forest on it
   prepareMagazie();                                     // the shepherds' shed on the hill of the cross (the user's pin): its terrace, its yard clear
+  prepareReleu();                                       // (V120) the commune's transformer station in the wood up there: its clearing, its line's corridor
   // the roads (roadbed.js, V79): their data put right, every ribbon planned and kept clear of the buildings, the lesser
   // road meeting the greater at a junction, then the terrain made to lie under them, at every level of detail
   const tr = performance.now();
@@ -131,7 +133,7 @@ export function buildGeoWorld(scene, world, quality, renderer, gt, log = () => {
   const wagons = buildWagons(B, world);                   // the freight wagons on the station's sidings (the drone photos)
   const pm = makePropMaterials();
   // small street furniture disappears sooner
-  const small = [pm.pole, pm.lamp, pm.insulator, pm.metal, rm.marking, rm.shoulder];
+  const small = [pm.pole, pm.lamp, pm.lampC, pm.insulator, pm.metal, rm.marking, rm.shoulder];
   for (const f of pm.fences) for (const m of [f.m, f.base].flat()) if (m) small.push(m);
   for (const m of small) B.cullFor.set(m, m === rm.shoulder ? 3000 : 1600);
   const nFences = buildFences(B, world, pm);

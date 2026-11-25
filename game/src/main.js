@@ -51,6 +51,8 @@ import { prepareHands, prepareArms } from './hand.js';
 import { Share } from './share.js';
 import { Campfire } from './campfire.js';
 import { SHED_LAMPS } from './geo/magazie.js';
+import { inCommune } from './geo/data.js';
+import { POWER, awake } from './power.js';
 import { Tuner } from './tuner.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
@@ -557,6 +559,45 @@ async function main() {
   const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
   if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
   const hillEgg = geoWorld.landmarks?.find(l => l.type === 'hillwood')?.egg ?? null;
+  // (V120) the commune's transformer station in the wood on the hill of the cross (geo/releu.js): the control you look
+  // at within reach - the main breaker, a phase's fuses, the public lighting's switch; E works it (power.js POWER)
+  const relayLm = geoWorld.landmarks?.find(l => l.type === 'releu') ?? null;
+  const _rlF = new THREE.Vector3(), _rlP = new THREE.Vector3();
+  const relayNear = () => relayLm && !player.noclip && Math.hypot(player.pos.x - relayLm.box.x, player.pos.z - relayLm.box.z) < 2.6;
+  const relayControl = () => {
+    if (!relayNear()) return null;
+    camera.getWorldDirection(_rlF);
+    const C = camera.position;
+    let best = null, bd = Infinity;
+    for (const c of relayLm.controls) for (let k = 0; k <= 8; k++) {
+      _rlP.lerpVectors(c.a, c.b, k / 8);
+      const t = _rlF.dot(_rlP.clone().sub(C));
+      if (t < 0.15 || t > 2.3) continue;
+      const d = Math.hypot(C.x + _rlF.x * t - _rlP.x, C.y + _rlF.y * t - _rlP.y, C.z + _rlF.z * t - _rlP.z);
+      if (d < c.r && d < bd) { bd = d; best = c; }
+    }
+    return best;
+  };
+  const RELAY_TXT = {
+    IG: (on) => on ? 'E — oprește întreruptorul general (toată comuna Poiana Câmpina)' : 'E — pornește întreruptorul general',
+    IP: (on) => on ? 'E — oprește iluminatul public al comunei' : 'E — pornește iluminatul public',
+    ph: (k, on) => on ? 'E — scoate siguranțele fazei ' + k + ' (o treime din case)' : 'E — pune la loc siguranțele fazei ' + k,
+  };
+  const applyPower = () => {
+    const s = relayLm.state;
+    POWER.uPower.value.set(s.L1 ? 1 : 0, s.L2 ? 1 : 0, s.L3 ? 1 : 0, s.IG ? 1 : 0);
+    POWER.ip = s.IP ? 1 : 0;
+  };
+  const relayUse = (c) => {
+    const k = c.key, on = !relayLm.state[k], load = relayLm.state.IG;
+    relayLm.set(k, on); applyPower();
+    audio.relay(k === 'IG' ? 'breaker' : k === 'IP' ? 'ip' : 'fuse', on, load);
+    const lit = M.lampGlass.emissiveIntensity > 0.4;
+    if (k === 'IG') hud.toast(on ? 'Întreruptorul general pornit: comuna Poiana Câmpina are din nou curent' : 'Întreruptorul general oprit: toată comuna Poiana Câmpina a rămas fără curent - casele' + (lit ? ', felinarele' : '') + ' și tot ce e pe rețeaua postului', 6);
+    else if (k === 'IP') hud.toast(on ? 'Iluminatul public pornit' + (relayLm.state.IG ? '' : ' (dar întreruptorul general e oprit)') : 'Iluminatul public oprit: felinarele comunei se sting' + (lit ? '' : ' (acum e zi: se vede la noapte)'), 5);
+    else hud.toast((on ? 'Siguranțele fazei ' + k + ' puse la loc: casele de pe ' + k + ' au din nou curent' : 'Siguranțele fazei ' + k + ' scoase: casele racordate pe ' + k + ' (cam o treime, pe fiecare stradă) rămân fără curent')
+      + (load ? '. În realitate siguranțele MPR nu se manevrează în sarcină - întâi se oprește întreruptorul general' : ''), 7);
+  };
   let hillEggFound = false;
   if (drLm) for (const c of drLm.cars || []) park(c.model, paintMaterial(c.paint, { metallic: 0.7, rough: 0.3, dusty: 0.2 }), 'plateC', c.x, c.z, c.h, {});
 
@@ -916,6 +957,7 @@ async function main() {
   snowPack.start(blizzard > 0 ? 'gale' : snowFall > 0 ? 'fall' : 'cover', SNOW.uSnowDepth.value);     // (V115: powder, wind-packed, settled)
   let offRoad = false;                                                  // (in deep snow off the roads: the car's wheels held back)
   let fxClock = 0;                                                      // (the wheel effects' own clock: wheelfx.js)
+  for (const l of built.lamps ?? []) l.commune = inCommune(l.x, l.z);   // (V120: on the commune's power, or not)
   const allLamps = [...LAMPS, ...(built.lamps ?? [])];                 // street lamp heads (map + Strada Gării)
   // (V101) the nearest of them light everything round (lamps.js); the eye's own state (eye.js)
   const lampLight = new LampLight(allLamps), eyeState = new EyeState();
@@ -1754,6 +1796,7 @@ async function main() {
         const near = dog || player.noclip ? null : nearestCar();
         const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
         const sg = !dog && !fire && !player.noclip ? shedGun() : null;
+        let rc = null;
         const gunP = player.noclip ? null : glock?.pickup(camera, input);
         let tunP = null;
         if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte. Modul shooter: Fugi de două ori - sprint tactic, Jos din fugă - alunecare (de două ori: pe spate), Tac - Tac-Stance, Lovește, Inspect. Poligonul e pe pajiștea de lângă cruce'
@@ -1778,6 +1821,12 @@ async function main() {
           prompt = (mine ? 'E — pune ' + sg.name + ' înapoi pe perete' : 'E — ia ' + sg.name) + ' · ' + sg.cal + ' · F — datele';
           if (input.hit('KeyE')) { if (mine) longGuns.putBack(); else { longGuns.take(gi); if (glock) glock.want = false; hud.toast(sg.name + ' în mâini: clic dreapta ochești, clic stânga tragi, R reîncarci, Q o pui pe umăr (și scoți Glock-ul)', 5); } }
           else if (input.hit('KeyF')) hud.toast(sg.info, 10);
+        } else if ((rc = relayControl())) {
+          prompt = (rc.key === 'IG' || rc.key === 'IP' ? RELAY_TXT[rc.key](relayLm.state[rc.key]) : RELAY_TXT.ph(rc.key, relayLm.state[rc.key])) + ' · F — despre post';
+          if (input.hit('KeyE')) relayUse(rc);
+          else if (input.hit('KeyF')) hud.toast('Post de transformare aerian PTA 20/0,4 kV, 100 kVA, pe un stâlp: linia de 20 kV sus, siguranțele de medie tensiune și descărcătoarele, transformatorul, iar jos cutia de distribuție (poliester armat cu fibră de sticlă, IP 54): întreruptorul general de 160 A, contorul, siguranțele MPR ale plecărilor, câte una pe fază, și blocul iluminatului public. O casă e racordată monofazat, pe una din cele 3 faze', 12);
+        } else if (relayNear()) {
+          prompt = 'Uită-te la o manetă: întreruptorul general, siguranțele L1 / L2 / L3, iluminatul public';
         } else if (near) {
           prompt = 'F — urcă în ' + near.name;
           if (input.hit('KeyF') || input.hit('KeyE')) enterCar(near);
@@ -1921,7 +1970,7 @@ async function main() {
     // the 8 nearest street lamps, for their reflections in a wet road
     if (post.ssr && (frameNo & 7) === 4) {
       const cp = camera.position, near = [];
-      for (const l of allLamps) { const d = (l.x - cp.x) ** 2 + (l.z - cp.z) ** 2; if (d < 150 * 150) near.push([d, l]); }
+      for (const l of allLamps) { if (l.commune && !POWER.lamps) continue; const d = (l.x - cp.x) ** 2 + (l.z - cp.z) ** 2; if (d < 150 * 150) near.push([d, l]); }
       near.sort((a, b) => a[0] - b[0]);
       post.ssr.setLamps(near.slice(0, 8).map(e => e[1]), M.lampGlass.emissiveIntensity);
     }
@@ -1937,11 +1986,11 @@ async function main() {
       offRoad = SNOW.uSnowDepth.value > 0.03 && !rainOcc.onRoad(pos0().x, pos0().z);
       if ((SNOW.uSnowFall.value > 0.01 || RAIN.uRain.value > 0.01) && M.lampGlass.emissiveIntensity > 0.2) {
         const cp = camera.position;
-        snowLamps = allLamps.filter(l => Math.abs(l.x - cp.x) < 45 && Math.abs(l.z - cp.z) < 45).sort((a, b) => ((a.x - cp.x) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.z - cp.z) ** 2)).slice(0, 6);
+        snowLamps = allLamps.filter(l => !(l.commune && !POWER.lamps) && Math.abs(l.x - cp.x) < 45 && Math.abs(l.z - cp.z) < 45).sort((a, b) => ((a.x - cp.x) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.z - cp.z) ** 2)).slice(0, 6);
       } else snowLamps = [];
       if (fogMode && M.lampGlass.emissiveIntensity > 0.2) {
         const cp = camera.position, near = [];
-        for (const l of allLamps) { const d = (l.x - cp.x) ** 2 + (l.z - cp.z) ** 2; if (d < 120 * 120) near.push([d, l]); }
+        for (const l of allLamps) { if (l.commune && !POWER.lamps) continue; const d = (l.x - cp.x) ** 2 + (l.z - cp.z) ** 2; if (d < 120 * 120) near.push([d, l]); }
         fogLamps = near.sort((a, b) => a[0] - b[0]).slice(0, 12).map(e => e[1]);
       } else fogLamps = [];
       // the easter egg in the wood of the hill of the cross
@@ -2016,7 +2065,7 @@ async function main() {
       let nt = 0; for (const b of near) if (b.tag === 'tree') nt++;
       leafy = Math.min(1, nt / 18);
     }
-    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, mission: mission.k, snowHush: SNOW.uSnow.value, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, skid: active?.skid ?? 0, loose: !!active && (active.surf === 'gravel' || active.surf === 'dirt' || active.surf === 'grass'), wet: RAIN.uWet.value, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0 });
+    audio.update(dt, { windU: treeWind, leaves: leafy, bare: winter, river: riverK, rain: RAIN.uRain.value, storm, gust, shelter, brook: eaves.brook, pour: eaves.pour, snow: SNOW.uSnowFall.value, snowCover: SNOW.uSnow.value, night, horror, mission: mission.k, snowHush: SNOW.uSnow.value, driving: mode === 'car' && !tuner.open, rpm: active?.rpm ?? 0, throttle: active?.throttle ?? 0, slip: active?.lastLat ?? 0, skid: active?.skid ?? 0, loose: !!active && (active.surf === 'gravel' || active.surf === 'dirt' || active.surf === 'grass'), wet: RAIN.uWet.value, horn: hornOn, speed: active ? Math.abs(active.speed) : 0, friend: others.engine(camera.position), fire: campfire ? campfire.audible(camera.position) : 0, hum: relayLm ? Math.max(0, 1 - camera.position.distanceTo(relayLm.hum) / 30) ** 2 : 0 });
     // free camera for automated tests / screenshots (window.__game.cam = {x, y, z, yaw, pitch, fov?})
     const fc = window.__game?.cam;
     if (fc) {
@@ -2127,6 +2176,12 @@ async function main() {
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
     snowFX.update(camera, rainLight, flashlight.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4);
     // (V101) the street lamps' light (lamps.js) and the eye (eye.js): its lights, its squint and its tears
+    // (V120) the houses' windows lit at night (how dark it is, how many are still up at this hour), the commune's lamps
+    // on its power (power.js); the box's lamp and the light it throws inside it at night
+    POWER.uWin.value.set(M.lampGlass.emissiveIntensity / 4, awake(hour));
+    M.lampGlassC.emissive.copy(M.lampGlass.emissive); M.lampGlassC.emissiveIntensity = POWER.lamps ? M.lampGlass.emissiveIntensity : 0;
+    lampLight.cut = !POWER.lamps;
+    if (relayLm) { const k = 0.25 * M.lampGlass.emissiveIntensity / 4; for (const m of relayLm.glow.inside) m.emissive.setRGB(1, 0.86, 0.64).multiplyScalar(k); }
     lampLight.update(camera.position, M.lampGlass.emissiveIntensity / 4);
     if (post.eye) eyeTick(dt);
     // the car you are in (at the wheel, or riding with the friend): no flakes, drops or leaves inside it (rain.js)
@@ -2292,7 +2347,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { POWER, relayLm, relayUse, thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

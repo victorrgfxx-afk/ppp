@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { M } from './materials.js';
 import { boxGeo, cylGeo, mat } from './util.js';
 import { baseHeight } from './config.js';
+import { inCommune } from './geo/data.js';
 
 // Concrete utility poles (Romanian SC/SE type), insulators, LED street lamps, sagging wires.
 
@@ -61,7 +62,8 @@ export function concretePole(batch, world, x, z, { h = 10, type = 'SC', lamp = 0
     const ly = top - 2.9;
     batch.add(M.galv, cylGeo(0.025, 0.025, 1.3, 6), mat(x + dir * 0.65, ly + 0.15, z, 0, 0, Math.PI / 2 - dir * 0.15));
     batch.add(M.darkPlastic, boxGeo(0.55, 0.08, 0.22), mat(x + dir * 1.35, ly + 0.25, z, 0, 0, dir * 0.08));
-    batch.add(M.lampGlass, boxGeo(0.45, 0.01, 0.16), mat(x + dir * 1.35, ly + 0.205, z, 0, 0, dir * 0.08));
+    // (V120: in the commune of Poiana Câmpina, on its power - dark with it cut; beyond its edge, Câmpina's)
+    batch.add(inCommune(x + dir * 1.35, z) ? M.lampGlassC : M.lampGlass, boxGeo(0.45, 0.01, 0.16), mat(x + dir * 1.35, ly + 0.205, z, 0, 0, dir * 0.08));
     lampHead = new THREE.Vector3(x + dir * 1.35, ly + 0.2, z);
   }
   world.addStatic(new world.Box(x, z, w0 / 2 + 0.02, d0 / 2 + 0.02, ry, -5, 20, 'pole'));

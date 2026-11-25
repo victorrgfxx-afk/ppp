@@ -113,6 +113,7 @@ export class LampLight {
 		const near = this.near;
 		near.length = 0;
 		for (const l of this.lamps) {
+			if (l.commune && this.cut) continue;                    // (V120: the commune's lamps with its power cut: releu.js)
 			const d = (l.x - cam.x) ** 2 + (l.z - cam.z) ** 2;
 			if (d < 70 * 70) near.push([d, l]);
 		}

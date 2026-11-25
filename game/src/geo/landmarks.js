@@ -27,6 +27,7 @@ import { buildBiserica } from './biserica.js';
 import { buildUrcus } from './urcus.js';
 import { buildSonda } from './sonda.js';
 import { buildMagazie } from './magazie.js';
+import { buildReleu } from './releu.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -150,6 +151,8 @@ export function buildLandmarks(B, world) {
   if (so) out.push(so);
   const mz = buildMagazie(B, world);                  // the user's pin: the shepherds' shed on the hill of the cross, the guns on its wall
   if (mz) out.push(mz);
+  const pt = buildReleu(B, world);                    // (V120) the transformer station in the wood: the commune's power, its levers
+  if (pt) out.push(pt);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),

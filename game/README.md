@@ -58,6 +58,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | B | vântul: după vreme, calm, adiere, vânt moderat, vânt tare, vijelie (copacii, iarba și foșnetul frunzelor) | la fel |
 | E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
 | E / F | în magazia ciobanilor de pe deal, privind o armă de pe perete: E o iei (sau o pui la loc pe cârligele ei), F îi vezi datele reale | – |
+| E / F | la postul de transformare din pădurea de pe Dealul Crucii, privind o manetă: E oprești / pornești întreruptorul general, scoți / pui la loc siguranțele fazei L1, L2 sau L3, oprești / pornești iluminatul public; F datele postului (V120) | – |
 | Clic dreapta / stânga, R, Q | cu o armă lungă: ochești prin cătarea ei (luneta PSL-ului mărește de 4 ori), tragi (AKM și M4 automat, PSL foc cu foc, 870 cu pompă), reîncarci, o pui pe umăr și scoți Glock-ul | – |
 | Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
 | R / X / Q | cu Glock-ul: reîncarci / automat ↔ foc cu foc / îl pui deoparte și îl scoți | – |
@@ -850,6 +851,61 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Curentul comunei: ferestrele luminate noaptea, pe cartiere, și postul de transformare din pădurea de pe Dealul Crucii (V120)** (`src/power.js`, `src/geo/releu.js` și `assets/geo/poiana.json` noi; `src/geo/buildings.js`, `src/geo/data.js`, `src/geo/props.js`, `src/geo/index.js`, `src/geo/landmarks.js`, `src/materials.js`, `src/lamps.js`, `src/poles.js`, `src/fences.js`, `src/hero.js`, `src/audio.js`, `src/main.js`):
+  * **Limita reală a comunei:**
+    * Conturul Poienii Câmpina este relația OSM 14701879 (`admin_level` 8), luată prin Nominatim: 234 de puncte și 15,45 km².
+    * Casa, crucea și magazia sunt în ea. Din cele 23 596 de clădiri OSM ale hărții, 1444 sunt în comună.
+    * Felinarele și casele din comună sunt pe rețeaua postului. Cele din Câmpina și Breaza nu sunt și rămân aprinse orice ai face.
+  * **Ferestrele noaptea:**
+    * Se aprinde doar sticla ferestrelor, recunoscută în textura fațadei după cât de netedă e suprafața. Lumina e caldă (becuri, perdele) sau mai albă, cu intensitate diferită de la o fereastră la alta.
+    * **Pe cartiere:** harta e împărțită în zone de ~320 m. Fiecare zonă are proporția ei de case în care e cineva treaz, de la ~10 % la ~70 %. Blocurile au mai multe ferestre aprinse, halele foarte puține.
+    * **Pe ore:** aprinse cel mai mult seara (19–22), mai puține după miezul nopții (~10–20 % la 2–4), câteva iar înainte de zori. Așa arată curba consumului casnic: vârf seara, minim noaptea, o creștere dimineața ([EIA](https://www.eia.gov/todayinenergy/detail.php?id=42915), [Trotta 2020](https://vbn.aau.dk/ws/portalfiles/portal/403410424/Trotta_G._2020_._An_empirical_analysis_of_domestic_electricity_load_profiles_Who_consumes_how_much_and_when.pdf)).
+    * Casele de pe strada ta (cele făcute de mână după poze) au și ele ferestrele luminate, după aceleași reguli. Până acum nu aveau deloc.
+  * **Fazele:**
+    * Rețeaua de joasă tensiune a unui sat pleacă din post pe 3 faze și nul (0,4 kV, schema TN‑C).
+    * O casă e racordată **monofazat** (230 V, sub 11 kVA), pe una dintre faze. Casele unei străzi sunt împărțite pe cele trei faze.
+    * Fiecare casă din comună are faza ei, L1, L2 sau L3. Cu o fază scoasă, se sting cam o treime din case, ici și colo pe fiecare stradă.
+    * Iluminatul public e pe circuitul lui (blocul BMPT‑IP, pe o plecare a cutiei): îl oprești separat. Se stinge și cu întreruptorul general.
+  * **Postul de transformare (PTA 20/0,4 kV)**, ascuns în pădure la ~13 m de drumul de pământ care urcă pe lângă cruce în pădure, la ~235 m de cruce. Îl găsești după linia de 20 kV care trece pe deasupra drumului și după bâzâitul transformatorului.
+    * **Sus:** linia de 20 kV se termină pe consola de sus, pe izolatoare de întindere. Sub ea sunt siguranțele de medie tensiune și descărcătoarele.
+    * **La mijloc:** transformatorul de 100 kVA (ST 123 dă ~845 kg pentru el) stă pe platforma lui. E etanș, cu nervuri pe laturi, izolatoarele de MT și JT pe capac și plăcuța pe față.
+    * **Jos, la înălțimea omului:** cutia de distribuție, făcută după ST 35‑JT (2024):
+      * poliester armat cu fibră de sticlă, IP 54;
+      * trei compartimente, fiecare cu ușa lui: alimentare, măsură, distribuție;
+      * uși încastrate, pe balamale în 3 puncte, deschise la 120°;
+      * pe ea: inelele de ridicare, antena GPRS, fantele de aerisire, șurubul de împământare și cutia intermediară pentru cabluri;
+      * înăuntru: **întreruptorul general** automat tripolar de 160 A (cât cere un trafo de 100 kVA), contorul în spatele vizorului, **siguranțele MPR** de 250 A ale plecărilor (câte una pe fază) și schema monofilară pe ușă;
+      * **o lampă care se aprinde când e deschisă o ușă.** E alimentată înaintea întreruptorului general, deci rămâne aprinsă și cu el oprit.
+    * **Lângă cutie:** blocul iluminatului public, cu fotocelula.
+    * **Linia:** trece drumul și coboară dealul pe stâlpi de beton, pe un culoar tăiat prin pădure. Pomii sunt scoși doar în jurul postului și sub linie.
+  * **Ce poți face (E pe maneta pe care o privești, F despre post):**
+    * **Întreruptorul general:** oprit, toată comuna rămâne fără curent (case și felinare). Indicatorul trece din roșu (I) în verde (O).
+    * **Siguranțele fazei L1, L2 sau L3:** le scoți (rămân în cutie, culcate pe fundul ei) sau le pui la loc. Se sting sau se aprind casele de pe faza aceea.
+    * **Iluminatul public:** felinarele comunei se sting. Odată cu ele dispare și lumina lor pe drum, din ceață, din ploaie și din reflexii.
+    * Se aud: pocnetul întreruptorului, siguranțele scoase din fălci și scânteia arcului când le manevrezi în sarcină. În realitate, siguranțele MPR nu se manevrează în sarcină, iar jocul îți spune asta.
+    * Rămân aprinse, ca în realitate: lanternele solare de pe garduri și de la poarta casei tale (nu sunt legate la rețea) și felinarele de pe strada ta de dincolo de limita comunei, spre Câmpina.
+    * Bâzâitul transformatorului se aude de la ~30 m: 100 Hz, de două ori frecvența rețelei de 50 Hz, plus armonicele. Tăria lui depinde de tensiunea aplicată, nu de consum, așa că bâzâie și cu întreruptorul general oprit.
+  * **Testat:**
+    * lint;
+    * conturul comunei regenerat din OSM și verificat: 15,45 km², 1444 de clădiri OSM înăuntru, iar casa, crucea și postul sunt în comună;
+    * locul postului, ales singur la încărcare: (−533,7; −1804,7), la 235 m de cruce și 13 m de drum;
+    * capturi ziua, de pe drum (11–14 m) și de la 4 m, și noaptea de aproape, cu întreruptorul oprit și siguranțele L1 scoase (stau pe fundul cutiei);
+    * fiecare manetă: promptul corect privind-o, iar E o comută (starea și uniformele curentului se schimbă);
+    * noaptea, același cadru deasupra comunei, numărând pixelii ferestrelor aprinse: 146 cu tot curentul, 97 cu L1 scos (−34 %, o treime), 0 cu întreruptorul general oprit. Cu iluminatul public oprit, felinarele dispar (pixelii luminoși scad de la 807 la 314), iar ferestrele rămân;
+    * capturi de noapte la nivelul străzii: Strada Ion Mateescu și strada ta;
+    * bâzâitul: 0,0225 la 11,6 m de transformator, cât dă formula;
+    * `tools/cars-test.mjs`.
+  * **Limite, spuse cinstit:**
+    * **Postul e o invenție a jocului.** Pe deal nu e cartografiată nicio linie electrică. E construit ca unul real, dar nu e cel care alimentează comuna în realitate (comuna are mai multe posturi).
+    * Fazele caselor sunt trase la sorți, nu cele reale.
+    * Cartierele sunt o grilă de ~320 m, nu cartierele reale ale comunei.
+    * Starea curentului nu se transmite prietenului din multiplayer și nu se păstrează după reîncărcarea paginii.
+  * **Surse:**
+    * [ST 35‑JT 2024 — Cutii de distribuție JT pentru PTA (Distribuție Energie Electrică România)](https://distributie-energie.ro/wp-content/uploads/2024/11/ST-35-JT-CD-pentru-PTA-Ed.U1-Rev.2-2024.pdf)
+    * [ST 123 — Posturi de transformare aeriene PTA 20/0,4 kV (Electrica, 2010)](https://www.distributie-energie.ro/wp-content/uploads/2019/10/ST123m-Post-trafo-aerian.pdf)
+    * branșamente monofazate: [ETN ST 15 033](https://www.distributie-energie.ro/wp-content/uploads/2023/12/ETN-ST-15-033-Bransamente-mf.-cond.-concentrice.pdf) și [UTCluj](https://biblioteca.utcluj.ro/files/carti-online-cu-coperta/443-8%20c.pdf) (monofazat sub 11 kVA)
+    * conturul comunei: OpenStreetMap, relația 14701879 (ODbL)
+    * bâzâitul transformatorului: [Mains hum](https://en.wikipedia.org/wiki/Mains_hum) („double that of the local power-line frequency … 100 Hz in areas with 50 Hz power”, „a function of the applied voltage”)
 * **Armele din magazie, în mâini (V119)** (`src/longgun.js` nou; `src/geo/magazie.js`, `src/weapon.js`, `src/audio.js`, `src/main.js`):
   * **Le iei de pe perete:** cu E, privind arma. Fiecare are acum modelul ei separat în magazie: când o iei, cârligele rămân goale, iar cu E o pui la loc.
   * **Ținute cu aceleași mănuși și brațe ca Glock-ul:**
