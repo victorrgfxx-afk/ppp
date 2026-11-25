@@ -53,8 +53,11 @@ function forestEdge(x, z) {
 }
 
 // ------------------------------------------------------------------ what may grow where
-// 1 m raster over the hill: roads (their width + 0.6 m), buildings (+1.2 m), the cross's slab, the flagpole, the car
+// 1 m raster over the hill: roads (their width + 0.6 m), buildings (+1.2 m), the cross's slab, the flagpole, the car,
+// and what another place keeps clear (addHillBlock: magazie.js, the shepherds' shed and its yard)
 let BL = null, SP = null, EGG = null;
+const BLOCKS = [];
+export function addHillBlock(x0, x1, z0, z1, fn) { BLOCKS.push([x0, x1, z0, z1, fn]); }
 function blockRaster() {
   const x0 = HB.x0, z0 = HB.z0, W = Math.ceil(HB.x1 - x0) + 1, H = Math.ceil(HB.z1 - z0) + 1, R = new Uint8Array(W * H);
   const fill = (ax0, ax1, az0, az1, fn) => {
@@ -85,6 +88,7 @@ function blockRaster() {
     const [ax, az] = SP.car, [hx, hz] = SP.h;
     fill(ax - 3, ax + 3, az - 3, az + 3, (x, z) => { const dx = x - ax, dz = z - az; return Math.abs(dx * hx + dz * hz) < 2.4 && Math.abs(dx * hz - dz * hx) < 1.05; });
   }
+  for (const [bx0, bx1, bz0, bz1, fn] of BLOCKS) fill(bx0, bx1, bz0, bz1, fn);
   return { x0, z0, W, H, R };
 }
 const blocked = (x, z) => { const i = Math.round(x - BL.x0), j = Math.round(z - BL.z0); return i < 0 || j < 0 || i >= BL.W || j >= BL.H || BL.R[j * BL.W + i] === 1; };

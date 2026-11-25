@@ -48,6 +48,7 @@ import { Driver } from './driver.js';
 import { prepareHands, prepareArms } from './hand.js';
 import { Share } from './share.js';
 import { Campfire } from './campfire.js';
+import { SHED_LAMPS } from './geo/magazie.js';
 import { Tuner } from './tuner.js';
 import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
@@ -521,6 +522,29 @@ async function main() {
   // dark: the shaders are compiled with it once)
   const campfire = soLm?.fire ? new Campfire(scene, world, soLm.fire, (x, z) => geoGround(x, z), { shadows: qKey === 'ultra' ? 2 : qKey === 'high' ? 3 : 0 }) : null;
   let firePops = 0;
+  // (V117) the shepherds' shed on the hill of the cross (geo/magazie.js): its lantern and its stove's fire (their light a
+  // term of the shed's own shaders: set here every frame), the guns on its wall - looked at from inside, their name;
+  // E, their real data
+  const shedLm = geoWorld.landmarks?.find(l => l.type === 'magazie') ?? null;
+  const _gunF = new THREE.Vector3();
+  const shedGun = () => {
+    if (!shedLm || !shedLm.inside(player.pos.x, player.pos.z)) return null;
+    camera.getWorldDirection(_gunF);
+    const C = camera.position, F = _gunF;
+    let best = null, bd = 0.11;
+    for (const g of shedLm.arms) {
+      // (the view's ray against the gun's axis: the closest approach, within reach)
+      const dx = g.dir[0], dz = g.dir[1], wx = C.x - g.x, wy = C.y - g.y, wz = C.z - g.z;
+      const b = F.x * dx + F.z * dz, d = F.x * wx + F.y * wy + F.z * wz, e = dx * wx + dz * wz, den = 1 - b * b;
+      if (den < 1e-4) continue;
+      const s = Math.max(-g.half, Math.min(g.half, (e - b * d) / den));
+      const qx = g.x + dx * s, qz = g.z + dz * s, tr = Math.max(0, F.x * (qx - C.x) + F.y * (g.y - C.y) + F.z * (qz - C.z));
+      if (tr > 3.2) continue;
+      const dist = Math.hypot(C.x + F.x * tr - qx, C.y + F.y * tr - g.y, C.z + F.z * tr - qz);
+      if (dist < bd) { bd = dist; best = g; }
+    }
+    return best;
+  };
   // the cars along Str. Uzinei, in the works' parking area and the lot behind the fence, the red Kangoo (photos 78-83)
   const uzCarLm = geoWorld.landmarks?.find(l => l.type === 'uzinei');
   if (uzCarLm) for (const [k, c] of (uzCarLm.cars || []).entries()) park(c.model, paintMaterial(c.paint, { metallic: c.model === 'van' || c.model === 'kangoo' ? 0.2 : 0.6, rough: 0.33, dusty: 0.2 }), ['plateA', 'plateB', 'plateC'][k % 3], c.x, c.z, c.h, {});
@@ -1517,6 +1541,18 @@ async function main() {
     t += dt;
     WIND.time.value = t;
     geoWorld.tick(t, camera.position);                     // the landmarks' moving parts (the oil wells' pumping units)
+    if (shedLm) {
+      // the lantern (~2000 K, a steady flame that breathes a little) and the stove's glow through its draught slots: lit
+      // night and day (a shepherd keeps them going in winter), their light counting most in the dark; off far away
+      const near = Math.hypot(camera.position.x - shedLm.x, camera.position.z - shedLm.z) < 140 ? 1 : 0;
+      const fl = 0.88 + 0.07 * Math.sin(t * 8.3 + Math.sin(t * 2.1) * 1.6) + 0.04 * Math.sin(t * 21.7 + 0.7);
+      const fi = 0.82 + 0.12 * Math.sin(t * 3.7 + Math.sin(t * 1.3)) + 0.06 * Math.sin(t * 11.3);
+      SHED_LAMPS.uLampColor.value[0].set(1, 0.66, 0.34).multiplyScalar(3.2 * fl * (0.7 + 0.3 * night) * near);
+      SHED_LAMPS.uLampColor.value[1].set(1, 0.42, 0.14).multiplyScalar(1.5 * fi * (0.35 + 0.65 * night) * near);
+      shedLm.glow.lamp.emissiveIntensity = near * (0.25 + 0.35 * night) * fl;
+      shedLm.glow.flame.color.setRGB(1, 0.77, 0.42).multiplyScalar(near * (1.8 + 1.6 * night) * fl);
+      shedLm.glow.fire.emissiveIntensity = near * (1.2 + 1.8 * night) * fi;
+    }
     if (campfire) {
       campfire.update(dt, camera.position, { night, rain: RAIN.uRain.value, wind: STORM.uWind.value, heat: post.heat, camera });
       if (campfire.pops !== firePops) { firePops = campfire.pops; audio.firePop(campfire.audible(camera.position)); }    // (the wood popping, with its sparks)
@@ -1637,6 +1673,7 @@ async function main() {
         const dog = player.noclip ? null : dogs.nearest(player.pos.x, player.pos.z);
         const near = dog || player.noclip ? null : nearestCar();
         const fire = !dog && !player.noclip && campfire?.near(player.pos.x, player.pos.z);
+        const sg = !dog && !fire && !player.noclip ? shedGun() : null;
         const gunP = player.noclip ? null : glock?.pickup(camera, input);
         let tunP = null;
         if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte. Modul shooter: Fugi de două ori - sprint tactic, Jos din fugă - alunecare (de două ori: pe spate), Tac - Tac-Stance, Lovește, Inspect. Poligonul e pe pajiștea de lângă cruce'
@@ -1655,6 +1692,9 @@ async function main() {
             campfire.set(!campfire.lit); share.lit(mp, campfire.lit);
             hud.toast(campfire.lit ? (RAIN.uRain.value > 0.3 ? 'Focul se aprinde greu în ploaie, dar prinde' : 'Focul prinde: întâi surcelele, apoi lemnele') : 'Ai stins focul: jarul mai mocnește o vreme');
           }
+        } else if (sg) {
+          prompt = 'E — ' + sg.name + ' · ' + sg.cal;
+          if (input.hit('KeyE') || input.hit('KeyF')) hud.toast(sg.info, 10);
         } else if (near) {
           prompt = 'F — urcă în ' + near.name;
           if (input.hit('KeyF') || input.hit('KeyE')) enterCar(near);

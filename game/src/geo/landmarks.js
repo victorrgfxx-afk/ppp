@@ -26,6 +26,7 @@ import { buildUzinei } from './uzinei.js';
 import { buildBiserica } from './biserica.js';
 import { buildUrcus } from './urcus.js';
 import { buildSonda } from './sonda.js';
+import { buildMagazie } from './magazie.js';
 
 // Landmarks built from the user's photos (positions from the coordinates they sent, see build_geo.py).
 
@@ -147,6 +148,8 @@ export function buildLandmarks(B, world) {
   buildUrcus(B, world);                               // the clip IMG_0725: the lane up to the cross, its brambles and the concrete block
   const so = buildSonda(B, world);                    // photos 84-86: the oil wells in the wood, the gravel road to them
   if (so) out.push(so);
+  const mz = buildMagazie(B, world);                  // the user's pin: the shepherds' shed on the hill of the cross, the guns on its wall
+  if (mz) out.push(mz);
   if (!lms.length) return out;
   const mats = {
     white: new THREE.MeshStandardMaterial({ color: 0xf1f1ec, roughness: 0.42, metalness: 0.25 }),
