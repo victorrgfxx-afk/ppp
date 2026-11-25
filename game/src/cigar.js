@@ -536,7 +536,9 @@ export class Cigar {
 
   stepSmoke(dt, camera, env) {
     this.U.uTime.value = this.t;
-    const w = this.ctxWind ?? _w0, U = Math.hypot(w.x, w.y);
+    const w = this.ctxWind ?? _w0, U = Math.hypot(w.x, w.y), pv0 = this.player?.vel ?? _w0;
+    // (the air going past the coal: the wind less your own walk - what stretches its thread)
+    const Ur = Math.hypot(w.x - (this.onFoot ? pv0.x : 0), w.y - (this.onFoot ? pv0.z : 0));
     // ---- the sources
     const lit = this.lit && this.has && this.onFoot;
     if (lit) {
@@ -544,9 +546,9 @@ export class Cigar {
       const after = Math.exp(-(this.t - this.lastDraw) / 3), drawing = this.drawK > 0.8;
       // (in a wind the same smoke is stretched along a longer streak: as many more puffs to keep it whole, wider at
       // once - mixed straight away - and its life the same distance downwind)
-      this.emitSide += dt * Math.min(300, (drawing ? 8 : 16 + 22 * Math.min(1, this.heat) + 18 * after) * (1 + 2 * U));
+      this.emitSide += dt * Math.min(300, (drawing ? 8 : 16 + 22 * Math.min(1, this.heat) + 18 * after) * (1 + 2 * Ur));
       // (spread over the frame: each where the coal was then, carried on by the air since - one unbroken thread)
-      const nNew = Math.floor(this.emitSide), Uc = Math.min(U, 6);
+      const nNew = Math.floor(this.emitSide), Uc = Math.min(Ur, 6);
       this.emitSide -= nNew;
       for (let j = 0; j < nNew; j++) {
         const f = (j + 0.5) / nNew, back = f * dt;
@@ -571,7 +573,7 @@ export class Cigar {
     }
     // ---- the air: the wind at your head, its eddies, the rise of the warm smoke, the jet of the breath, your wake
     const pv = this.player?.vel ?? _w0, head = camera.position, t = this.t;
-    const I = 0.35, turbA = 0.04 + I * U;
+    const I = 0.35, turbA = 0.04 + I * U + 0.08 * Math.hypot(pv0.x, pv0.z);
     const p = this.p, d = this.d, iP = this.iPos.array, iD = this.iData.array;
     let n = 0;
     for (let li = this.live.length - 1; li >= 0; li--) {

@@ -852,7 +852,7 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
-* **Trabucul (V121)** (`src/cigar.js` nou; `src/handgeo.js`, `src/audio.js`, `src/main.js`, `index.html`):
+* **Trabucul (V121)** (`src/cigar.js` nou; `src/handgeo.js`, `src/audio.js`, `src/main.js`, `src/input.js`, `index.html`):
   * **Tab:** scoți un trabuc din cutie, cu rezerve nelimitate. Capul i se taie cu ghilotina (se aude). Tab îl ridică în fața ta sau îl lasă jos, pe lângă corp, unde arde mai departe și fumul urcă de lângă șold. Când s-a terminat, Tab aruncă mucul (cade pe jos) și scoți altul.
   * **Trabucul:** un robusto, 5 × 50 (127 × 19,8 mm), cu foaia de înveliș înfășurată în spirală, nervuri și pete, și o bandă roșu-aurie fără nicio marcă. Îl ții între arătător și mijlociu, în mănușa tactică a jocului (mâna sculptată din `handgeo.js`, care acum poate îndoi fiecare deget).
   * **Îl aprinzi cum spun ghidurile:**
@@ -880,7 +880,24 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * **Lumina:** fumul e luminat de cer și strălucește când soarele e în spatele lui (împrăștie spre înainte). Se vede în fasciculul lanternei, iar noaptea se înroșește lângă jar.
   * **Sunetele:** clicul brichetei și flacăra ei, pârâitul tutunului când tragi și suflarea.
   * **Pe telefon:** butonul „Trabuc” (Tab), iar cât îl ții ridicat, „Brichetă” și „Trage”.
-  * **Testat:** TESTS_V121
+  * **Testat:**
+    * lint;
+    * un banc de lucru (doar mâna, trabucul și fumul) pentru priză, brichetă și fum:
+      * manșeta mănușii iese din cadru;
+      * la prăjire trabucul se rotește între degete, mâna stă pe loc;
+      * la tras, trabucul și jarul rămân în cadru;
+      * firul de fum rămâne întreg și pe vânt, și la mers;
+    * în joc, pe pajiștea crucii:
+      * Tab, prăjirea (~3,5 s), aprinderea din fumuri;
+      * vânt calm (0,27 m/s la cap);
+      * vânt de 7 m/s în coroane (3,8 m/s la cap): cu fața în vânt fumul trece pe lângă tine, din lateral e culcat la orizontală;
+      * mers cu spatele: dâra rămâne în aer;
+      * expirația;
+      * noaptea: fumul în lanternă, inelul jarului la tras;
+    * timpul real:
+      * 1,71 mm într-un minut cu un fum, adică ~58 min la un fum pe minut;
+      * s-a stins singur la ~2,6 min după ultimul fum;
+    * `tools/cars-test.mjs`: la prima rulare a apărut o eroare de pagină veche, fără legătură cu trabucul: a doua cerere de blocare a mouse-ului, refuzată de browser fără clic, rămânea neprinsă. Am reparat-o în `src/input.js`.
   * **Limite, spuse cinstit:**
     * Nu-l duci în mașină (acolo rămâne în buzunar, dar arde mai departe).
     * Nu se vede în camera de corp (H).

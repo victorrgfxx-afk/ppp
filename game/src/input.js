@@ -95,7 +95,8 @@ export class Input {
   requestLock() {
     try {
       const p = this.canvas.requestPointerLock?.({ unadjustedMovement: true });
-      if (p && p.catch) p.catch(() => { try { this.canvas.requestPointerLock(); } catch (_) { /* drag fallback */ } });
+      // (the second try's promise caught too: without a click to allow it the browser refuses, an unhandled rejection - V121)
+      if (p && p.catch) p.catch(() => { try { this.canvas.requestPointerLock()?.catch?.(() => {}); } catch (_) { /* drag fallback */ } });
     } catch (_) { /* iframe sandbox: drag-to-look fallback */ }
   }
   down(code) { return this.keys.has(code); }
