@@ -202,6 +202,21 @@ WEATHER.rafale = {
   env: 0.8, envGround: [0.18, 0.19, 0.17], fog: [0.25, 0.28, 0.29], vis: 1640, hazeH: 4000, exposure: 1.15, shadow: 0.35, rain: 1,
   storm: 1, gale: 11, galeFrom: 295, squall: true,
 };
+// (V118) a severe thunderstorm (furtună): the squall's machinery (bursts, driven rain, sheets of it) at full strength,
+// under the storm's own cell. Under the thickest storm clouds the light at midday falls under ~200 lux, against
+// ~1,000-2,000 for an ordinary overcast midday (Wikipedia, Daylight): ~6-10 times darker than the grey deck, which the
+// eye's and the camera's exposure only partly make up. A wind of ~14 m/s from the west with bursts to ~30 m/s (~110
+// km/h), the heaviest rain, visibility ~1.2 km closing in further in the bursts, lightning all the time - mostly in
+// the cloud, every few seconds a bolt to the ground (storm.js) - the thunder by its channel's own geometry; edge trees
+// broken in the strongest gusts (windthrow.js), the cars rocking on their springs (vehicle.js)
+WEATHER.furtuna = {
+  label: 'Furtună', breeze: 9, cover: 1, cumulus: 0, zenith: [0.042, 0.047, 0.05], horizon: [0.095, 0.108, 0.108], bright: 0.7,
+  cloudLit: [0.105, 0.115, 0.118], cloudDark: [0.032, 0.036, 0.04],
+  // (the sun gone: its light and its glow through the deck ~1/80 of a clear day's; the drops lit by the dark sky - rainLight)
+  sun: 0.4, sunColor: [0.1, 0.108, 0.112], hemi: 0.45, hemiSky: [0.52, 0.58, 0.6], hemiGround: [0.12, 0.13, 0.12],
+  env: 1.0, envGround: [0.12, 0.13, 0.12], fog: [0.085, 0.097, 0.1], vis: 1200, hazeH: 4000, exposure: 1.2, shadow: 0.2, rain: 1,
+  storm: 1, gale: 14, galeFrom: 280, squall: true, severe: true, rainLight: 0.3,
+};
 // snowing (rain.js: falling flakes, a cover that builds up): an even, bright grey deck, soft light thrown back by the
 // snow, a white haze (visibility ~2 km)
 WEATHER.ninsoare = {
@@ -237,7 +252,7 @@ WEATHER.ceata = {
   env: 1.0, envGround: [0.42, 0.42, 0.4], fog: [0.6, 0.61, 0.62], vis: 150, hazeH: 80, exposure: 0.92, shadow: 0.15,
   damp: 0.35, fogPatches: 1,
 };
-export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ceata', 'ploaie', 'rafale', 'ninsoare', 'viscol', 'zapada'];
+export const WEATHER_ORDER = ['senin', 'noros', 'innorat', 'ceata', 'ploaie', 'rafale', 'furtuna', 'ninsoare', 'viscol', 'zapada'];
 
 // ------------------------------------------------------------------ time of day
 // Direct sunlight through the atmosphere: Kasten-Young air mass and per-channel optical depths (Rayleigh at

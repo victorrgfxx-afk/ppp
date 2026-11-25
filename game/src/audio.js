@@ -372,6 +372,47 @@ export class Audio {
     g.gain.linearRampToValueAtTime(0, t + 6.5);
     s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t + 7);
   }
+  // (V118) a storm's thunder (storm.js): the loudness over time worked out from the channel's shape (lo: the rumble, hi:
+  // the crack that only a near one has), `rate` values a second, after `delay` s; the rumble a low noise, the crack a
+  // broad band round ~1.8 kHz; to the side it came from (pan -1..1); cutoff: how much of the highs the air left (Hz)
+  thunderCurve(delay, lo, hi, rate, gain, crack, pan, cutoff) {
+    if (!this.ctx || !(lo.length > 2)) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay, dur = lo.length / rate;
+    const out = ctx.createGain(); out.gain.value = 1;
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-0.8, Math.min(0.8, pan || 0)); out.connect(p).connect(this.master); }
+    else out.connect(this.master);
+    const layer = (env, k, rateN, type, f, q) => {
+      if (!(k > 0.003)) return;
+      const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true; src.playbackRate.value = rateN;
+      const fl = ctx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = 0;
+      const c = new Float32Array(env.length);
+      for (let i = 0; i < env.length; i++) c[i] = Math.max(0, Math.min(1.5, env[i] * k));
+      g.gain.setValueAtTime(0, t);
+      g.gain.setValueCurveAtTime(c, t + 0.001, dur);
+      src.connect(fl).connect(g).connect(out); src.start(t); src.stop(t + dur + 0.05);
+    };
+    layer(lo, gain * 1.1, 0.35, 'lowpass', Math.max(80, cutoff * 0.5), 0.7);          // (the deep roll)
+    layer(lo, gain * 0.55, 0.7, 'lowpass', cutoff, 0.6);                                // (its body)
+    layer(hi, gain * crack * 0.9, 1, 'bandpass', 1800, 0.55);                           // (the crack of a near one)
+  }
+  // (V118) a stem snapping (windthrow.js): the crack, then the splintering as the fibres go one after another
+  treeCrack(delay, dist, r) {
+    if (!this.ctx) return;
+    const k = Math.min(1, 25 / Math.max(dist, 5)), low = r > 0.25 ? 0.75 : 1;
+    this.burst({ f: 900 * low, q: 0.7, dur: 0.06, gain: 0.55 * k, delay });
+    this.burst({ f: 2400, q: 0.9, dur: 0.03, gain: 0.35 * k, delay: delay + 0.004 });
+    for (let i = 0; i < 9; i++) this.burst({ f: (1200 + Math.random() * 2600) * low, q: 1.2, dur: 0.015 + Math.random() * 0.03, gain: (0.12 + 0.18 * Math.random()) * k * (1 - i / 12), delay: delay + 0.08 + i * (0.04 + Math.random() * 0.06) });
+    this.burst({ f: 140, q: 0.8, dur: 0.18, gain: 0.3 * k, delay: delay + 0.02 });
+  }
+  // (V118) its top coming down: the crown's crash through the branches - a thud and a crackle (on the next tree's crown:
+  // the crackle, hardly a thud)
+  treeCrash(delay, dist, hung) {
+    if (!this.ctx) return;
+    const k = Math.min(1, 25 / Math.max(dist, 5));
+    if (!hung) { this.burst({ f: 75, q: 0.7, dur: 0.45, gain: 0.7 * k, delay }); this.burst({ f: 180, q: 0.8, dur: 0.25, gain: 0.35 * k, delay: delay + 0.03 }); }
+    for (let i = 0; i < 16; i++) this.burst({ f: 900 + Math.random() * 3200, q: 1, dur: 0.02 + Math.random() * 0.05, gain: (0.08 + 0.14 * Math.random()) * k, delay: delay + Math.random() * 0.9 });
+  }
   // a bear: a low growl (rough, pulsing) or a roar (louder, opening up); quieter with distance
   bear(roar, dist) {
     if (!this.ctx) return;

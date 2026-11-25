@@ -35,6 +35,8 @@ uniform vec3 uGround;
 uniform float uNight;
 uniform float uHole;
 uniform float uFlash;
+uniform vec3 uFlashDir;          // (V118) where a storm's flash is: the cloud lit most round it (uFlashLoc 1)
+uniform float uFlashLoc;
 uniform vec3 uMoonDir;
 uniform vec3 uMoonCol;
 uniform sampler2D uVolMap;  // (V113) the volumetric cumulus, drawn into a map of the sky (clouds.js)
@@ -104,7 +106,10 @@ void main() {
     sky += uMoonCol * (0.12 * pow(mm, 1800.0) + 0.015 * pow(mm, 40.0)) * uNight;
     cloud += uMoonCol * pow(mm, 30.0) * (1.0 - thick) * 0.12 * uNight;
   }
-  cloud += vec3(0.75, 0.8, 1.0) * uFlash * (0.5 + thick);
+  // (V118) a storm's flash lights the cloud round where it is (in the cloud, or where a bolt leaves its base) and
+  // the rest of the deck less: the light spreads through it
+  float fl = uFlash * mix(1.0, 0.22 + 2.6 * pow(max(dot(d, uFlashDir), 0.0), 7.0), uFlashLoc);
+  cloud += vec3(0.75, 0.8, 1.0) * fl * (0.5 + thick);
   float fade = smoothstep(-0.02, 0.2, y);
   vec3 col = mix(sky, cloud, dens * fade);
   // (V113) the volumetric cumulus over the sky behind them: what they let through of it, plus the light they scatter
@@ -112,7 +117,7 @@ void main() {
   if (uVol > 0.0) {
     vec4 vc = vec4(0.0, 0.0, 0.0, 1.0);
     if (d.y > 0.0) vc = texture2D(uVolMap, 0.5 + 0.5 * (acos(min(d.y, 1.0)) / 1.5707963) * d.xz / max(length(d.xz), 1e-6));
-    col = mix(col, sky * vc.a + vc.rgb + vec3(0.75, 0.8, 1.0) * uFlash * (1.0 - vc.a), uVol);
+    col = mix(col, sky * vc.a + vc.rgb + vec3(0.75, 0.8, 1.0) * fl * (1.0 - vc.a), uVol);
   }
   col = mix(col, hor * 1.02, (1.0 - smoothstep(0.0, 0.16, y)) * 0.65);
   // for the image-based light: in sun the shade is also lit by the sunlit ground, walls and leaves around it, which
@@ -139,7 +144,7 @@ export function createSky() {
       uEnvPass: { value: 0 }, uDip: { value: 0 }, uSunLow: { value: 0 },
       uEnvDesat: { value: 0 },
       uGround: { value: new THREE.Vector3(0.33, 0.33, 0.31) },
-      uNight: { value: 0 }, uHole: { value: 0 }, uFlash: { value: 0 },
+      uNight: { value: 0 }, uHole: { value: 0 }, uFlash: { value: 0 }, uFlashDir: { value: new THREE.Vector3(0, 0.3, -1).normalize() }, uFlashLoc: { value: 0 },
       uMoonDir: { value: new THREE.Vector3(0, 1, 0) }, uMoonCol: { value: new THREE.Vector3(0.9, 0.92, 1) },
       uVolMap: { value: null }, uVol: { value: 0 },
     },

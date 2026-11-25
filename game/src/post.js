@@ -362,6 +362,9 @@ uniform float uD, uPeak;
 // widths of the frame (uAsp: its half height in them), and what its picture adds - lateral colour (uCA), the light
 // falling off (uVig), the sensor's noise (uNoise), its colour (uSat, uCon), the helmet's edge (uHelm: the side, +-1)
 uniform float uFish, uK1, uK3, uAsp, uCA, uVig, uNoise, uSat, uCon, uHelm, uTime, uRmax;
+// (V118) the body camera's own picture (uBody), its rolling shutter's skew (uRS: how far the bottom row lags the top,
+// in half widths of the frame)
+uniform float uBody, uRS;
 uniform float uBlurK;              // (V108) the see-through edge's blur in the picture's texels, kept as wide on the screen
 // (V113) the GoPro's rig: the two side views (their pictures; on or off), the right one's yaw and its box of tangents
 // (x0, x1 across, y1 up and down: the left one's mirrored), the azimuths between which the middle gives way to them
@@ -435,6 +438,9 @@ vec3 gather(vec2 uv, vec2 dR, vec2 dB, vec2 aMaj, vec2 aMin, float n, float rows
 }
 void main() {
   vec2 uv, q = (vUv * 2.0 - 1.0) * vec2(1.0, uAsp);
+  // (V118) the body camera's sensor reads its rows from the top down over ~25 ms: turning, each row sees the world a
+  // little later than the one above it - upright things lean while the view swings
+  q.x += uRS * (0.5 - vUv.y) * step(0.5, uBody);
   vec3 fd = vec3(0.0, 0.0, 1.0);
   if (uFish > 0.5) { fd = fishDir(q, 1.0); uv = fd.xy / max(fd.z, 1e-4) / uSrc * 0.5 + 0.5; }   // (V104) the GoPro's fisheye: the direction at this point of its frame
   else {
@@ -521,6 +527,17 @@ void main() {
     vec3 nc = vec3(hash12(floor(fc * 0.5) + fract(uTime * 3.7) * 311.0), hash12(floor(fc * 0.5) + 41.0 + fract(uTime * 5.3) * 197.0), hash12(floor(fc * 0.5) + 83.0 + fract(uTime * 2.9) * 401.0)) - 0.5;
     float dark = 1.0 - smoothstep(0.02, 0.55, l);
     c += (vec3(n) * 0.9 + nc * 0.6) * uNoise * (0.3 + 0.7 * dark);
+    // (V118) a body camera's picture: its wide dynamic range (the shadows lifted, the highlights rolled off to a flat
+    // white - what makes body-worn footage look as it does), then what its encoder leaves at a few Mb/s: the flat dark
+    // areas in 8x8 blocks that shift from frame to frame, the darkest steps coarse (the bits spent where the detail is)
+    // (no branch and no derivatives here: every pixel the same way, the GoPro's picture where uBody is 0)
+    float lb = dot(c, vec3(0.2126, 0.7152, 0.0722)), db = 1.0 - smoothstep(0.03, 0.4, lb);
+    vec3 cb = c * (1.0 + 0.55 * (1.0 - smoothstep(0.0, 0.3, lb)));
+    vec3 kn = max(cb * 1.06 - 0.8, 0.0);
+    cb = min(cb * 1.06, vec3(0.8)) + (1.0 - exp(-kn * 5.0)) * 0.2;
+    cb += (hash12(floor(gl_FragCoord.xy / 8.0) + floor(uTime * 15.0) * 7.0) - 0.5) * 0.03 * db;
+    cb = mix(cb, floor(cb * 64.0 + 0.5) / 64.0, db * 0.6);
+    c = mix(c, cb, step(0.5, uBody));
   }
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }`;
@@ -565,6 +582,9 @@ export const GOPRO_LENSES = [
   { diag: 133, name: 'Wide, 133°' },
 ];
 const GOPRO_C = -0.0468, SEAM = 50 * Math.PI / 180, SEAM_BLEND = 4 * Math.PI / 180;
+// (V118) the body camera (a body-worn camera on the chest, H): 160 deg - a current police body camera's field (Axon Body 4,
+// its maker's figure), taken on the diagonal - with a barrel lens of the same family as the GoPro's
+export const BODYCAM_LENS = { diag: 160, name: 'cameră de corp, 160°' };
 // the rig for a lens (diagonal on GoPro's 16:9 frame) on a screen of this aspect: the middle's box of tangents (tx, ty),
 // the side views' yaw and box (x0, x1 across in the right one's frame, y1 up and down), the tangents that hold the whole
 // frame (all: for what asks whether a thing is in view)
@@ -687,7 +707,7 @@ class LensPass extends Pass {
     this.material = new THREE.ShaderMaterial({ uniforms: { tDiffuse: { value: null }, uOut: { value: new THREE.Vector2(1, 1) }, uSrc: { value: new THREE.Vector2(1, 1) },
       uTexel: { value: new THREE.Vector2(1, 1) }, uD: { value: 1 }, uPeak: { value: -1 / 14 },
       uFish: { value: 0 }, uK1: { value: GOPRO_K1 }, uK3: { value: GOPRO_K3 }, uAsp: { value: 9 / 16 }, uCA: { value: 0.0025 }, uVig: { value: 0.22 },
-      uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 },
+      uNoise: { value: 0.006 }, uSat: { value: 1.16 }, uCon: { value: 1.06 }, uHelm: { value: -1 }, uTime: { value: 0 }, uBody: { value: 0 }, uRS: { value: 0 },
       uRmax: { value: GOPRO_RMAX }, uBlurK: { value: 1 },
       tSideL: { value: null }, tSideR: { value: null }, uSide: { value: 0 }, uYaw: { value: 1 }, uSBox: { value: new THREE.Vector3(-0.3, 0.5, 0.9) },
       uSeam: { value: new THREE.Vector2(SEAM - SEAM_BLEND, SEAM) }, uRotL: { value: new THREE.Matrix3() }, uRotR: { value: new THREE.Matrix3() } },
@@ -903,7 +923,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   let goproLens = 0, drs = 3;
   const goproFit = (force) => {
     const pr = window.devicePixelRatio || 1, w = Math.round(lastW * pr), h = Math.round(lastH * pr);
-    const rig = goproRig(GOPRO_LENSES[goproLens].diag, w / h), R = rig.sides;
+    const rig = goproRig(lens.body ? BODYCAM_LENS.diag : GOPRO_LENSES[goproLens].diag, w / h), R = rig.sides;
     lens.rig = rig; lens.screenAspect = w / h;
     const fc = (w / 2) / rig.K1;                             // (the frame's pixels a radian, in its middle)
     const mp = (2 * fc * rig.tx) * (2 * fc * rig.ty) + (R ? 2 * (fc * (R.x1 - R.x0)) * (2 * fc * R.y1) : 0);
@@ -958,8 +978,14 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   };
   // (V104) the GoPro's picture on (its rig) or off (back to the quality's pixel ratio and the screen's size and aspect,
   // then the lens the menu set: setLens after it)
-  const setGoPro = (on) => {
+  const setGoPro = (on, body = false) => {
     lens.fish = on;
+    // (V118) the body camera's picture or the GoPro's: its lens, its colour (flatter, less saturated: the WDR), its
+    // grain and the encoder's blocks, its stronger lateral colour and fall-off (a small, cheap lens)
+    lens.body = on && body;
+    const u = lens.material.uniforms;
+    u.uBody.value = lens.body ? 1 : 0; u.uRS.value = 0;
+    u.uSat.value = lens.body ? 0.86 : 1.16; u.uCon.value = lens.body ? 0.95 : 1.06; u.uCA.value = lens.body ? 0.0045 : 0.0025;
     if (!on) {
       lens.material.uniforms.uFish.value = 0; lens.material.uniforms.uSide.value = 0;
       camera.aspect = lastW / lastH; camera.zoom = 1; camera.updateProjectionMatrix();

@@ -11,6 +11,8 @@ import { Runoff, EaveStreams } from './runoff.js';
 import { SnowTrail } from './snowtrail.js';
 import { SnowProbe, SnowPack } from './snowprobe.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
+import { Thunderstorm } from './storm.js';
+import { Windthrow } from './windthrow.js';
 import { LAMPS } from './geo/props.js';
 import { Bear } from './bear.js';
 import { Wildlife } from './wildlife.js';
@@ -29,7 +31,7 @@ import { buildATV } from './atv.js';
 import { buildMaybach, MAYBACH_TUNE } from './maybach.js';
 import { DOBLO_OPTS } from './doblo.js';
 import { keepClear } from './geo/trees.js';
-import { Vehicle, TRACTION } from './vehicle.js';
+import { Vehicle, TRACTION, CAR_WIND } from './vehicle.js';
 import { specFor } from './tunerdata.js';
 import { WheelFX } from './wheelfx.js';
 import { roadSurfAt } from './geo/roadbed.js';
@@ -198,6 +200,7 @@ async function main() {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.92;
+  renderer.localClippingEnabled = true;                // (V118: the storm's broken trees - their stumps and tops cut from the tree)
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   const perf = new PerfMeter(renderer, $('fps'));
@@ -293,6 +296,8 @@ async function main() {
   // the gale's mean speed (m/s) and where it blows to (world angle); a squall's gusts come in bursts (rafale); blizzard:
   // the gale with the snow flying in it (STORM.uStorm: the flakes, the drift, the plastered snow)
   let galeBase = 15, galeAng = Math.atan2(-0.9986, 0.052), squall = false, blizzard = 0;
+  // (V118) a severe storm (furtună): the squall's bursts stronger, its gust front as it comes (front: when it began)
+  let severe = false, frontT = null;
   // the wind in the trees (treewind.js): the weather's breeze (m/s at the crowns) or the gale; the B key picks a speed
   // instead (the Beaufort scale's: calm, a light breeze, a moderate one, a strong one, a gale)
   const WIND_PICKS = [[0.5, 'calm (0,5 m/s, Beaufort 0–1): aproape nimic nu se mișcă'], [3, 'adiere (3 m/s, Beaufort 2): frunzele foșnesc, crenguțele tremură'],
@@ -307,13 +312,13 @@ async function main() {
   // trees of a forest it drops by up to ~60 %
   let shelter = 0;
   const shQ = [], shWind = new THREE.Vector2();
-  const shelterAt = (x, y, z, wx, wz) => {
+  const shelterAt = (x, y, z, wx, wz, self = null) => {
     const L = 16;
     world.query(x - wx * L / 2, z - wz * L / 2, L / 2 + 0.5, shQ);
     let best = 0, trees = 0;
     for (let i = 0; i < shQ.length; i++) {
       const b = shQ[i];
-      if (b.y1 < y + 0.7 || b.y0 > y + 1.4 || b.tag === 'npc' || b === active?.box) continue;
+      if (b.y1 < y + 0.7 || b.y0 > y + 1.4 || b.tag === 'npc' || b === active?.box || b === self) continue;
       // the ray from (x, z) upwind, in the box's frame: where it enters the box
       const dx = x - b.x, dz = z - b.z, ox = dx * b.c - dz * b.s, oz = dx * b.s + dz * b.c;
       const rx = -wx * b.c + wz * b.s, rz = -wx * b.s - wz * b.c;
@@ -332,7 +337,7 @@ async function main() {
     return Math.max(0.9 * best, Math.min(0.6, trees * 0.05));
   };
   let moonBeam = null, flashlight = null, headlights = null, bear = null, gradeU = null, vision = null;   // (made once the map is built)
-  let gopro = false;                        // (V104) the GoPro on the side of the head (M): its picture instead of the eyes'
+  let gopro = false, bodycam = false;       // (V118: bodycam - the camera worn on the chest, H: the GoPro's rig with its own lens and picture)                        // (V104) the GoPro on the side of the head (M): its picture instead of the eyes'
   const mixA = (a, b, k) => a.map((v, i) => v + (b[i] - v) * k);
   // night palettes: a clear moonlit sky, or the low deck of a night storm
   const NIGHT = {
@@ -353,7 +358,7 @@ async function main() {
     if (!!w.winter !== winter) { winter = !!w.winter; setWinter?.(winter); }
     SEASON.uAutumn.value = winter ? 0 : FOLIAGE[foliage];                       // (bare in the snow)
     horror = night > 0.5 && rainTarget > 0 ? 1 : 0;                         // a night storm: the bear is out
-    rainLight = (0.3 + 0.7 * d) * (1 - 0.75 * night);
+    rainLight = (0.3 + 0.7 * d) * (1 - 0.75 * night) * (w.rainLight ?? 1);       // (V118: under a storm's dark sky the drops are lit by little)
     // the light (and its cascaded shadows) comes from the moon at night
     sunDir.copy(night > 0.5 ? moonInfo.dir : sunInfo.dir);
     const N = overcast ? NIGHT.deck : NIGHT.clear, sunVis = THREE.MathUtils.smoothstep(sunInfo.el, -3, 1);
@@ -404,6 +409,8 @@ async function main() {
     scene.fog.far = w.hazeH ?? HAZE_H;
     stormTarget = w.storm ?? 0;
     galeBase = w.gale ?? 15; squall = !!w.squall; breeze = w.breeze ?? 2.5;
+    if (!!w.severe !== severe) frontT = null;
+    severe = !!w.severe;
     if (w.galeFrom !== undefined) {                                           // (a compass bearing: where it comes from)
       const b = (w.galeFrom + 180) * Math.PI / 180, th = GEO.meta.origin.bearing * Math.PI / 180, e = Math.sin(b), nn = Math.cos(b);
       galeAng = Math.atan2(e * Math.sin(th) + nn * Math.cos(th), -e * Math.cos(th) + nn * Math.sin(th));
@@ -427,7 +434,7 @@ async function main() {
     // the eye: cd/m2 per unit of the scene's light (the sun's ~3.8 is ~100 000 lux, the moon's 0.48 ~0.25 lux)
     if (vision) { vision.abs = Math.exp(THREE.MathUtils.lerp(Math.log(26000), Math.log(0.25 / 0.48), night)); vision.enabled = night > 0.02 && !gopro; }
     if (bear) bear.eyeMat.emissiveIntensity = 3 * night;                     // eyeshine in the dark
-    if (gradeU) { gradeU.uVig.value = gopro ? 0 : horror ? 0.5 : 0.28; gradeU.uGrain.value = gopro ? 0 : horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
+    if (gradeU) { gradeU.uVig.value = gopro ? (bodycam ? 0.16 : 0) : horror ? 0.5 : 0.28; gradeU.uGrain.value = gopro ? 0 : horror ? 0.075 : 0.035; }   // a darker, grainier frame in the storm
   };
   applyWeather(weatherKey);
 
@@ -729,6 +736,9 @@ async function main() {
   // the user's clip IMG_0725 on the lane up to the cross: the barefoot man and the three walkers ahead of him (16:11, clear)
   const hikers = new Hikers(scene, (x, z) => world.groundHeight(x, z), world, renderer);
   const lightning = new Lightning((delay, km) => audio.thunder(delay, km));
+  // (V118) the severe storm's lightning (storm.js) and the edge trees it breaks (windthrow.js)
+  const thunder = new Thunderstorm(scene, audio);
+  const windthrow = geoWorld.forest?.treesNear ? new Windthrow(scene, geoWorld.forest, world, audio) : null;
   const hurt = document.createElement('div');
   hurt.style.cssText = 'position:fixed;inset:0;pointer-events:none;opacity:0;z-index:5;background:radial-gradient(ellipse at center, rgba(110,0,0,0) 25%, rgba(150,0,0,0.88) 100%)';
   document.body.appendChild(hurt);
@@ -913,9 +923,57 @@ async function main() {
   // on the same face); the eyes' own effects go (no squint, no tears, no corona, no rods' night vision). (V105: nothing
   // laid over its picture.)
   const GOPRO_AT = new THREE.Vector3(0.13, 0.04, 0.05), _gpOff = new THREE.Vector3();
+  // (V118) the body camera's burned-in line, as body-worn cameras stamp their footage: the date and the time to the
+  // second (the scene's day, your hour, running on), the time zone, the camera's serial - top right, white with a dark
+  // edge (no maker's name)
+  const osd = document.createElement('div');
+  osd.style.cssText = 'position:fixed;top:54px;right:16px;z-index:5;font:600 15px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#f2f2f2;text-shadow:0 0 2px #000,0 0 2px #000,1px 1px 0 #000;letter-spacing:0.5px;text-align:right;pointer-events:none;display:none;white-space:pre';
+  document.body.appendChild(osd);
+  let osdAt = 0, osdT0 = 0;
+  const bodyOsd = (on) => { osd.style.display = on ? 'block' : 'none'; osdAt = -1; osdT0 = performance.now() / 1000; BODY.lastYaw = null; };
+  // (V118) where the body camera is and how it moves: on the chest, ~37 cm under the eyes and a few cm before them, its
+  // view the way the body faces - the torso follows the aim with a little lag and overshoot (a spring at ~2.5 Hz). The
+  // body's own motion is in it, which the head takes out of the eyes' view: the centre of mass rises and falls ~5 cm a
+  // step and sways ~4 cm side to side a stride (Saunders, Inman & Eberhart 1953), the chest turns a few degrees each
+  // way with the stride and rocks side to side, each heel strike jolts it (a damped ~7 Hz shake) - about twice as much
+  // running, the chest leaning forward. Turning fast, its sensor's rows read one after another skew the picture
+  // (post.js uRS: ~25 ms from the top row to the bottom)
+  const BODY = { yaw: 0, yv: 0, pitch: 0, pv: 0, jolt: 0, jv: 0, lastPh: 0, lastYaw: null };
+  const bodyPose = (dt) => {
+    const B = BODY, lu = post.lens.material.uniforms;
+    if (mode !== 'foot' || riding || player.noclip) {
+      // (in a car or riding: on your chest where you sit, looking the way you look)
+      _gpOff.set(0, -0.37, -0.05).applyQuaternion(camera.quaternion); camera.position.add(_gpOff);
+      lu.uRS.value = 0; B.lastYaw = null;
+      return;
+    }
+    const ph = player.bobPhase, a = player.bobAmt, run = player.running ? 1 : 0, h = Math.min(dt, 0.05);
+    if (B.lastYaw === null) { B.yaw = player.yaw; B.pitch = player.pitch; B.yv = B.pv = 0; B.lastYaw = B.yaw; }
+    let dy = player.yaw - B.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const w = 16, z = 0.62;
+    B.yv += (w * w * dy - 2 * z * w * B.yv) * h; B.yaw += B.yv * h;
+    B.pv += (w * w * (player.pitch - B.pitch) - 2 * z * w * B.pv) * h; B.pitch += B.pv * h;
+    if (Math.floor(ph / Math.PI) !== Math.floor(B.lastPh / Math.PI) && player.onGround && a > 0.05) B.jv -= (0.6 + 1.6 * run) * a;
+    B.lastPh = ph;
+    const wj = 2 * Math.PI * 7;
+    B.jv += (-wj * wj * B.jolt - 2 * 0.3 * wj * B.jv) * h; B.jolt += B.jv * h;
+    const yawRate = -Math.atan2(Math.sin(B.yaw - B.lastYaw), Math.cos(B.yaw - B.lastYaw)) / Math.max(dt, 1e-3);
+    B.lastYaw = B.yaw;
+    lu.uRS.value = Math.max(-0.2, Math.min(0.2, yawRate * 0.025 / (post.lens.rig?.K1 ?? 1.2)));
+    // (the full ~5 cm already walking: bobAmt is speed / 6 m/s, the chest's rise and fall is there at any pace)
+    const k = Math.min(1, a * 2.4) * (1 + 0.6 * run), yawOsc = Math.sin(ph) * 0.045 * k, rollOsc = Math.sin(ph + 0.6) * 0.03 * k;
+    const pitchOsc = Math.sin(2 * ph) * 0.012 * k + 0.02 * B.jolt, lean = run * 0.06 * a;
+    const fx = -Math.sin(B.yaw), fz = -Math.cos(B.yaw), rx = Math.cos(B.yaw), rz = -Math.sin(B.yaw);
+    const bob = Math.abs(Math.sin(ph)) * 0.05 * k - 0.025 * k, side = Math.cos(ph) * 0.022 * k;
+    camera.position.set(player.pos.x + fx * 0.06 + rx * side,
+      player.pos.y + player.eyeCur - 0.37 * (player.eyeCur / player.eye) + bob + 0.006 * B.jolt - player.landShake * 1.5,
+      player.pos.z + fz * 0.06 + rz * side);
+    camera.rotation.set(B.pitch * 0.92 - lean + pitchOsc, B.yaw + yawOsc, rollOsc - B.yv * 0.012, 'YXZ');
+  };
   let goproGlasses = true, goproTick = 0;
-  const setGoPro = (on) => {
-    gopro = on;
+  const setGoPro = (on, body = false) => {
+    gopro = on; bodycam = on && body;
+    bodyOsd(bodycam);
     EYE.cam.value = on ? 1 : 0;
     if (on) { goproGlasses = glasses.want; glasses.want = true; glasses.worn = 1; }
     else glasses.want = goproGlasses;
@@ -923,9 +981,9 @@ async function main() {
     // (V113) the eye's own frame - its vignette and grain, the rods' vision at night - off at once with the GoPro on, back
     // with it off: they waited for the next change of the weather or the hour (V104-V112), the GoPro's picture dimmed
     // toward its edges meanwhile
-    if (gradeU) { gradeU.uVig.value = on ? 0 : horror ? 0.5 : 0.28; gradeU.uGrain.value = on ? 0 : horror ? 0.075 : 0.035; }
+    if (gradeU) { gradeU.uVig.value = on ? (bodycam ? 0.16 : 0) : horror ? 0.5 : 0.28; gradeU.uGrain.value = on ? 0 : horror ? 0.075 : 0.035; }
     if (vision) vision.enabled = night > 0.02 && !on;
-    post.setGoPro(on);
+    post.setGoPro(on, bodycam);
     if (!on) post.setLens(efov === 'on', baseFov());
     audio.setMic(on, 0);
   };
@@ -1583,7 +1641,14 @@ async function main() {
     let burst = 0;
     if (squall) {
       burst = THREE.MathUtils.smoothstep(vn1(t * 0.085 + 9), 0.42, 0.8);
-      gust = 0.55 + 1.25 * burst + 0.2 * vn1(t * 1.2 + 7) + 0.12 * vn1(t * 3.1 + 2);
+      // (V118) a severe storm: its bursts to ~30 m/s (~110 km/h, galeBase 14), and as it comes the gust front - a few
+      // seconds in, the wind jumps to the bursts' strength and blows so for ~15 s (the outflow of the storm's
+      // downdraught running ahead of its rain)
+      if (severe) {
+        frontT ??= t;
+        burst = Math.max(burst, THREE.MathUtils.smoothstep(t - frontT, 4, 7) * (1 - THREE.MathUtils.smoothstep(t - frontT, 18, 25)));
+      }
+      gust = 0.55 + (severe ? 1.55 : 1.25) * burst + 0.2 * vn1(t * 1.2 + 7) + 0.12 * vn1(t * 3.1 + 2);
     } else gust = 0.55 + 0.6 * vn1(t * 0.35) + 0.3 * vn1(t * 1.4 + 17);
     {
       const ang = galeAng + (vn1(t * 0.12 + 5) - 0.5) * 0.5 * storm + (squall ? (vn1(t * 0.3 + 11) - 0.5) * 0.5 * burst : 0);   // (blizzard: world -z = south-west)
@@ -1623,8 +1688,14 @@ async function main() {
       if (input.hit('KeyK')) goToForest();
       if (input.hit('KeyP')) screenshot();
       if (input.hit('KeyY')) { wearGlasses(!glasses.want); hud.toast(glasses.want ? 'Ochelari tactici puși (Y îi scoate)' : 'Ochelari tactici scoși (Y îi pune la loc, șterși)', 2.5); }
+      // (V118) the body camera on your chest (H): on, or back to the eyes (from the GoPro: over to it)
+      if (mode !== 'car' && input.hit('KeyH')) {                 // (in a car H is the horn: the camera stays as it is)
+        const on = !(gopro && bodycam);
+        setGoPro(on, true);
+        hud.toast(on ? 'Cameră de corp pe piept: lentilă de 160°, imagine de cameră de corp (H o oprește)' : 'Camera de corp oprită: vezi cu ochii tăi', 3);
+      }
       if (input.hit('KeyM')) {
-        setGoPro(!gopro);
+        setGoPro(!gopro || bodycam);
         const lensName = GOPRO_LENSES[post.goproLens].name;
         hud.toast(!gopro ? 'GoPro oprită: vezi cu ochii tăi' : `GoPro pe cască, pe partea dreaptă: ${lensName}${goproLite ? (goproLite > 1 ? ', cel mult 2.7K: placa video n-a ținut 4K' : ', cel mult 4K: placa video n-a ținut 5.3K') : ''} (M o oprește, „,” schimbă lentila)`, 3);
       }
@@ -1972,6 +2043,16 @@ async function main() {
     } else shelter = 0;
     shWind.copy(STORM.uWind.value).multiplyScalar(1 - shelter);
     TRACTION.wind = storm > 0.05 ? shWind : null;
+    // (V118) the gale on the cars' bodies (vehicle.js suspend): the ones within ~220 m of you, each with the shelter of
+    // what stands upwind of it (worked out twice a second)
+    CAR_WIND.u = storm > 0.05 ? STORM.uWind.value : null;
+    if (storm > 0.05 && (frameNo % 30) === 0) {
+      const w = STORM.uWind.value, wl = Math.hypot(w.x, w.y) || 1;
+      for (const v of vehicles) {
+        v.windFar = Math.hypot(v.x - camera.position.x, v.z - camera.position.z) > 220;
+        if (!v.windFar && v !== active) v.shelter = shelterAt(v.x, v.car.group.position.y, v.z, w.x / wl, w.y / wl, v.box);
+      }
+    }
     // (V115) wading: the snow you push into just ahead, as far as your feet go into it - breaking trail (in your own
     // trench or on a hard drift the going is easy). Pandolf, Haisman & Goldman 1976: walking in soft snow costs 2.5x,
     // 3.3x, 4.1x the effort on a road with the feet 15, 25, 35 cm in (on a line: eta = 1.3 + 0.08 per cm); at the same
@@ -1999,7 +2080,20 @@ async function main() {
     else snowLee.off();
     // night: lightning in the storm, the moon's shaft, the torch, the bear on the hill
     // (and in a squall by day: a flash under the deck, less to it in the daylight)
-    const flash = lightning.update(dt, (horror === 1 || squall) && (!paused || share.role !== 'solo')) * (horror === 1 ? 1 : 0.3 + 0.7 * night);
+    // (V118) in a severe storm its own lightning (storm.js): the bolts, the sky lit toward each flash, the thunder from
+    // the channel's shape; and the edge trees its gusts break (windthrow.js)
+    let flash;
+    if (severe) {
+      lightning.update(dt, false);
+      renderer.getDrawingBufferSize(thunder.res);
+      flash = thunder.update(dt, { on: storm, camera, vis: visibility(), paused: paused && share.role === 'solo' }) * (0.6 + 0.4 * night);
+      sky.material.uniforms.uFlashDir.value.copy(thunder.dir); sky.material.uniforms.uFlashLoc.value = 1;
+    } else {
+      thunder.update(dt, { on: 0, camera, vis: 2000, paused: true });
+      flash = lightning.update(dt, (horror === 1 || squall) && (!paused || share.role !== 'solo')) * (horror === 1 ? 1 : 0.3 + 0.7 * night);
+      sky.material.uniforms.uFlashLoc.value = 0;
+    }
+    windthrow?.update(paused ? 0 : dt, { on: severe ? storm : 0, crown: treeWind, dir: TWIND.uTwDir.value, cam: camera.position, autumn: foliage === 'toamna' && !winter });
     sky.material.uniforms.uFlash.value = flash;
     hemi.intensity = baseHemi + flash * 2.2; scene.environmentIntensity = baseEnv + flash * 1.4;
     // (V101) the ground's light at night as the snow lies: ~4x the grass's (0.8 of the moon's and the sky's light back
@@ -2010,7 +2104,7 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4,
-      weatherKey === 'rafale' ? 60 : 40, night);   // (a downpour ~40 mm/h, a squall's ~60: the drops' sizes, so their speeds, fixed per weather - how many fall goes with the rain)
+      weatherKey === 'furtuna' ? 80 : weatherKey === 'rafale' ? 60 : 40, night);   // (a downpour ~40 mm/h, a squall's ~60: the drops' sizes, so their speeds, fixed per weather - how many fall goes with the rain)
     eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
     fogGlow.update(camera, fogLamps, M.lampGlass.emissiveIntensity / 4, scene.fog.near * AIR_FOG.x * Math.exp(-Math.max(0, camera.position.y) / scene.fog.far));
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);
@@ -2082,7 +2176,7 @@ async function main() {
         cab.lightGlass(glassSun, glassSunC.copy(sun.color).multiplyScalar(sun.intensity * sun.shadow.intensity), glassSky);
       }
     }
-    post.shield.update(paused ? 0 : dt, { on: mode === 'car' && !!active && camMode === 'cockpit', rate: (weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value, car: active, camera, pupil: rainFX.pupil.value });
+    post.shield.update(paused ? 0 : dt, { on: mode === 'car' && !!active && camMode === 'cockpit', rate: (weatherKey === 'furtuna' ? 80 : weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value, car: active, camera, pupil: rainFX.pupil.value });
     // (the parked wipers give way to the sweeping ones the rain pass draws: cars.js, windshield.js)
     const wiping = post.shield.enabled ? active : null;
     if (wipedCar !== wiping) { if (wipedCar?.car.wipers) wipedCar.car.wipers.visible = true; if (wiping?.car.wipers) wiping.car.wipers.visible = false; wipedCar = wiping; }
@@ -2125,9 +2219,14 @@ async function main() {
     // its sensor's noise, the microphone
     if (gopro) {
       camera.updateMatrixWorld();
-      _gpOff.copy(GOPRO_AT).applyQuaternion(camera.quaternion);
-      camera.position.add(_gpOff);
+      if (bodycam) bodyPose(dt);
+      else { _gpOff.copy(GOPRO_AT).applyQuaternion(camera.quaternion); camera.position.add(_gpOff); }
       camera.updateMatrixWorld();
+      if (bodycam && t - osdAt > 0.25) {
+        osdAt = t;
+        const sec = Math.floor(hour * 3600 + performance.now() / 1000 - osdT0), p2 = (n) => String(n).padStart(2, '0');
+        osd.textContent = (winter ? '2026-02-01' : '2026-09-26') + ' T' + p2(Math.floor(sec / 3600) % 24) + ':' + p2(Math.floor(sec / 60) % 60) + ':' + p2(sec % 60) + (winter ? ' +0200' : ' +0300') + '\nCAM 07  X4471A92';
+      }
       const lu = post.lens.material.uniforms;
       lu.uTime.value = t; lu.uNoise.value = 0.006 + 0.07 * THREE.MathUtils.smoothstep(night, 0.2, 0.9) * (flashlight?.on ? 0.6 : 1);
       goproTick += dt;
@@ -2172,7 +2271,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { thunder, windthrow, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

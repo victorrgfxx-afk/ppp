@@ -481,6 +481,10 @@ export const cleared = (x, z) => (CLEARINGS.length > 0 && CLEARINGS.some(([cx, c
   (CLEAR_AREAS.length > 0 && CLEAR_AREAS.some(([x0, z0, x1, z1, test]) => x >= x0 && x <= x1 && z >= z0 && z <= z1 && test(x, z))) ||
   treeOnRoad(x, z);
 // every forest tree in [x0, x1) x [z0, z1): cb(x, z, type, scale, rotation, brightness)
+// (V118) the trees the storm has broken (windthrow.js): left out of the forest from then on - its stump and its top are
+// drawn on their own
+const BROKEN = new Set();
+export const treeKey = (x, z) => Math.round(x * 4) * 100003 + Math.round(z * 4);
 function eachForestTree(x0, z0, x1, z1, cb) {
   for (let j = Math.floor(z0 / SP); j <= Math.floor(z1 / SP); j++) for (let i = Math.floor(x0 / SP); i <= Math.floor(x1 / SP); i++) {
     if (hash3(i, j, 1) > 0.93) continue;
@@ -488,7 +492,10 @@ function eachForestTree(x0, z0, x1, z1, cb) {
     if (x < x0 || x >= x1 || z < z0 || z >= z1 || cleared(x, z)) continue;
     const code = forestCode(x, z);
     if (!code) continue;
-    const edge = !forestCode(x + 8, z) || !forestCode(x - 8, z) || !forestCode(x, z + 8) || !forestCode(x, z - 8);
+    if (BROKEN.size && BROKEN.has(treeKey(x, z))) continue;                 // (V118: broken in a storm - windthrow.js)
+    // (V118: which way the open ground lies from an edge tree, for the wind that comes at it from there)
+    const ePx = !forestCode(x + 8, z), eMx = !forestCode(x - 8, z), ePz = !forestCode(x, z + 8), eMz = !forestCode(x, z - 8);
+    const edge = ePx || eMx || ePz || eMz;
     const sp = speciesAt(x, z), g = sp & 15;
     let ty;
     if (g && g < 13) {
@@ -511,7 +518,7 @@ function eachForestTree(x0, z0, x1, z1, cb) {
     if (ty < 0) continue;                                                   // (a place keeps that spot free)
     // age classes: whole stands younger or older
     const s = (0.68 + 0.45 * valueNoise2(x, z, 110, 9)) * (0.88 + 0.24 * hash3(i, j, 7));
-    cb(x, z, ty, s, hash3(i, j, 8) * Math.PI * 2, 0.82 + 0.3 * hash3(i, j, 9));
+    cb(x, z, ty, s, hash3(i, j, 8) * Math.PI * 2, 0.82 + 0.3 * hash3(i, j, 9), edge ? ePx - eMx : 0, edge ? ePz - eMz : 0);
   }
 }
 function eachShrub(x0, z0, x1, z1, cb) {
@@ -577,8 +584,8 @@ function buildForest(scene, world, quality, { models, variants, varOf, impGeo, w
     const x0 = ti * GT, z0 = tj * GT;
     const grp = new THREE.Group(), byType = new Map(), subs = new Map();
     let n = 0;
-    eachForestTree(x0, z0, x0 + GT, z0 + GT, (x, z, ty, s, rot, v) => {
-      const t = { x, y: heightAt(x, z) - 0.12, z, ty, s, rot, v };
+    eachForestTree(x0, z0, x0 + GT, z0 + GT, (x, z, ty, s, rot, v, ox, oz) => {
+      const t = { x, y: heightAt(x, z) - 0.12, z, ty, s, rot, v, ox, oz };
       if (!byType.has(ty)) byType.set(ty, []);
       byType.get(ty).push(t);
       const sk = Math.floor(x / ST) + ',' + Math.floor(z / ST);
@@ -586,7 +593,7 @@ function buildForest(scene, world, quality, { models, variants, varOf, impGeo, w
       subs.get(sk).trees.push(t);
       n++;
     });
-    for (const [ty, list] of byType) grp.add(instancedFrom(list, impGeo[ty], impMat[ty], false, false));
+    for (const [ty, list] of byType) { const im = instancedFrom(list, impGeo[ty], impMat[ty], false, false); list.forEach((t, k) => { t.imp = [im, k]; }); grp.add(im); }
     grp.userData.ueSkip = 'forest';
     scene.add(grp);
     live += n;
@@ -604,6 +611,7 @@ function buildForest(scene, world, quality, { models, variants, varOf, impGeo, w
       for (const t of sh) { const key = 'u' + (t.ty * 8 + varOf(t.ty, t.x, t.z)); if (!byType.has(key)) byType.set(key, []); byType.get(key).push(t); }
     }
     sub.firs = [];
+    for (const t of sub.trees) if (!t.spec) t.refs = [];                      // (V118: every near tree's instances, to hide it)
     for (const [key, list] of byType) {
       const ty = list[0].ty, va = typeof key === 'number' ? key & 7 : (+key.slice(1)) & 7;
       const r = list[0].under ? Q.shrub : Q.near;
@@ -615,6 +623,7 @@ function buildForest(scene, world, quality, { models, variants, varOf, impGeo, w
         const im = instancedFrom(list, g, nearMat(mat, r), !list[0].under, leafy, TYPES[ty].tint ?? 0xffffff);
         grp.add(im);
         if (FIR_SPEC[ty]) list.forEach((t, k) => { t.refs.push([im, k]); if (t.pooled) im.setMatrixAt(k, ZERO); });
+        else if (!list[0].under) list.forEach((t, k) => { t.refs.push([im, k]); });
       }
     }
     grp.userData.ueSkip = 'forest';
@@ -638,10 +647,34 @@ function buildForest(scene, world, quality, { models, variants, varOf, impGeo, w
   });
   const reach = Q.imp + GT * 0.72;
   let last = null;
+  const hideAt = (im, k) => { im.setMatrixAt(k, ZERO); im.instanceMatrix.needsUpdate = true; };
   return {
     Q,
     impMat,
     count: () => live,
+    // (V118) the trees standing within r of (x, z), as the near sub-tiles hold them (their records: x, y, z, ty, s, rot,
+    // the way the open ground lies from an edge tree: ox, oz)
+    treesNear(x, z, r, cb) {
+      for (const t of tiles.values()) {
+        if (Math.abs(t.cx - x) > GT / 2 + r || Math.abs(t.cz - z) > GT / 2 + r) continue;
+        for (const s of t.subs.values()) {
+          if (Math.abs(s.cx - x) > ST / 2 + r || Math.abs(s.cz - z) > ST / 2 + r) continue;
+          for (const f of s.trees) if (!f.broken && (f.x - x) * (f.x - x) + (f.z - z) * (f.z - z) < r * r) cb(f, s);
+        }
+      }
+    },
+    // (V118) a tree broken by the storm: gone from the forest (its instances hidden now, left out when its tiles are
+    // made again); windthrow.js draws its stump and its top
+    removeTree(f) {
+      BROKEN.add(treeKey(f.x, f.z)); f.broken = true;
+      for (const [im, k] of f.refs ?? []) hideAt(im, k);
+      if (f.imp) hideAt(f.imp[0], f.imp[1]);
+    },
+    // (V118) a tree's near model: its parts [geometry, material] and the materials the forest draws them with
+    modelOf(f) {
+      const va = varOf(f.ty, f.x, f.z);
+      return { parts: variants[f.ty][va].parts.filter(([, m]) => !m.userData.core), mat: (m, r = Q.near) => nearMat(m, r), type: TYPES[f.ty] };
+    },
     // the spruces near (x, z) (firs.js)
     firSource(x, z, Rr, out) {
       for (const t of tiles.values()) {

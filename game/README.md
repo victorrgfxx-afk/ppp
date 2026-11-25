@@ -54,7 +54,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | E / F | pe scara verandei, lângă câine: iei autotunerul (laptopul și interfața OBD) | – |
 | 1 – 9, 0 | te duce exact în punctul din care a fost făcută fiecare poză (toate 14 sunt și în lista din ecranul de start) | |
 | P / Esc | captură ecran / meniu (calitate grafică, vremea, ora, sunet) | |
-| T / O | vremea (senin, parțial noros, înnorat, ceață, ploaie torențială, ploaie în rafale, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
+| T / O | vremea (senin, parțial noros, înnorat, ceață, ploaie torențială, ploaie în rafale, furtună, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | B | vântul: după vreme, calm, adiere, vânt moderat, vânt tare, vijelie (copacii, iarba și foșnetul frunzelor) | la fel |
 | E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
 | E | în magazia ciobanilor de pe deal, privind o armă de pe perete: îi vezi datele reale | – |
@@ -68,6 +68,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | G | contorul de performanță: FPS, timpul CPU și GPU al unui cadru, desenări, triunghiuri, rezoluția | la fel |
 | K | te duce la marginea luminișului din pădurea de lângă cruce, unde se petrece scena (doar la 23:30, pe vreme înnorată) | la fel (cobori întâi) |
 | M | GoPro pe cască, pe partea dreaptă: obiectiv fisheye Max HyperView de 177° pe diagonală (157° × 91°), cu rezoluție adaptivă după FPS (V104–V113); **,** (virgula) schimbă lentila: 177°, 158° (cea din V105–V112), 133° | la fel, din capul șoferului |
+| H | camera de corp, pe piept (bodycam): lentilă de 160°, imaginea și mișcarea unei camere purtate pe corp, data și ora imprimate (V118) | claxon |
 
 ## Lumina: vremea, ora și umbrele
 
@@ -848,6 +849,58 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Furtuna și camera de corp (V118)** (`src/storm.js` și `src/windthrow.js` noi; `src/lighting.js`, `src/sky.js`, `src/treewind.js`, `src/geo/trees.js`, `src/vehicle.js`, `src/audio.js`, `src/post.js`, `src/main.js`):
+  * **Furtuna** (tasta T sau meniul: „Furtună”), cu ce se întâmplă într-o furtună puternică:
+    * **Cerul.** Sub norii cei mai groși, lumina la amiază scade sub ~200 lux. O zi obișnuită înnorată are 1.000–2.000 lux, deci furtuna e de 6–10 ori mai întunecată. Soarele nu mai trece prin nori: în prima încercare, strălucirea lui prin nori făcea cerul alb-cenușiu. Picăturile sunt luminate doar de cerul întunecat, nu mai apar ca dungi albe.
+    * **Vântul.** Bate ~14 m/s din vest, cu rafale până la ~30 m/s (~110 km/h). Furtuna începe cu frontul de rafală: după câteva secunde, vântul sare la forța rafalelor și ține așa ~15 s. Este curentul descendent al furtunii, care o ia înaintea ploii.
+    * **Fulgerele.** Cad cam o dată la 3 s în jurul tău și cam unul din patru lovește pământul. Pe toată întinderea ei, o furtună severă face peste 60 de fulgere pe minut, cele mai multe în nor.
+      * Canalul unui fulger la pământ e zimțat la toate scările: meandre de sute de metri și zigzaguri de câțiva metri. Are ramificațiile lăsate de liderul în trepte.
+      * Un fulger are în medie 3–4 descărcări: 3,4 în măsurătorile din Suedia, 3,67 într-un studiu pe 1.174 de fulgere filmate. Ele vin la ~48 ms una de alta. Cam o treime dintre descărcările de după prima țin canalul aprins o zecime de secundă (curent continuu).
+      * Prima descărcare aprinde și ramificațiile, următoarele doar canalul principal.
+      * Prin ploaie, canalul se vede tot mai slab cu distanța; de departe rămâne doar strălucirea lui.
+      * Se luminează baza norului de unde iese canalul, cerul în direcția fulgerului și toată scena. Se vede și ziua, sub cerul întunecat.
+    * **Tunetul.** Fiecare bucată de canal își trimite unda în același moment, iar undele ajung la tine eșalonate după distanță, la 343 m/s.
+      * De aici vine lungimea bubuitului, rar peste 30–40 s (OMM).
+      * De aici vin și pocniturile: o bucată de canal perpendiculară pe direcția ta ajunge toată odată.
+      * Un fulger apropiat pocnește, unul departe doar bubuie. Peste ~20 km nu se mai aude.
+      * Tunetul vine din partea în care a căzut fulgerul (stânga sau dreapta).
+    * **Copacii rupți la marginea pădurii.**
+      * **Care se rup:** doar copacii de la marginea pădurii care au terenul deschis spre vânt. Ei iau vântul câmpului pe toată coroana.
+      * **De ce cei cu defecte:** un trunchi sănătos se rupe la ~42 m/s, indiferent de mărime sau specie (Virot et al., Phys. Rev. E 2016), cu variații de ±10 % între copaci. Coroanele prind ~32 m/s în rafalele cele mai mari, deci cedează doar copacii cu defecte. Cam unul din opt are putregai, crăpături sau o rană veche și păstrează doar 55–80 % din rezistență. Fiecare se rupe prima dată când rafala de la el îi depășește limita. Rafalele sunt aceleași în care se văd coroanele aplecându-se (`gustAt`, același câmp ca în shader).
+      * **Unde se rupe:** trunchiul cedează jos, la defect (12–42 % din înălțime), altfel la 25–50 %.
+      * **Căderea:** vârful se răstoarnă în jurul fibrelor din partea opusă vântului, care țin ca o balama, și cade în 2–4 s. Se oprește pe sol sau, cel mai des, sprijinit în coroana vecinului, la cel puțin ~40° (copac agățat).
+      * **Ce rămâne:** cioata cu așchii de lemn proaspăt. Auzi pocnetul și trosnetul, apoi izbitura, cu întârzierea sunetului. Frunzele smulse zboară în vânt.
+      * **În test:** lângă magazie s-au rupt 3–5 copaci la frontul de rafală, pe o rază de 170 m.
+    * **Mașinile.** Vântul împinge lateral fiecare caroserie cu ½·ρ·U²·A, unde A ≈ 0,8 × lungimea × înălțimea, cu un coeficient lateral ~1.
+      * La înălțimea mașinii vântul are ~0,6 din viteza de la 10 m (profilul logaritmic, la ~1 m). Fiecare mașină primește rafalele locului ei și mai puțin vânt dacă e adăpostită de ce stă în calea lui.
+      * Mașina se înclină pe arcuri, în timp real.
+      * Măsurat: până la ~0,9° în rafalele de 31 m/s, pentru o mașină cu latura în vânt și neadăpostită. Pe strada de acasă, unde gardurile și casele țin vântul, sub 0,1°.
+  * **Camera de corp** (tasta H; în mașină H rămâne claxonul): camera purtată pe piept de un polițist, după cum arată filmările reale.
+    * **Unde stă:** pe stern, ~37 cm sub ochi și câțiva cm în fața lor.
+    * **Lentila:** 160°, câmpul unei camere de corp actuale (Axon Body 4, cifra producătorului), luat pe diagonală, cu distorsiunea în butoi a acestor lentile.
+    * **Imaginea:**
+      * Umbrele sunt ridicate, iar luminile se aplatizează spre un alb plat (procesarea WDR).
+      * În zonele întunecate și plate se văd blocuri de 8×8 pixeli care se schimbă de la un cadru la altul (compresia la câțiva Mb/s).
+      * Pașii de culoare din întuneric sunt mai grosieri, apar zgomot de senzor și culori despărțite spre margini.
+    * **Imaginea la întoarceri:** senzorul își citește rândurile de sus în jos în ~25 ms, deci obiectele verticale se înclină cât te întorci repede (rolling shutter).
+    * **Mișcarea:**
+      * Pieptul urmează privirea cu puțină întârziere și depășire (un arc de ~2,5 Hz).
+      * Capul își stabilizează imaginea; pieptul nu. Centrul de greutate urcă și coboară ~5 cm la fiecare pas și se leagănă ~4 cm stânga-dreapta la fiecare doi pași (Saunders, Inman & Eberhart, 1953).
+      * Pieptul se rotește câteva grade în fiecare parte și se înclină stânga-dreapta. La contactul fiecărui călcâi camera tresare: o vibrație amortizată de ~7 Hz.
+      * Alergând, mișcarea e cam dublă, iar pieptul se apleacă în față.
+    * **Ștampila:** în colțul din dreapta sus, data și ora la secundă (ziua scenei, ora ta), fusul orar și seria camerei. E albă cu contur negru, ca pe filmările camerelor de corp, fără numele producătorului.
+    * **Restul:** folosește montajul GoPro-ului (V113), deci și rezoluția adaptivă. Ai una sau alta: H pentru camera de corp, M pentru GoPro.
+  * **Testat:**
+    * lint;
+    * capturi cu cerul de furtună: întâi prea alb, apoi corectat; fulgerul la 2,6 km, cu canalul și ramificațiile lui; copacii rupți; camera de corp pe stradă;
+    * măsurători: balansul mașinilor, amplitudinile camerei de corp la mers (5 cm vertical după corectură);
+    * o eroare găsită și reparată: în SwiftShader, `fwidth` într-o ramură a shaderului lentilei bloca pagina; acum shaderul e fără ramuri;
+    * `tools/cars-test.mjs`.
+  * **Limite, spuse cinstit:**
+    * Copacii de la marginea pădurii au ramuri până jos, așa că cioata se vede greu din câmp. Se vede vârful aplecat în pădure.
+    * Fulgerele nu sunt aceleași pentru doi jucători: fiecare joc le are pe ale lui.
+    * Armele lungi din magazie urmează în versiunea următoare.
+  * **Surse:** [Daylight (Wikipedia)](https://en.wikipedia.org/wiki/Daylight), [descărcările unui fulger, Suedia (AGU 1994)](https://earthref.org/ERR/59502), [1.174 de fulgere filmate (NHESS 2021)](https://nhess.copernicus.org/articles/21/1909/2021/), [ratele de fulgere ale furtunilor severe (NWS Melbourne)](https://www.weather.gov/media/mlb/research/tli_svr.pdf), [tunetul (OMM, Atlasul norilor)](https://cloudatlas.wmo.int/en/thunder.html), [tunetul (NWS)](https://www.weather.gov/safety/lightning-science-thunder), [copacii se rup la ~42 m/s (Virot et al. 2016, Physics World)](https://physicsworld.com/a/trees-break-at-fixed-wind-speed-irrespective-of-size-or-species/), [ForestGALES (Forest Research)](https://www.forestresearch.gov.uk/tools-and-resources/fthr/forestgales/forestgales-technical-support), [Axon Body 4](https://www.axon.com/uk/products/axon-body-4).
 * **Magazia ciobanilor de pe Dealul Crucii, cu armele pe perete (V117)** (`src/geo/magazie.js` și `src/arms.js` noi; `src/geo/hillwood.js`, `src/geo/index.js`, `src/geo/landmarks.js`, `src/main.js`):
   * **Unde:** la coordonatele trimise (45,11564° N, 25,70305° E), pe pajiștea deschisă de la ~300 m SV de cruce. Magazia nu apare în nicio sursă pe care o am: nu e în OSM, nici în amprentele ML, nici pe ortofoto Esri (mai vechi decât ea). Am construit-o deci la locul exact, cum se fac magaziile de cioban pe dealurile de aici.
   * **Cum e făcută:**

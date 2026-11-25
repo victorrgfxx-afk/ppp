@@ -4,6 +4,7 @@ import { clamp, damp } from './util.js';
 import { W } from './config.js';
 import { DAYLIGHT } from './cars.js';
 import { torque0 } from './tunerdata.js';
+import { gustAt } from './treewind.js';
 
 // Arcade-realistic car: bicycle-model steering, tyre grip with handbrake drift,
 // 5-speed gearbox for the engine sound, per-wheel ground sampling for pitch/roll.
@@ -22,6 +23,9 @@ const ALL_GRIP = [1, 1, 1], _grips = [1, 1, 1];
 // lateral acceleration stay within mu * g (the hyper tune's 1.43 g of traction scaled the same way)
 // sink: how deep the snow lies under the wheels off the roads (m): it holds the car back; wind: a gale's push (m/s)
 export const TRACTION = { mu: 1, sink: 0, wind: null, wet: 0 };
+// (V118) the gale over the street (main.js, each frame: m/s at ~10 m, world xz; null when there is none) for the cars'
+// bodies on their springs: each car takes it at its own height and place (suspend)
+export const CAR_WIND = { u: null };
 // (V95) what is under the tyres: [grip dry, grip wet - both relative to dry asphalt (mu ~0.85) - rolling resistance dry,
 // wet]. From the usual tables of tyre-road friction (README, V95): asphalt 0.8-0.9 dry and 0.5-0.7 wet, concrete the same
 // dry and 0.6-0.8 wet, rolled gravel 0.4-0.7 dry and 0.3-0.5 wet, an earth road 0.68 dry and ~0.55 wet, grass 0.35
@@ -404,7 +408,24 @@ export class Vehicle {
     const P = this.sp, fit = this.groundFit();
     const S = this.vs ??= { awake: false, y: 0, vy: 0, th: 0, wth: 0, ph: 0, wph: 0, e: [0, 0, 0, 0], load: [1, 1, 1, 1], drop: [0, 0, 0, 0], gp: null, still: 0, air: 0, x: NaN, z: NaN };
     const moving = Math.hypot(this.vx, this.vz) > 0.05;
-    if (!S.awake && !driven && !moving) return;
+    // (V118) the wind's side force on the body (per unit of its mass), and its turning moment over the springs. The side
+    // takes ~1/2 rho U^2 Cs A, A its area (~0.8 of length x the body's height over the ground), Cs ~1 for a car side-on
+    // (a rounded bluff body); the wind at the car's own height ~0.6 of the 10 m gale (the log profile over open ground,
+    // z0 ~3 cm, at ~1 m), the gust there the crowns' own (gustAt), less in the lee of what stands upwind (shelter:
+    // main.js). It acts at about the middle of the side, ~0.55-0.65 m up, over a roll centre ~0.15 m: a 100 km/h gust
+    // side-on leans a car ~1 deg (the springs' ~1,000 Nm per degree), the same one end-on hardly at all
+    let mw = 0;
+    const U = CAR_WIND.u;
+    if (U && !this.remote && !this.windFar && (U.x !== 0 || U.y !== 0)) {
+      const k = 0.6 * (0.62 + 0.76 * gustAt(this.x, this.z)) * (1 - (this.shelter ?? 0));
+      const ul = (U.x * Math.cos(this.h) - U.y * Math.sin(this.h)) * k;        // (across the car, toward its right)
+      const Hb = Math.max(0.6, (this.m.H ?? 1.45) - 0.25), A = 0.8 * this.m.L * Hb;
+      const aw = 0.5 * 1.225 * A * ul * Math.abs(ul) / this.mass;
+      mw = -aw * (0.25 + 0.5 * Hb - 0.15);                                     // (the right side goes down: roll < 0)
+      this.windRoll = mw;
+    } else this.windRoll = 0;
+    const windy = Math.abs(mw) > 0.004;
+    if (!S.awake && !driven && !moving && !windy) return;
     if (!S.awake || dt <= 0 || Math.hypot(this.x - S.x, this.z - S.z) > 12 || Math.abs(S.y - fit.y) > 4) {
       // (at rest on its springs where it stands, rising and falling with the road under it as it goes)
       S.awake = true; S.y = fit.y; S.th = fit.pitch; S.ph = fit.roll; S.vy = Math.tan(fit.pitch) * this.speed; S.wth = S.wph = 0; S.gp = null; S.still = 0; S.air = 0;
@@ -462,7 +483,7 @@ export class Vehicle {
       }
       S.air = touching ? 0 : S.air + h;
       // gravity, the wings, the springs' push and their turning moments over the car's inertia (semi-implicit Euler)
-      S.vy += (Fy - 9.81 - aero) * h; S.wth += Mt / P.rp2 * h; S.wph += Mp / P.rr2 * h;
+      S.vy += (Fy - 9.81 - aero) * h; S.wth += Mt / P.rp2 * h; S.wph += (Mp + mw) / P.rr2 * h;
       if (!touching) { S.wth *= air; S.wph *= air; }
       S.y += S.vy * h; S.th += S.wth * h; S.ph += S.wph * h;
       // (past its stops a corner would go into the ground: held on it, moved up with it, the blow taken there)
@@ -490,7 +511,7 @@ export class Vehicle {
     this.landing = Math.max(this.landing, hit < -1 ? -hit : 0, crash > 1 ? crash : 0);
     this.crashed = crash;
     // (asleep again once it has stood still on its wheels for a second, the car not driven: back to the plane)
-    if (!driven && !moving && touching === 4 && Math.abs(S.vy) < 0.03 && Math.abs(S.wth) < 0.03 && Math.abs(S.wph) < 0.03) { S.still += dt; if (S.still > 1) S.awake = false; }
+    if (!driven && !moving && !windy && touching === 4 && Math.abs(S.vy) < 0.03 && Math.abs(S.wth) < 0.03 && Math.abs(S.wph) < 0.03) { S.still += dt; if (S.still > 1) S.awake = false; }
     else S.still = 0;
   }
   // (how much of each wheel's grip it has: its load, at most its full grip; all 4, the front pair, the rear pair)

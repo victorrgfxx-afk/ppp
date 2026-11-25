@@ -162,3 +162,25 @@ export function windStem(g, H) {
   g.setAttribute('aWind', new THREE.BufferAttribute(a, 4));
   return g;
 }
+
+// (V118) the same gust field on the processor (twGust): what the storm breaks (windthrow.js) and rocks (vehicle.js) is
+// what the crowns are seen to lean in. (The hash in double precision against the card's single: the same field to
+// within its finest grain.)
+const fr = (x) => x - Math.floor(x);
+function twHashJS(px, py) {
+  const a = fr(px * 0.1031), b = fr(py * 0.1031), d = a * (b + 33.33) + b * (a + 33.33) + a * (a + 33.33);
+  return fr((a + d + b + d) * (a + d));
+}
+function twNoiseJS(px, py) {
+  const ix = Math.floor(px), iy = Math.floor(py);
+  let fx = px - ix, fy = py - iy;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const a = twHashJS(ix, iy), b = twHashJS(ix + 1, iy), c = twHashJS(ix, iy + 1), d = twHashJS(ix + 1, iy + 1);
+  return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+// the gust at (x, z): 0..1, ~0.5 on average; the wind there is the mean one times (0.62 + 0.76 g), as the crowns take it
+export function gustAt(x, z) {
+  const D = TWIND.uTwDir.value, O = TWIND.uTwOff.value, t = TWIND.uTwTime.value;
+  const qx = x - O.x, qz = z - O.y, gx = (qx * D.x + qz * D.y) / 55, gy = (-qx * D.y + qz * D.x) / 30;
+  return 0.6 * twNoiseJS(gx, gy + t * 0.02) + 0.4 * twNoiseJS(gx * 2.3 + 5.2, gy * 2.3 + 1.3 - t * 0.05);
+}
