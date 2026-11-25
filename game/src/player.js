@@ -59,7 +59,7 @@ export class Player {
     this.yaw -= m.x * sens;
     this.pitch = clamp(this.pitch - m.y * sens, -1.55, 1.55);
     const ax = input.axis();
-    const fast = input.down('ShiftLeft') || input.down('ShiftRight') || input.touchRun;
+    const fast = input.down('ShiftLeft') || input.down('ShiftRight');
     const speed = fast ? 60 : 14;
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const fwd = new THREE.Vector3(-Math.sin(this.yaw) * cp, sp, -Math.cos(this.yaw) * cp);
@@ -97,7 +97,7 @@ export class Player {
     const ax = input.axis(), armed = !!this.armed;
     const shiftHit = input.hit('ShiftLeft') || input.hit('ShiftRight'), cHit = input.hit('KeyC') || input.hit('ControlLeft');
     const crouchKey = input.down('KeyC') || input.down('ControlLeft');
-    const run = (input.down('ShiftLeft') || input.down('ShiftRight') || input.touchRun) && !(armed && this.gunBusy);
+    const run = (input.down('ShiftLeft') || input.down('ShiftRight')) && !(armed && this.gunBusy);
     let hs = Math.hypot(this.vel.x, this.vel.z), jumped = false;
     // the tactical sprint: Shift again within 0.3 s, going forward, with breath left; it lasts while Shift is held
     if (shiftHit) { if (armed && this.t - this.shiftT < 0.3) this.tacWant = true; this.shiftT = this.t; }

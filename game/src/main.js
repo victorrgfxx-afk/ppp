@@ -680,7 +680,6 @@ async function main() {
   const cigar = new Cigar(scene, audio);
   const cigWind = new THREE.Vector2(), cigTorchDir = new THREE.Vector3();
   const cigEnv = { ground: (x, z) => world.groundHeight(x, z), light: { sunDir: new THREE.Vector3(), sunCol: new THREE.Vector3(), amb: new THREE.Vector3(), night: 0, torch: 0, torchPos: null, torchDir: cigTorchDir } };
-  const cigTouch = document.getElementById('cigTouch') ? { el: document.getElementById('cigTouch'), on: false } : null;
   const cigEl = document.createElement('div');
   cigEl.style.cssText = 'position:fixed;right:18px;bottom:38px;z-index:5;font:600 13px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#eee;text-shadow:0 0 3px #000;pointer-events:none;display:none';
   document.body.appendChild(cigEl);
@@ -782,10 +781,8 @@ async function main() {
   // multiplayer (alpha): the friend in this world (net.js: the room; remote.js: their figure, their car, their name)
   const mp = new Net(), others = new RemotePlayers(scene, vehicles);
   // (V94) the autotuner on the veranda's steps, and the tunes the cars were left with (tuner.js)
-  const tuner = new Tuner({ scene, world, audio, store, vehicles, onClose: () => { if (started && !paused) { input.enabled = true; if (!matchMedia('(pointer: coarse)').matches) input.requestLock(); } if (tuner.wrote) hud.toast(tuner.wrote, 6); } });
+  const tuner = new Tuner({ scene, world, audio, store, vehicles, onClose: () => { if (started && !paused) { input.enabled = true; input.requestLock(); } if (tuner.wrote) hud.toast(tuner.wrote, 6); } });
   let tunerStop = 0;
-  const tunerBtn = () => { const b = document.querySelector('#touch [data-key="KeyU"]'); if (b) b.style.display = tuner.owned ? '' : 'none'; };   // (its touch button once you have it)
-  tunerBtn();
   const openTuner = () => { input.enabled = false; input.keys.clear(); if (document.pointerLockElement) document.exitPointerLock(); tuner.openFor(active); };
   flashlight = new Flashlight(scene);
   headlights = new Headlights(scene);
@@ -847,10 +844,9 @@ async function main() {
   // ~200 deg (~135 deg high); the rest is seen by turning the head - the mouse. 'binocular': the ~120 deg both eyes see
   // at once, squeezed onto the screen (everything looks smaller and farther). 'joc': the former 70 deg (vertical).
   const screenGuess = () => {
-    const coarse = matchMedia('(pointer: coarse)').matches, w = screen.width, h = screen.height, small = Math.min(w, h) < 600;
-    const mm = coarse ? (small ? 0.165 : 0.2) : 0.265;      // a CSS pixel (mm): phones, tablets, computers at their usual scaling
+    const w = screen.width, h = screen.height, mm = 0.265;      // a CSS pixel (mm): a computer at its usual scaling
     const diag = Math.hypot(w, h) * mm / 25.4;
-    return { diag: Math.round(diag * 2) / 2, dist: coarse ? (small ? 32 : 40) : diag < 17 ? 50 : 65 };
+    return { diag: Math.round(diag * 2) / 2, dist: diag < 17 ? 50 : 65 };
   };
   let fovMode = store.get('fov', 'natural'), scr = { ...screenGuess(), ...store.get('screen', {}) };
   let efov = store.get('efov', 'off');                   // (the enhanced field of view, V99: post.js LensPass)
@@ -1288,7 +1284,7 @@ async function main() {
     if (document.pointerLockElement) document.exitPointerLock();
   };
   document.addEventListener('pointerlockchange', () => {
-    if (!document.pointerLockElement && started && !paused && !tuner.open && !matchMedia('(pointer: coarse)').matches && !input.mouse.dragging) pause();
+    if (!document.pointerLockElement && started && !paused && !tuner.open && !input.mouse.dragging) pause();
   });
   addEventListener('keydown', (e) => { if (e.code === 'Escape' && started && !paused) { if (tuner.open) tuner.close(); else pause(); } });   // (Esc shuts the laptop first)
   // photo 24: the cross on the hill, seen from ~11 m south-south-east, looking north-north-west (sun behind the camera),
@@ -1809,12 +1805,11 @@ async function main() {
         let rc = null;
         const gunP = player.noclip ? null : glock?.pickup(camera, input);
         let tunP = null;
-        if (gunP === '') hud.toast(matchMedia('(pointer: coarse)').matches ? 'Ai luat Glock 18-ul: Foc trage, Ochește ochește, Reîncarcă, Mod (automat / foc cu foc), Armă îl pui deoparte. Modul shooter: Fugi de două ori - sprint tactic, Jos din fugă - alunecare (de două ori: pe spate), Tac - Tac-Stance, Lovește, Inspect. Poligonul e pe pajiștea de lângă cruce'
-          : 'Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte. Modul shooter: Shift de două ori - sprint tactic, C din fugă - alunecare (de două ori: pe spate), V cu clic dreapta (sau Z) - Tac-Stance, V - lovitură, I - inspectezi. Poligonul e pe pajiștea de lângă cruce', 9);
+        if (gunP === '') hud.toast('Ai luat Glock 18-ul: clic stânga trage, clic dreapta ochește, R reîncarcă, X automat / foc cu foc, Q îl pui deoparte. Modul shooter: Shift de două ori - sprint tactic, C din fugă - alunecare (de două ori: pe spate), V cu clic dreapta (sau Z) - Tac-Stance, V - lovitură, I - inspectezi. Poligonul e pe pajiștea de lângă cruce', 9);
         else if (gunP) prompt = gunP;
-        else if ((tunP = player.noclip ? null : tuner.pickup(camera, input, dog)) === '') tunerBtn(), hud.toast('Ai luat autotunerul. Urcă la volanul oricărei mașini, oprește-o și apasă U' + (matchMedia('(pointer: coarse)').matches ? ' (butonul Tuner)' : '') + ': laptopul îi citește ECU-ul, îi modifici hărțile și i le scrii înapoi', 8);
+        else if ((tunP = player.noclip ? null : tuner.pickup(camera, input, dog)) === '') hud.toast('Ai luat autotunerul. Urcă la volanul oricărei mașini, oprește-o și apasă U: laptopul îi citește ECU-ul, îi modifici hărțile și i le scrii înapoi', 8);
         else if (tunP) prompt = tunP;
-        else if (player.sup && player.sup.up < 0) prompt = matchMedia('(pointer: coarse)').matches ? 'Sari / Jos — te ridici' : 'Space / C — te ridici';
+        else if (player.sup && player.sup.up < 0) prompt = 'Space / C — te ridici';
         else if (dog) {
           prompt = 'E — mângâie câinele';
           if (input.hit('KeyE') || input.hit('KeyF')) { dogs.pet(dog); share.petted(mp, dogs.dogs.indexOf(dog)); hud.toast('Câinele dă fericit din coadă'); }
@@ -1961,7 +1956,7 @@ async function main() {
         camera.rotation.x += (vn1(t * 23) - 0.5) * 0.007 * a; camera.rotation.y += (vn1(t * 19 + 4) - 0.5) * 0.007 * a;
         camera.position.y += (vn1(t * 31 + 9) - 0.5) * 0.014 * a;
       }
-      const running = mode === 'foot' && !riding && (input.down('ShiftLeft') || input.down('ShiftRight') || !!input.touchRun);
+      const running = mode === 'foot' && !riding && (input.down('ShiftLeft') || input.down('ShiftRight'));
       mission.update(paused ? 0 : dt, { snow: snowFall, night, weather: weatherKey, date: new Date(Date.UTC(2026, 1, 1) + hour * 3600e3),
         wind: Math.max(windSpeed, treeWind), windFrom: weatherKey === 'viscol' ? 45 : null, vis: WEATHER[weatherKey].vis ?? 10000,
         cam: camera, outside: mode === 'foot' && !riding, running, winter, height: rh, windX: STORM.uWind.value.x, windZ: STORM.uWind.value.y,
@@ -1982,7 +1977,7 @@ async function main() {
     // who the world minds: you and the friends in the room (share.js); the world runs here (alone, or for them too: even
     // with your menu open), or comes from the friend's game that runs it
     const camYaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : riding ? riding.h + rideLook.yaw : player.yaw;
-    const people = share.people({ x: pos0().x, y: pos0().y, z: pos0().z, yaw: camYaw, car: mode === 'car' || !!riding, run: mode === 'foot' && !riding && (input.down('ShiftLeft') || input.down('ShiftRight') || !!input.touchRun),
+    const people = share.people({ x: pos0().x, y: pos0().y, z: pos0().z, yaw: camYaw, car: mode === 'car' || !!riding, run: mode === 'foot' && !riding && (input.down('ShiftLeft') || input.down('ShiftRight')),
       torch: flashlight.on, me: true, peer: mp.myPeer }, mp);
     share.setRole(mp.role, mp);
     const worldRuns = share.role !== 'guest' && (!paused || share.role === 'host');
@@ -2072,9 +2067,8 @@ async function main() {
     const pos = mode === 'car' && active ? active.car.group.position : player.pos;
     const yaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
     const dHome = Math.hypot(pos.x - 6, pos.z - 0);
-    // (V121) the cigar's hint when nothing else asks for your attention; its two touch buttons while it is up
+    // (V121) the cigar's hint when nothing else asks for your attention
     if (!prompt && mode === 'foot' && !riding) prompt = cigar.prompt;
-    if (cigTouch) { const on = cigar.has && cigar.raised && mode === 'foot' && !riding; if (on !== cigTouch.on) { cigTouch.on = on; cigTouch.el.classList.toggle('on', on); } }
     hud.update(dt, {
       prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active ? (active.reverse ? 'R' : active.gear) : 1, carName: active ? active.name + (active.tune ? ' · ' + active.tune.label : '') : '',
       x: pos.x, z: pos.z, yaw,

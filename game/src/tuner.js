@@ -277,7 +277,7 @@ export class Tuner {
       const td = e.target.closest('td[data-c]'); if (!td) return;
       const key = td.dataset.c, ij = key.split(',').map(Number);
       if (e.shiftKey && this.last) this.block(this.last, ij, false);
-      else if (e.pointerType === 'touch' || e.ctrlKey || e.metaKey) { if (this.sel.has(key)) this.sel.delete(key); else this.sel.add(key); }
+      else if (e.ctrlKey || e.metaKey) { if (this.sel.has(key)) this.sel.delete(key); else this.sel.add(key); }
       else { const only = this.sel.size === 1 && this.sel.has(key); this.sel.clear(); if (!only) this.sel.add(key); }
       this.last = ij; drag = e.pointerType === 'mouse' && !e.shiftKey ? ij : null; this.paintSel();
     });

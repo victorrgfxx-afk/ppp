@@ -47,8 +47,6 @@ export const QUALITY = {
 };
 
 export function defaultQuality() {
-  const touch = matchMedia('(pointer: coarse)').matches;
-  if (touch) return 'low';
   const cores = navigator.hardwareConcurrency || 4;
   return cores >= 8 ? 'high' : 'medium';
 }

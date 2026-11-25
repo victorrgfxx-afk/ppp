@@ -234,7 +234,6 @@ export class Glock {
     ctx.world ??= this.world; ctx.audio ??= this.audio;
     this.t += dt;
     const free = this.owned && ctx.foot;
-    this.hud.touch(free);
     if (!free) { this.targets?.setLive(false); this.out = 0; this.vm.visible = false; this.reload = null; this.act = null; this.hud.show(false); this.hud.aim(false); this.hud.tick(); this.fovMul = 1; this.ads = 0; this.stance = 0; this.adsV = this.stanceV = 0; this.fade = null; this.tacOn = false; player.aimSlow = 1; player.armed = false; player.gunBusy = false; this.fx.update(dt, ctx); return; }
     if (input.hit('KeyQ')) { this.want = !this.want; this.audio?.gunCloth?.(); }
     this.targets?.setLive(this.want);                // (V90: the range's targets up only while it is in your hands)
@@ -963,10 +962,8 @@ function puffTexture() {
 // ---- the counter (the rounds in the gun, the rest, the fire mode) and the crosshair, the way Call of Duty shows them
 class GunHud {
   constructor() {
-    // (on a touch screen the counter goes up top right, under the menu's button: the bottom right is the buttons')
-    this.touchUI = matchMedia('(pointer: coarse)').matches;
     const el = this.el = document.createElement('div');
-    el.style.cssText = 'position:fixed;right:26px;bottom:22px;color:#fff;font:600 13px system-ui,sans-serif;text-align:right;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;display:none;z-index:20' + (this.touchUI ? ';right:14px;bottom:auto;top:62px' : '');
+    el.style.cssText = 'position:fixed;right:26px;bottom:22px;color:#fff;font:600 13px system-ui,sans-serif;text-align:right;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;display:none;z-index:20';
     el.innerHTML = '<div style="opacity:.85;letter-spacing:.06em">GLOCK 18 · <span data-k="mode"></span></div><div><span data-k="mag" style="font-size:38px;font-weight:700"></span><span style="font-size:20px;opacity:.75"> / <span data-k="res"></span></span></div><div data-k="hint" style="color:#ffd27a;min-height:16px"></div><div data-k="rng" style="font-size:11px;font-weight:600;opacity:.88;letter-spacing:.03em"></div>';
     document.body.appendChild(el);
     this.k = Object.fromEntries([...el.querySelectorAll('[data-k]')].map(e => [e.dataset.k, e]));
@@ -1010,7 +1007,7 @@ class GunHud {
     while (this.feeds.length > 4) this.feeds.pop().d.remove();
   }
   warn(rounds, res) {
-    const [txt, col] = rounds < 0 ? ['', ''] : rounds === 0 ? (res > 0 ? [(this.touchUI ? '' : '[R] ') + 'REÎNCARCĂ', '#ff5a4a'] : ['FĂRĂ MUNIȚIE', '#ff5a4a']) : rounds <= 10 ? ['MUNIȚIE PUȚINĂ', '#ffd24a'] : ['', ''];
+    const [txt, col] = rounds < 0 ? ['', ''] : rounds === 0 ? (res > 0 ? ['[R] REÎNCARCĂ', '#ff5a4a'] : ['FĂRĂ MUNIȚIE', '#ff5a4a']) : rounds <= 10 ? ['MUNIȚIE PUȚINĂ', '#ffd24a'] : ['', ''];
     const k = txt + col; if (k === this.wnS) return; this.wnS = k;
     this.wn.textContent = txt; this.wn.style.color = col;
   }
@@ -1030,9 +1027,7 @@ class GunHud {
     for (let i = this.feeds.length - 1; i >= 0; i--) { const f = this.feeds[i]; if (now - f.t > 5000) { f.d.remove(); this.feeds.splice(i, 1); } else if (now - f.t > 4600) f.d.style.opacity = '0'; }
   }
   show(on) { this.el.style.display = on ? 'block' : 'none'; if (!on) { this.x.style.display = 'none'; this.warn(-1, 0); } }
-  // the touch screen's buttons for it (index.html: fire, aim, reload, the selector, put it away), while it is yours on
-  // foot; the screen's own dot hidden while you aim down the sights (the sights are the aim)
-  touch(on) { if (on === this.touchOn) return; this.touchOn = on; document.getElementById('gunTouch')?.classList.toggle('on', on); }
+  // the screen's own dot hidden while you aim down the sights (the sights are the aim)
   aim(on) { if (on === this.aimOn) return; this.aimOn = on; const c = document.getElementById('cross'); if (c) c.style.visibility = on ? 'hidden' : ''; }
   set(mag, res, auto, hint) {
     if (performance.now() < (this.flashUntil ?? 0)) hint = this.flashText;
