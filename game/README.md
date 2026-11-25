@@ -57,7 +57,8 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | T / O | vremea (senin, parțial noros, înnorat, ceață, ploaie torențială, ploaie în rafale, furtună, ninsoare, viscol, zăpadă cu senin) / ora (8:00 – 23:30, cu noaptea cu lună plină) | la fel |
 | B | vântul: după vreme, calm, adiere, vânt moderat, vânt tare, vijelie (copacii, iarba și foșnetul frunzelor) | la fel |
 | E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
-| E | în magazia ciobanilor de pe deal, privind o armă de pe perete: îi vezi datele reale | – |
+| E / F | în magazia ciobanilor de pe deal, privind o armă de pe perete: E o iei (sau o pui la loc pe cârligele ei), F îi vezi datele reale | – |
+| Clic dreapta / stânga, R, Q | cu o armă lungă: ochești prin cătarea ei (luneta PSL-ului mărește de 4 ori), tragi (AKM și M4 automat, PSL foc cu foc, 870 cu pompă), reîncarci, o pui pe umăr și scoți Glock-ul | – |
 | Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
 | R / X / Q | cu Glock-ul: reîncarci / automat ↔ foc cu foc / îl pui deoparte și îl scoți | – |
 | Shift de două ori | cu Glock-ul scos: sprint tactic (~4,5 s, apoi fugă obișnuită) | – |
@@ -849,6 +850,33 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Armele din magazie, în mâini (V119)** (`src/longgun.js` nou; `src/geo/magazie.js`, `src/weapon.js`, `src/audio.js`, `src/main.js`):
+  * **Le iei de pe perete:** cu E, privind arma. Fiecare are acum modelul ei separat în magazie: când o iei, cârligele rămân goale, iar cu E o pui la loc.
+  * **Ținute cu aceleași mănuși și brațe ca Glock-ul:**
+    * Mâna dreaptă e mâna de pe mânerul Glock-ului, mutată pe mânerul fiecărei arme. Înclinarea mânerului e măsurată pe model: AKM 11°, M4 23°.
+    * Mâna stângă cuprinde apărătoarea de mână, sau mânerul vertical la M4.
+    * Umărul drept e unde stă patul armei, iar coatele cad în jos și în afară, nu întinse în față ca la pistol.
+  * **Ochirea prin cătarea proprie:**
+    * Ochiul stă pe linia cătării, la distanța măsurată de la obraz: AKM cu cătarea și înălțătorul (~47 mm deasupra țevii), M4 cu punctul colimatorului holografic, PSL prin luneta de 4×, 870 pe bila de alamă.
+    * Cu camera de corp, arma ridicată se vede de dedesubt, de la piept, iar luneta nu mai mărește.
+  * **Cum trage fiecare** (datele producătorilor):
+    * AKM: 600 de lovituri pe minut, 715 m/s;
+    * M4: ~800 pe minut, 905 m/s;
+    * PSL: foc cu foc, 830 m/s, 10 cartușe;
+    * 870: 9 alice la ~400 m/s, pompa trasă după fiecare foc (~0,45 s), 4 + 1 cartușe.
+  * **Reculul:** este impulsul glonțului plus al gazelor, care ies cu ~1,5 × viteza glonțului, împărțit la masa armei: ~7,5 J la AKM, ~5 J la M4, ~16 J la PSL, ~30 J la 870. Arma sare înapoi în umăr cu țeava în sus, privirea urcă, iar camera de corp tresare cu pieptul.
+  * **Focul și efectele:** gloanțele, impacturile și țintele sunt cele ale Glock-ului. Flacăra de la gura țevii luminează scurt tot ce e în jur. Tubul zboară spre dreapta. Sunetul fiecărei arme: detunătura, pocnetul supersonic al glonțului și ecourile văii.
+  * **Reîncărcarea** (R): încărcătorul se schimbă în ~2,3–2,9 s, cu trasul închizătorului când e gol. La 870, cartuș cu cartuș.
+  * **Testat:**
+    * lint;
+    * capturi cu AKM: la șold (după trei corecturi: modelul era rotit, umerii erau cei ai pistolului, mâna stângă stătea cu manșeta în sus), ochit, și prin camera de corp;
+    * o rafală de 0,67 s: 6 lovituri, cât cere cadența de 600 pe minut;
+    * luneta PSL de 4×; pompa și încărcarea la 870; armele care se pun singure înapoi pe perete;
+    * `tools/cars-test.mjs`.
+  * **Limite, spuse cinstit:**
+    * Mâinile nu fac încă gestul de schimbare a încărcătorului: arma se înclină în timp ce încărcătorul se schimbă.
+    * Tuburile sunt cele de 9 mm ale Glock-ului.
+    * Cu camera de corp nu se văd brațele, doar mănușile: de pe piept, modelul lor s-ar vedea terminându-se la umeri.
 * **Furtuna și camera de corp (V118)** (`src/storm.js` și `src/windthrow.js` noi; `src/lighting.js`, `src/sky.js`, `src/treewind.js`, `src/geo/trees.js`, `src/vehicle.js`, `src/audio.js`, `src/post.js`, `src/main.js`):
   * **Furtuna** (tasta T sau meniul: „Furtună”), cu ce se întâmplă într-o furtună puternică:
     * **Cerul.** Sub norii cei mai groși, lumina la amiază scade sub ~200 lux. O zi obișnuită înnorată are 1.000–2.000 lux, deci furtuna e de 6–10 ori mai întunecată. Soarele nu mai trece prin nori: în prima încercare, strălucirea lui prin nori făcea cerul alb-cenușiu. Picăturile sunt luminate doar de cerul întunecat, nu mai apar ca dungi albe.

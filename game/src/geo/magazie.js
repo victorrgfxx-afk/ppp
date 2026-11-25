@@ -671,9 +671,12 @@ export function buildMagazie(B, world) {
       info: 'Remington 870: calibrul 12, cu pompă, țeava de 18,5 țoli (470 mm), 3,2–3,6 kg, tubul de 4 cartușe + 1 pe țeavă' },
   ];
   const HOOK = [0.13, 0.12, 0.11];
+  // (V119: each gun its own meshes, not merged into the shed: it can be taken off the wall - longgun.js)
+  const RACKG = [];
   for (const gun of GUNS) {
-    const { P, L } = gun.fn(), Mg = new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(gun.uc, gun.y, GUN_V);
-    for (const [k, list] of Object.entries(P)) for (const g0 of list) { const g = g0.clone(); g.applyMatrix4(Mg); put('A:' + k, g, 1); }
+    const { P, L } = gun.fn(), Mg = new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(gun.uc, gun.y, GUN_V), own = new Map();
+    for (const [k, list] of Object.entries(P)) for (const g0 of list) { const g = g0.clone(); g.applyMatrix4(Mg); g.userData.tint = 1; (own.get('A:' + k) ?? own.set('A:' + k, []).get('A:' + k)).push(g); }
+    RACKG.push(own);
     for (const [s, yb] of gun.hooks) {
       const u = gun.uc - (L / 2 - s) * MM, y = gun.y + yb * MM - 0.005;
       rod('iron', [u, y, RACK_V], [u, y, GUN_V + 0.035], 0.0045, 8, HOOK);
@@ -754,6 +757,18 @@ export function buildMagazie(B, world) {
     if (inside) B.cullFor.set(mat, 160);
     B.geo(mat, m, null, null, { vcol: true, noCast: inside });
   }
+  // (V119) the guns on the rack: a group each, in the shed's frame; hidden when taken, shown when put back; drawn within
+  // ~160 m as the rest of the inside
+  const rack = RACKG.map((own) => {
+    const grp = new THREE.Group();
+    for (const [k, list] of own) {
+      const m = new THREE.Mesh(mergeGeometries(list.map(g0 => { const g = bake(g0, 1); for (const a of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(a)) g.deleteAttribute(a); return g; })), Mt[k]);
+      m.castShadow = false; m.receiveShadow = true;
+      grp.add(m);
+    }
+    grp.matrixAutoUpdate = false; grp.matrix.copy(Wm); grp.matrixWorldNeedsUpdate = true;
+    return grp;
+  });
 
   // ---- the snow on its roof and the icicles at its eaves (snowroofs.js): a gable roof; a rusty corrugated sheet keeps
   // some of what falls on it
@@ -799,7 +814,9 @@ export function buildMagazie(B, world) {
   SHED_LAMPS.uLampW.value[1].set(fp[0], FL + 0.36, fp[1]);
   const c = at(0, 0);
   return {
-    type: 'magazie', name: 'Magazia ciobanilor', x: c[0], z: c[1], y: FL, arms: A,
+    type: 'magazie', name: 'Magazia ciobanilor', x: c[0], z: c[1], y: FL, arms: A, rack, groups: rack,
+    // (its guns' meshes added to the scene with the moving parts: geo/index.js; only near enough are they drawn)
+    animate(t, cam) { const near = Math.hypot(cam.x - c[0], cam.z - c[1]) < 160; for (const g of rack) g.parent && (g.userData.near = near, g.visible = near && !g.userData.taken); },
     lamp: SHED_LAMPS.uLampW.value[0].clone(), glow: { lamp: Mt.lampGlass, fire: Mt.fire, flame: Mt.flame },
     bbox: { x0: bx0, x1: bx1, z0: bz0, z1: bz1 },
     // inside it (main.js: the wind's shelter, the guns' prompt)

@@ -413,6 +413,22 @@ export class Audio {
     if (!hung) { this.burst({ f: 75, q: 0.7, dur: 0.45, gain: 0.7 * k, delay }); this.burst({ f: 180, q: 0.8, dur: 0.25, gain: 0.35 * k, delay: delay + 0.03 }); }
     for (let i = 0; i < 16; i++) this.burst({ f: 900 + Math.random() * 3200, q: 1, dur: 0.02 + Math.random() * 0.05, gain: (0.08 + 0.14 * Math.random()) * k, delay: delay + Math.random() * 0.9 });
   }
+  // (V119) a rifle's or the shotgun's report, unsuppressed: the muzzle's blast (a sharp broad crack, its body low), the
+  // bullet's own supersonic crack (the rifles), the action cycling, then the valley's echoes off the hills (~0.3-1.5 s
+  // later, the highs gone); the AKM's heavy bolt carrier, the M4's buffer spring, the PSL's long stroke, the 870's boom
+  rifleShot(kind) {
+    if (!this.ctx) return;
+    const K = { ak: [1, 0.9, 1], m4: [0.9, 1.15, 0.85], psl: [1.25, 0.85, 1.2], sg: [1.35, 0.6, 1.4] }[kind] ?? [1, 1, 1];
+    this.burst({ f: 1400 * K[1], q: 0.5, dur: 0.09, gain: 0.95 * K[0], rate: 1.2 });
+    this.burst({ f: 380, q: 0.6, dur: 0.22 * K[2], gain: 0.9 * K[0], rate: 0.6 });
+    this.burst({ f: 90, q: 0.7, dur: 0.3 * K[2], gain: 0.8 * K[0], rate: 0.4 });
+    if (kind !== 'sg') this.burst({ f: 4200, q: 1.2, dur: 0.012, gain: 0.5, delay: 0.002 });
+    if (kind !== 'sg' && kind !== 'psl') this.burst({ f: kind === 'ak' ? 1700 : 2600, q: 4, dur: 0.02, gain: 0.12, delay: 0.055 });
+    for (const [d, g] of [[0.32, 0.22], [0.71, 0.14], [1.25, 0.08]]) this.burst({ f: 260, q: 0.6, dur: 0.5, gain: g * K[0], delay: d + Math.random() * 0.08, rate: 0.5 });
+  }
+  gunMagOut() { this.burst({ f: 2200, q: 3, dur: 0.03, gain: 0.18 }); this.burst({ f: 900, q: 2, dur: 0.05, gain: 0.1, delay: 0.05 }); }
+  gunMagIn() { this.burst({ f: 1700, q: 3, dur: 0.035, gain: 0.22 }); this.burst({ f: 3200, q: 5, dur: 0.02, gain: 0.15, delay: 0.03 }); }
+  gunRack() { this.burst({ f: 1500, q: 3, dur: 0.04, gain: 0.22 }); this.burst({ f: 2400, q: 4, dur: 0.03, gain: 0.2, delay: 0.12 }); }
   // a bear: a low growl (rough, pulsing) or a roar (louder, opening up); quieter with distance
   bear(roar, dist) {
     if (!this.ctx) return;

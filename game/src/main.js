@@ -56,6 +56,7 @@ import { PerfMeter } from './perf.js';
 import { WIND, damp, clamp, rng } from './util.js';
 import { TWIND } from './treewind.js';
 import { Glock } from './weapon.js';
+import { LongGuns } from './longgun.js';
 import { Range } from './range.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
@@ -630,6 +631,13 @@ async function main() {
   if (crossAt) moonBeam = new MoonBeam(scene, crossAt, TEX.noise);
   // the Glock 18 on the cross's slab (weapon.js): E takes it
   const glock = crossAt ? new Glock(scene, world, audio, crossAt) : null;
+  // (V119) the shed's long guns in your hands (longgun.js): taken off its rack, the Glock's effects and targets shared
+  const longGuns = new LongGuns(scene, world, audio, glock);
+  if (shedLm) longGuns.setRack(shedLm);
+  // (their rounds left: bottom right, not with the body camera - it has none)
+  const ammoEl = document.createElement('div');
+  ammoEl.style.cssText = 'position:fixed;right:18px;bottom:16px;z-index:5;font:600 14px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#eee;text-shadow:0 0 3px #000;pointer-events:none;display:none';
+  document.body.appendChild(ammoEl);
   // the range on the meadow by it (range.js, V89): pop-up targets and steel plates; what a round does there, to the HUD
   const range = crossAt ? new Range(scene, world, audio, crossAt) : null;
   if (glock && range) { glock.targets = range; range.onEvent = (e) => glock.onRange(e); }
@@ -954,6 +962,7 @@ async function main() {
     B.yv += (w * w * dy - 2 * z * w * B.yv) * h; B.yaw += B.yv * h;
     B.pv += (w * w * (player.pitch - B.pitch) - 2 * z * w * B.pv) * h; B.pitch += B.pv * h;
     if (Math.floor(ph / Math.PI) !== Math.floor(B.lastPh / Math.PI) && player.onGround && a > 0.05) B.jv -= (0.6 + 1.6 * run) * a;
+    if (longGuns.shotN !== B.shots) { B.shots = longGuns.shotN; B.jv -= 1.6 * (longGuns.S?.p ?? 7) / 7.4; B.yv += (Math.random() - 0.5) * 0.6; }
     B.lastPh = ph;
     const wj = 2 * Math.PI * 7;
     B.jv += (-wj * wj * B.jolt - 2 * 0.3 * wj * B.jv) * h; B.jolt += B.jv * h;
@@ -1764,8 +1773,11 @@ async function main() {
             hud.toast(campfire.lit ? (RAIN.uRain.value > 0.3 ? 'Focul se aprinde greu în ploaie, dar prinde' : 'Focul prinde: întâi surcelele, apoi lemnele') : 'Ai stins focul: jarul mai mocnește o vreme');
           }
         } else if (sg) {
-          prompt = 'E — ' + sg.name + ' · ' + sg.cal;
-          if (input.hit('KeyE') || input.hit('KeyF')) hud.toast(sg.info, 10);
+          // (V119) E takes it off the wall (or puts the one in your hands back on its hooks), F its data
+          const gi = shedLm.arms.indexOf(sg), mine = longGuns.held === gi;
+          prompt = (mine ? 'E — pune ' + sg.name + ' înapoi pe perete' : 'E — ia ' + sg.name) + ' · ' + sg.cal + ' · F — datele';
+          if (input.hit('KeyE')) { if (mine) longGuns.putBack(); else { longGuns.take(gi); if (glock) glock.want = false; hud.toast(sg.name + ' în mâini: clic dreapta ochești, clic stânga tragi, R reîncarci, Q o pui pe umăr (și scoți Glock-ul)', 5); } }
+          else if (input.hit('KeyF')) hud.toast(sg.info, 10);
         } else if (near) {
           prompt = 'F — urcă în ' + near.name;
           if (input.hit('KeyF') || input.hit('KeyE')) enterCar(near);
@@ -1795,7 +1807,12 @@ async function main() {
         if (active) active.landing = 0;
       }
       // the pistol in your hands (on foot only: put away in a car, while riding or flying)
+      longGuns.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, bodycam });
       glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value });
+      // (V119) a long gun in your hands keeps the Glock in its holster; slung (Q), the Glock comes out
+      if (longGuns.held >= 0 && longGuns.want) { if (glock) glock.want = false; player.armed = true; player.gunBusy = player.gunBusy || longGuns.busy; }
+      ammoEl.style.display = longGuns.held >= 0 && longGuns.want && !bodycam ? 'block' : 'none';
+      if (longGuns.held >= 0) ammoEl.textContent = longGuns.hudText ?? '';
       tuner.update(dt);
       range?.update(dt, camera);
       // parked cars (and cars pushed by collisions) settle
@@ -1857,7 +1874,7 @@ async function main() {
       }
     } else {
       if (photoFov && Math.hypot(player.pos.x - photoFov.x, player.pos.z - photoFov.z) > 0.25) photoFov = null;
-      fov = photoFov ? photoFov.fov + player.fovKick : fov0 * (1 + player.fovKick / 70) * (glock?.fovMul ?? 1);
+      fov = photoFov ? photoFov.fov + player.fovKick : fov0 * (1 + player.fovKick / 70) * (glock?.fovMul ?? 1) * longGuns.fovMul;
     }
     // (V100) the jets: heard from where they were, and close and low the shudder of their roar (or a boom's); the snow
     // night's mission (its lines, its look, the frost, the breath)
@@ -2215,6 +2232,7 @@ async function main() {
     }
     // the pistol in your hands, last: where the camera has ended up this frame
     glock?.draw(camera, player);
+    longGuns.draw(camera, player);
     // (V104) then the GoPro: the camera to its lens, on the side of the head (the pistol stays where the eyes hold it);
     // its sensor's noise, the microphone
     if (gopro) {
@@ -2244,6 +2262,9 @@ async function main() {
         const hw = mv.car.half.w + 0.3, hl = mv.car.half.l + 0.3;
         taaMover.obj = mv.car.group; taaMover.min.set(-hw, -0.4, -hl); taaMover.max.set(hw, 2.6, hl);
         post.taa.mover = taaMover;
+      } else if (longGuns.vm.visible) {
+        taaMover.obj = longGuns.vm; taaMover.min.set(-0.5, -0.6, -1.3); taaMover.max.set(0.5, 0.4, 0.5);
+        post.taa.mover = taaMover;
       } else if (glock?.vm.visible) {
         taaMover.obj = glock.vm; taaMover.min.set(-0.6, -0.75, -0.8); taaMover.max.set(0.6, 0.35, 0.35);
         post.taa.mover = taaMover;
@@ -2271,7 +2292,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { thunder, windthrow, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

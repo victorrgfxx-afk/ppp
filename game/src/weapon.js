@@ -60,7 +60,7 @@ export const HOLD = {
 };
 const Q_GRIP = new THREE.Quaternion().setFromAxisAngle(V3(1, 0, 0), -RAKE);
 // a hold: the hand's place on the gun { p, q } and the pose it is sculpted in (the thumb's places in its own frame)
-function holdOf(h) {
+export function holdOf(h) {
   const p = GRIP_C.clone().addScaledVector(GRIP_AXIS, h.raise).add(V3(h.side, h.dy, -h.fwd));
   const q = Q_GRIP.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V3(0, 1, 0), h.phi)), qi = q.clone().invert();
   const own = (v, point) => { const w = V3(...v); if (point) w.sub(p); w.applyQuaternion(qi); if (h.mirror) w.x = -w.x; return [w.x, w.y, w.z].map(x => +x.toFixed(5)); };
