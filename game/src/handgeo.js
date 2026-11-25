@@ -174,12 +174,13 @@ const COMP = 0.0015;                                                  // (the fl
 function skeleton(r, pose) {
   const fr = handFrame(r, pose), { D, U, P } = fr;
   const fingers = F.map((f, fi) => {
-    const own = fi === 0 && pose?.index;
-    const J0 = P(...f.mcp), d0 = rot(U, D, f.splay + (own ? pose.index.splay ?? 0 : 0)), ax = norm(cross(D, d0));
+    // (a pose may set any finger's bends and splay: pose.fingers[i]; pose.index is the first's - the pistol's trigger finger)
+    const own = pose?.fingers?.[fi] ?? (fi === 0 ? pose?.index : null);
+    const J0 = P(...f.mcp), d0 = rot(U, D, f.splay + (own ? own.splay ?? 0 : 0)), ax = norm(cross(D, d0));
     const lim = [[0.12, 1.65], [0.2, 1.9], [0.1, 1.35]];
     let J = J0, d = d0;
     const bones = f.seg.map(([L, ra, rb], k) => {
-      d = rot(d, ax, own ? pose.index.bend[k] : bend(J, d, ax, L, r + Math.min(ra, rb) - COMP, ...lim[k]));
+      d = rot(d, ax, own ? own.bend[k] : bend(J, d, ax, L, r + Math.min(ra, rb) - COMP, ...lim[k]));
       const B = add(J, d, L), b = { a: J, b: B, ra, rb, d, dors: norm(cross(d, ax)) };
       J = B;
       return b;

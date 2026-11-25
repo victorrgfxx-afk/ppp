@@ -441,6 +441,27 @@ export class Audio {
     else if (kind === 'fuse') { this.burst({ f: 1300, q: 1.5, dur: 0.05, gain: 0.3 }); this.burst({ f: 520, q: 1, dur: 0.09, gain: 0.22, delay: 0.05 }); if (load) { this.burst({ f: 5200, q: 0.6, dur: 0.05, gain: 0.3, rate: 1.4 }); this.burst({ f: 3000, q: 0.8, dur: 0.12, gain: 0.12, delay: 0.02 }); } }
     else { this.burst({ f: 1900, q: 2.2, dur: 0.025, gain: 0.3 }); this.burst({ f: 650, q: 2, dur: 0.04, gain: 0.12, delay: 0.02 }); }
   }
+  // (V121) the cigar (cigar.js): the guillotine's snip, the lighter's click and its flame's soft roar while it burns,
+  // the coal crackling as you draw, your breath blowing the smoke out
+  cigarCut() { this.burst({ f: 3600, q: 3, dur: 0.02, gain: 0.25 }); this.burst({ f: 1300, q: 2, dur: 0.035, gain: 0.14, delay: 0.012 }); }
+  lighter(on) {
+    if (!this.ctx) return;
+    if (!this.flameGain) {
+      const n = this.ctx.createBufferSource(); n.buffer = this.noise; n.loop = true; n.playbackRate.value = 1.6;
+      const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2200; f.Q.value = 0.4;
+      this.flameGain = this.ctx.createGain(); this.flameGain.gain.value = 0;
+      n.connect(f).connect(this.flameGain).connect(this.master); n.start();
+    }
+    const now = this.ctx.currentTime;
+    if (on) { this.burst({ f: 3800, q: 6, dur: 0.012, gain: 0.35 }); this.burst({ f: 900, q: 2, dur: 0.03, gain: 0.12 }); }
+    else this.burst({ f: 2600, q: 4, dur: 0.015, gain: 0.12 });
+    this.flameGain.gain.setTargetAtTime(on ? 0.028 : 0, now + (on ? 0.02 : 0), 0.04);
+  }
+  cigarDraw(heat) {
+    for (let i = 0; i < 3; i++) this.burst({ f: 2500 + Math.random() * 4000, q: 3 + Math.random() * 4, dur: 0.008 + Math.random() * 0.02, gain: 0.05 * Math.min(1, heat), delay: Math.random() * 0.25 });
+    this.scrape({ f: 1400, q: 0.6, gain: 0.012, a: 0.1, hold: 0.25, rel: 0.2, rate: 0.8 });
+  }
+  exhale(k) { this.scrape({ f: 650, q: 0.45, gain: 0.05 * Math.min(1, k), a: 0.12, hold: 0.55, rel: 0.6, rate: 0.7 }); this.scrape({ f: 2400, q: 0.5, gain: 0.015 * Math.min(1, k), a: 0.1, hold: 0.45, rel: 0.5 }); }
   // a bear: a low growl (rough, pulsing) or a roar (louder, opening up); quieter with distance
   bear(roar, dist) {
     if (!this.ctx) return;

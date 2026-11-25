@@ -58,6 +58,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | B | vântul: după vreme, calm, adiere, vânt moderat, vânt tare, vijelie (copacii, iarba și foșnetul frunzelor) | la fel |
 | E / F | lângă crucea de pe deal: iei Glock 18-ul de pe placa de beton | – |
 | E / F | în magazia ciobanilor de pe deal, privind o armă de pe perete: E o iei (sau o pui la loc pe cârligele ei), F îi vezi datele reale | – |
+| Tab · clic stânga / dreapta | trabucul: Tab îl scoți (rezerve nelimitate), îl ridici sau îl lași jos; ține clic stânga — bricheta (prăjești vârful), plus clic dreapta — tragi până se aprinde; apoi clic dreapta — un fum (V121) | – |
 | E / F | la postul de transformare din pădurea de pe Dealul Crucii, privind o manetă: E oprești / pornești întreruptorul general, scoți / pui la loc siguranțele fazei L1, L2 sau L3, oprești / pornești iluminatul public; F datele postului (V120) | – |
 | Clic dreapta / stânga, R, Q | cu o armă lungă: ochești prin cătarea ei (luneta PSL-ului mărește de 4 ori), tragi (AKM și M4 automat, PSL foc cu foc, 870 cu pompă), reîncarci, o pui pe umăr și scoți Glock-ul | – |
 | Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
@@ -851,6 +852,47 @@ Pe telefon: joystick virtual în stânga, tragi cu degetul în dreapta ca să te
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Trabucul (V121)** (`src/cigar.js` nou; `src/handgeo.js`, `src/audio.js`, `src/main.js`, `index.html`):
+  * **Tab:** scoți un trabuc din cutie, cu rezerve nelimitate. Capul i se taie cu ghilotina (se aude). Tab îl ridică în fața ta sau îl lasă jos, pe lângă corp, unde arde mai departe și fumul urcă de lângă șold. Când s-a terminat, Tab aruncă mucul (cade pe jos) și scoți altul.
+  * **Trabucul:** un robusto, 5 × 50 (127 × 19,8 mm), cu foaia de înveliș înfășurată în spirală, nervuri și pete, și o bandă roșu-aurie fără nicio marcă. Îl ții între arătător și mijlociu, în mănușa tactică a jocului (mâna sculptată din `handgeo.js`, care acum poate îndoi fiecare deget).
+  * **Îl aprinzi cum spun ghidurile:**
+    * Ține clic stânga: mâna stângă vine cu bricheta sub vârf. Prăjești vârful fără să atingi flacăra, rotindu-l între degete. Se înnegrește și începe să mocnească pe margine (~3,5 s; mai greu în vânt tare).
+    * Ține și clic dreapta: tragi cu flacăra la vârf și, după 2–3 fumuri, s-a aprins.
+  * **Fumatul:** clic dreapta duce trabucul la buze. Jarul se aprinde mai tare și se aude cum pârâie tutunul. Ții fumul o secundă (fumul de trabuc nu se inhalează), apoi îl sufli.
+  * **Arde în timp real:**
+    * un fum ia ~0,6 mm pe secundă, iar mocnitul dintre fumuri ~0,6 mm pe minut;
+    * la un fum pe minut ține cam o oră (Holt's: 45–50 min pentru un robusto; magazinele: 45–60);
+    * dacă nu tragi din el, se stinge în ~2–3 minute, ca un trabuc adevărat, care nu are acceleranți: îl reaprinzi;
+    * ploaia îl stinge mai repede;
+    * scrumul crește pe vârf și cade singur la 2–3 cm (sau când sari ori alergi), apoi se sfărâmă pe jos;
+    * jos în dreapta vezi câți milimetri au mai rămas și câte minute mai ține.
+  * **Fumul, în aerul lumii** (rămâne în urmă când mergi, iar vântul îl ia):
+    * **Din vârf:** albăstrui-cenușiu. Particulele lui proaspete au ~0,27 μm, cam lungimea de undă a albastrului, deci împrăștie mai ales albastrul (Rayleigh).
+      * Urcă din jar cu ~0,3 m/s, încetinind pe măsură ce se amestecă.
+      * Primii centimetri sunt un fir neted, apoi se ondulează și se rupe în fuioare.
+    * **Expirat:** alb-cenușiu. Particulele au crescut în umezeala gurii și împrăștie toate culorile (Mie).
+      * E suflat ca un jet de ~1,5 m/s, care se oprește într-o jumătate de secundă și se deschide într-un nor.
+    * **Vântul:** e vântul din copaci (cel pe care îl schimbi cu B), coborât la înălțimea capului după profilul logaritmic: ×0,6 de la 10 m la 1,7 m, peste iarbă.
+      * Lângă un zid sau printre copaci e mai slab.
+      * Are vârtejurile aerului de lângă sol: turbulență de ~1/ln(z/z₀), adică ~30–35 % (formula din Eurocodul 1, EN 1991-1-4).
+      * Firul de fum se culcă în vânt de la ~1 m/s. Ca să rămână întreg și pe vânt, particulele lui se întind pe drumul făcut de jar și de aer în fiecare cadru.
+    * **Mersul:** fumul rămâne în urmă, iar o parte e trasă după tine, în dâra corpului.
+    * **Lumina:** fumul e luminat de cer și strălucește când soarele e în spatele lui (împrăștie spre înainte). Se vede în fasciculul lanternei, iar noaptea se înroșește lângă jar.
+  * **Sunetele:** clicul brichetei și flacăra ei, pârâitul tutunului când tragi și suflarea.
+  * **Pe telefon:** butonul „Trabuc” (Tab), iar cât îl ții ridicat, „Brichetă” și „Trage”.
+  * **Testat:** TESTS_V121
+  * **Limite, spuse cinstit:**
+    * Nu-l duci în mașină (acolo rămâne în buzunar, dar arde mai departe).
+    * Nu se vede în camera de corp (H).
+    * Prietenul din multiplayer nu-ți vede trabucul.
+    * Fumul e simulat ca particule în vânt, nu ca un fluid adevărat.
+  * **Surse:**
+    * durata: [Holt's](https://holts.com/clubhouse/node/1173), [Neptune](https://neptunecigar.com/tips/smoking-time) (dă și 20–30 min, mai puțin decât ceilalți);
+    * stingerea și ritmul: [Holt's: trabucul care se stinge](https://www.holts.com/clubhouse/node/1184), [un fum pe minut](https://www.humidordiscount.com/humidor-cigar-faq/how-often-should-you-draw-on-a-cigar);
+    * aprinderea: [Famous Smoke](https://www.famous-smoke.com/cigaradvisor/whats-the-proper-way-to-light-a-cigar), [Art of Manliness](https://artofmanliness.com/articles/how-to-light-a-cigar);
+    * culorile fumului: [Indiana Public Media, „A Moment of Science”](https://indianapublicmedia.org/amomentofscience/why-cigarette-smoke-is-blue-or-white/);
+    * firul neted care devine turbulent: [UIUC Physics Q&A](https://van.physics.illinois.edu/qa/listing.php?id=2179);
+    * vântul la sol: [profilul logaritmic](https://en.wikipedia.org/wiki/Log_wind_profile), EN 1991-1-4 (intensitatea turbulenței).
 * **Curentul comunei: ferestrele luminate noaptea, pe cartiere, și postul de transformare din pădurea de pe Dealul Crucii (V120)** (`src/power.js`, `src/geo/releu.js` și `assets/geo/poiana.json` noi; `src/geo/buildings.js`, `src/geo/data.js`, `src/geo/props.js`, `src/geo/index.js`, `src/geo/landmarks.js`, `src/materials.js`, `src/lamps.js`, `src/poles.js`, `src/fences.js`, `src/hero.js`, `src/audio.js`, `src/main.js`):
   * **Limita reală a comunei:**
     * Conturul Poienii Câmpina este relația OSM 14701879 (`admin_level` 8), luată prin Nominatim: 234 de puncte și 15,45 km².

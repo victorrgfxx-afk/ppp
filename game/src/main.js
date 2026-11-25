@@ -59,6 +59,7 @@ import { WIND, damp, clamp, rng } from './util.js';
 import { TWIND } from './treewind.js';
 import { Glock } from './weapon.js';
 import { LongGuns } from './longgun.js';
+import { Cigar } from './cigar.js';
 import { Range } from './range.js';
 import { boxBox } from './collision.js';
 import { Walker } from './npc.js';
@@ -674,6 +675,15 @@ async function main() {
   const glock = crossAt ? new Glock(scene, world, audio, crossAt) : null;
   // (V119) the shed's long guns in your hands (longgun.js): taken off its rack, the Glock's effects and targets shared
   const longGuns = new LongGuns(scene, world, audio, glock);
+  // (V121) the cigar (cigar.js, Tab): lit with a lighter, smoked, burning down in real time; its smoke on the air - the
+  // wind at your head (the trees', B, brought down to ~1.7 m: x0.6 by the log profile over grass, less in shelter)
+  const cigar = new Cigar(scene, audio);
+  const cigWind = new THREE.Vector2(), cigTorchDir = new THREE.Vector3();
+  const cigEnv = { ground: (x, z) => world.groundHeight(x, z), light: { sunDir: new THREE.Vector3(), sunCol: new THREE.Vector3(), amb: new THREE.Vector3(), night: 0, torch: 0, torchPos: null, torchDir: cigTorchDir } };
+  const cigTouch = document.getElementById('cigTouch') ? { el: document.getElementById('cigTouch'), on: false } : null;
+  const cigEl = document.createElement('div');
+  cigEl.style.cssText = 'position:fixed;right:18px;bottom:38px;z-index:5;font:600 13px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#eee;text-shadow:0 0 3px #000;pointer-events:none;display:none';
+  document.body.appendChild(cigEl);
   if (shedLm) longGuns.setRack(shedLm);
   // (their rounds left: bottom right, not with the body camera - it has none)
   const ammoEl = document.createElement('div');
@@ -911,7 +921,7 @@ async function main() {
   const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
   const fogGlow = new FogGlow(scene);                 // (V92: the lamps' halos in a fog)
-  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, wheelFX.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh]);
+  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, wheelFX.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh, cigar.fx]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
@@ -1862,6 +1872,22 @@ async function main() {
       if (longGuns.held >= 0 && longGuns.want) { if (glock) glock.want = false; player.armed = true; player.gunBusy = player.gunBusy || longGuns.busy; }
       ammoEl.style.display = longGuns.held >= 0 && longGuns.want && !bodycam ? 'block' : 'none';
       if (longGuns.held >= 0) ammoEl.textContent = longGuns.hudText ?? '';
+      // (V121) the cigar: Tab takes it out (a new one when it is finished) and puts it up before you or down at your
+      // side; up, the guns are put away (Q brings a gun out and the cigar down)
+      const onFoot = mode === 'foot' && !riding && !player.noclip;
+      if (onFoot && input.hit('Tab')) {
+        const r = cigar.toggle();
+        if (cigar.raised) { if (glock) glock.want = false; if (longGuns.held >= 0) longGuns.want = false; }
+        if (r === 'new') hud.toast('Ai scos un trabuc din cutie și i-ai tăiat capul. Ține clic stânga: prăjești vârful la flacără; apoi ține și clic dreapta - tragi până se aprinde', 7);
+      }
+      if (cigar.raised && ((glock?.want && glock.owned) || (longGuns.held >= 0 && longGuns.want))) cigar.raised = false;
+      {
+        const ws = treeWind * 0.6 * (1 - shelter) * (0.85 + 0.3 * vn1(t * 0.9 + 3));
+        cigWind.set(TWIND.uTwDir.value.x * ws, TWIND.uTwDir.value.y * ws);
+      }
+      cigar.update(dt, { input, player, camera, foot: onFoot, wind: cigWind, rain: RAIN.uRain.value, hud, bodycam });
+      cigEl.style.display = cigar.has && (cigar.raised || cigar.lit) && !bodycam ? 'block' : 'none';
+      if (cigar.has) cigEl.textContent = cigar.status;
       tuner.update(dt);
       range?.update(dt, camera);
       // parked cars (and cars pushed by collisions) settle
@@ -2046,6 +2072,9 @@ async function main() {
     const pos = mode === 'car' && active ? active.car.group.position : player.pos;
     const yaw = mode === 'car' && active ? (camMode === 'chase' ? active.h + orbit.yaw : active.h + cockpitLook.yaw) : player.yaw;
     const dHome = Math.hypot(pos.x - 6, pos.z - 0);
+    // (V121) the cigar's hint when nothing else asks for your attention; its two touch buttons while it is up
+    if (!prompt && mode === 'foot' && !riding) prompt = cigar.prompt;
+    if (cigTouch) { const on = cigar.has && cigar.raised && mode === 'foot' && !riding; if (on !== cigTouch.on) { cigTouch.on = on; cigTouch.el.classList.toggle('on', on); } }
     hud.update(dt, {
       prompt, driving: mode === 'car', noSignal: mode === 'car' && noSignal, kmh: active ? active.speed * 3.6 : 0, gear: active ? (active.reverse ? 'R' : active.gear) : 1, carName: active ? active.name + (active.tune ? ' · ' + active.tune.label : '') : '',
       x: pos.x, z: pos.z, yaw,
@@ -2288,6 +2317,15 @@ async function main() {
     // the pistol in your hands, last: where the camera has ended up this frame
     glock?.draw(camera, player);
     longGuns.draw(camera, player);
+    // (V121) the cigar in your hand and its smoke, lit as smoke is: by the sky, by the sun mostly forward, the torch
+    {
+      const L = cigEnv.light, day = 1 - night, cover = WEATHER[weatherKey]?.cover ?? 0;
+      L.night = night; L.sunDir.copy(sunInfo.dir);
+      L.amb.set(0.5, 0.53, 0.58).multiplyScalar((0.06 + 0.94 * day) * (0.8 + 0.2 * (1 - cover)));
+      L.sunCol.set(1, 0.95, 0.88).multiplyScalar(day * sunOcc * (1 - 0.85 * cover) * THREE.MathUtils.smoothstep(sunInfo.el, -2, 8));
+      L.torch = flashlight?.on ? 0.55 : 0; L.torchPos = camera.position; camera.getWorldDirection(cigTorchDir);
+      cigar.draw(camera, dt, cigEnv);
+    }
     // (V104) then the GoPro: the camera to its lens, on the side of the head (the pistol stays where the eyes hold it);
     // its sensor's noise, the microphone
     if (gopro) {
@@ -2316,6 +2354,9 @@ async function main() {
       if (mv) {
         const hw = mv.car.half.w + 0.3, hl = mv.car.half.l + 0.3;
         taaMover.obj = mv.car.group; taaMover.min.set(-hw, -0.4, -hl); taaMover.max.set(hw, 2.6, hl);
+        post.taa.mover = taaMover;
+      } else if (cigar.vm.visible) {
+        taaMover.obj = cigar.vm; taaMover.min.set(-0.45, -0.5, -0.9); taaMover.max.set(0.45, 0.3, 0.3);
         post.taa.mover = taaMover;
       } else if (longGuns.vm.visible) {
         taaMover.obj = longGuns.vm; taaMover.min.set(-0.5, -0.6, -1.3); taaMover.max.set(0.5, 0.4, 0.5);
@@ -2347,7 +2388,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { POWER, relayLm, relayUse, thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { cigar, cigWind, POWER, relayLm, relayUse, thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {
