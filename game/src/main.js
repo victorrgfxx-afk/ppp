@@ -2199,7 +2199,7 @@ async function main() {
     if (mode === 'car' && flashlight.on) flashlight.set(false);
     flashlight.update(camera);
     rainFX.update(camera, rainLight + flash * 0.6, flashlight.info, moonBeam?.info, headlights.info, snowLamps, M.lampGlass.emissiveIntensity / 4,
-      weatherKey === 'furtuna' ? 80 : weatherKey === 'rafale' ? 60 : 40, night);   // (a downpour ~40 mm/h, a squall's ~60: the drops' sizes, so their speeds, fixed per weather - how many fall goes with the rain)
+      weatherKey === 'furtuna' ? 80 : weatherKey === 'rafale' ? 60 : 40, night, flash);   // (a downpour ~40 mm/h, a squall's ~60: the drops' sizes, so their speeds, fixed per weather - how many fall goes with the rain)
     eaves.update(renderer, camera, dt, t, rainFX.wind.value, rainLight + flash * 0.6);
     fogGlow.update(camera, fogLamps, M.lampGlass.emissiveIntensity / 4, scene.fog.near * AIR_FOG.x * Math.exp(-Math.max(0, camera.position.y) / scene.fog.far));
     headlights.set(mode === 'car' && !!active?.lightsOn); headlights.update(active);

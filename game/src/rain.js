@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LAMP_OCC_GLSL, LAMP_I0 } from './lamps.js';
 import { EYE } from './eye.js';
+import { FXSRC } from './taa.js';
 
 // Torrential rain: falling streaks, splashes, wet surfaces with puddles, water running down sloped roads and raindrop
 // rings, all stopped by whatever is on top. A top-down height map around the camera (the highest surface: crowns,
@@ -898,11 +899,51 @@ export class SnowLee {
 }
 
 // ------------------------------------------------------------------ falling rain and splashes
-const STREAK_VERT = /* glsl */`
+// (V122) The drops, as drops. A falling drop is a small ball lens of water (n = 1.333): a ray entering it at a share rho
+// of its radius off its middle leaves it turned by 2 (asin rho - asin(rho / n)) towards the far side - up to 83 deg at
+// its rim, a field of view of ~165 deg (Garg & Nayar 2004, "Photometric model of a rain drop"). So it shows, small and
+// turned over, the scene behind it in its middle, the bright sky round its lower rim and the ground round its upper one,
+// and a little of everything mirrored at its edge (Fresnel): its brightness hardly depends on what is behind it, it is
+// "typically brighter than its background" (ibid.) - and against the sky it hardly shows. The big ones are flattened
+// underneath (Beard & Chuang 1987: axis ratio ~0.93 at 2 mm, ~0.71 at 5 mm), never tear-shaped.
+// Each drop is drawn as what one exposure takes of it: its disc moving down its path, over each pixel for the share of
+// the exposure it covers it (worked out exactly), blurred by the pupil when it is nearer or further than the eye's
+// focus (eye.js), blended over the frame (not added on). The exposure: half a frame (a 180 deg shutter, ~8 ms at 60
+// fps). Before V122 each drop drew the ~45 ms the retina holds an image (60-90 ms: Rousseau et al. 2006) - but the eye
+// that watches the screen holds it again on top: lines.
+// In the nearest layer each pixel of a drop is worked out as the lens it is, from the frame itself (TAA's resolve, drawn
+// before the rain: taa.js FXSRC) and, where its rays leave the view, the sky's light (the IBL map); further out, where a
+// drop is under a pixel, from its mean: the sky and the ground round its rim, what is behind it through its middle.
+const SEEN_GLSL = /* glsl */`
+uniform sampler2D uEnv, uScene;
+uniform float uEnvOn, uEnvK, uSceneOn;
+uniform vec3 uEnvFlat;
+#include <cube_uv_reflection_fragment>
+// the light coming along r (world): the frame where r is in view (the scene as drawn, before the rain); out of view, the
+// frame's nearest edge stands for what is there (the street, the houses and the trees go on past it) - but for the open
+// sky overhead and what is behind you: the sky's light map (the sky; the ground under the horizon)
+vec3 seen(vec3 r, float rough) {
+  vec3 c = uEnvFlat;
+#ifdef ENVMAP_TYPE_CUBE_UV
+  if (uEnvOn > 0.5) c = textureCubeUV(uEnv, r, rough).rgb;
+#endif
+  c *= uEnvK;
+  if (uSceneOn > 0.5) {
+    vec4 cl = projectionMatrix * (viewMatrix * vec4(r, 0.0));
+    if (cl.w > 1e-4) {
+      vec2 uv = cl.xy / cl.w * 0.5 + 0.5, ed = abs(uv - 0.5) * 2.0;
+      float k = max(1.0 - smoothstep(0.86, 0.99, max(ed.x, ed.y)), 1.0 - smoothstep(0.15, 0.55, r.y));
+      if (k > 0.0) c = mix(c, texture2D(uScene, clamp(uv, 0.002, 0.998)).rgb, k);
+    }
+  }
+  return c;
+}`;
+const DROP_VERT = /* glsl */`
 attribute vec2 corner;
 attribute vec4 aSeed;
-uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uLen, uWidth, uCurtain, uGale;
-uniform float uRate, uPx, uPupil;    // the rain rate (mm/h); the camera's angle per pixel; the eye's pupil (m)
+uniform float uRain, uRainTime, uOccOn, uRadius, uHeight, uSpeed, uCurtain, uGale, uGain;
+uniform float uRate, uPx, uExpo;     // the rain rate (mm/h); the camera's angle per pixel; the exposure (s)
+uniform float uGlint;                // (how much a lit drop sends on: its glint's share of the light, for the exposure)
 uniform vec4 uLamps[6];              // street lamp heads near you (w: how bright)
 uniform vec4 uCarL, uCarLDir;        // the headlights of the car you drive (w: on) and their axis (w: cos of the cone)
 uniform sampler2D uOcc;
@@ -913,13 +954,17 @@ uniform vec2 uAirOff;                // how far the air has carried the squall's
 uniform vec3 uCam;
 uniform vec4 uTorch, uTorchDir;      // torch position (w: on) and direction (w: cos of the cone)
 uniform vec4 uBeam, uBeamDir;        // the moon's shaft: a point on its axis (w: radius) and the axis (w: on)
-varying float vA, vLit, vB, vOsc, vAmp;
-varying vec3 vLamp;
-varying vec2 vC;
+uniform sampler2D uEyeProbe;         // (eye.js: the eye's focus in dioptres, its pupil in metres)
+uniform float uEyeProbeW;
+varying float vA, vM, vAr, vSharp, vOsc, vAmp;
+varying vec2 vQ, vUp;
+varying vec3 vSky, vGnd, vGlint, vVd, vSide, vAlong;
 ${OCC_GLSL}
 ${LEE_GLSL}
+${SEEN_GLSL}
 void main() {
-  vC = corner; vA = 0.0; vLit = 0.0; vB = 0.0; vOsc = 0.0; vAmp = 0.0; vLamp = vec3(0.0);
+  vQ = vec2(0.0); vUp = vec2(0.0, -1.0); vA = 0.0; vM = 0.0; vAr = 1.0; vSharp = 0.0; vOsc = 0.0; vAmp = 0.0;
+  vSky = vec3(0.0); vGnd = vec3(0.0); vGlint = vec3(0.0); vVd = vec3(0.0, 0.0, -1.0); vSide = vec3(1.0, 0.0, 0.0); vAlong = vec3(0.0, -1.0, 0.0);
   gl_Position = vec4(0.0, 0.0, 2.0, 1.0);                       // (culled unless placed below)
   if (aSeed.w > uRain) return;
   // the drop's diameter (mm), as rain has them: Marshall-Palmer, N(D) ~ exp(-Lambda D), Lambda = 4.1 R^-0.21 per mm
@@ -957,25 +1002,38 @@ void main() {
     if (leeGap(p) > 0.06 || (p.y < top && top - p.y < 10.0 && fract(aSeed.y * 41.3) < 0.55)) return;
   } else if (p.y < top) return;
   if (inCar(p)) return;
-  vec3 dir = normalize(vel), toCam = uCam - p;
+  // seen from here: its motion across the line of sight (what it travels along it changes nothing in the picture)
+  vec3 toCam = uCam - p;
   float dist = length(toCam);
-  vec3 side = normalize(cross(dir, toCam));
-  // its width: the drop itself or a pixel, whichever is bigger; close to the eye (focused on the scene beyond) the
-  // pupil blurs it into a wide, faint smear (blur angle ~ pupil x (1/distance - 1/10 m))
-  float blur = uPupil * abs(1.0 / max(dist, 0.2) - 0.1), ang = max(max(uPx, D * 1e-3 / dist), blur);
-  float w = dist * ang * 0.5 * uWidth;
-  // its streak: how far it travels while the eye takes it in (~45 ms; uLen), faster drops longer
-  float stretch = clamp(sqrt(length(vel) / fall), 1.0, 1.5);
-  vec3 pos = p - dir * length(vel) * uLen * corner.y + side * w * corner.x;
-  vA = (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.25, 0.9, dist) * min(1.0, max(uPx, D * 1e-3 / dist) / ang);
-  // how bright: a drop is a tiny lens showing the sky; over a streak each pixel holds it for (its size / its travel)
-  // of the time - about the same for big and small drops (~D / speed), the big ones a little brighter
-  vB = (0.62 + 0.38 * sz) / stretch;
-  // drops over ~1 mm oscillate as they fall (mode 2, f = sqrt(8 sigma / rho a^3) / 2 pi: ~65 Hz at 3 mm, ~120 Hz at
-  // 2 mm): their streaks come out banded, a few bright beads along them (Garg & Nayar)
+  vec3 vd = -toCam / max(dist, 1e-4);
+  vec3 vp = vel - vd * dot(vel, vd), dn = vec3(0.0, -1.0, 0.0) + vd * vd.y;
+  float vl = length(vp);
+  vec3 along = vl > 1e-4 ? vp / vl : (dot(dn, dn) > 1e-6 ? normalize(dn) : vec3(1.0, 0.0, 0.0));
+  vec3 side = normalize(cross(along, vd));
+  // its radius, and how flattened it is (Beard & Chuang 1987, the polynomial fit: b/a = 1.0048 + 5.7e-4 D - 2.628e-2 D^2
+  // + 3.682e-3 D^3 - 1.677e-4 D^4, D in mm) as seen from this side (its axis upright)
   float a = D * 5e-4;
-  vOsc = sqrt(8.0 * 0.0728 / (1000.0 * a * a * a)) / 6.2832 * uLen;
-  vAmp = 0.55 * smoothstep(1.0, 3.0, D);
+  float ar = clamp(1.0048 + D * (5.7e-4 + D * (-2.628e-2 + D * (3.682e-3 - 1.677e-4 * D))), 0.6, 1.0);
+  float arP = sqrt(ar * ar * (1.0 - vd.y * vd.y) + vd.y * vd.y);
+  // drawn as a disc of radius R: the drop, spread by the eye's blur circle (b = A |1/z - 1/z0|, A the pupil: eye.js) and
+  // by the pixel (one across at least); the share of the disc's light that is the drop's own image goes as (a / R)^2
+  vec4 eyeP = texture2D(uEyeProbe, vec2(0.5 / uEyeProbeW, 0.5));
+  float blurR = 0.5 * eyeP.g * abs(1.0 / max(dist, 0.05) - eyeP.r) * dist, P = uPx * dist;
+  float R = sqrt(a * a + blurR * blurR + 0.36 * P * P);
+  vSharp = a * a / (R * R);
+  // the quad: across the disc, and along its path in the exposure - from where it was when the exposure opened (its
+  // centre at y = -m, in R) to where it is now (y = 0)
+  float m = vl * uExpo / R, e = 0.05 + 0.6 * P / R;
+  float y = mix(arP + e, -m - arP - e, corner.y), x = corner.x * (1.0 + e);
+  vQ = vec2(x, y); vM = m; vAr = arP; vVd = vd; vSide = side; vAlong = along;
+  // each drawn drop stands for many (uGain); heavier rain holds more water in the air (its liquid water content goes as
+  // R^0.88, Marshall-Palmer: 1.43x at 60 mm/h, 1.84x at 80); a gale drives the drops along its gusts' sheets, denser than
+  // can be drawn - their streaks, longer as they fly faster, are kept about as bright as a falling drop's
+  vA = uGain * pow(max(uRate, 1.0) / 40.0, 0.88) * clamp(vl / fall, 1.0, 3.0) * (1.0 - smoothstep(uRadius * 0.7, uRadius, length(toCam.xz))) * smoothstep(0.08, 0.2, dist);
+  // drops over ~1 mm oscillate as they fall (mode 2, f = sqrt(8 sigma / rho a^3) / 2 pi: ~65 Hz at 3 mm, ~120 Hz at
+  // 2 mm): over a long exposure their streaks come out banded (Garg & Nayar 2006); over this one, a little
+  vOsc = sqrt(8.0 * 0.0728 / (1000.0 * a * a * a)) / 6.2832 * uExpo;
+  vAmp = 0.45 * smoothstep(1.0, 3.0, D);
   // the rain comes in sheets (curtains) carried along by the air, denser and sparser bands across the wind some tens of
   // metres apart; in a squall they sweep past with every gust
   // (on the wind's mean bearing, V92: on its passing one - it veers with every gust - the bands far from where the air's
@@ -985,37 +1043,79 @@ void main() {
   vA *= mix(1.0, 0.2 + 0.8 * cur, max(uCurtain, uGale * 0.85)) * mix(1.0, (0.55 + 0.75 * gf) * (0.6 + 0.9 * sheet), uGale);
   // drops caught in the torch's cone or in the moon's shaft light up
   vec3 tp = p - uTorch.xyz; float tl = length(tp);
-  vLit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
+  float lit = uTorch.w * smoothstep(uTorchDir.w, uTorchDir.w + 0.04, dot(tp / max(tl, 1e-3), uTorchDir.xyz)) * (1.0 - smoothstep(4.0, 22.0, tl));
   vec3 bp = p - uBeam.xyz; float br = length(bp - uBeamDir.xyz * dot(bp, uBeamDir.xyz));
-  vLit += uBeamDir.w * 0.1 * (1.0 - smoothstep(uBeam.w * 0.6, uBeam.w, br));
+  lit += uBeamDir.w * 0.1 * (1.0 - smoothstep(uBeam.w * 0.6, uBeam.w, br));
   // the headlights of the car you drive, and the street lamps: a drop with the light behind it, nearly on your line of
   // sight, throws it forward into your eye (the forward scattering of a water drop) - the bright rain under a lamp
-  vec3 vd = -toCam / max(dist, 1e-3);
   vec3 cp = p - uCarL.xyz; float cl = length(cp);
-  vLit += 1.2 * uCarL.w * smoothstep(uCarLDir.w, uCarLDir.w + 0.05, dot(cp / max(cl, 1e-3), uCarLDir.xyz)) * (1.0 - smoothstep(3.0, 40.0, cl));
+  lit += 1.2 * uCarL.w * smoothstep(uCarLDir.w, uCarLDir.w + 0.05, dot(cp / max(cl, 1e-3), uCarLDir.xyz)) * (1.0 - smoothstep(3.0, 40.0, cl));
+  vec3 lamp = vec3(0.0);
   for (int i = 0; i < 6; i++) {
     vec4 L = uLamps[i];
     if (L.w <= 0.0) continue;
     // (V101: lit as everything is by the lamp, lamps.js; a drop passes most of it on, throws it forward)
     vec3 q = L.xyz - p; float d2 = max(dot(q, q), 0.3), dl = sqrt(d2), cf = dot(q / dl, vd), cg = q.y / dl;
     float sp = (0.55 + 0.9 * (1.0 - cg * cg)) * smoothstep(0.1, 0.34, cg);
-    vLamp += vec3(1.0, 0.78, 0.5) * min(L.w * sp / d2, 60.0) * 0.012 * (0.35 + 2.5 * pow(max(cf, 0.0), 8.0));
+    lamp += vec3(1.0, 0.78, 0.5) * min(L.w * sp / d2, 60.0) * 0.012 * (0.35 + 2.5 * pow(max(cf, 0.0), 8.0));
   }
-  gl_Position = projectionMatrix * viewMatrix * vec4(pos, 1.0);
+  vGlint = (vec3(0.9, 0.92, 1.0) * lit * 1.4 + lamp) * uGlint;
+  // (too faint to show anywhere, lit or not: not drawn)
+  if (vSharp * vA * min(1.0, 2.0 * arP / max(m, 1e-3)) * (1.0 + dot(vGlint, vec3(4.0))) < 0.002) { vA = 0.0; return; }
+  // what its rim shows, on average: the sky ~50 deg above the line of sight round its lower part, the ground ~50 deg
+  // below it round its upper part (its mean (1 - k)^2 + k there ~0.96); which way is up across the drop (vUp)
+  vec3 upI = vec3(0.0, 1.0, 0.0) - vd * vd.y;
+  upI = dot(upI, upI) > 1e-6 ? normalize(upI) : -along;
+  vSky = 0.96 * seen(vd * 0.643 + upI * 0.766, 0.7);
+  vGnd = 0.96 * seen(vd * 0.643 - upI * 0.766, 0.7);
+  vUp = vec2(dot(upI, side), dot(upI, along));
+  gl_Position = projectionMatrix * viewMatrix * vec4(p + (side * x + along * y) * R, 1.0);
 }`;
-const STREAK_FRAG = /* glsl */`
-uniform vec3 uColor;
-uniform float uOpacity;
-varying float vA, vLit, vB, vOsc, vAmp;
-varying vec3 vLamp;
-varying vec2 vC;
+const DROP_FRAG = /* glsl */`
+uniform mat4 projectionMatrix;
+uniform float uDetail;
+varying float vA, vM, vAr, vSharp, vOsc, vAmp;
+varying vec2 vQ, vUp;
+varying vec3 vSky, vGnd, vGlint, vVd, vSide, vAlong;
+${SEEN_GLSL}
+// the light the drop sends to the eye from a point h of its disc (unit radius; y along its path): through it, bent
+// twice, (1 - k)^2 of it; off its surface, k (Fresnel, water, unpolarised) - Garg & Nayar's model without the internal
+// reflections ("significant only at the periphery of the drop")
+vec3 lens(vec2 h) {
+  float r2 = min(dot(h, h), 0.996);
+  h *= sqrt(r2 / max(dot(h, h), 1e-8));
+  float rho = sqrt(r2), ci = sqrt(1.0 - r2), st = rho / 1.333, ct = sqrt(1.0 - st * st);
+  float rs = (ci - 1.333 * ct) / (ci + 1.333 * ct), rp = (ct - 1.333 * ci) / (ct + 1.333 * ci);
+  float k = 0.5 * (rs * rs + rp * rp), dev = 2.0 * (asin(rho) - asin(st));
+  vec3 o = vSide * h.x + vAlong * h.y;                    // (from its middle to the point, across the line of sight)
+  vec3 rr = vVd * cos(dev) - o * (sin(dev) / max(rho, 1e-4));
+  vec3 rf = reflect(vVd, o - vVd * ci);
+  return (1.0 - k) * (1.0 - k) * seen(rr, 0.2) + k * seen(rf, 0.3);
+}
 void main() {
-  // drawn additively: a drop is a tiny lens that shows the bright sky, so it lightens what is behind it - plain against
-  // dark trees and walls, almost gone against the sky (like real rain)
-  float a = vA * uOpacity * (1.0 - abs(vC.x)) * smoothstep(0.0, 0.12, vC.y) * (1.0 - smoothstep(0.85, 1.0, vC.y));
-  a *= 1.0 + vAmp * sin(6.2832 * vOsc * vC.y + vOsc * 3.1);       // (an oscillating drop: beads along its streak)
-  if (a < 0.002) discard;
-  gl_FragColor = vec4(uColor * vB + vec3(0.9, 0.92, 1.0) * vLit * 1.4 + vLamp, min(a, 1.0));
+  // the share of the exposure its disc covers this pixel: its centre runs along y from -m (the exposure opening) to 0
+  // (now); flattened along y by vAr
+  float x = vQ.x, y = vQ.y / vAr, m = vM / vAr, w = sqrt(max(0.0, 1.0 - x * x));
+  float u0 = max(0.0, -y - w), u1 = min(m, w - y);
+  float cov = m > 1e-3 ? max(0.0, u1 - u0) / m : step(x * x + y * y, 1.0);
+  if (cov <= 0.0) discard;
+  cov *= 1.0 + vAmp * sin(6.2832 * vOsc * clamp(-vQ.y / max(vM, 1e-3), 0.0, 1.0) + vOsc * 3.1);   // (an oscillating drop: beads)
+  // (its share of the pixel; where drops would cover it over and over, at most ~0.9 of it)
+  float A = 0.9 * (1.0 - exp(-cov * vSharp * vA / 0.9));
+  if (A < 0.0015) discard;
+  // what it shows: its mean - round its rim the sky and the ground (over this pixel the part of the drop that passed it:
+  // the leading end of its path only the drop's lower part - the sky, bright -, the trailing end its upper part - the
+  // ground); its middle lets through what is behind it. Close by: the lens itself, at three points of its path here
+  float hu = clamp(dot(vec2(x, y + 0.5 * (u0 + u1)), vUp), -1.0, 1.0);
+  vec3 ring = mix(vSky, vGnd, 0.5 + 0.5 * hu);
+  vec4 o = vec4(ring, 1.0) * A * 0.64;
+  if (uDetail > 0.5 && uSceneOn > 0.5 && vSharp > 0.04) {
+    vec3 L = lens(vec2(x, y + mix(u0, u1, 0.1667))) + lens(vec2(x, y + mix(u0, u1, 0.5))) + lens(vec2(x, y + mix(u0, u1, 0.8333)));
+    vec3 B = texture2D(uScene, gl_FragCoord.xy / vec2(textureSize(uScene, 0))).rgb;
+    o = vec4(mix(0.64 * ring + 0.36 * B, L / 3.0, sqrt(vSharp)), 1.0) * A;
+  }
+  o.rgb += vGlint * A;
+  gl_FragColor = o;
 }`;
 
 // (V92) the splash of a drop, as high-speed films show it (a 2-3 mm drop landing at 7-8 m/s): the sheet thrown up round
@@ -1248,10 +1348,31 @@ export class RainFX {
     const mk = (vs, fs, u) => new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, uniforms: { ...common, uCam: this.cam, uColor: this.color, uWind: this.wind, uWindOff: this.windOff, uAxis: this.axis, uTorch: this.torch, uTorchDir: this.torchDir, uBeam: this.beam, uBeamDir: this.beamDir, ...u },
       transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });   // (the quads face either way)
     const add = (geo, mat) => { const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; m.userData.noAO = true; m.renderOrder = 5; this.group.add(m); return m; };
-    // two layers of streaks: close ones (a few metres, the ones you read as drops) and the curtain further out
-    const quad = [-1, 0, 1, 0, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3];
-    add(cloud(10000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uLen: { value: 0.045 }, uOpacity: { value: 0.95 }, uWidth: { value: 1 }, uCurtain: { value: 0.3 } }));
-    add(cloud(30000, quad, qi), mk(STREAK_VERT, STREAK_FRAG, { uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uLen: { value: 0.05 }, uOpacity: { value: 0.66 }, uWidth: { value: 1 }, uCurtain: { value: 1 } }));
+    // (V122) the drops: the exposure (update), the sky's light (the IBL map: setEnv) and the frame before the rain (TAA)
+    this.scene = scene; this.fdt = 1 / 60; this.lastNow = null; this.envKey = null;
+    this.expo = { value: 1 / 120 }; this.glint = { value: 6 };
+    this.env = { value: null }; this.envOn = { value: 0 }; this.envK = { value: 1 }; this.envFlat = { value: new THREE.Color(0.45, 0.47, 0.5) };
+    const dropU = { uExpo: this.expo, uGlint: this.glint, uEnv: this.env, uEnvOn: this.envOn, uEnvK: this.envK, uEnvFlat: this.envFlat,
+      uScene: FXSRC.tScene, uSceneOn: FXSRC.uSceneOn, uEyeProbe: EYE.probe, uEyeProbeW: EYE.probeW };
+    this.dropMats = [];
+    const drops = (u) => {
+      const m = mk(DROP_VERT, DROP_FRAG, { ...dropU, ...u });
+      // blended over the frame: premultiplied (the light it sends, its share of the pixel), the frame's alpha kept
+      Object.assign(m, { blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+        blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor });
+      m.defines = {};
+      this.dropMats.push(m);
+      return m;
+    };
+    // three layers, drawn from the furthest: the curtain further out, the drops of the street round you, and the ones
+    // right before your face (each pixel of them worked out as the lens it is). Real heavy rain has hundreds of drops
+    // over a millimetre in every cubic metre (Marshall-Palmer: ~640 at 40 mm/h); these are ~1/15 - 1/1300 of them, so
+    // each stands for many (uGain: the light of the ones it stands for), and fewer of them, each the more, on the lower
+    // settings (as many as the splashes allow: q)
+    const quad = [-1, 0, 1, 0, 1, 1, -1, 1], qi = [0, 1, 2, 0, 2, 3], q = Math.min(1, splashes / 4000);
+    add(cloud(Math.round(60000 * q), quad, qi), drops({ uRadius: { value: 34 }, uHeight: { value: 26 }, uSpeed: { value: 9.5 }, uGain: { value: 500 / q }, uCurtain: { value: 1 }, uDetail: { value: 0 } }));
+    add(cloud(Math.round(30000 * q), quad, qi), drops({ uRadius: { value: 9 }, uHeight: { value: 12 }, uSpeed: { value: 9.5 }, uGain: { value: 220 / q }, uCurtain: { value: 0.3 }, uDetail: { value: 0 } }));
+    add(cloud(Math.round(6000 * q), quad, qi), drops({ uRadius: { value: 2.6 }, uHeight: { value: 5 }, uSpeed: { value: 9.5 }, uGain: { value: 25 / q }, uCurtain: { value: 0 }, uDetail: { value: 1 } }));
     // the splashes (V92): slots of 9 pieces each, within 7 m
     add(cloud(splashes * 9, [-1, -1, 1, -1, 1, 1, -1, 1], qi), mk(SPLASH_VERT, SPLASH_FRAG, { uRadius: { value: 7 }, uOpacity: { value: 1.6 }, uFlow: RAIN.uFlow, uFlowBox: RAIN.uFlowBox, uRoad: RAIN.uRoad, uLow: RAIN.uLow, uSurfOn: RAIN.uSurfOn }));
     // the spray mist over the ground (not added on: it veils what is behind it)
@@ -1263,8 +1384,18 @@ export class RainFX {
 
   // torch: { on, pos, dir } ; beam: { on, pos, dir, r } (the moon's shaft); car: the headlights { on, pos, dir };
   // lamps: the lamp heads near you, level: how bright they burn; rate: mm/h; night: 0..1 (the pupil opens)
-  update(camera, light, torch, beam, car = null, lamps = [], level = 0, rate = 40, night = 0) {
+  update(camera, light, torch, beam, car = null, lamps = [], level = 0, rate = 40, night = 0, flash = 0) {
     this.group.visible = RAIN.uRain.value > 0.002;
+    // (V122) the drops' exposure: half a frame (a 180 deg shutter), on the frame rate as it runs - ~8 ms at 60 fps,
+    // 1/60 s at most, 1/250 s at least
+    const now = performance.now();
+    if (this.lastNow !== null) this.fdt += (Math.min(0.1, Math.max(0.002, (now - this.lastNow) / 1000)) - this.fdt) * 0.05;
+    this.lastNow = now;
+    this.expo.value = Math.min(1 / 60, Math.max(1 / 250, 0.5 * this.fdt));
+    // the sky's light they show (the IBL map, made again with the weather and the hour: main.js), the lightning on it
+    if (this.scene.environment !== this.env.value) this.setEnv(this.scene.environment);
+    this.envK.value = 1 + 1.5 * flash;
+    this.envFlat.value.setScalar(0.45 * light);
     if (car?.on) { this.carL.value.set(car.pos.x, car.pos.y, car.pos.z, 1); this.carLDir.value.set(car.dir.x, car.dir.y, car.dir.z, 0.9); } else this.carL.value.w = 0;
     this.lamps.value.forEach((v, i) => { const l = lamps[i]; if (l && level > 0.05) v.set(l.x, l.y, l.z, level * LAMP_I0); else v.w = 0; });
     this.rate.value = rate; this.pupil.value = 0.003 + 0.003 * night;
@@ -1285,6 +1416,20 @@ export class RainFX {
     if (this.axis.value.lengthSq() < 1e-6) this.axis.value.set(1, 0);
     this.axis.value.normalize();
     RAIN.uGale.value = g;
+  }
+
+  // the IBL map (PMREM, CubeUV): the drops read it as the materials do (three's textureCubeUV, its layout from the map's
+  // height, as WebGLPrograms works it out)
+  setEnv(env) {
+    const h = env && env.mapping === THREE.CubeUVReflectionMapping ? env.image?.height : 0;
+    this.env.value = h ? env : null; this.envOn.value = h ? 1 : 0;
+    if (h === this.envKey) return;
+    this.envKey = h;
+    const mip = h ? Math.log2(h) - 2 : 0;
+    for (const m of this.dropMats) {
+      m.defines = h ? { ENVMAP_TYPE_CUBE_UV: '', CUBEUV_TEXEL_WIDTH: 1 / (3 * Math.max(2 ** mip, 7 * 16)), CUBEUV_TEXEL_HEIGHT: 1 / h, CUBEUV_MAX_MIP: mip.toFixed(1) } : {};
+      m.needsUpdate = true;
+    }
   }
 }
 const _tint = new THREE.Color(0.97, 1, 1.05);

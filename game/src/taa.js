@@ -118,6 +118,9 @@ void main() { gl_FragColor = texture2D(tColor, vUv); gl_FragDepth = texture2D(tD
 // 2014), which the anti-aliasing averages into a smooth cross-fade (the trees' switch from model to billboard,
 // geo/trees.js); while it is off (SMAA) the switch is a hard one, as before
 export const DITHER = { uDitherOn: { value: 0 }, uDitherFrame: { value: 0 } };
+// (V122) the frame as resolved, for what is drawn after it (drawFX): a falling drop shows the scene through itself
+// (rain.js). Set only while drawFX draws (uSceneOn 1): drawn anywhere else, the drops make do with the sky's light.
+export const FXSRC = { tScene: { value: null }, uSceneOn: { value: 0 } };
 export const DITHER_GLSL = 'float ditherIGN() { vec2 p = gl_FragCoord.xy + 5.588238 * mod(uDitherFrame, 64.0); return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }';
 
 const halton = (i, b) => { let f = 1, r = 0; while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); } return r; };
@@ -253,7 +256,7 @@ export class TAAPass extends Pass {
     this.quad.material = this.comp;
     renderer.setRenderTarget(writeBuffer);
     this.quad.render(renderer);
-    this.drawFX(renderer, writeBuffer);
+    this.drawFX(renderer, writeBuffer, out.texture);
   }
   // (no depth this frame: the frame as it is, and the history starts again)
   passThrough(renderer, writeBuffer, readBuffer) {
@@ -263,12 +266,14 @@ export class TAAPass extends Pass {
     this.quad.render(renderer);
     this.valid = false;
   }
-  drawFX(renderer, target) {
+  drawFX(renderer, target, src = null) {
     if (!this.fx.children.some(o => o.visible)) return;
     const ac = renderer.autoClear, sm = renderer.shadowMap.autoUpdate;
     renderer.autoClear = false; renderer.shadowMap.autoUpdate = false;
+    FXSRC.tScene.value = src; FXSRC.uSceneOn.value = src ? 1 : 0;
     renderer.setRenderTarget(target);
     renderer.render(this.fx, this.camera);
+    FXSRC.uSceneOn.value = 0;
     renderer.autoClear = ac; renderer.shadowMap.autoUpdate = sm;
   }
   dispose() { this.hist.forEach(r => r.dispose()); this.depth.dispose(); this.keepMat.dispose(); this.resolve.dispose(); this.comp.dispose(); this.quad.dispose(); }
