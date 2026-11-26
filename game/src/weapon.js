@@ -232,7 +232,7 @@ export class Glock {
   update(ctx) {
     const { dt, input, player } = ctx;
     ctx.world ??= this.world; ctx.audio ??= this.audio;
-    this.t += dt;
+    this.t += dt; this.body = !!ctx.bodycam;
     const free = this.owned && ctx.foot;
     if (!free) { this.targets?.setLive(false); this.out = 0; this.vm.visible = false; this.reload = null; this.act = null; this.hud.show(false); this.hud.aim(false); this.hud.tick(); this.fovMul = 1; this.ads = 0; this.stance = 0; this.adsV = this.stanceV = 0; this.fade = null; this.tacOn = false; player.aimSlow = 1; player.armed = false; player.gunBusy = false; this.fx.update(dt, ctx); return; }
     if (input.hit('KeyQ')) { this.want = !this.want; this.audio?.gunCloth?.(); }
@@ -499,7 +499,8 @@ export class Glock {
   // squeezed across by the ratio of the two lenses, its depth kept; a little narrower aimed, the gun nearer)
   placeView(camera) {
     camera.updateMatrixWorld();
-    const k = Math.tan(camera.fov * Math.PI / 360) / Math.tan(VM_FOV * (1 - 0.12 * this.ads) * Math.PI / 360);
+    // (V127) the body camera sees it where it really is, at its real size: its own 160 deg lens, not the eyes' squeeze
+    const k = this.body ? 1 : Math.tan(camera.fov * Math.PI / 360) / Math.tan(VM_FOV * (1 - 0.12 * this.ads) * Math.PI / 360);
     this.vm.matrix.copy(camera.matrixWorld).multiply(_sc.makeScale(k, k, 1));
     this.vm.matrixWorldNeedsUpdate = true;
   }

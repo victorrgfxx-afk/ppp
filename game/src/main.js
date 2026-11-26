@@ -1108,6 +1108,9 @@ async function main() {
   // running, the chest leaning forward. Turning fast, its sensor's rows read one after another skew the picture
   // (post.js uRS: ~25 ms from the top row to the bottom)
   const BODY = { yaw: 0, yv: 0, pitch: 0, pv: 0, jolt: 0, jv: 0, lastPh: 0, lastYaw: null };
+  // (V127) how far under the eyes it sits: high on the chest, under the collarbone (it was 37 cm, mid-chest: the
+  // pistol held up to aim was at the top edge of its picture or above it)
+  const BODY_DROP = 0.2;
   // a damped spring (angular frequency w, damping ratio z < 1) solved exactly over h: its offset d and speed v after it
   const damped = (d, v, w, z, h) => {
     const wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * h), c = Math.cos(wd * h), s = Math.sin(wd * h);
@@ -1117,7 +1120,7 @@ async function main() {
     const B = BODY, lu = post.lens.material.uniforms;
     if (mode !== 'foot' || riding || player.noclip) {
       // (in a car or riding: on your chest where you sit, looking the way you look)
-      _gpOff.set(0, -0.37, -0.05).applyQuaternion(camera.quaternion); camera.position.add(_gpOff);
+      _gpOff.set(0, -BODY_DROP, -0.05).applyQuaternion(camera.quaternion); camera.position.add(_gpOff);
       lu.uRS.value = 0; B.lastYaw = null;
       return;
     }
@@ -1143,7 +1146,7 @@ async function main() {
     const fx = -Math.sin(B.yaw), fz = -Math.cos(B.yaw), rx = Math.cos(B.yaw), rz = -Math.sin(B.yaw);
     const bob = Math.abs(Math.sin(ph)) * 0.05 * k - 0.025 * k, side = Math.cos(ph) * 0.022 * k;
     camera.position.set(player.pos.x + fx * 0.06 + rx * side,
-      player.pos.y + player.eyeCur - 0.37 * (player.eyeCur / player.eye) + bob + 0.006 * B.jolt - player.landShake * 1.5,
+      player.pos.y + player.eyeCur - BODY_DROP * (player.eyeCur / player.eye) + bob + 0.006 * B.jolt - player.landShake * 1.5,
       player.pos.z + fz * 0.06 + rz * side);
     camera.rotation.set(B.pitch * 0.92 - lean + pitchOsc, B.yaw + yawOsc, rollOsc - B.yv * 0.012, 'YXZ');
   };
@@ -1983,7 +1986,7 @@ async function main() {
       }
       // the pistol in your hands (on foot only: put away in a car, while riding or flying)
       longGuns.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, bodycam });
-      glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value });
+      glock?.update({ dt, camera, input, player, foot: mode === 'foot' && !riding && !player.noclip, snow: SNOW.uSnow.value, bodycam });
       // (V119) a long gun in your hands keeps the Glock in its holster; slung (Q), the Glock comes out
       if (longGuns.held >= 0 && longGuns.want) { if (glock) glock.want = false; player.armed = true; player.gunBusy = player.gunBusy || longGuns.busy; }
       ammoEl.style.display = longGuns.held >= 0 && longGuns.want && !bodycam ? 'block' : 'none';
@@ -2458,9 +2461,9 @@ async function main() {
       camera.updateMatrixWorld(); post.shafts.set(sunDir, (1 - night) * sun.shadow.intensity * THREE.MathUtils.smoothstep(sunInfo.el, -1, 2), 0.85, sun.color);
       post.shafts.cloudMap = sky.material.uniforms.uVolMap.value; post.shafts.cloudK = sky.material.uniforms.uVol.value;   // (V113: through their gaps)
     }
-    // the pistol in your hands, last: where the camera has ended up this frame
-    glock?.draw(camera, player);
-    longGuns.draw(camera, player);
+    // the pistol in your hands, last: where the camera has ended up this frame (for the body camera, after it has
+    // moved the camera onto the chest - below - so the gun sits where the chest sees it, not up at the eyes)
+    if (!bodycam) { glock?.draw(camera, player); longGuns.draw(camera, player); }
     // (V121) the cigar in your hand and its smoke, lit as smoke is: by the sky, by the sun mostly forward, the torch
     {
       const L = cigEnv.light, day = 1 - night, cover = WEATHER[weatherKey]?.cover ?? 0;
@@ -2477,6 +2480,7 @@ async function main() {
       if (bodycam) bodyPose(dt);
       else { _gpOff.copy(GOPRO_AT).applyQuaternion(camera.quaternion); camera.position.add(_gpOff); }
       camera.updateMatrixWorld();
+      if (bodycam) { glock?.draw(camera, player); longGuns.draw(camera, player); }
       if (bodycam && t - osdAt > 0.25) {
         osdAt = t;
         const sec = Math.floor(hour * 3600 + performance.now() / 1000 - osdT0), p2 = (n) => String(n).padStart(2, '0');

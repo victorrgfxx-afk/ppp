@@ -528,15 +528,13 @@ void main() {
     float dark = 1.0 - smoothstep(0.02, 0.55, l);
     c += (vec3(n) * 0.9 + nc * 0.6) * uNoise * (0.3 + 0.7 * dark);
     // (V118) a body camera's picture: its wide dynamic range (the shadows lifted, the highlights rolled off to a flat
-    // white - what makes body-worn footage look as it does), then what its encoder leaves at a few Mb/s: the flat dark
-    // areas in 8x8 blocks that shift from frame to frame, the darkest steps coarse (the bits spent where the detail is)
+    // white - what makes body-worn footage look as it does). (V127: the encoder's 8x8 blocks and coarse dark steps,
+    // V118-V126, taken out: on screen they read as pixelation)
     // (no branch and no derivatives here: every pixel the same way, the GoPro's picture where uBody is 0)
     float lb = dot(c, vec3(0.2126, 0.7152, 0.0722)), db = 1.0 - smoothstep(0.03, 0.4, lb);
     vec3 cb = c * (1.0 + 0.55 * (1.0 - smoothstep(0.0, 0.3, lb)));
     vec3 kn = max(cb * 1.06 - 0.8, 0.0);
     cb = min(cb * 1.06, vec3(0.8)) + (1.0 - exp(-kn * 5.0)) * 0.2;
-    cb += (hash12(floor(gl_FragCoord.xy / 8.0) + floor(uTime * 15.0) * 7.0) - 0.5) * 0.03 * db;
-    cb = mix(cb, floor(cb * 64.0 + 0.5) / 64.0, db * 0.6);
     c = mix(c, cb, step(0.5, uBody));
   }
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
@@ -921,6 +919,7 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   // at the scale the frame rate allows (DRS[drs] of one picture pixel to one screen pixel; V108 drew the middle 1:1
   // always), within the 5.3K frame and the card's limits
   let goproLens = 0, drs = 3;
+  const drlFloor = () => (lens.body ? 3 : 0);
   const goproFit = (force) => {
     const pr = window.devicePixelRatio || 1, w = Math.round(lastW * pr), h = Math.round(lastH * pr);
     const rig = goproRig(lens.body ? BODYCAM_LENS.diag : GOPRO_LENSES[goproLens].diag, w / h), R = rig.sides;
@@ -957,9 +956,10 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
     const target = Math.max(1000 / 60, D.eye), set = (v) => { drs = v; goproFit(false); D.hold = 1; };
     if (D.upBlock > 0) D.upBlock--;
     if (D.downBlock > 0) D.downBlock--;
-    if (D.probe) { D.probe = false; if (ft > target * 1.15 && drs > 0) { D.upBlock = 20; set(drs - 1); return; } }
+    const floor = drlFloor();                                // (V127: the body camera kept at 0.67 at least)
+    if (D.probe) { D.probe = false; if (ft > target * 1.15 && drs > floor) { D.upBlock = 20; set(drs - 1); return; } }
     if (D.last) { const l = D.last; D.last = null; if (ft > l.ft * 0.95) { D.downBlock = 10; set(l.level); return; } }
-    if (ft > target * 1.15 && drs > 0 && !D.downBlock) { D.last = { ft, level: drs }; set(drs - 1); return; }
+    if (ft > target * 1.15 && drs > floor && !D.downBlock) { D.last = { ft, level: drs }; set(drs - 1); return; }
     if (ft < target * 1.08 && drs < DRS.length - 1 && !D.upBlock) { D.probe = true; set(drs + 1); }
   };
   const setSize = (w, h) => {
@@ -981,8 +981,9 @@ export function createComposer(renderer, scene, camera, q, farScene = null) {
   const setGoPro = (on, body = false) => {
     lens.fish = on;
     // (V118) the body camera's picture or the GoPro's: its lens, its colour (flatter, less saturated: the WDR), its
-    // grain and the encoder's blocks, its stronger lateral colour and fall-off (a small, cheap lens)
+    // grain, its stronger lateral colour and fall-off (a small, cheap lens)
     lens.body = on && body;
+    if (lens.body && drlFloor() > drs) drs = drlFloor();     // (V127: no lower than 0.67 for it)
     const u = lens.material.uniforms;
     u.uBody.value = lens.body ? 1 : 0; u.uRS.value = 0;
     u.uSat.value = lens.body ? 0.86 : 1.16; u.uCon.value = lens.body ? 0.95 : 1.06; u.uCA.value = lens.body ? 0.0045 : 0.0025;
