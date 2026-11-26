@@ -8,6 +8,7 @@ import { SnowRoofs, Icicles } from './snowroofs.js';
 import { installCascadedShadows, SunCascades, WEATHER, WEATHER_ORDER, sunlightAt, HOURS, hourLabel, shareInstancedDepth, CLOUD_SH, cloudLevel } from './lighting.js';
 import { RAIN, SNOW, STORM, UNDER_SNOW, wetScene, RainOcclusion, RainFX, SnowFX, SnowBlanket, SnowLee, snowRoads, Spray, FogGlow } from './rain.js';
 import { Runoff, EaveStreams } from './runoff.js';
+import { FloodWater } from './floodwater.js';
 import { SnowTrail } from './snowtrail.js';
 import { SnowProbe, SnowPack } from './snowprobe.js';
 import { MoonBeam, Flashlight, Headlights, Lightning } from './night.js';
@@ -888,6 +889,12 @@ async function main() {
   const blanket = new SnowBlanket(scene, lowQ ? 192 : 384);
   rainOcc.roads = snowRoads(GEO.roads);
   const runoff = new Runoff(rainOcc), eaves = new EaveStreams(scene, runoff);
+  // (V125) the surface of the water that gathers, at its own level (drawn after TAA's resolve)
+  const flood = new FloodWater(runoff, { fog: scene.fog, air: { sun: AIR_SUN, cool: AIR_COOL, fog: AIR_FOG }, env: rainFX.env, envOn: rainFX.envOn, envK: rainFX.envK,
+    wind: rainFX.wind, windOff: rainFX.windOff, lamps: post.ssr?.material.uniforms });
+  // (V125) the water that gathers (runoff.js): the storm's rain so far (m), what the open ground has soaked up (m), how
+  // deep the hollows may still stand after it (m), the time since the water was last stepped (s)
+  const pond = { P: 0, Fe: 0, left: 0, acc: 0 };
   // your footprints and the tyre tracks in it (snowtrail.js), and the snow's flight seen from upwind: nothing it
   // cannot blow through lets it pass (rain.js)
   const trail = new SnowTrail(lowQ ? 1024 : 2048, 24), snowLee = new SnowLee(lowQ ? 512 : 1024, lowQ ? 256 : 512);
@@ -914,10 +921,10 @@ async function main() {
       ...built.forest.firRecords('spruceB', { key: 'yard10', H: 10, crown: 2.2, low: 1.0, seed: 12 })];
     firs.addSource((x, z, Rr, out) => { for (const r of yard) if (Math.abs(r.x - x) < Rr && Math.abs(r.z - z) < Rr) out.push(r); });
   }
-  const occHide = [sky, rainFX.group, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
+  const occHide = [sky, rainFX.group, flood.mesh, eaves.group, snowFX.group, blanket.mesh, blanket.fine, firs.fall.clumps, firs.fall.powder, ...(geoWorld.canopy?.meshes ?? [])];
   // what falls or flies too fast for the anti-aliasing to follow: drawn after it (taa.js)
   const fogGlow = new FogGlow(scene);                 // (V92: the lamps' halos in a fog)
-  post.taa?.setFX(scene, [rainFX.group, snowFX.group, spray.mesh, wheelFX.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh, cigar.fx]);
+  post.taa?.setFX(scene, [flood.mesh, rainFX.group, snowFX.group, spray.mesh, wheelFX.mesh, eaves.group, firs.fall.powder, others.tags, campfire?.fx, fogGlow.mesh, cigar.fx]);
   // ...and every light effect that writes no depth (the moon's shaft over the hill, glows, the tyre spray): none of
   // them keeps the rain or the snow off the ground under it; in winter the bare broadleaf crowns neither (leafTex below)
   const occSkip = (o) => { const m = o.material; return !!m && !Array.isArray(m) && (m.depthWrite === false || m.userData.rainThrough || (winter && leafTex.includes(m.map))); };
@@ -2159,17 +2166,36 @@ async function main() {
       player.slow = damp(player.slow ?? 1, Math.sqrt(1.3 / (1.3 + 8 * (s ? Math.max(0, s.top - s.support) : 0))), 6, dt);
     }
     player.snowK = SNOW.uSnow.value; player.wetK = RAIN.uWet.value;        // (a slide: far on snow, further on wet grass)
-    const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002;
+    // (V125) the water that gathers: the rain as it falls (40-80 mm/h by the weather); how deep the hollows have filled so
+    // far (new ground coming into the box starts so: ~6x the rain, what a hollow gathers off the ground round it); what
+    // the open ground has soaked up (modified Horton, as the shader: f = f0 - k F, not under fc); after the rain the
+    // puddles dry - sped up, ~6 mm a minute (real ones take hours)
+    const fdt = paused ? 0 : dt, rainNow = (weatherKey === 'furtuna' ? 80 : weatherKey === 'rafale' ? 60 : 40) * RAIN.uRain.value / 3.6e6;
+    const raining = rainNow > 0.5 / 3.6e6;
+    pond.P = raining ? pond.P + rainNow * fdt : Math.max(0, pond.P - 1e-4 * fdt);
+    { const f = Math.max(3.3 / 3.6e6, 51 / 3.6e6 - 4 / 3600 * pond.Fe); pond.Fe += Math.max(0, Math.min(rainNow, f) - 3.3 / 3.6e6) * fdt; }
+    pond.left = raining ? Math.max(pond.left, Math.min(0.35, 6 * pond.P)) : Math.max(0, pond.left - 1e-4 * fdt);
+    const wetNow = RAIN.uWet.value > 0.001 || RAIN.uRain.value > 0.002 || pond.left > 0.001;
     let occNew = false;
     if (wetNow || SNOW.uSnow.value > 0.001 || SNOW.uSnowFall.value > 0.002 || lampLight.level > 0.01) occNew = rainOcc.update(renderer, scene, camera.position, camGround, occHide, occSkip, SNOW.uSnowDepth.value > 0.005 || snowFall > 0, softSkip, wetNow);
     // the water running off everything (runoff.js): ~100 mm/h in a downpour, ~250 mm/h in a squall's bursts (a summer
     // thunderstorm's), its catchment taken ~3x the box around you (what runs in from further up the street); the
     // hollows fill as the ground soaks
     if (wetNow && SNOW.uSnow.value < 0.3) {
-      if (occNew) runoff.refresh(renderer);
+      if (occNew) {
+        // (the cars here, the nearest first: the water runs under them)
+        const bx = RAIN.uOccBox.value.x, bz = RAIN.uOccBox.value.y, cp = camera.position;
+        runoff.setCars(vehicles.filter(v => Math.abs(v.x - bx) < 52 && Math.abs(v.z - bz) < 52).sort((a, b) => ((a.x - cp.x) ** 2 + (a.z - cp.z) ** 2) - ((b.x - cp.x) ** 2 + (b.z - cp.z) ** 2)));
+        runoff.refresh(renderer);
+      }
       const mmh = squall ? 250 : 100;
-      if (!lowQ || (frameNo & 1) === 0 || occNew) runoff.step(renderer, RAIN.uRain.value * mmh / 3.6e6 * 3, RAIN.uWet.value);   // (every other frame on the low settings)
-    } else runoff.off();
+      pond.acc += fdt;
+      if (!lowQ || (frameNo & 1) === 0 || occNew) {   // (every other frame on the low settings)
+        runoff.step(renderer, { rate: RAIN.uRain.value * mmh / 3.6e6 * 3, rain: rainNow, dt: Math.min(pond.acc, 0.16), capT: raining ? Math.min(0.35, 6 * pond.P) : pond.left, dry: raining ? 0 : 1e-4, feAvg: pond.Fe });
+        pond.acc = 0;
+      }
+    } else { runoff.off(); pond.acc = 0; }
+    flood.update(!!post.taa?.enabled && wetNow && SNOW.uSnow.value < 0.3);
     // what keeps the flying snow off, or in a squall the driven rain
     const driven = STORM.gale > 0.05 && RAIN.uRain.value > 0.002;
     if ((SNOW.uSnowFall.value > 0.002 || STORM.uStorm.value > 0.002 || driven) && rainOcc.snow) snowLee.update(renderer, scene, camera.position, occHide, leeSkip, rainOcc.snow.low.texture, dt, driven && SNOW.uSnowFall.value < 0.002 ? 7 : 1);
@@ -2249,7 +2275,7 @@ async function main() {
     // (V95) and the marks, the smoke and the dust of tyres that slide, a dirt road's dust (wheelfx.js)
     wheelFX.update(dt, mode === 'car' && active ? active : null, { wet: RAIN.uWet.value, snow: SNOW.uSnow.value, light: rainLight + flash * 0.6, cam: camera.position, t: fxClock += dt });
     // reflections in wet ground only when there is any (or a still puddle near: the oil wells' pad)
-    if (post.ssr) post.ssr.enabled = (RAIN.uWet.value > 0.01 || geoWorld.mirrorNear(camera.position)) && !window.__game?.noSSR;
+    if (post.ssr) post.ssr.enabled = (RAIN.uWet.value > 0.01 || pond.left > 0.001 || geoWorld.mirrorNear(camera.position)) && !window.__game?.noSSR;
     {
       const pp = pos0(), cx = camera.position.x, cz = camera.position.z;
       const st = { people, px: pp.x, pz: pp.z, camX: cx, camZ: cz, camera: gopro ? post.viewCam : camera, night, winter, horror: horror > 0.5, day: 1 - night, rain: RAIN.uRain.value, snow: SNOW.uSnowFall.value };
@@ -2389,7 +2415,7 @@ async function main() {
   }
 
   // automated test hooks (used by tools/test.mjs)
-  window.__game = { cigar, cigWind, POWER, relayLm, relayUse, thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
+  window.__game = { pond, flood, cigar, cigWind, POWER, relayLm, relayUse, thunder, windthrow, longGuns, clouds, sky, snowRoofs, icicles, lampLight, eyeState, glasses, wearGlasses, EYE, jets, mission, tuner, TRACTION, wheelFX, audio, geo: geoWorld.info, geoWorld, mirrors, driver, get sun() { return sunInfo; }, get sunOcc() { return sunOcc; }, get golden() { return golden; }, goldenTime, get moon() { return moonInfo; }, get night() { return night; }, get horror() { return horror; }, bear, wildlife, birds, share, lightning, maybach, moonBeam, flashlight, cascades, forest, sceneTime, goToForest, hikers, RAIN, SNOW, STORM, rainOcc, runoff, eaves, firs, trail, snowLee, blanket, snowProbe, snowPack, leeSkip, get shelter() { return shelter; }, shelterAt, get windSpeed() { return windSpeed; }, get gust() { return gust; }, get treeWind() { return treeWind; }, glock, range, setWind: (i) => { windPick = i; if (i >= 0) treeWind = WIND_PICKS[i][0]; }, get time() { return t; }, set time(v) { t = v; }, setWeather, setHour, get weather() { return weatherKey; }, get hour() { return hour; }, post, dogs, walkers, player, vehicles, camera, renderer, scene, farScene, views: PHOTO_VIEWS, gotoView, enterCar, campfire, mp, others, joinFriend, get riding() { return riding; }, exitCar: () => exitCar(true), begin, get mode() { return mode; }, input, world, TEX, M };
 }
 
 main().catch((e) => {

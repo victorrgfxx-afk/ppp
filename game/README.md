@@ -852,6 +852,77 @@ Jocul se joacă pe calculator, cu tastatură și mouse. Versiunea pentru telefon
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Apa care se strânge în furtună: fizică reală și suprafață proprie (V125)** (`src/runoff.js`, `src/floodwater.js`, `src/rain.js`, `src/taa.js`, `src/main.js`):
+  * **Ce s-a schimbat:** apa de ploaie nu mai e doar un strat desenat pe asfalt. E calculată ca apă adevărată, pe o rețea de celule de ~19 cm pe 96 × 96 m în jurul tău. Ea:
+    * cade pe fiecare celulă după cât de deschisă e spre cer;
+    * se infiltrează în pământ;
+    * curge la vale;
+    * umple gropile, rigolele de lângă borduri și adânciturile, atât cât le permite forma terenului.
+  * Într-o furtună lungă, apa poate ajunge la 30 cm și mai mult acolo unde terenul o ține. Unde e mai adâncă de ~5 mm, are suprafața ei, desenată la nivelul ei real. Roțile, bordurile, stâlpii și bocancii stau în apă, iar marginea bălții e exact linia unde nivelul apei întâlnește pământul.
+  * **Fizica apei:**
+    * **Ecuațiile de ape puțin adânci**, în forma „local inertial” din LISFLOOD-FP (Bates, Horritt și Fewtrell 2010), cu ponderarea lui de Almeida et al. (2012), care o ține stabilă pe suprafețe netede (Ozdemir et al. 2013, HESS 17:4015, ec. 4; Shaw et al. 2021, GMD 14:3577, ec. 19).
+    * **Volumul se păstrează exact:** nicio celulă nu dă mai multă apă decât are.
+    * **Frecarea (Manning)** după EPA SWMM 5.2, tabelul A.6: asfalt 0,013, iarbă 0,15, acoperiș 0,012.
+    * **Infiltrarea (Horton)**: f = max(fc, f0 − k·F), cu f0 = 51 mm/h, fc = 3,3 mm/h și k = 4/h. Asfaltul, acoperișurile și mașinile nu absorb nimic.
+    * **Obstacole:** apa curge pe sub mașini (care stau pe roți) și prin garduri, și ocolește casele, bordurile și treptele.
+    * **Adânciturile mici** (nou): făgașele, lăsările și peticele unui drum, denivelările unei peluze, prea mici pentru rețeaua de 19 cm.
+      * Sunt cât spune EPA SWMM 5.2 la „depression storage” (tabelul A.5, după ASCE 1992): pe suprafețe impermeabile țin 0,05–0,10 inch (1,3–2,5 mm), pe peluze 0,10–0,20 inch (2,5–5 mm).
+      * Le-am făcut pete de un metru-doi, adânci de cel mult 5 cm pe drum și 4,8 cm pe peluză. Umplute până la buză, pe o pantă de 1,5%, țin 1,84 mm și 3,8 mm (umplere exactă „priority flood”, Barnes, Lehman și Mulla 2014).
+      * Pe drum, atunci, 1/8 din suprafață stă sub cel puțin 3 mm de apă și 1/13 sub cel puțin un centimetru.
+      * Pe drum, petele au exact tiparul bălților desenate înainte, așa că apa se strânge acum fizic exact acolo unde erau ele. În afara zonei calculate, bălțile desenate rămân ca înainte.
+  * **Ce duce apa cu ea (nou):** mâl fin și argilă, în g/m³.
+    * **Transport:** ies dintr-o celulă exact cu apa care pleacă din ea.
+    * **Ridicare:** impactul picăturilor și curgerea le ridică de pe suprafața pe care stă sau curge apa.
+    * **Depunere:** se depun cu viteza Stokes, w = g(ρs − ρ)d²/(18μ):
+      * 2,3·10⁻⁴ m/s pentru mâl de 16 µm, deci o baltă de 5 cm se limpezește de el în câteva minute;
+      * 3,6·10⁻⁶ m/s pentru argilă de 2 µm, care rămâne tulbure ore întregi.
+    * **Cât dă fiecare suprafață (estimări):**
+      * drumul sau curtea: ~100 g/m³, mediana apei de ploaie urbane din programul NURP al EPA (1983): 100 mg/l de suspensii;
+      * acoperișul: o cincime din asta;
+      * pământul (peluze, grădini, câmp): ~0,7 kg/m³.
+    * Unde apa se infiltrează sau se usucă, mâlul rămâne pe loc, așa că balta care rămâne e mai tulbure.
+  * **Grafica apei** (`src/floodwater.js`): o plasă peste toată zona, cu un vârf la fiecare a doua celulă, la nivelul apei. E desenată după ce TAA a rezolvat imaginea, ca să poată citi imaginea și adâncimea scenei:
+    * **oglinda:** Fresnel pentru apă (n = 1,333, F0 = 0,02). Reflexia vine din imagine, pe raza reflectată (screen-space), iar unde raza iese din cadru, din harta de lumină a cerului. Felinarele se întind în ea în dâre, după valuri;
+    * **ce e sub apă:** refractat după Snell, deci fundul pare mai aproape și mai puțin adânc și tremură cu valurile;
+    * **cât de tulbure e și cum strălucește apa:** modelul de apă mică al lui Lee et al. (1998, Applied Optics 37:6329, ec. 3, 7, 16, 21), potrivit pe transfer radiativ (Hydrolight) pentru adâncime, fund și turbiditate:
+      * lumina fundului slăbește la coborâre și la urcare;
+      * lumina proprie a apei crește cu adâncimea;
+      * deasupra apei se aplică Rrs = 0,518·rrs/(1 − 1,562·rrs), din același articol;
+      * din lumina fundului, doar partea neîmprăștiată deloc rămâne clară; restul se vede încețoșat;
+    * **ce pune culoarea în apă:**
+      * mineralele împrăștie ~0,5 m²/g la 555 nm, aproape la fel pe toate culorile (Babin et al. 2003, Limnol. Oceanogr. 48:843);
+      * 1,9% din lumina împrăștiată se întoarce înapoi: funcția de fază cu care și-a potrivit Lee modelul. Pentru sedimentele lui Kopelevich e 3,7%;
+      * fierul din ele absoarbe albastrul: 0,03–0,1 m²/g la 443 nm, scăzând exponențial spre roșu (Babin și Stramski 2004, Limnol. Oceanogr. 49:756);
+      * apa însăși absoarbe roșul: 0,34 /m la 650 nm, 0,057 la 550 și 0,0092 la 450 (Pope și Fry 1997, datele de la OMLC);
+    * **Rezultatul:**
+      * apa de pe acoperiș e limpede;
+      * cea de pe drum (~100 mg/l) arată fundul unei bălți de câțiva centimetri încețoșat și gri-maroniu;
+      * cea scursă de pe pământ (~0,7 g/l) e maro-ocru și devine opacă după câțiva centimetri;
+    * **pe suprafață:** inelele picăturilor, valurile mici și spuma purtate de curent unde apa curge, și undele unei rafale de vânt care trec peste bălți. Când devin mai fine decât un pixel, se transformă în neclaritatea oglinzii;
+    * **ceața** dintre apă și tine e aceeași ca peste tot (chunk-ul de ceață din `main.js`);
+    * **stropii** picăturilor sar de pe suprafața apei, nu de pe fundul ei;
+    * **ce o ascunde:** se compară înălțimile, nu adâncimile. Adâncimea scenei e desenată cu proiecția deplasată de TAA cu o fracțiune de pixel, iar la o privire razantă peste sol asta o mută mai mult decât grosimea unei pânze de apă. Testul clasic ascundea toată apa subțire (verificat în joc), iar înălțimea solului aproape nu se schimbă pe acea fracțiune. Pentru o suprafață orizontală, cele două teste sunt echivalente;
+    * **în adânciturile mici** apa e desenată la nivelul drumului desenat, cu adâncimea ei din model;
+    * **pământul de sub apă** e desenat doar ca fund îmbibat, fără oglindă proprie, ca să nu apară o reflexie dublă;
+    * **fără TAA**, suprafețele desenează apa singure, ca înainte.
+  * **Teste pe GPU** (într-o pagină de test, aceleași shadere ca în joc, comparate cu o copie pe CPU și cu soluții exacte):
+    * **volumul:** un bol închis, 10 min de ploaie la 80 mm/h: apa strânsă e egală cu ploaia căzută (eroare relativă −1,8·10⁻⁵, precizia float32), fără adâncimi negative;
+    * **pânza de pe drum** (pantă 2%, asfalt): 1,045 / 1,549 / 2,200 mm la 5 / 10 / 18 m, față de 1,043 / 1,547 / 2,198 mm după Manning;
+    * **o groapă de 10 cm** într-o pantă de 1%: se umple până la buză (9,28 cm) și dă pe dinafară;
+    * **Horton** pe iarbă, 20 min: s-au infiltrat 8,782 mm peste fc, față de 8,78 mm calculat analitic;
+    * **sedimentul purtat:** într-un bol care se clatină, masa se păstrează (eroare 3,8·10⁻⁷) și nu apar concentrații în afara celor de la pornire;
+    * **depunerea Stokes**, 120 s în apă de 5 cm: mâlul 575,77 g/m³ față de 575,80 exact, argila 991,36 față de 991,40;
+    * **spălarea drumului** la 80 mm/h, în regim stabil: mâlul 127,7 g/m³ și argila 48,8 g/m³ în trei puncte, egale cu soluția exactă (R + w)·C = E;
+    * **nivelul suprafeței desenate** peste groapă: plat la −6,34 cm pe toată balta, malul de sus acoperit (apa intră sub el), marginea de jos se estompează, iar uscatul nu se desenează;
+    * **adânciturile mici** de pe drum (5 cm la cel mai adânc, pantă 1,5%, 10 min de ploaie la 80 mm/h și apoi 10 min de scurgere): modelul ține 1,34 mm, față de 1,14 mm la umplerea exactă până la buză. Sub cel puțin 3 mm stă 10,1% din suprafață, față de 8,6%. Diferența e pelicula care încă se scurge.
+  * **Verificat în joc** (furtună, ziua):
+    * o baltă de control de câțiva centimetri, pusă direct în model pe stradă: reflectă mașina și stâlpii, marcajele de pe fund se văd prin apă, iar mașina din față o acoperă corect;
+    * cât țin adânciturile mici, după pantă (umplere exactă, ca mai sus): pe drum 10 mm pe teren plat, 2,8 mm la 1%, 1,3 mm la 2% și 0,8 mm la 3%; pe peluză 11,5 / 5,0 / 3,0 / 2,0 mm. Pe o stradă în pantă rămâne deci puțină apă, ca în realitate. Bălțile mari se adună pe locurile plate: curți, drumuri drepte, peluze, rigole.
+  * **Limite, spuse cinstit:**
+    * rețeaua are ~19 cm: o groapă mai mică decât o celulă nu ține apă proprie (o arată tot desenul procedural al asfaltului);
+    * coeficienții de spălare și eroziune sunt estimări în intervalele citate, nu măsurători pe strada din joc;
+    * bălțile se usucă în minute, nu în ore, ca să se vadă în joc;
+    * reflexia din imagine nu vede ce e în afara ecranului: acolo arată cerul.
 * **Camera de corp merge și pe jos, la orice număr de cadre pe secundă (V124)** (`src/main.js`):
   * **Problema:** pe jos, camera de corp (H) simulează mișcarea pieptului: trunchiul urmează privirea cu un arc (~2,5 Hz) și fiecare pas zdruncină camera (o vibrație amortizată de ~7 Hz). Arcurile erau calculate pas cu pas, cu pasul cadrului. Metoda asta rămâne stabilă doar cât timp ω·Δt e destul de mic. La 7 Hz, sub ~27 de cadre pe secundă (Δt = 1/25 s: 2π·7·0,04 = 1,76), vibrația creștea la nesfârșit. Camera de corp desenează trei vederi (lentila de 160°), deci tocmai ea mergea atât de încet. În mașină calculul acesta nu se face, de aceea acolo mergea.
   * **Reprodus în joc**, cu codul vechi, la 20 de cadre pe secundă, mergând înainte: după 1 s camera ajunsese la 2,8 km sub pământ, cu înclinarea −9 385 rad, iar după 8 s la 10^91. Ecranul rămânea negru, doar cu textul camerei.

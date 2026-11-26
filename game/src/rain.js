@@ -22,6 +22,7 @@ export const RAIN = {
   // (V92) for the splashes: the roads and the ground under everything (RainOcclusion's maps, on the occlusion's box)
   uRoad: { value: null }, uLow: { value: null }, uSurfOn: { value: 0 },
   uAirOff: { value: new THREE.Vector2() },   // how far the air has carried the haze's patterns (main.js: the squall's sheets of rain)
+  uFloodFX: { value: 0 },      // (V125) 1 while the deeper water's own surface is drawn (floodwater.js): the ground under it shows as its bottom
 };
 
 // snow (the same hook as the rain: every patched material can be covered)
@@ -71,6 +72,16 @@ float snowGlint(vec3 wp, vec3 n, vec3 l, vec3 v) {
   return pow(max(dot(f, normalize(l + v)), 0.0), 1400.0) * step(0.4, rainHash(c + 1.9)) * step(0.0, dot(n, l));
 }`;
 
+// (world cells run to 10^5 and more a few km out: brought into a small range first, or float precision leaves the hash
+// with a handful of values and every pattern built on it flat)
+export const HASH_GLSL = /* glsl */`
+float rainHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float rainNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+`;
+
 // the height map look-up, shared by the surface, streak and splash shaders (top surface height or -1e5 outside)
 const OCC_GLSL = /* glsl */`
 float rainTop(vec2 xz) {
@@ -79,14 +90,7 @@ float rainTop(vec2 xz) {
   if (any(lessThan(uv, vec2(0.004))) || any(greaterThan(uv, vec2(0.996)))) return -1e5;
   return texture2D(uOcc, uv).r + uOccBox.w;
 }
-// (world cells run to 10^5 and more a few km out: brought into a small range first, or float precision leaves the hash
-// with a handful of values and every pattern built on it flat)
-float rainHash(vec2 p) { vec3 q = fract(vec3(mod(p, 4096.0).xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
-float rainNoise(vec2 p) {
-  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
-}
-`;
+${HASH_GLSL}`;
 
 // what keeps the flying snow off (the flakes and the drift): SnowLee's map of the things in its way, seen along its
 // flight, and the car you drive
@@ -111,21 +115,8 @@ bool inCar(vec3 p) {
   return max(q.x, q.y) < 0.0 && p.y > uSnowCarY.x - 0.1 && p.y < uSnowCarY.x + uSnowCarY.y + 0.04;
 }`;
 
-// ------------------------------------------------------------------ wet surfaces
-const WET_PARS = /* glsl */`
-uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight, uSnowPlaster, uSnowDepth;
-uniform vec2 uSnowWindDir;
-uniform sampler2D uOcc, uTrail, uFlow;
-uniform vec4 uOccBox, uTrailBox, uFlowBox;
-uniform float uGale;
-varying vec3 vWetP;
-float wetReflOut = 0.0;                              // how much this point mirrors the scene (screen-space reflections, post.js)
-float wetEarth = -1.0;                               // how much of the ground here is bare earth (geo/terrain.js sets it; else MUD_K)
-float wetGrass = -1.0;                               // and how much of it grass (geo/terrain.js; else GRASS_K)
-float snowGlintK = 0.0;                              // fresh snow here: its crystals glint in the sun (after the lights)
-${OCC_GLSL}
-${TRAIL_GLSL}
-${LEE_GLSL}
+// the water's own little waves (shared with the surface drawn on the deeper water: floodwater.js)
+export const WAVES_GLSL = /* glsl */`
 float wetNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(rainHash(i), rainHash(i + vec2(1.0, 0.0)), f.x), mix(rainHash(i + vec2(0.0, 1.0)), rainHash(i + vec2(1.0, 1.0)), f.x), f.y);
@@ -145,32 +136,6 @@ vec2 wetRipples(vec2 p, float t) {
     g += d / r * sin(x * 2.4) * exp(-x * x * 0.5) * (1.0 - ph) * (1.0 - ph) * step(r, 0.42);
   }
   return g;
-}
-// how open p is to the driven rain (0 behind something along its flight .. 1): five taps across the flight, soft (a
-// map texel is ~7 cm: a hard edge would be a staircase)
-float leeOpen(vec3 p) {
-  vec3 a = normalize(cross(uLeeDir, vec3(0.0, 1.0, 0.0)) + vec3(1e-4)), b = cross(a, uLeeDir);
-  float e = 0.0;
-  for (int k = 0; k < 5; k++) {
-    vec2 o = k == 0 ? vec2(0.0) : vec2(k == 1 ? 1.0 : k == 2 ? -1.0 : 0.0, k == 3 ? 1.0 : k == 4 ? -1.0 : 0.0) * 0.14;
-    e += 1.0 - smoothstep(0.1, 0.45, leeGap(p + a * o.x + b * o.y));
-  }
-  return e / 5.0;
-}
-float wetOpen(vec3 wp) {
-  float top = rainTop(wp.xz);
-  return top < -1e4 ? 1.0 : 1.0 - smoothstep(0.3, 0.9, top - wp.y);
-}
-// the running water (runoff.js): how deep (m) and how fast (m/s, world x / z) it runs here, only on the surface it was
-// worked out on (not on a wall below the eaves, nor on a floor under a roof); w: 1 inside the box it covers
-vec4 flowAt(vec3 wp) {
-  if (uFlowBox.w < 0.5) return vec4(0.0);
-  vec2 uv = vec2(0.5 + (wp.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (wp.z - uFlowBox.y) / (2.0 * uFlowBox.z));
-  vec2 e = abs(uv - 0.5) * 2.0;
-  float inBox = 1.0 - smoothstep(0.88, 0.99, max(e.x, e.y));
-  if (inBox <= 0.0) return vec4(0.0);
-  vec4 f = texture2D(uFlow, uv);
-  return vec4(f.xyz * inBox * (1.0 - smoothstep(0.1, 0.25, abs(wp.y - f.w - uOccBox.w))), inBox);
 }
 // carried along with the water (a flow map: two layers of the same pattern, each carried for one period and faded in
 // and out in turn): its little waves, stretched across the flow (the riffles stand across a stream), as a slope
@@ -201,8 +166,52 @@ vec3 flowSurface(vec2 p, vec2 vel, float t, float aa) {
 }
 `;
 
+// ------------------------------------------------------------------ wet surfaces
+const WET_PARS = /* glsl */`
+uniform float uWet, uRain, uRainTime, uOccOn, uSnow, uSnowFall, uSnowLight, uSnowPlaster, uSnowDepth;
+uniform vec2 uSnowWindDir;
+uniform sampler2D uOcc, uTrail, uFlow;
+uniform vec4 uOccBox, uTrailBox, uFlowBox;
+uniform float uGale, uFloodFX;
+varying vec3 vWetP;
+float wetReflOut = 0.0;                              // how much this point mirrors the scene (screen-space reflections, post.js)
+float wetEarth = -1.0;                               // how much of the ground here is bare earth (geo/terrain.js sets it; else MUD_K)
+float wetGrass = -1.0;                               // and how much of it grass (geo/terrain.js; else GRASS_K)
+float snowGlintK = 0.0;                              // fresh snow here: its crystals glint in the sun (after the lights)
+${OCC_GLSL}
+${TRAIL_GLSL}
+${LEE_GLSL}
+${WAVES_GLSL}
+// how open p is to the driven rain (0 behind something along its flight .. 1): five taps across the flight, soft (a
+// map texel is ~7 cm: a hard edge would be a staircase)
+float leeOpen(vec3 p) {
+  vec3 a = normalize(cross(uLeeDir, vec3(0.0, 1.0, 0.0)) + vec3(1e-4)), b = cross(a, uLeeDir);
+  float e = 0.0;
+  for (int k = 0; k < 5; k++) {
+    vec2 o = k == 0 ? vec2(0.0) : vec2(k == 1 ? 1.0 : k == 2 ? -1.0 : 0.0, k == 3 ? 1.0 : k == 4 ? -1.0 : 0.0) * 0.14;
+    e += 1.0 - smoothstep(0.1, 0.45, leeGap(p + a * o.x + b * o.y));
+  }
+  return e / 5.0;
+}
+float wetOpen(vec3 wp) {
+  float top = rainTop(wp.xz);
+  return top < -1e4 ? 1.0 : 1.0 - smoothstep(0.3, 0.9, top - wp.y);
+}
+// the running water (runoff.js): how deep (m) and how fast (m/s, world x / z) it runs here, only on the surface it was
+// worked out on (not on a wall below the eaves, nor on a floor under a roof); w: 1 inside the box it covers
+vec4 flowAt(vec3 wp) {
+  if (uFlowBox.w < 0.5) return vec4(0.0);
+  vec2 uv = vec2(0.5 + (wp.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (wp.z - uFlowBox.y) / (2.0 * uFlowBox.z));
+  vec2 e = abs(uv - 0.5) * 2.0;
+  float inBox = 1.0 - smoothstep(0.88, 0.99, max(e.x, e.y));
+  if (inBox <= 0.0) return vec4(0.0);
+  vec4 f = texture2D(uFlow, uv);
+  return vec4(f.xyz * inBox * (1.0 - smoothstep(0.1, 0.25, abs(wp.y - f.w - uOccBox.w))), inBox);
+}
+`;
+
 const WET_MAIN = /* glsl */`
-if (uWet > 0.001) {
+if (uWet > 0.001 || uFlowBox.w > 0.5) {               // (V125: the puddles outlast the wet sheen)
   vec3 wp = vWetP;
   float upF = smoothstep(0.6, 0.92, wetGeoN.y);
   float open = wetOpen(wp);
@@ -251,7 +260,7 @@ if (uWet > 0.001) {
     float sl = length(gN.xz) / max(gN.y, 0.05);
     float lvl = 1.0 - smoothstep(0.012, 0.035, sl);
     float n = wetNoise(wp.xz * 0.45) * 0.65 + wetNoise(wp.xz * 1.7 + 5.3) * 0.35;
-    float pud = smoothstep(0.57, 0.66, n) * lvl;
+    float pud = smoothstep(0.57, 0.66, n) * lvl * (1.0 - fl.w);   // (V125: where the water is worked out, its own: runoff.js's small hollows)
     vec2 fd = normalize(gN.xz + vec2(1e-5));          // downhill
     vec2 fa = vec2(-fd.y, fd.x);
     float al = dot(wp.xz, fd), ac = dot(wp.xz, fa);
@@ -272,6 +281,9 @@ if (uWet > 0.001) {
   // the running water: a film where the rain sheets off, streams along the kerbs and down the slopes, the hollows
   // standing full; little waves and foam carried along with it, muddy where it runs off the bare ground
   float fh = fl.x * smoothstep(0.35, 0.8, wetGeoN.y);
+  // (V125) where it stands or runs deeper than ~5 mm its own surface is drawn over this (floodwater.js: its mirror, its
+  // waves, its turbidity): here only the soaked bottom under it
+  float kFX = uFloodFX * smoothstep(0.003, 0.006, fh);
   if (fh > 5e-5) {
     // (on the ground a thin sheet runs in among the grass and the crumbs of soil: only a stream or a puddle shows)
 #ifdef WET_GROUND
@@ -286,21 +298,24 @@ if (uWet > 0.001) {
       // (the finer detail only where a pixel is small enough for it: no glitter further off)
       float aa = 1.0 - smoothstep(0.003, 0.012, length(fwidth(wp.xz)));
       vec3 fs = flowSurface(wp.xz, vel, uRainTime, aa);
-      slopeW += fs.xy * near * film * (0.18 + 0.4 * smoothstep(0.1, 1.0, sp)) * mix(0.5, 1.0, deep);
-      flowFoam = fs.z * near * smoothstep(0.2, 0.9, sp) * smoothstep(0.002, 0.008, fh);
+      slopeW += fs.xy * near * film * (0.18 + 0.4 * smoothstep(0.1, 1.0, sp)) * mix(0.5, 1.0, deep) * (1.0 - kFX);
+      flowFoam = fs.z * near * smoothstep(0.2, 0.9, sp) * smoothstep(0.002, 0.008, fh) * (1.0 - kFX);
     }
     // a stream carries what it washes off: muddy off the bare ground, a turbid grey-brown off the road (lighter than the
     // black wet asphalt under it)
+    float tb = deep * (1.0 - kFX);                        // (V125: under the drawn surface its turbidity is its own)
 #ifdef WET_GROUND
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.15, 0.115, 0.08), deep * 0.7);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.15, 0.115, 0.08), tb * 0.7);
 #else
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.18, 0.15), deep * smoothstep(0.1, 0.6, sp) * 0.55);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.2, 0.18, 0.15), tb * smoothstep(0.1, 0.6, sp) * 0.55);
 #endif
-    diffuseColor.rgb *= 1.0 - 0.2 * deep;                // (a stream a few cm deep: some of the light goes into it)
+    diffuseColor.rgb *= 1.0 - 0.2 * tb;                   // (a stream a few cm deep: some of the light goes into it)
     water = max(water, film);
-    drown = smoothstep(0.001, 0.008, fh);                 // (under a few mm of water the grit and the joints are gone)
+    drown = smoothstep(0.001, 0.008, fh) * (1.0 - kFX);   // (under a few mm of water the grit and the joints are gone)
     flowRough = film * smoothstep(0.15, 1.0, sp);          // (a running surface is never quite a mirror)
   }
+  water *= 1.0 - kFX;
+  slopeW *= 1.0 - kFX;
 #endif
 #ifdef WET_GROUND
   // (V92) the prints in the mud (snowtrail.js: the snow's map): where the wet ground is earth - a field, a path, a garden
@@ -324,15 +339,18 @@ if (uWet > 0.001) {
   diffuseColor.rgb *= 1.0 - 0.3 * water;
   roughnessFactor = mix(roughnessFactor, 0.05, water);
   roughnessFactor = max(roughnessFactor, 0.11 * flowRough);
+#ifndef WET_LEAF
+  roughnessFactor = mix(roughnessFactor, max(roughnessFactor, 0.5), kFX);   // (a soaked bottom: no mirror of its own)
+#endif
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.78, 0.75), flowFoam * 0.75);
   roughnessFactor = mix(roughnessFactor, 0.5, flowFoam);
   // raindrop rings only on standing water; beyond ~25 m they are below a pixel
-  float rip = uRain * hit * upF * (1.0 - smoothstep(12.0, 26.0, dist)) * smoothstep(0.25, 0.7, water);
+  float rip = uRain * hit * upF * (1.0 - smoothstep(12.0, 26.0, dist)) * smoothstep(0.25, 0.7, water);   // (water: 0 under the drawn surface)
   if (rip > 0.01) slopeW += wetRipples(wp.xz, uRainTime) * rip * (0.24 + 0.22 * drown);   // (a smooth sheet of water shows every ring)
 #ifndef WET_LEAF
   // the impacts: in a downpour hard ground 'boils' with tiny crowns of spray (~4 cm), each lasting ~0.08 s, about
   // 140 at a time on every square metre (~3000 drops/m2/s at 50 mm/h)
-  float imp = uRain * hit * upF * (1.0 - smoothstep(5.0, 13.0, dist));
+  float imp = uRain * hit * upF * (1.0 - smoothstep(5.0, 13.0, dist)) * (1.0 - kFX);   // (V125: on the drawn surface, its own)
 #ifdef WET_GROUND
   imp *= 1.0 - 0.8 * (wetGrass >= 0.0 ? wetGrass : GRASS_K);   // (V92: in the grass the drops break on the blades - no boil)
 #endif
@@ -361,7 +379,7 @@ if (uWet > 0.001) {
   wetReflOut = wet * upF * open * 0.25 * (1.0 - smoothstep(0.55, 0.85, rough0));
 #endif
 #ifndef WET_LEAF
-  wetReflOut = max(wetReflOut, water * (1.0 - flowFoam));
+  wetReflOut = max(wetReflOut, water * (1.0 - flowFoam)) * (1.0 - kFX);
 #endif
 }
 `;
@@ -1164,7 +1182,12 @@ void main() {
   // ground (earth, grass), or something hard (a road between its puddles, a roof, a step, a car)
   vec2 uv = vec2(0.5 + (xz.x - uOccBox.x) / (2.0 * uOccBox.z), 0.5 - (xz.y - uOccBox.y) / (2.0 * uOccBox.z));
   float depth = 0.0, road = 0.0, ground = 1.0;
-  if (uFlowBox.w > 0.5) depth = texture2D(uFlow, vec2(0.5 + (xz.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (xz.y - uFlowBox.y) / (2.0 * uFlowBox.z))).r;
+  if (uFlowBox.w > 0.5) {
+    vec4 fw = texture2D(uFlow, vec2(0.5 + (xz.x - uFlowBox.x) / (2.0 * uFlowBox.z), 0.5 - (xz.y - uFlowBox.y) / (2.0 * uFlowBox.z)));
+    depth = fw.r;
+    // (V125) where the water stands deep, the drop bursts on its surface, not on the ground under it
+    if (depth > 0.003 && abs(top - fw.a - uOccBox.w) < 0.15) c.y = max(c.y, fw.a + uOccBox.w + depth + 0.002);
+  }
   if (uSurfOn > 0.5) {
     road = texture2D(uRoad, uv).r;
     ground = 1.0 - smoothstep(0.25, 0.6, top - uOccBox.w - texture2D(uLow, vec2(uv.x, 1.0 - uv.y)).r);   // (down on the ground, not up on something)
