@@ -995,6 +995,11 @@ async function main() {
   // running, the chest leaning forward. Turning fast, its sensor's rows read one after another skew the picture
   // (post.js uRS: ~25 ms from the top row to the bottom)
   const BODY = { yaw: 0, yv: 0, pitch: 0, pv: 0, jolt: 0, jv: 0, lastPh: 0, lastYaw: null };
+  // a damped spring (angular frequency w, damping ratio z < 1) solved exactly over h: its offset d and speed v after it
+  const damped = (d, v, w, z, h) => {
+    const wd = w * Math.sqrt(1 - z * z), e = Math.exp(-z * w * h), c = Math.cos(wd * h), s = Math.sin(wd * h);
+    return [e * (d * c + (v + z * w * d) / wd * s), e * (v * c - (z * w * v + w * w * d) / wd * s)];
+  };
   const bodyPose = (dt) => {
     const B = BODY, lu = post.lens.material.uniforms;
     if (mode !== 'foot' || riding || player.noclip) {
@@ -1003,17 +1008,19 @@ async function main() {
       lu.uRS.value = 0; B.lastYaw = null;
       return;
     }
-    const ph = player.bobPhase, a = player.bobAmt, run = player.running ? 1 : 0, h = Math.min(dt, 0.05);
-    if (B.lastYaw === null) { B.yaw = player.yaw; B.pitch = player.pitch; B.yv = B.pv = 0; B.lastYaw = B.yaw; }
-    let dy = player.yaw - B.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const ph = player.bobPhase, a = player.bobAmt, run = player.running ? 1 : 0, h = Math.min(dt, 0.1);
+    if (B.lastYaw === null) { B.yaw = player.yaw; B.pitch = player.pitch; B.yv = B.pv = 0; B.jolt = B.jv = 0; B.shots = longGuns.shotN; B.lastYaw = B.yaw; }
+    // (V124) the springs solved exactly over the frame, the same at any frame rate. Stepped as they were (V118-V123),
+    // the heel strike's ~7 Hz shake grew without bound under ~27 fps (one step of ~1/25 s past what that can hold: 7 Hz
+    // x 2 pi x 0.04 s = 1.76) - and the body camera draws three views, so it ran that slow: on foot its picture blew up
     const w = 16, z = 0.62;
-    B.yv += (w * w * dy - 2 * z * w * B.yv) * h; B.yaw += B.yv * h;
-    B.pv += (w * w * (player.pitch - B.pitch) - 2 * z * w * B.pv) * h; B.pitch += B.pv * h;
+    let dy = player.yaw - B.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    let r = damped(-dy, B.yv, w, z, h); B.yaw = player.yaw + r[0]; B.yv = r[1];
+    r = damped(B.pitch - player.pitch, B.pv, w, z, h); B.pitch = player.pitch + r[0]; B.pv = r[1];
     if (Math.floor(ph / Math.PI) !== Math.floor(B.lastPh / Math.PI) && player.onGround && a > 0.05) B.jv -= (0.6 + 1.6 * run) * a;
     if (longGuns.shotN !== B.shots) { B.shots = longGuns.shotN; B.jv -= 1.6 * (longGuns.S?.p ?? 7) / 7.4; B.yv += (Math.random() - 0.5) * 0.6; }
     B.lastPh = ph;
-    const wj = 2 * Math.PI * 7;
-    B.jv += (-wj * wj * B.jolt - 2 * 0.3 * wj * B.jv) * h; B.jolt += B.jv * h;
+    r = damped(B.jolt, B.jv, 2 * Math.PI * 7, 0.3, h); B.jolt = r[0]; B.jv = r[1];
     const yawRate = -Math.atan2(Math.sin(B.yaw - B.lastYaw), Math.cos(B.yaw - B.lastYaw)) / Math.max(dt, 1e-3);
     B.lastYaw = B.yaw;
     lu.uRS.value = Math.max(-0.2, Math.min(0.2, yawRate * 0.025 / (post.lens.rig?.K1 ?? 1.2)));
