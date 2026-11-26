@@ -92,6 +92,9 @@ function blockRaster() {
   return { x0, z0, W, H, R };
 }
 const blocked = (x, z) => { const i = Math.round(x - BL.x0), j = Math.round(z - BL.z0); return i < 0 || j < 0 || i >= BL.W || j >= BL.H || BL.R[j * BL.W + i] === 1; };
+// (V126) bare ground where another place says so (bunker.js: the frame of the post's hatch)
+const CLEARS = [];
+export function addHillClear(x, z, r) { CLEARS.push([x, z, r * r]); }
 // short grass where another place says so (urcus.js: the lane's mown verges, under the thicket in the clip)
 const SHORT = [];
 export function addShortGrass(fn) { SHORT.push(fn); }
@@ -110,6 +113,7 @@ function site(x, z) {
   if (x < HB.x0 || x > HB.x1 || z < HB.z0 || z > HB.z1 || blocked(x, z)) return null;
   if (EGG && Math.hypot(x - EGG.x, z - EGG.z) < EGG.clear) return null;
   if (Math.hypot(x - SCENE_SPOT.x, z - SCENE_SPOT.z) < SCENE_SPOT.r) return null;
+  if (CLEARS.length && CLEARS.some(([cx, cz, r2]) => (x - cx) * (x - cx) + (z - cz) * (z - cz) < r2)) return null;
   const f = wood(x, z);
   if (!f && hillOpen(x, z) + 0.35 * (valueNoise2(x, z, 6, 41) - 0.5) < 0.5) return null;
   let tk = 1, onTrack = false;

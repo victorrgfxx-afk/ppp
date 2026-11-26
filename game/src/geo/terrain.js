@@ -31,6 +31,9 @@ export async function loadGeoTextures(base) {
 // drawn, the ground there is the hay's colour (a field is the colour of what grows on it, not of the soil under it), so
 // where the drawn grass ends there is no edge
 export const MEADOW = { uMeadow: { value: null }, uMeadowBox: { value: new THREE.Vector4(0, 0, 1, 1) }, uMeadowOn: { value: 0 } };
+// (V126) an opening in the ground: the shaft of the post on the hill of the cross (bunker.js) - centre x, z, half
+// width, half depth (0: none), and its turn (cos, sin)
+export const HOLE = { uHole: { value: new THREE.Vector4(0, 0, 0, 0) }, uHoleRot: { value: new THREE.Vector2(1, 0) } };
 
 // the ground's three detail textures (grass, soil, gravel: textures.js, 512 px each) as the layers of one array texture:
 // one texture unit for the three. The ground's material is the one with the most textures (the photo, the land cover, the
@@ -64,7 +67,7 @@ function terrainMaterial(ortho, splat, ext) {
     uOrtho: { value: ortho }, uSplat: { value: splat }, uDetail: { value: detailArray() },
     uGrassN: { value: TEX.grassN },
     uAvgG: { value: avgColor(TEX.grass) }, uAvgS: { value: avgColor(TEX.soil) }, uAvgR: { value: avgColor(TEX.gravel) },
-    uExt: { value: ext }, uAutumn: SEASON.uAutumn, uDormant: SEASON.uDormant, ...MEADOW,
+    uExt: { value: ext }, uAutumn: SEASON.uAutumn, uDormant: SEASON.uDormant, ...MEADOW, ...HOLE,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uni);
@@ -79,8 +82,14 @@ uniform highp sampler2DArray uDetail;                   // (layers: 0 the grass,
 uniform vec3 uAvgG, uAvgS, uAvgR;
 uniform float uExt, uAutumn, uDormant, uMeadowOn;
 uniform sampler2D uMeadow;
-uniform vec4 uMeadowBox;`)
+uniform vec4 uMeadowBox;
+uniform vec4 uHole;
+uniform vec2 uHoleRot;`)
       .replace('#include <map_fragment>', `
+  if (uHole.z > 0.0) {                                   // (V126: the shaft's opening, bunker.js)
+    vec2 hd = vGeoW.xz - uHole.xy;
+    if (abs(dot(hd, vec2(uHoleRot.x, -uHoleRot.y))) < uHole.z && abs(dot(hd, uHoleRot.yx)) < uHole.w) discard;
+  }
   vec2 guv = (vGeoW.xz + uExt) / (2.0 * uExt);
   vec3 sp = texture2D(uSplat, guv).rgb;                 // forest floor, farmland, gravel
   vec3 orth = texture2D(uOrtho, guv).rgb;               // Sentinel-2 colour of the real ground

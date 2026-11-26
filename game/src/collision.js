@@ -16,7 +16,7 @@ export class Box {
 
 const CELL = 8;
 export class CollisionWorld {
-  constructor() { this.grid = new Map(); this.dynamic = new Set(); this.regions = []; this.all = []; this.Box = Box; this.terrainFn = null; this.streetZ = [-1e9, 1e9]; this.providers = []; }
+  constructor() { this.grid = new Map(); this.dynamic = new Set(); this.regions = []; this.all = []; this.Box = Box; this.terrainFn = null; this.streetZ = [-1e9, 1e9]; this.providers = []; this.unders = []; }
   // extra colliders generated on demand (e.g. the ~300k tree trunks of the map)
   addProvider(fn) { this.providers.push(fn); }
   _key(i, j) { return i * 100003 + j; }
@@ -60,6 +60,8 @@ export class CollisionWorld {
 
   // ref (optional): the current height of the one asking, so that under a bridge deck the ground below counts
   groundHeight(x, z, ref) {
+    // (V126) floors under the ground (bunker.js), for one who is down there (ref: their height)
+    for (let i = 0; i < this.unders.length; i++) { const h = this.unders[i](x, z, ref); if (h !== null) return h; }
     const b = baseHeight(z);
     for (const r of this.regions) {
       if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return r.fn ? r.fn(x, z, b) : b + r.h;

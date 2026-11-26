@@ -60,6 +60,7 @@ Deschide `http://localhost:8765` → **Joacă**. (Direct din `file://` nu merge 
 | E / F | în magazia ciobanilor de pe deal, privind o armă de pe perete: E o iei (sau o pui la loc pe cârligele ei), F îi vezi datele reale | – |
 | Tab · clic stânga / dreapta | trabucul: Tab îl scoți (rezerve nelimitate), îl ridici sau îl lași jos; ține clic stânga — bricheta (prăjești vârful), plus clic dreapta — tragi până se aprinde; apoi clic dreapta — un fum (V121) | – |
 | E / F | la postul de transformare din pădurea de pe Dealul Crucii, privind o manetă: E oprești / pornești întreruptorul general, scoți / pui la loc siguranțele fazei L1, L2 sau L3, oprești / pornești iluminatul public; F datele postului (V120) | – |
+| E / F | la trapa din iarbă de lângă Maybach, pe Dealul Crucii (Postul 7, V126): E deschide trapa și te coboară sau te urcă pe scară, F închide trapa; jos, privind lucrurile, E aprinde lumina, deschide sau închide ușa etanșă și deschide laptopul lui CORB (Esc îl închide) | – |
 | Clic dreapta / stânga, R, Q | cu o armă lungă: ochești prin cătarea ei (luneta PSL-ului mărește de 4 ori), tragi (AKM și M4 automat, PSL foc cu foc, 870 cu pompă), reîncarci, o pui pe umăr și scoți Glock-ul | – |
 | Clic stânga / clic dreapta | cu Glock-ul: tragi (pe automat, rafală cât ții apăsat) / ochești prin cătare | – |
 | R / X / Q | cu Glock-ul: reîncarci / automat ↔ foc cu foc / îl pui deoparte și îl scoți | – |
@@ -852,6 +853,108 @@ Jocul se joacă pe calculator, cu tastatură și mouse. Versiunea pentru telefon
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Postul 7: un adăpost de protecție civilă sub fânețea de lângă Maybach și laptopul unui hacker (V126)** (`src/bunker.js`, `src/laptop.js`, `src/main.js`, `src/collision.js`, `src/geo/terrain.js`, `src/geo/hillwood.js`):
+  * **Povestea (inventată):** pe dealul crucii, la ~14 m de Maybach, în iarbă, e trapa de oțel a ieșirii de salvare a „Postului 7”. E un punct de comandă al Protecției Civile, construit în 1983 și sigilat în 1990.
+    * Cineva care își zice CORB l-a găsit. A tras curent de la postul de transformare din pădure, iar prin vechea linie telefonică a postului a ajuns la tot ce e „pe fir” în comună.
+    * A scris un program, NOR, care comandă lansatorul antigrindină de pe deal. Cu el a făcut furtunile din iulie.
+    * Pe 18 iulie a dispărut. Laptopul lui a rămas pornit pe birou.
+    * Restul se află din jurnal, din mailuri și din folderele criptate.
+  * **Cum intri:**
+    * lângă trapă, **E** o deschide: se ridică pe balamale în ~1,1 s, cu scârțâit și bufnitură;
+    * încă un **E** te coboară pe scară, cu un clinchet la fiecare treaptă (una la 28 cm); **F** închide trapa de sus;
+    * jos, privind lucrurile, **E** acționează:
+      * ușa etanșă (o deschide sau o închide);
+      * comutatorul de lângă ușă (tuburile pornesc cu starterul: clipesc, apoi se aprind, iar unul pâlpâie din când în când);
+      * laptopul de pe birou;
+    * la piciorul scării, **E** te urcă înapoi afară.
+  * **Construit după regulile reale ale adăposturilor** (ISU Călărași, „Protecția populației, salariaților și bunurilor materiale prin adăpostire”):
+    * **ieșirea de salvare:** puț de beton armat de 1,00 × 1,00 m, cu scară de pisică și capac sus, care se deschide în afară;
+    * **sasul:** încăperea tampon dintre afară și adăpost. Aici are 2,4 m² pe lângă piciorul scării (regula: minimum 2 m²). Ușa metalică etanșă se deschide spre sas, ca presiunea dinspre afară s-o apese în toc;
+    * **golul de trecere:** 0,80 × 1,80 m, cât cere regula;
+    * **dotarea:**
+      * filtroventilație cu ventilator și manivelă, cu conducta ei până la clapeta ermetică a prizei de aer;
+      * lampă pe baterii;
+      * telefon de campanie și stație radio;
+      * rezervă de apă (bidoane de 20 l);
+      * paturi, scaun, găleată cu capac, stingător;
+      * afișul cu regulile de comportare din adăpost, cu textul regulilor reale (Primăria Sectorului 3): ordine, fără fumat, ușile etanșe nu se deschid, masca pregătită, primul ajutor, dispozițiile șefului de adăpost, nimic inflamabil;
+      * inscripțiile („POSTUL 7 · PROTECȚIA CIVILĂ · ADĂPOST”, „IEȘIRE DE SALVARE” cu săgeata în sus), date cu vopsea neagră prin șablon. Triunghiul albastru pe fond portocaliu care marchează azi adăposturile e stabilit prin HG 630/2005, deci după ce postul a fost sigilat;
+    * **încăperea:** 5,2 × 4,0 m (20,8 m²). La 1,00 m² util de persoană (Primăria Sectorului 3, „Reguli de comportare pe timpul adăpostirii”) ar încăpea 20 de oameni. Fișa postului spune 12.
+  * **Cum arată:**
+    * **betonul** e turnat în cofraj de scânduri (fibra și rosturile lor se văd în el), cu găurile tiranților la 60 cm;
+    * **pereții:** jos vopsea în ulei gri-verzui cu brâu închis, scorojită unde a intrat umezeala; sus var, căzut pe alocuri; scurgeri ruginii din fisurile tavanului și săruri albe la baza pereților;
+    * **lucrurile postului:** biroul, telefonul de campanie, stația radio, filtroventilația cu tubulatura și clapetele ei, paturile suprapuse, rafturile cu conserve și bidoane, un calendar din 1987;
+    * **ce a adus CORB:** bateriile și invertorul, rackul cu LED-uri care clipesc, tabla cu poze și sfoară roșie, laptopul;
+    * **pe o pantă**, gulerul de beton al trapei e la nivelul celui mai înalt punct al solului din jur, iar pe partea de jos iese din pământ (aici ~17 cm), ca la ieșirile reale de pe pante.
+  * **Lumina are doar sursele ei:**
+    * două tuburi fluorescente de 36 W, plus ecranul laptopului și LED-urile;
+    * cerul intră doar pe puț, cât se vede deschiderea lui din fiecare punct (factorul de formă);
+    * soarele intră doar unde bate drept în jos prin puț;
+    * felinarele străzii și lumina cerului din restul jocului nu ajung jos.
+  * **Sunetul:** balasturile tuburilor bâzâie la 100 Hz, ventilatorul suflă, picură apa, iar trapa, ușa, comutatorul și treptele scării au fiecare sunetul lor.
+  * **Curentul:** postul ia curent din postul de transformare din pădure (aceleași manete ca pe stâlp: întreruptorul general și faza L2).
+    * Fără curent, tuburile se sting și se aprinde lampa roșie de pe baterii.
+    * Laptopul și rackul trec pe bateriile lui CORB: șase baterii vechi de mașină, 12 V și 60 Ah, adică 4,3 kWh pe etichetă. Îmbătrânite (două din șase cedează), mai țin ~40%, iar plumbul nu se descarcă sub jumătate. Rămân ~0,9 kWh, adică cele ~9 ore din jurnal la ~100 W.
+    * Cu curent, un încărcător de 20 A le umple din nou în ~4 ore.
+    * Descărcate de tot, laptopul se stinge.
+  * **Laptopul** (`src/laptop.js`): un sistem de birou original, fără numele sau sigla vreunui producător.
+    * **Ce are:** ecran de blocare, desktop cu iconițe, bară de activități cu meniu Start, ceas și starea bateriilor.
+    * **Ferestrele** se mută, se redimensionează, se minimizează, se maximizează și se închid.
+    * **Programele:** explorator de fișiere, Notițe (ce scrii rămâne salvat), vizualizator de imagini, Terminal, Mail și un joc de mine.
+    * **Ecranul laptopului din bunker** arată o imagine simplificată a desktopului, cu ferestrele deschise, redesenată de două ori pe secundă.
+    * **Folderele:**
+      * Documente: jurnalul lui CORB, fișa postului, inventarul din 1987, lista de făcut;
+      * Imagini: harta comunei, desenată din drumurile reale ale hărții, și radarul din 14 iulie;
+      * NOR și PERSONAL, criptate. Parolele sunt de găsit: una e pe un bilețel din bunker, cealaltă reiese din jurnal și din mailuri.
+    * **Ce poate face, totul cu efect în joc:**
+      * **NOR**, lansatorul antigrindină:
+        * însămânțează norul: furtună în ~16 s;
+        * poate aduce ploaie sau îl poate risipi: cer senin în ~20 s;
+        * în furtună, trage racheta cu fir, care aduce trăsnetul lângă cruce;
+        * are 18 rachete și se reîncarcă cu una la două minute;
+      * **REȚEA**, postul de transformare: întreruptorul general, iluminatul public, fazele L1, L2 și L3 (casele și felinarele se sting cum ar face-o de la manete);
+      * **AUTO**, mașinile din jurul dealului: faruri, claxon, alarmă;
+      * **Camere**, imagini live din comună, inclusiv trapa și Maybach-ul, randate din joc;
+      * **Terminal**: `help`, `ls`/`dir`, `cd`, `cat`/`type`, `unlock`, `scan`, `connect`, `power`, `nor`, `car`, `ntp` (mută ceasul comunei, deci ora din joc), `cam`, `ping`, `ipconfig`, `whoami`.
+  * **Ce e real și ce e ficțiune:**
+    * **antigrindina:** România chiar are un sistem antigrindină cu rachete cu iodură de argint, iar eficiența lui nu e demonstrată (presa de specialitate, 2023–2025). Ideea că rachetele ar putea „face” furtuni la comandă e ficțiune;
+    * **racheta cu fir** e o tehnică reală de cercetare: o rachetă care trage după ea un fir legat la pământ declanșează trăsnetul în furtună (de exemplu ICLRT, Camp Blanding, Florida);
+    * **restul e inventat:** comenzile fără parolă, linia telefonică și „hack-urile”. Nu descriu niciun sistem real și niciun atac real.
+  * **Tehnic:**
+    * **podeaua de sub pământ:** `collision.js` (`world.unders`) răspunde cu podeaua postului doar cui e deja jos, după înălțimea lui;
+    * **gaura din teren** are exact mărimea puțului (`terrain.js`, `discard` în shader);
+    * **fânul** e cosit în jurul trapei (`hillwood.js`);
+    * **locul ales:** cel mai plat din jurul mașinii (pantă ~7%), la cel puțin 4,5 m de drum, fără copaci sau altceva deasupra. Jumătate din terenul din jurul mașinii are pante de peste 38%;
+    * **adâncimea:** cât să rămână ~0,6 m de pământ peste placă peste tot; podeaua e la ~4 m sub capac;
+    * **încăperile** sunt construite abia când ajungi la 70 m de ele și desenate doar când se pot vedea.
+  * **Verificat în joc** (SwiftShader, pas cu pas):
+    * **locul:** trapa a ieșit la 14 m de Maybach, pe o pantă de 7%, la 4,7 m de drum. Gulerul iese 17 cm din pământ pe partea de jos, iar podeaua e la 4,04 m sub capac;
+    * **trapa și scara:**
+      * **E** deschide trapa, iar promptul devine „E — coboară pe scară · F — închide trapa”;
+      * coborârea durează 4,6 s și te lasă pe podea, cu fața spre ușă; urcarea durează la fel și te scoate pe pajiște;
+      * **F** închide trapa, iar încăperile nu se mai desenează;
+    * **comutatorul** aprinde tuburile (după clipitul starterului, amândouă rămân aprinse);
+    * **laptopul** se deschide cu E: ecranul de blocare, desktopul, ferestrele;
+    * **în terminal:**
+      * `unlock NOR` cu parolă greșită e refuzat; cu cea bună deschide folderul;
+      * `scan` listează camerele și mașinile (Maybach-ul la 14 m);
+      * `power off L2` lasă postul fără curent: tuburile se sting, lampa roșie pulsează, bateriile scad; `power on L2` readuce curentul;
+      * `nor seed`: după 16 s vremea devine furtună;
+      * `car … lights` aprinde farurile Maybach-ului;
+      * `ntp 21:30` mută ora jocului la 21:30;
+    * **Camere** arată imaginea live a Maybach-ului;
+    * **consola:** nicio eroare nouă.
+  * **Limite, spuse cinstit:**
+    * **intrarea:** postul are doar ieșirea de salvare, sasul și o încăpere. Un adăpost real are și o intrare principală (regula numește ieșirea de salvare „al doilea acces”), iar unul public peste 100 m² are și grup sanitar;
+    * **lumina:** e un model aproximativ. Cerul intră prin factorul de formă al deschiderii, ricoșeurile de pe pereți nu sunt calculate (lumina reflectată e o constantă), iar tuburile sunt câte trei puncte de lumină;
+    * **„hack-urile”** sunt joc: comenzile nu seamănă cu niciun sistem real;
+    * **prima deschidere a trapei** compilează shaderele încăperilor, deci poate da o scurtă sacadare.
+  * **Surse:**
+    * [ISU Călărași, „Protecția populației, salariaților și bunurilor materiale prin adăpostire”](https://primariacalarasi.ro/storage/2020/12/Protectia-populatiei-salariatilor-si-bunurilor-materiale-prin-adapostire.pdf): sasul, golurile de trecere, ieșirea de salvare, dotarea;
+    * [Primăria Sectorului 3, „Reguli de comportare pe timpul adăpostirii”](https://www.primarie3.ro/images/uploads/formulare/Reguli_comportare_adapostire.pdf): 1 m² de persoană, regulile, dotarea, marcarea (HG 630/2005);
+    * [playtech.ro](https://playtech.ro/2026/cum-afli-daca-blocul-tau-are-adapost-de-protectie-civila-semnul-pe-care-trebuie-sa-il-cauti/) și [bzi.ro](https://www.bzi.ro/ce-inseamna-triunghiul-albastru-intr-un-patrat-portocaliu-semnul-care-apare-pe-mii-de-blocuri-din-romania-4647952): triunghiul albastru pe fond portocaliu;
+    * [puterea.ro](https://www.puterea.ro/?p=576297): sistemul antigrindină și lipsa unei dovezi că funcționează;
+    * [SAE 1999-01-2413, „Rocket-Triggered Lightning Experiments at Camp Blanding, Florida”](https://saemobilus.sae.org/papers/rocket-triggered-lightning-experiments-camp-blanding-florida-1999-01-2413): trăsnetul declanșat cu racheta și firul.
 * **Apa care se strânge în furtună: fizică reală și suprafață proprie (V125)** (`src/runoff.js`, `src/floodwater.js`, `src/rain.js`, `src/taa.js`, `src/main.js`):
   * **Ce s-a schimbat:** apa de ploaie nu mai e doar un strat desenat pe asfalt. E calculată ca apă adevărată, pe o rețea de celule de ~19 cm pe 96 × 96 m în jurul tău. Ea:
     * cade pe fiecare celulă după cât de deschisă e spre cer;
