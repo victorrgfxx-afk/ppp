@@ -665,7 +665,7 @@ export class Bunker {
     for (const oz of [-0.15, 0.15]) trays.push(...G.solid(-FRONT - RACK.d / 2, FRONT + RACK.d / 2, trayY, trayY + 0.06, cz + oz - 0.002, cz + oz + 0.002));
     for (let x = -FRONT; x < FRONT; x += 0.3) trays.push(...G.solid(x, x + 0.02, trayY, trayY + 0.012, cz - 0.15, cz + 0.15));
     cables.blue.push(G.cyl(0.03, 2 * FRONT, 0, trayY + 0.04, cz - 0.05, 'x', 10)); cables.yellow.push(G.cyl(0.016, 2 * FRONT, 0, trayY + 0.028, cz + 0.07, 'x', 8));
-    cables.blue.push(G.cyl(0.03, trayY - yF - 0.74, 0.9, (trayY + yF + 0.74) / 2, R.z1 - 0.95, 'y', 10));
+    cables.blue.push(G.cyl(0.03, trayY - yF, FRONT + 0.3, (trayY + yF) / 2, cz, 'y', 10));   // (down beside the video wall, under the floor to the desk)
     add(trays, bkMat({ color: 0x2a2d31, roughness: 0.5, metalness: 0.6 }), false);
     add(cables.blue, bkMat({ color: 0x2552c4, roughness: 0.55 }), false);
     add(cables.yellow, bkMat({ color: 0xd9b51a, roughness: 0.5 }), false);
@@ -728,7 +728,7 @@ export class Bunker {
     this.wall = [];
     for (let r = 0; r < VW.rows; r++) for (let c = 0; c < VW.cols; c++) {
       const m = bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: none, emissiveIntensity: 1.0, roughness: 0.55 });
-      add([G.plane(VW.w - 0.004, VW.h - 0.004, -vw / 2 + (c + 0.5) * VW.w, vy + vh - (r + 0.5) * VW.h, vz - 0.006, Math.PI)], m, false);
+      add([G.plane(VW.w - 0.004, VW.h - 0.004, vw / 2 - (c + 0.5) * VW.w, vy + vh - (r + 0.5) * VW.h, vz - 0.006, Math.PI)], m, false);   // (the first on the operator's left: +x)
       this.wall.push({ m, tex: null });
     }
     this.wallTxt = canvasTex(2048, 580);
