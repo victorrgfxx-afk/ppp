@@ -681,12 +681,13 @@ export class Bunker {
     // ---- the room's name over the door
     const nameT = paperTex(1024, 192, (g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = '#20242a'; g.font = `800 104px ${FONT}`; g.fillText('VEGHE', 20, 112); g.fillStyle = '#5b636c'; g.font = `500 38px ${FONT}`; g.fillText('POSTUL 7 · CENTRU DE OPERAȚIUNI', 24, 170); g.fillStyle = '#2f7cf6'; g.fillRect(400, 40, 14, 74); });
     add([G.plane(1.4, 0.26, 1.55, yF + 2.4, R.z0 + 0.004)], bkMat({ color: 0xffffff, map: nameT, transparent: true, roughness: 0.7 }), false);
-    // ---- the situation table: a cabinet, a frame, a 65" screen laid flat (the map: system.js draws it)
+    // ---- the situation table: a cabinet, a frame, a 65" screen laid flat (the map: system.js draws it), read the right
+    // way up from the door
     const tz = TABLE.z, tw = TABLE.w / 2, td = TABLE.d / 2;
     add([...G.solid(-tw + 0.15, tw - 0.15, yF, yF + TABLE.h - 0.06, tz - td + 0.15, tz + td - 0.15)], black);
     add([...G.solid(-tw, tw, yF + TABLE.h - 0.06, yF + TABLE.h, tz - td, tz + td)], alu);
     this.table = canvasTex(768, 432);
-    add([G.plane(TABLE.w - 0.1, TABLE.d - 0.1, 0, yF + TABLE.h + 0.001, tz, 0, -Math.PI / 2)], bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: this.table.tex, emissiveIntensity: 1.0, roughness: 0.45 }), false);
+    add([G.plane(TABLE.w - 0.1, TABLE.d - 0.1, 0, yF + TABLE.h + 0.001, tz, Math.PI, -Math.PI / 2)], bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: this.table.tex, emissiveIntensity: 1.0, roughness: 0.45 }), false);
     // ---- the console: a desk in three parts (the side ones turned in), three 27" monitors on their arms, keyboard and
     // mouse, the operator's chair
     const dz = DESK.z, dd = DESK.d / 2, dh = yF + DESK.h, topM = bkMat({ color: 0xd4d6d8, roughness: 0.6 }), deskB = bkMat({ color: 0x24272b, roughness: 0.55, metalness: 0.2 });
