@@ -551,7 +551,7 @@ export class Bunker {
 
   // the things in it
   props(yF, yR) {
-    const T = this.tex, R = ROOM;
+    const T = this.tex, R = ROOM, yS = yF + SAS.h;
     const add = (geos, m, cast = true) => { const o = new THREE.Mesh(merge(geos), m); o.castShadow = cast; o.receiveShadow = true; this.rooms.add(o); return o; };
     const black = bkMat({ color: 0x15171a, roughness: 0.5, metalness: 0.35 });
     const greyM = bkMat({ color: 0xc9cdcf, roughness: 0.55, metalness: 0.2 });

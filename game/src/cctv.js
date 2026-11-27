@@ -80,7 +80,7 @@ export class CCTV {
   // exposure: the main view's (renderer.toneMappingExposure), time for the noise
   render(i, { night = 0, exposure = 1, time = 0 } = {}) {
     const c = this.cams[i]; if (!c) return null;
-    const r = this.renderer, w = this.w, h = this.h;
+    const r = this.renderer;
     const cam = this.cam, fov = (c.fov ?? 62) / c.zoom;
     cam.layers.mask = c.layers ?? 1;
     cam.position.set(c.x, c.y, c.z);
