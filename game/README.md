@@ -938,7 +938,20 @@ Jocul se joacă pe calculator, cu tastatură și mouse. Versiunea pentru telefon
       * preluarea dispozitivelor din hartă;
       * PTZ-ul;
       * calea asistentului cu unelte, printr-un `sample` simulat: scanare → preluarea nodului SCADA → tăierea curentului.
-    * **În joc:** sala, rackurile, consola, peretele video și imaginile reale ale camerelor (capturi).
+    * **În joc (capturi):**
+      * sala, din ambele capete;
+      * rackurile, de aproape;
+      * consola și sasul;
+      * peretele video plin, cu fiecare imagine sub numele ei;
+      * imaginile reale ale camerelor citite din sistem: sala, consola, trapa, Maybach-ul.
+
+      Pe drum am găsit și corectat:
+      * un nume nedefinit, din cauza căruia sala nu se construia;
+      * ordinea în oglindă a ecranelor de pe perete;
+      * harta de pe masă, întoarsă invers;
+      * reflexele albe de pe ecrane.
+
+      Fișierele noi trec ESLint fără nicio eroare.
 * **Camera de corp: mai sus pe piept, arma la vedere, fără pixeli (V127)** (`src/main.js`, `src/weapon.js`, `src/post.js`):
   * **Montura:** camera stă acum sus pe piept, sub claviculă, la 20 cm sub ochi. Înainte stătea la 37 cm, la mijlocul pieptului, iar pistolul ridicat la ochire ajungea la marginea de sus a imaginii sau ieșea din ea.
   * **Arma:**
