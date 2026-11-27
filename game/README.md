@@ -853,6 +853,92 @@ Jocul se joacă pe calculator, cu tastatură și mouse. Versiunea pentru telefon
     * la Peugeot-ul de 500 km/h Stage 1 nu se simte sub ~360 km/h: până acolo îl limitează aderența (1,43 g), nu puterea. Se simte peste, și la limitator (500 → până la ~599 km/h dacă îi ridici harta);
     * interfața e un desen original („ECU LAB”, „FLASH OBD”), nu copia unui program sau a unui aparat real.
   * **Surse:** ghiduri generale: [Blackcircles](https://www.blackcircles.com/news/car-engine-remapping-guide), [DailyDriven](https://dailydriven.ro/en/ecu-stage-1-remapping-chip-tuning-guide-benefits-and-costs-1596166), [HP Academy](https://www.hpacademy.com/blog/what-is-a-stage-1-tune/); reguli la scriere: [ECUTools](https://ecutools.eu/publications/general-rules-and-safety-precautions-for-working-with-a-vehicle-when-reflashing-ecus), [MG Flasher](https://mgflasher.atlassian.net/wiki/spaces/MGFLASHER/pages/28737557/Vehicle+requirements+and+preparation+for+flashing); cifre pe motoare: [320d](https://chiptuningreseller.com/chip-tuning/cars/bmw/3-serie/e9x-2005-2010/320d/787), [118d](https://chiptuningreseller.com/chip-tuning/cars/bmw/1-serie/e8x-lci-2007-2011/118d/691), [508 2.0 HDi](https://chiptuningreseller.com/chip-tuning/cars/peugeot/508/ph1-2011-2014/20-hdi/3895), [Focus 1.6 TDCi](https://chiptuningreseller.com/chip-tuning/cars/ford/focus/364-ii-2004-2010/1917-16-tdci/1917), [Kuga 2.0 TDCi](https://ndautorepairs.co.uk/remapping/ford-kuga-2008-2013-2-0-tdci-140hp/), [Golf IV 1.9 TDI](https://chiptuningreseller.com/chip-tuning/cars/volkswagen/golf/golf-iv-1997-2003/19-tdi/5057), [T5 2.0 TDI](https://lessandmore.file-service.com/tuning-specs/volkswagen/transporter-multivan/t5-2009-2015/20-tdi-cr-140hp), [A 180 CDI](https://byteflash.co.uk/tuning-files/mercedes/a/w169-2004-2012/180-cdi-109hp/), [Kangoo 1.5 dCi](https://chiptuningreseller.com/chip-tuning/cars/renault/kangoo-express-van-van/881-2013/4248-15-dci/4248), [Doblò 1.3 Multijet](https://chiptuningreseller.com/chip-tuning/cars/fiat/doblo/2015-2020/13-multijet/19306), [Sandero 0.9 TCe](https://ndautorepairs.co.uk/remapping/dacia-sandero-2016-2020-0-9-tce-90hp/), [Corsa 1.2](https://lessandmore.file-service.com/tuning-specs/opel/corsa/c-2000-2006/12i-16v-75hp), [Logan 1.4](https://activemotion-performance.file-service.com/en/tuning-specs/dacia/logan/2004-2012/14i-75hp), [GLS 600](https://chiptuningreseller.com/chip-tuning/cars/mercedes-benz/gls/5502-2023/22767-600-maybach-euro-6d-isc-fcm-2023/22767), [CFORCE 520](https://www.cfmoto.com.au/model/cforce-520).
+* **Postul 7 devine un centru de operațiuni modern, cu sistemul VEGHE (V128)** (`src/bunker.js`, `src/system.js`, `src/netsim.js`, `src/cctv.js`, `src/main.js`; scos: `src/laptop.js`):
+  * **Intrarea:**
+    * rămâne cea din V126: trapa de lângă Maybach (E), puțul cu scară și sasul;
+    * ușa etanșă e acum din oțel vopsit, cu cititor de card și lampă de stare.
+  * **Sala (6,8 × 7 m, 2,9 m înălțime):**
+    * **Podeaua:** pardoseală tehnică din plăci de 600 × 600 mm. Plăcile din fața rackurilor sunt perforate (culoarul rece, pe unde vine aerul de la răcitoare).
+    * **Rackurile:**
+      * două rânduri de rackuri de 19", 42U (600 × 1070 × 2000 mm), cu fața spre culoar și spatele la 30 cm de perete (culoarul cald);
+      * înăuntru: servere de 1U și 2U cu sertarele de discuri, rafturi de stocare, servere GPU, switch-uri și patch panel-uri cu cablurile lor;
+      * fiecare LED de disc și de port clipește după activitatea lui: 2.008 LED-uri, desenate ca o singură plasă instanțiată.
+    * **Echipamentele:**
+      * un răcitor în fiecare rând;
+      * UPS de 60 kVA cu dulapul lui de baterii Li-ion; ecranele lor arată starea reală;
+      * un generator diesel în spatele peretelui.
+    * **Restul:**
+      * jgheaburi de cabluri deasupra rackurilor, cu cupru albastru și fibră galbenă;
+      * stingere cu gaz inert: două butelii IG-541, cu duzele în tavan;
+      * lumini LED liniare de 4000 K, care se aprind când cobori.
+  * **Curentul:**
+    * postul se alimentează din faza L2 a postului de transformare din pădure;
+    * dacă tai curentul comunei, UPS-ul ține sarcina ~9 s, cât pornește generatorul; între timp ard doar luminile de urgență, iar girofarul portocaliu se rotește;
+    * revenirea pe rețea se face după ~4 s;
+    * se aud ventilatoarele serverelor, răcitoarele, dieselul și bipurile UPS-ului.
+  * **Consola, peretele video și masa:**
+    * **Consola:** un birou în trei părți, cu trei monitoare de 27" care arată sistemul live: panoul, harta rețelei și terminalul.
+    * **Peretele video:**
+      * deasupra consolei sunt opt ecrane de 49" cu camere live, desenate pe rând (fiecare cam o dată pe secundă);
+      * peste imagine apar numele, ora și REC/IR.
+    * **Masa de situație:** în mijlocul sălii, cu harta comunei (drumurile și camerele, verzi cele preluate).
+  * **Sistemul VEGHE (E la consolă, Esc iese):**
+    * o interfață de operațiuni pe tot ecranul, nu un desktop vechi: bara de stare sus, aplicațiile în stânga, asistentul în dreapta;
+    * aplicațiile: Panou, Terminal, Rețea, Camere, Energie, Meteo · NOR, Vehicule, Web și Jurnal.
+  * **Hacking ca la un test de intruziune, nu cu parole de pe bilețele:**
+    * **Pașii:**
+      * găsești gazdele (`scan`);
+      * le sondezi porturile (`probe`);
+      * cauți slăbiciunile versiunilor lor (`vulns`);
+      * intri (`breach`), apoi le comanzi (`act`).
+
+      Se face în terminal (Tab completează, ↑↓ istoricul, Ctrl+C oprește) sau din harta rețelei, cu bara de progres.
+    * **Țintele:**
+      * nodul SCADA al postului de transformare (curentul comunei, pe faze);
+      * controlerul felinarelor;
+      * lansatorul antigrindină (furtună, ploaie, senin, trăsnet);
+      * stația meteo;
+      * camerele comunei;
+      * unitățile telematice ale mașinilor (faruri, claxon, alarmă).
+    * **Progresul:** ce ai preluat se păstrează între sesiuni.
+    * **Spus cinstit:** serviciile, protocoalele și slăbiciunile (ID-uri NX-....) sunt inventate pentru joc. Se joacă la fel ca în realitate, dar nu te învață nimic ce ar merge pe un sistem real.
+  * **Camere, mai multe și mai precise:**
+    * **Câte și unde:** 29 de camere:
+      * sala, consola și sasul postului;
+      * trapa și Maybach-ul;
+      * câte una la fiecare loc din comună pe care îl arată fotografiile (gara, castelul, podul, DN1...), pe stâlp, la ~3,4 m.
+    * **Imaginea:**
+      * după calitatea grafică: 480 × 270 pe Low, 640 × 360 pe Medium, 960 × 540 pe High și 1280 × 720 pe Ultra (în V126: 320 × 180);
+      * culorile sunt cele din imaginea jocului: curba ACES a jocului, expunerea lui și codarea sRGB făcută de placa video. V126 le aproxima.
+    * **Ce pot:**
+      * noaptea trec pe infraroșu, alb-negru;
+      * cele PTZ se rotesc și fac zoom 1–8×: tragi cu mausul și folosești rotița;
+      * orice cameră poate fi pusă pe un ecran al peretelui video.
+    * **Accesul:** camerele comunei sunt blocate până le preiei (una câte una sau „Preia toate camerele”).
+  * **Asistentul AI:**
+    * **Ce e:** Claude însuși, prin capabilitatea `sample` a artefactului, cu funcțiile sistemului ca unelte: scanează, intră în dispozitive, taie curentul, aduce furtuna, deschide camere.
+    * **Cum vorbiți:**
+      * răspunde în română;
+      * îți poate citi răspunsurile cu voce (`tts`);
+      * îi poți vorbi (`dictation`, în Chrome sau Edge, pe claude.ai).
+    * **Când merge:**
+      * când jocul e deschis de pe linkul lui de pe claude.ai; la prima întrebare îți cere acordul;
+      * consumă din utilizarea ta de Claude;
+      * local spune clar că nu e disponibil.
+  * **Internetul:**
+    * **Cum merge:**
+      * aplicația Web și asistentul deschid pagini reale prin navigatorul integrat al aplicației desktop Claude (serverul MCP local al aplicației: `navigate`, apoi `get_page_text`);
+      * merge doar în aplicația desktop și doar pentru proprietarul jocului.
+    * **În browser sau local:** pagina jocului nu are voie să iasă pe internet, așa că aplicația Web spune asta, în loc să mimeze ceva.
+    * **Neverificat:** n-am putut testa de aici apelurile către navigator, pentru că forma exactă a argumentelor nu se poate citi la serverele locale.
+  * **Verificat:**
+    * **Interfața**, pe o pagină de test cu datele jocului simulate:
+      * toate aplicațiile;
+      * comenzile din terminal;
+      * preluarea dispozitivelor din hartă;
+      * PTZ-ul;
+      * calea asistentului cu unelte, printr-un `sample` simulat: scanare → preluarea nodului SCADA → tăierea curentului.
+    * **În joc:** sala, rackurile, consola, peretele video și imaginile reale ale camerelor (capturi).
 * **Camera de corp: mai sus pe piept, arma la vedere, fără pixeli (V127)** (`src/main.js`, `src/weapon.js`, `src/post.js`):
   * **Montura:** camera stă acum sus pe piept, sub claviculă, la 20 cm sub ochi. Înainte stătea la 37 cm, la mijlocul pieptului, iar pistolul ridicat la ochire ajungea la marginea de sus a imaginii sau ieșea din ea.
   * **Arma:**

@@ -846,7 +846,7 @@ async function main() {
     camsMade = true;
     scene.traverse(o => { if (o.isLight) o.layers.enable(BK_LAYER); });   // (the same lights for the rooms' cameras: no new shader variants)
     for (const c of bunker.cams()) {
-      const cam = cctv.add({ ...c, own: true, host: 'cam-' + slug(c.name.split('·').pop()), model: 'Dome 4MP (interior)', ir: false, layers: 1 << BK_LAYER, far: false, exposure: 1.35 });
+      const cam = cctv.add({ ...c, own: true, host: 'cam-' + slug(c.name.split('·').pop()), model: 'Dome 4MP (interior)', ir: false, layers: 1 << BK_LAYER, far: false, exposure: 1.1 });
       cam.pre = () => { cam._vis = bunker.rooms.visible; bunker.rooms.visible = true; };
       cam.post = () => { bunker.rooms.visible = cam._vis; };
     }
