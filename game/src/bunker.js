@@ -686,7 +686,7 @@ export class Bunker {
     add([...G.solid(-tw + 0.15, tw - 0.15, yF, yF + TABLE.h - 0.06, tz - td + 0.15, tz + td - 0.15)], black);
     add([...G.solid(-tw, tw, yF + TABLE.h - 0.06, yF + TABLE.h, tz - td, tz + td)], alu);
     this.table = canvasTex(768, 432);
-    add([G.plane(TABLE.w - 0.1, TABLE.d - 0.1, 0, yF + TABLE.h + 0.001, tz, 0, -Math.PI / 2)], bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: this.table.tex, emissiveIntensity: 1.0, roughness: 0.18 }), false);
+    add([G.plane(TABLE.w - 0.1, TABLE.d - 0.1, 0, yF + TABLE.h + 0.001, tz, 0, -Math.PI / 2)], bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: this.table.tex, emissiveIntensity: 1.0, roughness: 0.45 }), false);
     // ---- the console: a desk in three parts (the side ones turned in), three 27" monitors on their arms, keyboard and
     // mouse, the operator's chair
     const dz = DESK.z, dd = DESK.d / 2, dh = yF + DESK.h, topM = bkMat({ color: 0xd4d6d8, roughness: 0.6 }), deskB = bkMat({ color: 0x24272b, roughness: 0.55, metalness: 0.2 });
@@ -711,7 +711,7 @@ export class Bunker {
       const g = G.plane(mw - 0.016, mh - 0.016, 0, 0, 0, Math.PI); g.rotateY(ry); g.translate(x, my, zz - 0.001); monScr.push([g, s]);
     });
     add(monB, black);
-    for (const [g, s] of monScr) add([g], bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: s.tex, emissiveIntensity: 1.0, roughness: 0.2 }), false);
+    for (const [g, s] of monScr) add([g], bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: s.tex, emissiveIntensity: 1.0, roughness: 0.5 }), false);
     this.deskAt = { x: 0, y: my, z: mz };
     add([...G.solid(-0.23, 0.23, dh, dh + 0.018, dz - 0.18, dz - 0.03), ...G.solid(0.32, 0.38, dh, dh + 0.02, dz - 0.15, dz - 0.05)], black, false);
     // the chair: a mesh back, a seat, the gas column, five legs on castors
@@ -726,7 +726,7 @@ export class Bunker {
     this.wallNone = none;
     this.wall = [];
     for (let r = 0; r < VW.rows; r++) for (let c = 0; c < VW.cols; c++) {
-      const m = bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: none, emissiveIntensity: 1.0, roughness: 0.25 });
+      const m = bkMat({ color: 0x000000, emissive: 0xffffff, emissiveMap: none, emissiveIntensity: 1.0, roughness: 0.55 });
       add([G.plane(VW.w - 0.004, VW.h - 0.004, -vw / 2 + (c + 0.5) * VW.w, vy + vh - (r + 0.5) * VW.h, vz - 0.006, Math.PI)], m, false);
       this.wall.push({ m, tex: null });
     }
@@ -972,8 +972,8 @@ export class Bunker {
     put(0, yF + ly + 0.05, ROOM.z1 - 2.0, 2.6 * lk, 1, 0.97, 0.93);
     put(0, yF + SAS.h - 0.1, 1.05, 1.6 * lk, 1, 0.97, 0.93);
     // the screens' glow: the video wall's (its pictures' brightness is not read: a fair mean), the monitors', the table's
-    put(0, yF + VW.y0 + 0.6, ROOM.z1 - 0.7, 1.1, 0.62, 0.72, 0.95);
-    put(0, this.deskAt.y, this.deskAt.z - 0.45, 0.32, 0.6, 0.75, 1);
+    put(0, yF + 1.6, ROOM.z1 - 2.2, 1.6, 0.62, 0.72, 0.95);
+    put(0, this.deskAt.y - 0.15, this.deskAt.z - 1.0, 0.4, 0.6, 0.75, 1);
     put(0, yF + TABLE.h + 0.5, TABLE.z, 0.3, 0.5, 0.75, 1);
     const beacon = ups ? Math.max(0, Math.sin(this.lightT * 6.3)) ** 2 : 0;
     this.beaconM.emissiveIntensity = 0.4 + 6 * beacon * (ups ? 1 : 0);

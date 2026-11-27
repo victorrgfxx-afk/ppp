@@ -5,7 +5,7 @@
 //  * Rețea: the commune's network as the post sees it, as a map - each host found, probed, looked up, broken into, then
 //    told what to do. A game (netsim.js): its services, protocols and weaknesses invented; it plays like the real thing
 //    and teaches nothing that works anywhere else.
-//  * Camere: every camera (cctv.js: drawn from the game, 640 x 360, the main view's colours, infrared at night), the
+//  * Camere: every camera (cctv.js: drawn from the game, 640 x 360 to 1280 x 720 by the quality, the main view's colours, infrared at night), the
 //    commune's ones locked until broken into; pan, tilt and zoom on the domes (drag, wheel); any of them on the video
 //    wall.
 //  * Energie: the commune's transformer station (its breakers: power.js) and the post's own supply (the mains, the UPS,
@@ -571,8 +571,8 @@ export class System {
   camere() {
     const M = this.$main, C = this.cctv.cams;
     if (!this.camOwned(this.sel.cam)) this.sel.cam = C.findIndex((c, i) => this.camOwned(i));
-    M.innerHTML = `<h2>Camere <small>${C.length} camere · 640 × 360 · infraroșu noaptea</small><span style="flex:1"></span><button class="btn sm pri" data-all="1" ${C.some((c, i) => !this.camOwned(i)) && !this.hackingAll ? '' : 'disabled'}>Preia toate camerele</button></h2>
-      <div class="grid" style="grid-template-columns:minmax(0,1fr) 300px;align-items:start"><div><div class="camv"><canvas width="640" height="360"></canvas><div class="ov"><span class="nm"></span><span class="rec">● REC</span></div><div class="ovb"></div>
+    M.innerHTML = `<h2>Camere <small>${C.length} camere · ${this.cctv.w} × ${this.cctv.h} · infraroșu noaptea</small><span style="flex:1"></span><button class="btn sm pri" data-all="1" ${C.some((c, i) => !this.camOwned(i)) && !this.hackingAll ? '' : 'disabled'}>Preia toate camerele</button></h2>
+      <div class="grid" style="grid-template-columns:minmax(0,1fr) 300px;align-items:start"><div><div class="camv"><canvas width="${this.cctv.w}" height="${this.cctv.h}"></canvas><div class="ov"><span class="nm"></span><span class="rec">● REC</span></div><div class="ovb"></div>
       <div class="ptz"><button data-p="ul">↖</button><button data-p="u">▲</button><button data-p="ur">↗</button><button data-p="l">◀</button><button data-p="r0">⟲</button><button data-p="r">▶</button><button data-p="zo">−</button><button data-p="d">▼</button><button data-p="zi">+</button></div></div></div>
       <div class="card info"></div></div><h3 style="margin:18px 0 10px;font-size:11.5px;letter-spacing:.09em;color:#7f93a8">TOATE CAMERELE</h3><div class="tiles"></div>`;
     const big = M.querySelector('.camv canvas'), bg = big.getContext('2d'), info = M.querySelector('.info'), tiles = M.querySelector('.tiles'), view = M.querySelector('.camv');
@@ -581,7 +581,7 @@ export class System {
       const i = this.sel.cam, c = C[i];
       if (!c) { info.innerHTML = '<div class="mut">Nicio cameră disponibilă</div>'; return; }
       const slot = this.wallPin.indexOf(i);
-      info.innerHTML = `<h3>${esc(c.name)}</h3><div class="kv"><span>Adresa</span><b>${c.ip}</b><span>Model</span><b>${esc(c.model)}</b><span>Rezoluție</span><b>640 × 360</b><span>Obiectiv</span><b>${Math.round(c.fov / c.zoom)}° vertical</b><span>PTZ</span><b>${c.ptz ? `da · zoom ${c.zoom.toFixed(1)}×` : 'fixă'}</b><span>Noaptea</span><b>${c.ir === false ? 'color' : 'infraroșu'}</b></div>
+      info.innerHTML = `<h3>${esc(c.name)}</h3><div class="kv"><span>Adresa</span><b>${c.ip}</b><span>Model</span><b>${esc(c.model)}</b><span>Rezoluție</span><b>${this.cctv.w} × ${this.cctv.h}</b><span>Obiectiv</span><b>${Math.round(c.fov / c.zoom)}° vertical</b><span>PTZ</span><b>${c.ptz ? `da · zoom ${c.zoom.toFixed(1)}×` : 'fixă'}</b><span>Noaptea</span><b>${c.ir === false ? 'color' : 'infraroșu'}</b></div>
         <div class="mut" style="margin:12px 0 6px">Pe peretele video</div><div class="row">${[0, 1, 2, 3, 4, 5, 6, 7].map(k => `<button class="btn sm ${slot === k ? 'pri' : ''}" data-w="${k}">${k + 1}</button>`).join('')}</div>
         <div class="mut" style="margin-top:12px">${c.ptz ? 'Trage cu mouse-ul pe imagine pentru panoramare, rotița pentru zoom.' : 'Cameră fixă.'}</div>`;
       view.querySelector('.ptz').style.display = c.ptz ? 'grid' : 'none';
@@ -631,7 +631,7 @@ export class System {
           this.hooks.camRender?.(i); this.cctv.read(i, big);
           M.querySelector('.nm').textContent = `CAM ${String(i + 1).padStart(2, '0')} · ${c.name}`;
           M.querySelector('.ovb').textContent = `${this.clock()}  ${c.irNow ? 'IR' : ''}  ${c.ptz ? `Z ${c.zoom.toFixed(1)}×` : ''}`;
-        } else { bg.fillStyle = '#05080b'; bg.fillRect(0, 0, 640, 360); }
+        } else { bg.fillStyle = '#05080b'; bg.fillRect(0, 0, big.width, big.height); }
         // the thumbnails in view, one each tick, round them
         const mr = M.getBoundingClientRect(), vis = thumbs.filter(t => { const r = t.t.getBoundingClientRect(); return r.bottom > mr.top && r.top < mr.bottom; });
         if (vis.length) { const t = vis[k++ % vis.length]; if (t.i !== i) this.hooks.camRender?.(t.i); this.cctv.readTo(t.i, t.c); }

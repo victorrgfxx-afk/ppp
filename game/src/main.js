@@ -834,7 +834,9 @@ async function main() {
     for (const f of [415, 500]) { const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(lp); o.start(t0); o.stop(t0 + dur + 0.1); }
     lp.connect(g).connect(audio.master);
   };
-  const cctv = new CCTV(renderer, scene, farScene, { w: 640, h: 360 });
+  // (their pictures as sharp as the quality allows: 960 x 540 from High up, 1280 x 720 on Ultra)
+  const CCTV_RES = { low: [480, 270], medium: [640, 360], high: [960, 540], ultra: [1280, 720] }[qKey] ?? [640, 360];
+  const cctv = new CCTV(renderer, scene, farScene, { w: CCTV_RES[0], h: CCTV_RES[1] });
   // the cameras: the post's own (its rooms - they see the post's layer alone, by their own exposure -, the hatch from a
   // tree, the Maybach) and the commune's: one at each place the photos show, on a pole ~3.4 m up, looking a little down
   let camsMade = false;

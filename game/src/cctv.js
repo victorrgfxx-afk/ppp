@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 // (V128) The commune's cameras as the post's system sees them: where each one is and what it looks at, and its picture -
-// drawn from the game itself, at 640 x 360, with the main view's own colours (the same ACES curve, its exposure; the
+// drawn from the game itself (640 x 360 by default; main.js sizes them by the quality), with the main view's own colours (the same ACES curve, its exposure; the
 // sRGB encoding is the target's own - an SRGB8_ALPHA8 texture, which the card encodes on write and decodes on read, as
 // three.js leaves it for render targets: V126 had a guess at all this, 320 x 180), the far relief behind it as the
 // main view has it. One camera at a time,
