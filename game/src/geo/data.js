@@ -347,6 +347,22 @@ export function profileAt(z) {
 }
 
 // ---------- fast geometry builder: arrays per (material, chunk) -> merged meshes ----------
+
+// (V128) a growing list of 4-byte floats: the world's vertices as the map is built. They were plain arrays of numbers -
+// 8 bytes each, and inside the JS heap, which Chrome caps at ~4 GB a page (V8's compressed pointers): the load went past
+// it (4.5 GB at its peak) and the page crashed. A typed array's bytes live outside that heap, at half the size.
+class FBuf {
+  constructor(n = 256) { this.a = new Float32Array(n); this.length = 0; }
+  grow(k) {
+    if (this.length + k <= this.a.length) return;
+    let n = this.a.length * 2; while (n < this.length + k) n *= 2;
+    const b = new Float32Array(n); b.set(this.a.subarray(0, this.length)); this.a = b;
+  }
+  add(src) { const k = src.length; this.grow(k); this.a.set(src, this.length); this.length += k; }   // (an array or a typed array)
+  fill(v, n) { this.grow(n); this.a.fill(v, this.length, this.length + n); this.length += n; }
+  fill3(r, g, b, n) { this.grow(3 * n); const a = this.a; for (let i = 0, o = this.length; i < n; i++, o += 3) { a[o] = r; a[o + 1] = g; a[o + 2] = b; } this.length += 3 * n; }
+  array() { return this.a.slice(0, this.length); }   // (its exact size: the spare room let go)
+}
 export class GeoBuilder {
   // chunk: size of the merged meshes near the street (inside +-inner), farChunk beyond it (fewer draw calls);
   // cull: distance beyond which a merged mesh is hidden (per material via cullFor, else the default)
@@ -356,7 +372,7 @@ export class GeoBuilder {
   _grp(material, cx, cz, opts, size) {
     const key = material.uuid + '|' + size + '|' + cx + '|' + cz + (opts.noCast ? 'n' : '');
     let g = this.groups.get(key);
-    if (!g) { g = { material, opts, p: [], n: [], uv: [], c: [], hasColor: false }; this.groups.set(key, g); }
+    if (!g) { g = { material, opts, p: new FBuf(), n: new FBuf(), uv: new FBuf(), c: new FBuf(), hasColor: false }; this.groups.set(key, g); }
     return g;
   }
   // add a triangle list: pos [x,y,z,...], nrm [...], uv [...], color [r,g,b] optional for all verts
@@ -365,16 +381,14 @@ export class GeoBuilder {
     const size = Math.max(Math.abs(pos[0]), Math.abs(pos[2])) < this.inner ? this.chunk : this.farChunk;
     const cx = Math.floor(pos[0] / size), cz = Math.floor(pos[2] / size);
     const g = this._grp(material, cx, cz, opts, size);
-    for (let i = 0; i < pos.length; i++) g.p.push(pos[i]);
-    for (let i = 0; i < nrm.length; i++) g.n.push(nrm[i]);
-    for (let i = 0; i < uv.length; i++) g.uv.push(uv[i]);
+    g.p.add(pos); g.n.add(nrm); g.uv.add(uv);
     const nv = pos.length / 3;
     // (V120) the building's code (geo/buildings.js houseCode: its windows lit at night, its phase), per vertex
-    if (material.userData.bld) { g.b ??= []; const bv = opts.bld ?? 0; for (let i = 0; i < nv; i++) g.b.push(bv); }
+    if (material.userData.bld) { g.b ??= new FBuf(); g.b.fill(opts.bld ?? 0, nv); }
     if (color) { g.hasColor = true; }
-    if (color && color.length === pos.length) { for (let i = 0; i < color.length; i++) g.c.push(color[i]); return; }   // per vertex
+    if (color && color.length === pos.length) { g.c.add(color); return; }   // per vertex
     const c = color || [1, 1, 1];
-    for (let i = 0; i < nv; i++) g.c.push(c[0], c[1], c[2]);
+    g.c.fill3(c[0], c[1], c[2], nv);
   }
   // add a THREE.BufferGeometry (already in world space unless matrix given)
   geo(material, geometry, matrix = null, color = null, opts = {}) {
@@ -400,11 +414,12 @@ export class GeoBuilder {
     for (const g of this.groups.values()) {
       if (!g.p.length) continue;
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(g.p, 3));
-      geo.setAttribute('normal', new THREE.Float32BufferAttribute(g.n, 3));
-      geo.setAttribute('uv', new THREE.Float32BufferAttribute(g.uv, 2));
-      if (g.hasColor || g.material.vertexColors) geo.setAttribute('color', new THREE.Float32BufferAttribute(g.c, 3));
-      if (g.b) geo.setAttribute('aBld', new THREE.Float32BufferAttribute(g.b, 1));
+      geo.setAttribute('position', new THREE.BufferAttribute(g.p.array(), 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(g.n.array(), 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(g.uv.array(), 2));
+      if (g.hasColor || g.material.vertexColors) geo.setAttribute('color', new THREE.BufferAttribute(g.c.array(), 3));
+      if (g.b) geo.setAttribute('aBld', new THREE.BufferAttribute(g.b.array(), 1));
+      g.p = g.n = g.uv = g.c = g.b = null;   // (let each go as soon as it is copied)
       geo.computeBoundingSphere();
       const m = new THREE.Mesh(geo, g.material);
       m.castShadow = !g.opts.noCast; m.receiveShadow = true;
