@@ -23,7 +23,7 @@ import { NetSim, ACTIONS, KIND_LABEL } from './netsim.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pad2 = (n) => String(n).padStart(2, '0');
-const BROWSER = 'host:Claude_Browser';
+const BROWSER = 'host:claude_browser';   // (as the artifact service keeps it: lower case)
 const SVG = (p, s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 const IC = {
   panou: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
@@ -769,7 +769,7 @@ export class System {
       if (W.busy) { P.textContent = `Se deschide ${W.url} ...`; return; }
       if (W.text) { P.textContent = (W.title ? W.title + '\n' + W.url + '\n\n' : W.url + '\n\n') + W.text; return; }
       P.textContent = ok ? 'Scrie o adresă sau o căutare. Pagina se deschide în navigatorul aplicației desktop Claude (îl vezi în panoul lui) și aici apare textul ei. Asistentul îl poate folosi și el.'
-        : 'Internetul real trece aici prin navigatorul integrat al aplicației desktop Claude: când jocul e deschis acolo, de proprietarul lui, VEGHE deschide paginile în el și le citește textul.\n\nÎn modul acesta (un browser obișnuit sau jocul rulat local) pagina jocului nu are voie să iasă pe internet, așa că nu pot deschide nimic. Asistentul îți poate răspunde totuși din ce știe.';
+        : 'Pagina jocului nu are voie să iasă singură pe internet: așa sunt făcute artefactele de pe claude.ai (și jocul rulat local nu are nici el pe unde).\n\nSingura cale ar fi navigatorul integrat al aplicației desktop Claude, cerut de joc la publicare; e oprită deocamdată, pentru că n-am putut-o verifica. Asistentul îți răspunde totuși din ce știe.';
     };
     const go = () => { const q = I.value.trim(); if (q) this.webGo(q).then(paint); paint(); };
     M.addEventListener('click', (e) => { if (e.target.closest('[data-go]')) go(); });
